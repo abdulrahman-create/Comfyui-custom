@@ -2,7 +2,7 @@ import { app } from "/scripts/app.js";
 import { BRAND } from "../shared/index.mjs";
 
 // =============================================================================
-// Align Pixaroma — toggleable snap & alignment guides for the node canvas.
+// Align Pixaroma - toggleable snap & alignment guides for the node canvas.
 //
 // Architecture: monkey-patches LGraphCanvas.prototype.processMouseMove (snap)
 // and onDrawForeground (guide rendering). Both early-return when disabled, so
@@ -14,7 +14,7 @@ import { BRAND } from "../shared/index.mjs";
 // Toolbar button: DOM-mounted via `app.menu.settingsGroup.element.before(btn)`,
 // the same pattern rgthree-comfy uses (web/comfyui/comfy_ui_bar.js). The
 // `commands` + `menuCommands` API in this ComfyUI version surfaces items in
-// the menubar dropdowns, NOT the floating top action bar — so DOM mount is
+// the menubar dropdowns, NOT the floating top action bar, so DOM mount is
 // the right path for getting a button next to rgthree's logo.
 // =============================================================================
 
@@ -61,6 +61,14 @@ function injectToolbarCSS() {
       -webkit-mask-position: center;
       pointer-events: none;
     }
+    .pixaroma-align-btn:not(.pixaroma-align-on) {
+      background-color: #2a2c2e !important;
+      color: #ddd !important;
+      border-color: #444 !important;
+    }
+    .pixaroma-align-btn:not(.pixaroma-align-on):hover {
+      background-color: #3a3d40 !important;
+    }
     .pixaroma-align-btn.pixaroma-align-on {
       background-color: ${BRAND} !important;
       color: #fff !important;
@@ -100,7 +108,7 @@ function mountToolbarButton() {
 
   const btn = document.createElement("button");
   btn.className = "comfyui-button pixaroma-align-btn";
-  btn.title = "Toggle Align Pixaroma — snap & alignment guides (Alt to bypass during drag)";
+  btn.title = "Toggle Align Pixaroma snap & alignment guides (hold Alt to bypass during drag)";
   // Keep `.comfyui-button` defaults for OFF state (matches other unfilled
   // buttons like the bookmark icon). The `.pixaroma-align-on` class swaps in
   // BRAND background + white icon when active, mirroring the Manager button.
@@ -123,7 +131,7 @@ app.registerExtension({
   settings: [
     {
       id: SETTING_ENABLED,
-      name: "Align Pixaroma — snap & guides",
+      name: "Align Pixaroma snap & guides",
       type: "boolean",
       defaultValue: false,
       category: ["👑 Pixaroma", "Align"],
@@ -136,7 +144,7 @@ app.registerExtension({
     },
     {
       id: SETTING_SNAP_DIST,
-      name: "Align — Snap distance (screen pixels)",
+      name: "Align snap distance (screen pixels)",
       type: "slider",
       defaultValue: 8,
       attrs: { min: 4, max: 16, step: 1 },
@@ -149,7 +157,7 @@ app.registerExtension({
     },
   ],
   setup() {
-    // onChange fires only on subsequent changes — read current values now so
+    // onChange fires only on subsequent changes, so read current values now so
     // a user who had Enabled=ON across a restart gets the snap immediately.
     const s = app.ui?.settings;
     if (s) {
