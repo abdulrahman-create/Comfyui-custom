@@ -197,6 +197,12 @@ let _hookInstalled = false;
 function installPointerHook() {
   if (_hookInstalled) return;
   window.addEventListener("pointermove", onWindowPointerMove, false);
+  // Reset drag state on every release. Without this, a release-then-click
+  // sequence with no intervening pointermove leaves stale dragInfo (with
+  // its old lockType) attached to the next drag, breaking classification.
+  const _reset = () => { state.dragInfo = null; state._prevNodeStates = null; };
+  window.addEventListener("pointerup", _reset, false);
+  window.addEventListener("pointercancel", _reset, false);
   _hookInstalled = true;
   console.log("[Pixaroma.Align] pointer hook installed");
 }
@@ -219,12 +225,16 @@ function nodeRect(n) {
 
 // Find the closest snap delta along one axis. Returns { delta, target, movingValue } or null.
 // movingValues / targetValues are arrays of edge values along ONE axis.
-function findClosestSnap(movingValues, targetValues, threshold) {
+// Hysteresis: a target equal to `stickyTarget` (the one we were snapped to last
+// tick) gets a wider `stickyThreshold` so small cursor jitter doesn't disengage.
+function findClosestSnap(movingValues, targetValues, threshold, stickyTarget, stickyThreshold) {
   let best = null;
+  const sT = stickyThreshold == null ? threshold : stickyThreshold;
   for (const m of movingValues) {
     for (const t of targetValues) {
       const d = t - m;
-      if (Math.abs(d) <= threshold && (!best || Math.abs(d) < Math.abs(best.delta))) {
+      const allowed = (stickyTarget != null && Math.abs(t - stickyTarget) < 0.01) ? sT : threshold;
+      if (Math.abs(d) <= allowed && (!best || Math.abs(d) < Math.abs(best.delta))) {
         best = { delta: d, target: t, movingValue: m };
       }
     }
@@ -233,18 +243,52 @@ function findClosestSnap(movingValues, targetValues, threshold) {
 }
 
 function onWindowPointerMove(e) {
-  if (!state.enabled) { state.dragInfo = null; return; }
+  if (!state.enabled) { state.dragInfo = null; state._prevNodeStates = null; return; }
   // Shift bypasses snap (Alt is taken by ComfyUI for "duplicate during drag").
-  if (e.shiftKey) { state.dragInfo = null; return; }
+  if (e.shiftKey) { state.dragInfo = null; state._prevNodeStates = null; return; }
   const c = app.canvas;
-  if (!c?.last_mouse_dragging) { state.dragInfo = null; return; }
-  if (!(e.buttons & 1)) { state.dragInfo = null; return; }
+  if (!c?.last_mouse_dragging) { state.dragInfo = null; state._prevNodeStates = null; return; }
+  if (!(e.buttons & 1)) { state.dragInfo = null; state._prevNodeStates = null; return; }
 
+  // Find the dragged/resized node. Clicking a resize handle of an UNSELECTED
+  // node doesn't add it to selected_nodes in this LiteGraph version, AND
+  // node_over clears on mousedown, AND getNodeOnPos returns null because the
+  // cursor sits at the edge of the node (just outside its hit rect). The
+  // ultimate fallback is to compare each node's pos/size to the previous tick
+  // and pick the one that LiteGraph just modified.
+  let draggedNode = null;
   const sel = c.selected_nodes;
-  if (!sel) { state.dragInfo = null; return; }
-  const selKeys = Object.keys(sel);
-  if (selKeys.length !== 1) { state.dragInfo = null; return; }  // multi-select in Task 9
-  const draggedNode = sel[selKeys[0]];
+  const selKeys = sel ? Object.keys(sel) : [];
+  if (selKeys.length === 1) {
+    draggedNode = sel[selKeys[0]];
+  } else if (selKeys.length > 1) {
+    // multi-select handled in Task 9
+    state.dragInfo = null;
+    state._prevNodeStates = null;
+    return;
+  } else if (c.node_over) {
+    draggedNode = c.node_over;
+  } else if (c.graph?.getNodeOnPos && c.graph_mouse) {
+    draggedNode = c.graph.getNodeOnPos(c.graph_mouse[0], c.graph_mouse[1]);
+  }
+  // Final fallback: find a node whose pos or size changed since last tick.
+  if (!draggedNode && state._prevNodeStates && c.graph?._nodes) {
+    for (const n of c.graph._nodes) {
+      const p = state._prevNodeStates.get(n.id);
+      if (p && (p.x !== n.pos[0] || p.y !== n.pos[1] || p.w !== n.size[0] || p.h !== n.size[1])) {
+        draggedNode = n;
+        break;
+      }
+    }
+  }
+  // Refresh the per-node cache for next tick BEFORE we possibly bail.
+  if (c.graph?._nodes) {
+    if (!state._prevNodeStates) state._prevNodeStates = new Map();
+    state._prevNodeStates.clear();
+    for (const n of c.graph._nodes) {
+      state._prevNodeStates.set(n.id, { x: n.pos[0], y: n.pos[1], w: n.size[0], h: n.size[1] });
+    }
+  }
   if (!draggedNode || draggedNode.flags?.collapsed) { state.dragInfo = null; return; }
 
   const scale = c.ds?.scale || 1;
@@ -252,9 +296,11 @@ function onWindowPointerMove(e) {
 
   // Capture drag origin on first tick (or whenever the dragged node changes).
   // last_mouse_dragging is set for ANY drag (node move, resize, canvas pan,
-  // resize of an unrelated node, etc.), so we have to confirm this is a real
-  // node-move drag before applying pos correction. We do that by waiting until
-  // we observe the dragged node's pos changing (LiteGraph moved it).
+  // resize of an unrelated node, etc.). We have to classify the drag before
+  // applying any correction. Classification:
+  //   - "move":   pos changed, size unchanged    -> move snap
+  //   - "resize": size changed (any corner/edge) -> resize snap on the
+  //               specific edges that are moving (detected per tick)
   if (!state.dragInfo || state.dragInfo.nodeId !== draggedNode.id) {
     state.dragInfo = {
       nodeId: draggedNode.id,
@@ -264,31 +310,137 @@ function onWindowPointerMove(e) {
       cursorY: e.clientY,
       sizeW: draggedNode.size[0],
       sizeH: draggedNode.size[1],
-      isResize: false,
-      isMove: false,
+      lockType: null,
+      // Cache of which edges have moved at least once in this resize. Once an
+      // edge "moves" we treat it as moving for the rest of the drag, even if
+      // a later tick clamps it (so snap doesn't reset).
+      leftMoves: false, rightMoves: false, topMoves: false, botMoves: false,
+      // Hysteresis: remember which target line each axis/edge snapped to last
+      // tick so we can use a wider threshold to STAY snapped, narrower to
+      // ENGAGE. Prevents wiggle at the snap-zone boundary.
+      stickyMoveX: null, stickyMoveY: null,
+      stickyResizeL: null, stickyResizeR: null, stickyResizeT: null, stickyResizeB: null,
     };
     return;
   }
 
-  // Lock to resize mode the moment we see a size change. Even if LiteGraph
-  // later clamps size at minimum (so the next tick looks "size unchanged"),
-  // we stay locked for the rest of this drag.
-  if (!state.dragInfo.isResize) {
-    if (draggedNode.size[0] !== state.dragInfo.sizeW || draggedNode.size[1] !== state.dragInfo.sizeH) {
-      state.dragInfo.isResize = true;
-    }
+  // Classify the drag once, lock that classification for the rest of the drag.
+  if (!state.dragInfo.lockType) {
+    const sizeChanged = draggedNode.size[0] !== state.dragInfo.sizeW || draggedNode.size[1] !== state.dragInfo.sizeH;
+    const posChanged = draggedNode.pos[0] !== state.dragInfo.posX || draggedNode.pos[1] !== state.dragInfo.posY;
+    if (sizeChanged)         state.dragInfo.lockType = "resize";
+    else if (posChanged)     state.dragInfo.lockType = "move";
+    // else: neither has changed yet; wait
   }
-  if (state.dragInfo.isResize) return;  // resize snap arrives in Task 10
 
-  // Lock to move mode the moment we see THIS node's pos change. Without this
-  // confirmation, canvas-pan drags and resizes of OTHER nodes would cause us
-  // to drag the previously-selected node based on cursor delta.
-  if (!state.dragInfo.isMove) {
-    if (draggedNode.pos[0] !== state.dragInfo.posX || draggedNode.pos[1] !== state.dragInfo.posY) {
-      state.dragInfo.isMove = true;
+  if (state.dragInfo.lockType === null) return;
+
+  if (state.dragInfo.lockType === "resize") {
+    // Detect which edges are moving by comparing current vs initial edge
+    // positions. Once an edge moves, mark it sticky so we keep snapping it
+    // even when LiteGraph clamps it at min size.
+    const initLeft = state.dragInfo.posX;
+    const initRight = state.dragInfo.posX + state.dragInfo.sizeW;
+    const initTop = state.dragInfo.posY;
+    const initBot = state.dragInfo.posY + state.dragInfo.sizeH;
+    const curLeft = draggedNode.pos[0];
+    const curRight = draggedNode.pos[0] + draggedNode.size[0];
+    const curTop = draggedNode.pos[1];
+    const curBot = draggedNode.pos[1] + draggedNode.size[1];
+    const EPS = 0.01;
+    if (Math.abs(curLeft - initLeft) > EPS) state.dragInfo.leftMoves = true;
+    if (Math.abs(curRight - initRight) > EPS) state.dragInfo.rightMoves = true;
+    if (Math.abs(curTop - initTop) > EPS) state.dragInfo.topMoves = true;
+    if (Math.abs(curBot - initBot) > EPS) state.dragInfo.botMoves = true;
+    const { leftMoves, rightMoves, topMoves, botMoves } = state.dragInfo;
+
+    let minW = 50, minH = 20;
+    if (typeof draggedNode.computeSize === "function") {
+      const cs = draggedNode.computeSize();
+      if (cs && cs.length >= 2) { minW = cs[0]; minH = cs[1]; }
     }
+
+    const totalDx = (e.clientX - state.dragInfo.cursorX) / scale;
+    const totalDy = (e.clientY - state.dragInfo.cursorY) / scale;
+    let dLeft = leftMoves  ? initLeft  + totalDx : initLeft;
+    let dRight = rightMoves ? initRight + totalDx : initRight;
+    let dTop = topMoves   ? initTop   + totalDy : initTop;
+    let dBot = botMoves   ? initBot   + totalDy : initBot;
+
+    // Enforce min sizes; the moving edge gives way to the anchor.
+    if (dRight - dLeft < minW) {
+      if (leftMoves)  dLeft = dRight - minW;
+      else            dRight = dLeft + minW;
+    }
+    if (dBot - dTop < minH) {
+      if (topMoves)   dTop = dBot - minH;
+      else            dBot = dTop + minH;
+    }
+
+    const stickyG = snapGraph * 1.5;
+    const nodes = c.graph?._nodes || [];
+    let snapLeft = null, snapRight = null, snapTop = null, snapBot = null;
+    const tryTarget = (curBest, t, value, sticky) => {
+      const d = t - value;
+      const allowed = (sticky != null && Math.abs(t - sticky) < 0.01) ? stickyG : snapGraph;
+      if (Math.abs(d) <= allowed && (!curBest || Math.abs(d) < Math.abs(curBest.delta))) {
+        return { delta: d, target: t };
+      }
+      return curBest;
+    };
+    for (const other of nodes) {
+      if (other === draggedNode) continue;
+      if (other.flags?.collapsed) continue;
+      const oRect = nodeRect(other);
+      const oE = rectEdges(oRect);
+      if (leftMoves) {
+        for (const t of [oE.left, oE.right, oE.centerX]) {
+          snapLeft = tryTarget(snapLeft, t, dLeft, state.dragInfo.stickyResizeL);
+        }
+      }
+      if (rightMoves) {
+        for (const t of [oE.left, oE.right, oE.centerX]) {
+          snapRight = tryTarget(snapRight, t, dRight, state.dragInfo.stickyResizeR);
+        }
+      }
+      if (topMoves) {
+        for (const t of [oE.top, oE.bottom, oE.centerY]) {
+          snapTop = tryTarget(snapTop, t, dTop, state.dragInfo.stickyResizeT);
+        }
+      }
+      if (botMoves) {
+        for (const t of [oE.top, oE.bottom, oE.centerY]) {
+          snapBot = tryTarget(snapBot, t, dBot, state.dragInfo.stickyResizeB);
+        }
+      }
+    }
+    state.dragInfo.stickyResizeL = snapLeft  ? snapLeft.target  : null;
+    state.dragInfo.stickyResizeR = snapRight ? snapRight.target : null;
+    state.dragInfo.stickyResizeT = snapTop   ? snapTop.target   : null;
+    state.dragInfo.stickyResizeB = snapBot   ? snapBot.target   : null;
+
+    let fLeft = snapLeft  ? snapLeft.target  : dLeft;
+    let fRight = snapRight ? snapRight.target : dRight;
+    let fTop = snapTop   ? snapTop.target   : dTop;
+    let fBot = snapBot   ? snapBot.target   : dBot;
+    if (fRight - fLeft < minW) {
+      if (leftMoves)  fLeft = fRight - minW;
+      else            fRight = fLeft + minW;
+    }
+    if (fBot - fTop < minH) {
+      if (topMoves)   fTop = fBot - minH;
+      else            fBot = fTop + minH;
+    }
+
+    draggedNode.pos[0] = fLeft;
+    draggedNode.pos[1] = fTop;
+    draggedNode.size[0] = fRight - fLeft;
+    draggedNode.size[1] = fBot - fTop;
+    c.setDirty?.(true, true);
+    return;
   }
-  if (!state.dragInfo.isMove) return;  // not a node-move drag
+
+  // From here, lockType === "move".
 
   // "Desired" position = where the cursor wants the node to be, with no snap.
   const totalDxScreen = e.clientX - state.dragInfo.cursorX;
@@ -305,6 +457,7 @@ function onWindowPointerMove(e) {
   const movingX = [movingE.left, movingE.right, movingE.centerX];
   const movingY = [movingE.top, movingE.bottom, movingE.centerY];
 
+  const stickyG = snapGraph * 1.5;
   const nodes = c.graph?._nodes || [];
   let bestX = null;
   let bestY = null;
@@ -314,13 +467,15 @@ function onWindowPointerMove(e) {
     const oRect = nodeRect(other);
     const dxc = Math.max(0, Math.max(oRect.x - (movingRect.x + movingRect.w), movingRect.x - (oRect.x + oRect.w)));
     const dyc = Math.max(0, Math.max(oRect.y - (movingRect.y + movingRect.h), movingRect.y - (oRect.y + oRect.h)));
-    if (dxc > 2 * snapGraph && dyc > 2 * snapGraph) continue;
+    if (dxc > 2 * stickyG && dyc > 2 * stickyG) continue;
     const oE = rectEdges(oRect);
-    const mx = findClosestSnap(movingX, [oE.left, oE.right, oE.centerX], snapGraph);
+    const mx = findClosestSnap(movingX, [oE.left, oE.right, oE.centerX], snapGraph, state.dragInfo.stickyMoveX, stickyG);
     if (mx && (!bestX || Math.abs(mx.delta) < Math.abs(bestX.delta))) bestX = mx;
-    const my = findClosestSnap(movingY, [oE.top, oE.bottom, oE.centerY], snapGraph);
+    const my = findClosestSnap(movingY, [oE.top, oE.bottom, oE.centerY], snapGraph, state.dragInfo.stickyMoveY, stickyG);
     if (my && (!bestY || Math.abs(my.delta) < Math.abs(bestY.delta))) bestY = my;
   }
+  state.dragInfo.stickyMoveX = bestX ? bestX.target : null;
+  state.dragInfo.stickyMoveY = bestY ? bestY.target : null;
 
   // Set node.pos directly: snap target if found, else desired position.
   // This OVERWRITES whatever LiteGraph set this tick, so the cursor and node
