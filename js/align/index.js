@@ -10,6 +10,12 @@ import { BRAND } from "../shared/index.mjs";
 //
 // Patches WRAP, never REPLACE. We save the original at install time and call
 // through. This lets us coexist with rgthree-comfy and similar extensions.
+//
+// Toolbar button: DOM-mounted via `app.menu.settingsGroup.element.before(btn)`,
+// the same pattern rgthree-comfy uses (web/comfyui/comfy_ui_bar.js). The
+// `commands` + `menuCommands` API in this ComfyUI version surfaces items in
+// the menubar dropdowns, NOT the floating top action bar — so DOM mount is
+// the right path for getting a button next to rgthree's logo.
 // =============================================================================
 
 const SETTING_ENABLED = "Pixaroma.Align.Enabled";
