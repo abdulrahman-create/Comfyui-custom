@@ -37,8 +37,29 @@ app.registerExtension({
         console.log("[Pixaroma.Align] enabled =", state.enabled);
       },
     },
+    {
+      id: SETTING_SNAP_DIST,
+      name: "Align — Snap distance (screen pixels)",
+      type: "slider",
+      defaultValue: 8,
+      attrs: { min: 4, max: 16, step: 1 },
+      category: ["👑 Pixaroma", "Align (advanced)"],
+      tooltip: "How close (in screen pixels) an edge must be before snap engages.",
+      onChange: (v) => {
+        const n = Number(v);
+        if (Number.isFinite(n) && n >= 4 && n <= 16) state.snapDistPx = n;
+      },
+    },
   ],
   setup() {
-    console.log("[Pixaroma.Align] extension setup complete");
+    // onChange fires only on subsequent changes — read current values now so
+    // a user who had Enabled=ON across a restart gets the snap immediately.
+    const s = app.ui?.settings;
+    if (s) {
+      state.enabled = !!s.getSettingValue(SETTING_ENABLED);
+      const d = Number(s.getSettingValue(SETTING_SNAP_DIST));
+      if (Number.isFinite(d) && d >= 4 && d <= 16) state.snapDistPx = d;
+    }
+    console.log("[Pixaroma.Align] setup: enabled=", state.enabled, "snapDist=", state.snapDistPx);
   },
 });
