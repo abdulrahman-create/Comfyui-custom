@@ -307,35 +307,34 @@ NoteEditor.prototype._insertInlineIcon = async function (anchorBtn) {
   injectIconCSS();
 
   openIconPop(anchorBtn, icons, this, (id) => {
-    // Always normalize first - guarantees every root child is a block
-    // element, so execCommand("insertHTML") never inserts at the
-    // contenteditable root (which Chrome handles by wrapping the
-    // inserted HTML in a new block, breaking the layout).
+    // Build the insert range. Always normalize first so every root
+    // child is a block element. Then resolve a target Range to a
+    // position INSIDE a block (never at the editArea root - Chrome's
+    // execCommand("insertHTML") at the root wraps the insert in a
+    // new block, breaking the visible layout).
     this._normalizeEditArea?.(this._editArea);
     this._editArea.focus();
-    const sel = window.getSelection();
+
+    let insertRange = null;
     if (savedRange) {
-      sel.removeAllRanges();
-      // If the saved range points AT the editArea root (offset N
-      // among block children), snap it into the matching block child
-      // so the insert lands inside that block, not at the root.
       let r = savedRange;
       if (r.startContainer === this._editArea) {
-        const idx = Math.min(r.startOffset, this._editArea.childNodes.length - 1);
-        const target = this._editArea.childNodes[Math.max(0, idx)];
+        const childCount = this._editArea.childNodes.length;
+        const idx = Math.min(r.startOffset, Math.max(0, childCount - 1));
+        const target = this._editArea.childNodes[idx];
         if (target && target.nodeType === 1) {
           const r2 = document.createRange();
           r2.selectNodeContents(target);
-          // If the original offset was at or past the end, collapse
-          // to end of the target block; otherwise to start.
+          // Past-end original offset -> collapse to end of target;
+          // otherwise to start.
           r2.collapse(r.startOffset > idx);
           r = r2;
         }
       }
-      sel.addRange(r);
+      insertRange = r;
     } else {
-      // No prior caret in the editArea (focus elsewhere). Drop the
-      // caret at the end of the last block.
+      // No prior selection inside editArea. Drop the caret at the
+      // end of the last block (or editArea itself if empty).
       const last = this._editArea.lastElementChild;
       const r = document.createRange();
       if (last) {
@@ -345,20 +344,32 @@ NoteEditor.prototype._insertInlineIcon = async function (anchorBtn) {
         r.selectNodeContents(this._editArea);
         r.collapse(false);
       }
-      sel.removeAllRanges();
-      sel.addRange(r);
+      insertRange = r;
     }
-    // Read color + size from the editor's session-sticky picker state
-    // (set inside openIconPop on swatch / pill clicks, defaults from
-    // open() in core.mjs). Decoupled from the A text-color picker so
-    // typing colors stay independent of icon colors.
+
+    // Direct DOM insertion (bypasses execCommand("insertHTML")) so
+    // Chrome can't wrap our inline content in a new block. Mirrors
+    // the Grid insert pattern (CLAUDE.md Note Pattern #26).
     const color = this._iconPickerColor || "";
     const size  = this._iconPickerSize  || "m";
-    document.execCommand(
-      "insertHTML",
-      false,
-      renderIconHTML(id, color, size),
-    );
+    const tmpl = document.createElement("template");
+    tmpl.innerHTML = renderIconHTML(id, color, size);
+    const frag = tmpl.content;
+    // Capture refs before insertNode (which empties the fragment).
+    const lastInserted = frag.lastChild;
+    insertRange.collapse(true);
+    insertRange.insertNode(frag);
+
+    // Place caret AFTER the inserted nodes (after the trailing nbsp).
+    if (lastInserted) {
+      const after = document.createRange();
+      after.setStartAfter(lastInserted);
+      after.collapse(true);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(after);
+    }
+
     this._restageColors?.();
     this._dirty = true;
     this._refreshActiveStates?.();
