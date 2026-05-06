@@ -6,6 +6,7 @@ import { api } from "/scripts/api.js";
 import { CropEditor } from "./core.mjs";
 import "./interaction.mjs"; // mixin: mouse/keyboard events
 import "./render.mjs"; // mixin: canvas rendering, ratio, save
+import { createCropPanel } from "./panel.mjs";
 import {
   allow_debug,
   createNodePreview,
@@ -138,7 +139,7 @@ app.registerExtension({
   async nodeCreated(node) {
     if (node.comfyClass !== "PixaromaCrop") return;
 
-    node.size = [300, 300];
+    node.size = [300, 380];  // taller default to fit the new panel
     node.imgs = null; // suppress native ComfyUI preview
 
     // ── IMAGE input socket ──────────────────────────────────────────────
@@ -172,6 +173,8 @@ app.registerExtension({
       img.crossOrigin = "anonymous";
       img.onload = () => {
         const w = img.naturalWidth, h = img.naturalHeight;
+        node._pixaromaLastImageDims = { w, h };
+        panel?.refresh(); // panel reads dims for default-fill
         // No saved rect → show the upstream as-is (matches Python pass-through).
         if (!meta.crop_w) {
           showNodePreview(parts, url, `${w}×${h}`, node);
@@ -222,6 +225,7 @@ app.registerExtension({
         if (dataURL) {
           showNodePreview(parts, dataURL, null, node);
         }
+        panel?.refresh();
       };
 
       editor.onSaveToDisk = (dataURL) =>
@@ -237,8 +241,37 @@ app.registerExtension({
       editor.open(cropJson, upstreamURL);
     });
 
-    // ── DOM widget ──
-    const widget = node.addDOMWidget("CropWidget", "custom", parts.container, {
+    // Forward declaration so panel callbacks can reference widget (assigned below).
+    let widget;
+
+    // ── On-node panel (W, H, X, Y, Ratio, Center — all always visible) ──
+    // Mounted BEFORE the CropWidget DOM widget so it renders ABOVE the
+    // mini-preview in the node body.
+    const PANEL_H = 100; // 3 rows + padding + margin (Resolution Pixaroma fixed-size pattern)
+
+    const panel = createCropPanel({
+      getCropJson: () => cropJson,
+      setCropJson: (s) => {
+        cropJson = s;
+        if (widget) widget.value = { crop_json: cropJson };
+      },
+      getImageDims: () => node._pixaromaLastImageDims || null,
+      onChange: () => {
+        rebuildPreviewFromUpstream();
+        if (app.graph) app.graph.setDirtyCanvas(true, true);
+      },
+    });
+    // Resolution Pixaroma pattern — set BOTH min and max to the same constant
+    // so ComfyUI doesn't stretch the widget to fill leftover node height.
+    node.addDOMWidget("CropPanel", "custom", panel.el, {
+      serialize: false,
+      getMinHeight: () => PANEL_H,
+      getMaxHeight: () => PANEL_H,
+      margin: 0,
+    });
+
+    // ── DOM widget (mini-preview) ──
+    widget = node.addDOMWidget("CropWidget", "custom", parts.container, {
       getValue: () => ({ crop_json: cropJson }),
       setValue: (v) => {
         if (!v || typeof v !== "object") return;
@@ -265,12 +298,16 @@ app.registerExtension({
         } else {
           restoreNodePreview(parts, cropJson, node);
         }
+        panel?.refresh();
       },
       getMinHeight: () => 210,
       margin: 5,
     });
 
     activateNodePreview(parts, node);
+
+    // Initial panel populate from cropJson (or defaults).
+    panel.refresh();
 
     // ── Auto-refresh preview when upstream changes (Vue Compat #1) ──
     let lastSnap = "";
@@ -286,6 +323,7 @@ app.registerExtension({
       } else {
         restoreNodePreview(parts, cropJson, node);
       }
+      panel?.refresh();
     };
 
     node.onConnectionsChange = (type, slotIndex, connected) => {

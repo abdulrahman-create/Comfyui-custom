@@ -1,9 +1,10 @@
 // ============================================================
 // Pixaroma Image Crop — On-Node Panel
 // ============================================================
-// Compact custom DOM widget for the node body. Exposes W, H, Ratio,
-// a one-shot Center button, and a collapsible X/Y row.
-// Source of truth = cropJson (read in refresh(), written on every commit).
+// Compact custom DOM widget for the node body. Exposes W, H, X, Y,
+// Ratio combo, and a one-shot Center button. Always-visible layout
+// (no collapse). Source of truth = cropJson (read in refresh(),
+// written on every commit).
 // ============================================================
 
 import { BRAND } from "../shared/index.mjs";
@@ -93,17 +94,6 @@ const PANEL_CSS = `
   min-height: 22px;
 }
 .pix-cropp-btn:hover { background: #4a2a1c; }
-.pix-cropp-toggle {
-  text-align: center;
-  color: #777;
-  font-size: 10px;
-  padding: 3px 0;
-  cursor: pointer;
-  border-top: 1px solid #222;
-  margin-top: 4px;
-  user-select: none;
-}
-.pix-cropp-toggle:hover { color: #aaa; }
 `;
 
 let _cssInjected = false;
@@ -124,11 +114,9 @@ function injectCSS() {
 //   setCropJson(s)   -> void     (write back to the hidden widget + state)
 //   getImageDims()   -> {w,h}|null  (last loaded mini-preview image dims)
 //   onChange()       -> void     (after a commit; trigger preview rebuild)
-//   getExpanded()    -> boolean  (X/Y row expanded state, persisted)
-//   setExpanded(b)   -> void     (persist expanded state)
 export function createCropPanel(callbacks) {
   injectCSS();
-  const { getCropJson, setCropJson, getImageDims, onChange, getExpanded, setExpanded } = callbacks;
+  const { getCropJson, setCropJson, getImageDims, onChange } = callbacks;
 
   const root = document.createElement("div");
   root.className = "pix-cropp";
@@ -138,16 +126,24 @@ export function createCropPanel(callbacks) {
   row1.className = "pix-cropp-row";
 
   const wInput = makeNumberInput("W");
-  const times = document.createElement("div");
-  times.className = "pix-cropp-times";
-  times.textContent = "×";
+  const times1 = document.createElement("div");
+  times1.className = "pix-cropp-times";
+  times1.textContent = "×";
   const hInput = makeNumberInput("H");
 
-  row1.append(wInput.cell, times, hInput.cell);
+  row1.append(wInput.cell, times1, hInput.cell);
 
-  // ── Row 2: Ratio + Center ──
+  // ── Row 2: X / Y ──
   const row2 = document.createElement("div");
   row2.className = "pix-cropp-row";
+
+  const xInput = makeNumberInput("X", 0);
+  const yInput = makeNumberInput("Y", 0);
+  row2.append(xInput.cell, yInput.cell);
+
+  // ── Row 3: Ratio + Center ──
+  const row3 = document.createElement("div");
+  row3.className = "pix-cropp-row";
 
   const ratioSelect = document.createElement("select");
   ratioSelect.className = "pix-cropp-combo";
@@ -163,25 +159,12 @@ export function createCropPanel(callbacks) {
   centerBtn.type = "button";
   centerBtn.textContent = "⊕ Center";
 
-  row2.append(ratioSelect, centerBtn);
+  row3.append(ratioSelect, centerBtn);
 
-  // ── Toggle row ──
-  const toggle = document.createElement("div");
-  toggle.className = "pix-cropp-toggle";
-
-  // ── Row 4: X / Y (collapsible) ──
-  const row4 = document.createElement("div");
-  row4.className = "pix-cropp-row";
-
-  const xInput = makeNumberInput("X", 0);
-  const yInput = makeNumberInput("Y", 0);
-  row4.append(xInput.cell, yInput.cell);
-
-  root.append(row1, row2, toggle, row4);
+  root.append(row1, row2, row3);
 
   // ── State sync helpers ──
 
-  // Read cropJson, return parsed meta object (always a plain object).
   function readMeta() {
     let meta = {};
     try { meta = JSON.parse(getCropJson() || "{}") || {}; } catch {}
@@ -202,7 +185,6 @@ export function createCropPanel(callbacks) {
     onChange?.();
   }
 
-  // Validation/clamp on commit values.
   function clampW(w) {
     const dims = getImageDims?.() || null;
     let v = Math.max(1, Math.round(w || 1));
@@ -229,7 +211,6 @@ export function createCropPanel(callbacks) {
   }
 
   // Apply ratio lock to (w, h) given ratioIdx; returns adjusted {w, h}.
-  // driven = "w" or "h" indicates which the user just edited.
   function applyRatio(w, h, ratioIdx, driven) {
     const r = RATIOS[ratioIdx];
     if (!r || r.w === 0) return { w, h };
@@ -293,19 +274,12 @@ export function createCropPanel(callbacks) {
     refresh();
   }
 
-  function onToggleClick() {
-    const next = !(getExpanded?.() ?? false);
-    setExpanded?.(next);
-    refresh();
-  }
-
   wInput.input.addEventListener("change", () => onWHCommit("w"));
   hInput.input.addEventListener("change", () => onWHCommit("h"));
   xInput.input.addEventListener("change", onXYCommit);
   yInput.input.addEventListener("change", onXYCommit);
   ratioSelect.addEventListener("change", onRatioCommit);
   centerBtn.addEventListener("click", onCenterClick);
-  toggle.addEventListener("click", onToggleClick);
 
   // Block keyboard from bubbling to ComfyUI canvas (would otherwise pan/zoom).
   for (const el of [wInput.input, hInput.input, xInput.input, yInput.input, ratioSelect]) {
@@ -340,10 +314,6 @@ export function createCropPanel(callbacks) {
     if (document.activeElement !== xInput.input) xInput.input.value = x;
     if (document.activeElement !== yInput.input) yInput.input.value = y;
     ratioSelect.value = String(meta.ratio_idx ?? 0);
-
-    const expanded = getExpanded?.() ?? false;
-    row4.style.display = expanded ? "flex" : "none";
-    toggle.textContent = expanded ? "▾ position (X, Y)" : "▸ position (X, Y)";
   }
 
   return { el: root, refresh };
