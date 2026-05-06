@@ -149,7 +149,7 @@ app.registerExtension({
       type: "boolean",
       defaultValue: false,
       category: ["👑 Pixaroma", "Align"],
-      tooltip: "Snap nodes to others' edges and centers while dragging or resizing. Hold Alt to bypass.",
+      tooltip: "Snap nodes to others' edges and centers while dragging or resizing. Hold Shift to bypass (Alt is taken by ComfyUI for duplicate-during-drag).",
       onChange: (v) => {
         state.enabled = !!v;
         updateToolbarTint();
