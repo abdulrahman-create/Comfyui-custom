@@ -1,7 +1,8 @@
+import os
+import uuid
 import torch
 import numpy as np
 from PIL import Image
-import os
 import json
 import folder_paths
 from .node_ref import any_type, FlexibleOptionalInputType
@@ -52,6 +53,26 @@ class PixaromaCrop:
             pass
         return str(crop_data)
 
+    def _save_source_temp(self, tensor):
+        """Save the *input* tensor (full uncropped, batch slot 0) to ComfyUI's
+        temp/ as a UUID-named PNG so the JS editor + mini-preview can fetch
+        it via /view?type=temp. Best-effort — returns the filename or None
+        on any failure (never raise; the workflow must keep running)."""
+        try:
+            if not isinstance(tensor, torch.Tensor) or tensor.dim() != 4 or tensor.shape[0] == 0:
+                return None
+            arr = tensor[0].clamp(0.0, 1.0).cpu().numpy()
+            arr = (arr * 255.0 + 0.5).astype(np.uint8)
+            img = Image.fromarray(arr)
+            temp_dir = folder_paths.get_temp_directory()
+            os.makedirs(temp_dir, exist_ok=True)
+            fname = f"pixaroma_crop_src_{uuid.uuid4().hex}.png"
+            img.save(os.path.join(temp_dir, fname), "PNG")
+            return fname
+        except Exception as e:
+            print(f"[PixaromaCrop] temp source save failed: {e}")
+            return None
+
     def load_crop(self, **kwargs):
         empty_image = torch.ones((1, 1024, 1024, 3), dtype=torch.float32)
 
@@ -74,18 +95,29 @@ class PixaromaCrop:
                 except Exception as e:
                     print(f"[PixaromaCrop] crop_json parse error: {e}")
 
-        # ── Upstream tensor path ──────────────────────────────────────────────
-        # If an IMAGE is wired in, prefer it over the on-disk composite. This is
-        # the "drop-in after Load Image" workflow the user wants.
+        # Capture the *input* tensor URL for the JS editor + mini-preview.
+        # Best-effort: failures don't block the crop.
+        ui_payload = None
+        if isinstance(upstream, torch.Tensor):
+            src_fname = self._save_source_temp(upstream)
+            if src_fname:
+                ui_payload = {"pixaroma_crop_source": [
+                    {"filename": src_fname, "subfolder": "", "type": "temp"}
+                ]}
+
+        # ── Apply the crop ────────────────────────────────────────────────────
         if isinstance(upstream, torch.Tensor):
             try:
-                return self._crop_tensor(upstream, meta)
+                result = self._crop_tensor(upstream, meta)
             except Exception as e:
                 print(f"[PixaromaCrop] upstream crop error: {e}")
-                # Fall through to disk path
+                result = self._load_disk_composite(meta, empty_image)
+        else:
+            result = self._load_disk_composite(meta, empty_image)
 
-        # ── Disk composite path (back-compat) ─────────────────────────────────
-        return self._load_disk_composite(meta, empty_image)
+        if ui_payload:
+            return {"ui": ui_payload, "result": result}
+        return result
 
     # ─────────────────────────────────────────────────────────────────────────
 
