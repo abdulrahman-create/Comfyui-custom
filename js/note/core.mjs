@@ -903,7 +903,7 @@ export class NoteEditor {
             <b><span class="pix-note-tbtn-maskicon pix-note-icon-code"></span>Code</b><span>Code block (&lt;pre&gt;&lt;code&gt;). Multi-line via the themed dialog</span>
             <b><span class="pix-note-tbtn-maskicon pix-note-icon-separator"></span>Separator</b><span>&lt;hr&gt; horizontal rule</span>
             <b><img class="pix-note-tbtn-icon" src="/pixaroma/assets/icons/ui/grid.svg">Grid</b><span>Table: 2–4 columns × 1–10 rows. Tab navigates cells</span>
-            <b><span class="pix-note-tbtn-maskicon pix-note-icon-icon-insert"></span>Icon</b><span>SVG from assets/icons/note/. Takes current A color on insert</span>
+            <b><span class="pix-note-tbtn-maskicon pix-note-icon-icon-insert"></span>Icon</b><span>SVG from assets/icons/note/. Insert-icon popup has its own colour swatches + size pills (S / M / L / XL) — independent of the A text-color picker. Defaults: orange + M, sticky for the editor session.</span>
           </div>
         </div>
         <div class="pix-note-help-section">
