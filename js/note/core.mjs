@@ -14,6 +14,12 @@ export class NoteEditor {
   }
 
   open() {
+    // Icon picker session state (Pattern #29, design 2026-05-06).
+    // Decoupled from the A text-color picker. Sticky across popup opens
+    // within the same editor session; reset to defaults on _cleanup.
+    this._iconPickerColor = "#f66744"; // Pixaroma orange default
+    this._iconPickerSize  = "m";       // 1.2em, matches existing default
+
     // Sync cfg.backgroundColor to node.bgcolor on open when they
     // disagree. Happens when the user picks a color via ComfyUI's
     // native right-click Colors menu between saves: node.bgcolor is
@@ -590,6 +596,9 @@ export class NoteEditor {
     if (this.node && this.node._noteEditor === this) {
       this.node._noteEditor = null;
     }
+    // Reset icon-picker session state so the next open starts fresh.
+    this._iconPickerColor = null;
+    this._iconPickerSize = null;
   }
 
   save() {
