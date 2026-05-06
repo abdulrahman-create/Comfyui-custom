@@ -93,6 +93,113 @@ function getUpstreamSnapshot(node) {
   return `link:${link.origin_id}/${link.origin_slot}`;
 }
 
+// ─── Global paste handler (clipboard → selected Crop node) ────────────────
+// Mirrors the way native LoadImage accepts a clipboard paste: when the user
+// presses Ctrl+V with an image in the clipboard AND a PixaromaCrop node is
+// selected AND no upstream wire is connected, the image is uploaded to
+// input/pixaroma/ and used as the source. Skipped silently when an upstream
+// is wired (the workflow uses that tensor, pasting would be confusing).
+let _pasteHandlerInstalled = false;
+function installPasteHandler() {
+  if (_pasteHandlerInstalled) return;
+  _pasteHandlerInstalled = true;
+  // Capture phase + stopImmediatePropagation can't fully suppress ComfyUI's
+  // own paste handler (it registers earlier in the page lifecycle). So we
+  // also snapshot graph node ids before, then remove any LoadImage with a
+  // "pasted/" filename that ComfyUI auto-created from the same paste event.
+  window.addEventListener("paste", async (e) => {
+    // Don't steal paste from form fields (panel inputs, editor inputs, etc.)
+    const t = e.target;
+    if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+
+    const node = findActiveCropNode();
+    if (!node) return;
+
+    const items = e.clipboardData?.items || [];
+    const imageItem = Array.from(items).find((it) => it.type?.startsWith("image/"));
+    if (!imageItem) return;
+
+    e.preventDefault();
+    e.stopImmediatePropagation();
+
+    // If upstream wire is connected, disconnect it — pasting an image is an
+    // unambiguous "use this image now" override. Without this, Python would
+    // keep using the upstream tensor and the paste would have no effect on
+    // workflow output.
+    const imgInputIdx = (node.inputs || []).findIndex((i) => i.name === "image");
+    if (imgInputIdx >= 0 && node.inputs[imgInputIdx].link != null) {
+      try { node.disconnectInput(imgInputIdx); } catch {}
+    }
+
+    // Snapshot existing graph node IDs so we can remove any LoadImage that
+    // ComfyUI auto-creates from this same paste event.
+    const idsBefore = new Set((app.graph?._nodes || []).map((n) => n.id));
+
+    const blob = imageItem.getAsFile();
+    if (!blob) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      node._pixaromaCropPaste(ev.target.result);
+    };
+    reader.readAsDataURL(blob);
+
+    // Schedule a sweep for the auto-created LoadImage node (if any).
+    // 50ms is enough for ComfyUI's createNode + widget setup to settle.
+    setTimeout(() => {
+      const after = app.graph?._nodes || [];
+      for (const n of after) {
+        if (idsBefore.has(n.id)) continue;
+        if (n.comfyClass !== "LoadImage" && n.type !== "LoadImage") continue;
+        const w = (n.widgets || []).find((x) => x.name === "image");
+        const v = w?.value;
+        if (typeof v === "string" && v.startsWith("pasted/")) {
+          try { app.graph.remove(n); } catch {}
+        }
+      }
+    }, 50);
+  }, true); // capture phase
+}
+
+// Find the "active" PixaromaCrop node from any of the selection sources
+// ComfyUI might use across versions/frontends:
+//   1. app.canvas.selected_nodes  (object/array/map of selected nodes)
+//   2. app.canvas.current_node    (LiteGraph's last-clicked node)
+//   3. node_over                  (hovered node)
+//   4. Iterate all nodes and pick one with `.is_selected` (Vue may set this)
+// Returns the first one that's a Crop node with our paste hook attached.
+function findActiveCropNode() {
+  const c = app.canvas;
+  if (!c) return null;
+  const isCrop = (n) =>
+    n && n.comfyClass === "PixaromaCrop" && typeof n._pixaromaCropPaste === "function";
+
+  // 1. selected_nodes — try Object.values, Array, and Map .values()
+  const sel = c.selected_nodes;
+  if (sel) {
+    let iter = null;
+    if (Array.isArray(sel)) iter = sel;
+    else if (typeof sel.values === "function") iter = Array.from(sel.values());
+    else if (typeof sel === "object") iter = Object.values(sel);
+    if (iter) {
+      const hit = iter.find(isCrop);
+      if (hit) return hit;
+    }
+  }
+
+  // 2. current_node (LiteGraph internal)
+  if (isCrop(c.current_node)) return c.current_node;
+
+  // 3. node_over (hovered)
+  if (isCrop(c.node_over)) return c.node_over;
+
+  // 4. Fallback — scan all nodes for an is_selected flag
+  const nodes = app.graph?._nodes || [];
+  for (const n of nodes) {
+    if (isCrop(n) && (n.is_selected || n.flags?.is_selected)) return n;
+  }
+  return null;
+}
+
 app.registerExtension({
   name: "Pixaroma.Crop",
 
@@ -311,6 +418,75 @@ app.registerExtension({
 
     // Initial panel populate from cropJson (or defaults).
     panel.refresh();
+
+    // ── Clipboard paste support ──
+    // Triggered by the window-level paste listener (installPasteHandler) when
+    // this node is selected. Uploads the pasted image to input/pixaroma/ via
+    // the existing crop API routes, then updates cropJson + the cached source
+    // URL so the mini-preview rebuilds immediately.
+    installPasteHandler();
+    node._pixaromaCropPaste = async (dataURL) => {
+      try {
+        // Read dimensions from the dataURL.
+        const dims = await new Promise((resolve, reject) => {
+          const img = new Image();
+          img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
+          img.onerror = reject;
+          img.src = dataURL;
+        });
+
+        const projectId = "crop_paste_" + Date.now();
+        // Upload as the source image (becomes src_path in cropJson).
+        // Don't pre-render a composite — leave composite_path empty so the
+        // Python node loads the source on every run and applies the panel's
+        // current crop_w/h/x/y. This lets the user tweak crop dims after
+        // pasting without re-opening the editor.
+        const r1 = await api.fetchApi("/pixaroma/api/crop/upload_src", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ project_id: projectId, image: dataURL }),
+        });
+        const d1 = await r1.json();
+        const srcPath = d1.path || "";
+
+        const meta = {
+          doc_w: dims.w,
+          doc_h: dims.h,
+          original_w: dims.w,
+          original_h: dims.h,
+          crop_x: 0,
+          crop_y: 0,
+          crop_w: dims.w,
+          crop_h: dims.h,
+          ratio_idx: 0,
+          snap_idx: 0,
+          crop_align: "free",
+          project_id: projectId,
+          composite_path: "",
+          src_path: srcPath,
+        };
+        cropJson = JSON.stringify(meta);
+        if (widget) widget.value = { crop_json: cropJson };
+
+        // Cache the source URL so the mini-preview + editor pick it up
+        // (mirrors the upstream-tensor path's URL caching).
+        if (srcPath) {
+          const fname = srcPath.split(/[\\/]/).pop();
+          const url = `/view?filename=${encodeURIComponent(fname)}` +
+                      `&subfolder=pixaroma&type=input&t=${Date.now()}`;
+          node._pixaromaCropSourceURL = url;
+          if (!node.properties) node.properties = {};
+          node.properties.pixaromaCropSourceURL = url;
+        }
+        node._pixaromaLastImageDims = { w: dims.w, h: dims.h };
+
+        rebuildPreviewFromUpstream();
+        panel?.refresh();
+        if (app.graph) app.graph.setDirtyCanvas(true, true);
+      } catch (err) {
+        console.warn("[PixaromaCrop] Paste failed:", err);
+      }
+    };
 
     // ── Auto-refresh preview when upstream changes (Vue Compat #1) ──
     let lastSnap = "";
