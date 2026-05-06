@@ -318,6 +318,41 @@ function pushGuide(axis, value, perpRange) {
   state.activeGuides.push({ axis, value, minPerp: perpRange[0], maxPerp: perpRange[1] });
 }
 
+// Extend a guide's perp range to include every non-skipped rect whose
+// matching edge (left/right/centerX for X axis, top/bottom/centerY for Y)
+// equals the guide value within EPS. This makes a column of 3+ nodes show
+// one continuous guide that spans the whole column instead of a short
+// segment between only the moving and matched rects.
+function extendGuideRange(axis, value, baseLo, baseHi, candidates, skipFn) {
+  const EPS = 0.5;
+  let lo = baseLo, hi = baseHi;
+  for (const other of candidates) {
+    if (skipFn(other)) continue;
+    if (other.flags?.collapsed) continue;
+    const oR = nodeRect(other);
+    const oE = rectEdges(oR);
+    let match = false;
+    if (axis === "X") {
+      match = Math.abs(oE.left - value) < EPS
+           || Math.abs(oE.right - value) < EPS
+           || Math.abs(oE.centerX - value) < EPS;
+    } else {
+      match = Math.abs(oE.top - value) < EPS
+           || Math.abs(oE.bottom - value) < EPS
+           || Math.abs(oE.centerY - value) < EPS;
+    }
+    if (!match) continue;
+    if (axis === "X") {
+      lo = Math.min(lo, oR.y);
+      hi = Math.max(hi, oR.y + oR.h);
+    } else {
+      lo = Math.min(lo, oR.x);
+      hi = Math.max(hi, oR.x + oR.w);
+    }
+  }
+  return [lo, hi];
+}
+
 // Drop drag bookkeeping AND clear active guides. Use this for both
 // pointerup/cancel and any mid-tick bail (disabled, Shift, no buttons).
 // Setting setDirty triggers a redraw so any visible guides disappear
@@ -671,20 +706,30 @@ function onWindowPointerMove(e) {
     }
 
     // Guides span the moved bbox plus the rect that produced the matching
-    // edge. perp axis (Y for an X guide; X for a Y guide) takes the union.
+    // edge, then extend over every other rect that shares the matched edge.
+    // skipFn excludes selected nodes (the bbox already covers them) and the
+    // rect that already established the guide's base range.
     const finalBBox = { x: di.origBBox.x + finalDx, y: di.origBBox.y + finalDy, w: di.origBBox.w, h: di.origBBox.h };
     state.activeGuides = [];
     if (bestX && bestXRect) {
-      pushGuide("X", bestX.target, [
+      const range = extendGuideRange(
+        "X", bestX.target,
         Math.min(finalBBox.y, bestXRect.y),
         Math.max(finalBBox.y + finalBBox.h, bestXRect.y + bestXRect.h),
-      ]);
+        allNodes,
+        (n) => di.origIds.has(n.id) || n === bestXRect,
+      );
+      pushGuide("X", bestX.target, range);
     }
     if (bestY && bestYRect) {
-      pushGuide("Y", bestY.target, [
+      const range = extendGuideRange(
+        "Y", bestY.target,
         Math.min(finalBBox.x, bestYRect.x),
         Math.max(finalBBox.x + finalBBox.w, bestYRect.x + bestYRect.w),
-      ]);
+        allNodes,
+        (n) => di.origIds.has(n.id) || n === bestYRect,
+      );
+      pushGuide("Y", bestY.target, range);
     }
     c.setDirty?.(true, true);
     return;
@@ -733,20 +778,30 @@ function onWindowPointerMove(e) {
   draggedNode.pos[1] = bestY ? desiredY + bestY.delta : desiredY;
 
   // Build the visual rect at the FINAL (post-snap) position so the guide
-  // line spans accurately along the perp axis.
+  // line spans accurately along the perp axis. Then extend over every other
+  // rect that shares the matched edge so a column/row of 3+ shows one full
+  // guide instead of a short segment.
   const finalRect = { x: draggedNode.pos[0], y: draggedNode.pos[1] - titleH, w, h: h + titleH };
   state.activeGuides = [];
   if (bestX && bestXRect) {
-    pushGuide("X", bestX.target, [
+    const range = extendGuideRange(
+      "X", bestX.target,
       Math.min(finalRect.y, bestXRect.y),
       Math.max(finalRect.y + finalRect.h, bestXRect.y + bestXRect.h),
-    ]);
+      nodes,
+      (n) => n === draggedNode || n === bestXRect,
+    );
+    pushGuide("X", bestX.target, range);
   }
   if (bestY && bestYRect) {
-    pushGuide("Y", bestY.target, [
+    const range = extendGuideRange(
+      "Y", bestY.target,
       Math.min(finalRect.x, bestYRect.x),
       Math.max(finalRect.x + finalRect.w, bestYRect.x + bestYRect.w),
-    ]);
+      nodes,
+      (n) => n === draggedNode || n === bestYRect,
+    );
+    pushGuide("Y", bestY.target, range);
   }
   c.setDirty?.(true, true);
 }
