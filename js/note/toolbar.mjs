@@ -1,5 +1,5 @@
 import { NoteEditor } from "./core.mjs";
-import { openPixaromaColorPickerPopup } from "../shared/color_picker.mjs";
+import { openPixaromaColorPickerPopup, PIXAROMA_PALETTE } from "../shared/color_picker.mjs";
 
 // Range helpers are kept for future modal-backed buttons (e.g. link dialog)
 // where focus genuinely leaves the edit area. For the current buttons,
@@ -370,7 +370,10 @@ NoteEditor.prototype._buildToolbar = function () {
     const r = saveRange(this._editArea);
     openPixaromaColorPickerPopup(textColorBtn, {
       initialColor: textColorBtn.style.getPropertyValue("--pix-note-tbtn-tint").trim() || null,
-      showClear: true,
+      // No transparent tile for text — 36 palette colors fill 3 rows of
+      // 12 cleanly. Users can still revert text to default via the Tx
+      // clear-format button (Group 1) or by picking the white swatch.
+      showClear: false,
       onPick: (c) => {
         this._editArea.focus();
         restoreRange(r);
@@ -439,28 +442,39 @@ NoteEditor.prototype._buildToolbar = function () {
     const r = saveRange(this._editArea);
     openPixaromaColorPickerPopup(hiColorBtn, {
       initialColor: hiColorBtn.style.getPropertyValue("--pix-note-tbtn-tint").trim() || null,
+      // Transparent tile + 35 colors = 36 = 3 clean rows of 12 (drop the
+      // last palette swatch so we don't spill onto a 4th row).
+      swatches: PIXAROMA_PALETTE.slice(0, 35),
       showClear: true,
       onPick: (c) => {
         this._editArea.focus();
         restoreRange(r);
         document.execCommand("styleWithCSS", false, true);
         if (c == null) {
-          // hiliteColor("transparent") creates a nested span instead of
-          // unsetting the parent span/li's color. Walk the selection's
-          // ancestors + descendants and directly strip background-color.
+          // Manual strip - mirror of the text-color Clear path. Only
+          // touch elements that intersect the current selection, and
+          // only when the selection is a real range (not a collapsed
+          // caret) — otherwise clicking Clear with the cursor inside a
+          // highlighted span would wipe the bg from neighbours too.
+          // For a collapsed cursor we just unset the staged tint;
+          // typing afterwards has no highlight via CSS inheritance.
           const sel = window.getSelection();
           if (sel && sel.rangeCount > 0) {
-            const ca = sel.getRangeAt(0).commonAncestorContainer;
-            const scope = ca.nodeType === 1 ? ca : ca.parentNode;
-            const targets = new Set([scope, ...scope.querySelectorAll("*")]);
-            let p = scope.parentNode;
-            while (p && p !== this._editArea && p !== document.body) {
-              targets.add(p); p = p.parentNode;
-            }
-            for (const el of targets) {
-              if (el.style && el.style.backgroundColor) {
-                el.style.backgroundColor = "";
-                if (!el.getAttribute("style")) el.removeAttribute("style");
+            const range = sel.getRangeAt(0);
+            if (!range.collapsed) {
+              const ca = range.commonAncestorContainer;
+              const scope = ca.nodeType === 1 ? ca : ca.parentNode;
+              const targets = new Set([scope, ...(scope.querySelectorAll?.("*") || [])]);
+              let p = scope.parentNode;
+              while (p && p !== this._editArea && p !== document.body) {
+                targets.add(p); p = p.parentNode;
+              }
+              for (const el of targets) {
+                if (!range.intersectsNode(el)) continue;
+                if (el.style && el.style.backgroundColor) {
+                  el.style.backgroundColor = "";
+                  if (!el.getAttribute("style")) el.removeAttribute("style");
+                }
               }
             }
           }

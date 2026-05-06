@@ -475,7 +475,11 @@ export function openPixaromaColorPickerPopup(anchorEl, opts = {}) {
   popup.style.top  = `${rect.bottom + 4}px`;
 
   const picker = createPixaromaColorPicker({
-    initialColor: opts.initialColor ?? "#f66744",
+    // Preserve an explicit null (means "no color picked yet → highlight
+    // the Clear tile if showClear, else no swatch selected"). `??`
+    // would coerce null → BRAND, breaking the "no pick" state for
+    // text/highlight pickers.
+    initialColor: "initialColor" in opts ? opts.initialColor : "#f66744",
     swatches:     opts.swatches,
     showClear:    !!opts.showClear,
     resetColor:   opts.resetColor ?? "#f66744",
