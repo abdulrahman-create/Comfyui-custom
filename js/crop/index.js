@@ -21,6 +21,10 @@ import {
 // scoped to a single fixed input. Returns null when nothing is connected or
 // the source has no preview yet.
 function getUpstreamImageURL(node) {
+  // Priority 1: cached source URL emitted by the Python node on its last
+  // execute. Works for any upstream type (VAE Decode etc.), not just LoadImage.
+  if (node._pixaromaCropSourceURL) return node._pixaromaCropSourceURL;
+
   const inputs = node.inputs || [];
   const input = inputs.find((inp) => inp.name === "image");
   if (!input || input.link == null) return null;
@@ -59,6 +63,10 @@ function getUpstreamImageURL(node) {
 // URL helper adds; a timestamp-based snapshot would change every poll and
 // trigger a rebuild every 500ms even when the actual upstream is unchanged.
 function getUpstreamSnapshot(node) {
+  // The cached source URL is part of the identity — when it arrives or
+  // changes (new execute), we should rebuild the mini-preview.
+  if (node._pixaromaCropSourceURL) return `cropSrc:${node._pixaromaCropSourceURL}`;
+
   const inputs = node.inputs || [];
   const input = inputs.find((inp) => inp.name === "image");
   if (!input || input.link == null) return "";
@@ -112,6 +120,13 @@ app.registerExtension({
     nodeType.prototype.onConfigure = function (data) {
       const ret = originalOnConfigure?.apply(this, arguments);
       this.imgs = null; // prevent native preview flash on restore
+
+      // Restore cached source URL from saved properties (Vue Compat #11).
+      // node.properties is populated by LiteGraph deserialize before this fires.
+      if (this.properties?.pixaromaCropSourceURL && !this._pixaromaCropSourceURL) {
+        this._pixaromaCropSourceURL = this.properties.pixaromaCropSourceURL;
+      }
+
       if (this._pixaromaCropRefresh) {
         queueMicrotask(() => this._pixaromaCropRefresh());
         setTimeout(() => this._pixaromaCropRefresh?.(), 250);
@@ -277,6 +292,9 @@ app.registerExtension({
       if (type !== LiteGraph.INPUT) return;
       const inputName = node.inputs?.[slotIndex]?.name;
       if (inputName !== "image") return;
+      // Wire changed → cached URL is stale.
+      node._pixaromaCropSourceURL = null;
+      if (node.properties) delete node.properties.pixaromaCropSourceURL;
       if (connected) {
         rebuildPreviewFromUpstream();
       }
@@ -294,6 +312,30 @@ app.registerExtension({
         rebuildPreviewFromUpstream();
       }
     }, 500);
+
+    // ── Cache source URL emitted by Python on each execute ──
+    // Works for any IMAGE upstream (VAE Decode etc.) — without this, only
+    // LoadImage chains can resolve a usable preview URL.
+    const onExec = (event) => {
+      const detail = event?.detail;
+      if (!detail?.output) return;
+      // Cross-version node-id resolution (Vue passes string, legacy passes number).
+      const matched = app.graph.getNodeById(detail.node)
+                  || app.graph.getNodeById(parseInt(detail.node, 10));
+      if (matched !== node) return;
+      const frames = detail.output.pixaroma_crop_source;
+      if (!frames?.length) return;
+      const f = frames[0];
+      const url = `/view?filename=${encodeURIComponent(f.filename)}` +
+                  `&subfolder=${encodeURIComponent(f.subfolder || "")}` +
+                  `&type=${encodeURIComponent(f.type || "temp")}` +
+                  `&t=${Date.now()}`;
+      node._pixaromaCropSourceURL = url;
+      if (!node.properties) node.properties = {};
+      node.properties.pixaromaCropSourceURL = url;
+      rebuildPreviewFromUpstream();
+    };
+    api.addEventListener("executed", onExec);
 
     // Refresh after every workflow execution so post-exec preview images
     // (e.g. an Img Generation upstream) flow into our mini preview.
@@ -319,6 +361,7 @@ app.registerExtension({
       clearInterval(pollInterval);
       try { api.removeEventListener("execution_start", onStart); } catch {}
       try { api.removeEventListener("executing", onExecuting); } catch {}
+      try { api.removeEventListener("executed", onExec); } catch {}
     };
   },
 });
