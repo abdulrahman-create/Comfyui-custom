@@ -283,10 +283,11 @@ function onWindowPointerMove(e) {
     if (selKeys.length === 1) {
       draggedNode = sel[selKeys[0]];
     } else if (selKeys.length > 1) {
-      // multi-select handled in Task 9
-      state.dragInfo = null;
-      state._prevNodeStates = null;
-      return;
+      // Multi-select drag - pick first selected as anchor so dragInfo can
+      // initialise on tick 0 (cache empty here). Multi mode is detected
+      // below via the selected_nodes membership check, regardless of which
+      // selected node ends up as the anchor each tick.
+      draggedNode = sel[selKeys[0]];
     } else if (c.node_over) {
       draggedNode = c.node_over;
     } else if (c.graph?.getNodeOnPos && c.graph_mouse) {
@@ -303,36 +304,91 @@ function onWindowPointerMove(e) {
   }
   if (!draggedNode || draggedNode.flags?.collapsed) { state.dragInfo = null; return; }
 
+  // Multi-select detection. If 2+ uncollapsed nodes are selected AND the
+  // identified draggedNode is in that selection, the drag is treated as a
+  // rigid bbox move where the cursor delta moves every selected node by the
+  // same amount and snap is computed on the bbox edges/centers.
+  // Resize cannot be multi (LiteGraph has no multi-resize), so multi-select
+  // implies move-only.
+  let multiNodes = null;
+  {
+    const sel = c.selected_nodes;
+    if (sel) {
+      const selVals = Object.values(sel);
+      if (selVals.length > 1 && selVals.includes(draggedNode)) {
+        const live = selVals.filter((n) => n && !n.flags?.collapsed);
+        if (live.length > 1) multiNodes = live;
+      }
+    }
+  }
+
   const scale = c.ds?.scale || 1;
   const snapGraph = state.snapDistPx / scale;
 
-  // Capture drag origin on first tick (or whenever the dragged node changes).
+  // Capture drag origin on first tick (or whenever the drag session changes).
   // last_mouse_dragging is set for ANY drag (node move, resize, canvas pan,
   // resize of an unrelated node, etc.). We have to classify the drag before
   // applying any correction. Classification:
   //   - "move":   pos changed, size unchanged    -> move snap
   //   - "resize": size changed (any corner/edge) -> resize snap on the
   //               specific edges that are moving (detected per tick)
-  if (!state.dragInfo || state.dragInfo.nodeId !== draggedNode.id) {
-    state.dragInfo = {
-      nodeId: draggedNode.id,
-      posX: draggedNode.pos[0],
-      posY: draggedNode.pos[1],
-      cursorX: e.clientX,
-      cursorY: e.clientY,
-      sizeW: draggedNode.size[0],
-      sizeH: draggedNode.size[1],
-      lockType: null,
-      // Cache of which edges have moved at least once in this resize. Once an
-      // edge "moves" we treat it as moving for the rest of the drag, even if
-      // a later tick clamps it (so snap doesn't reset).
-      leftMoves: false, rightMoves: false, topMoves: false, botMoves: false,
-      // Hysteresis: remember which target line each axis/edge snapped to last
-      // tick so we can use a wider threshold to STAY snapped, narrower to
-      // ENGAGE. Prevents wiggle at the snap-zone boundary.
-      stickyMoveX: null, stickyMoveY: null,
-      stickyResizeL: null, stickyResizeR: null, stickyResizeT: null, stickyResizeB: null,
-    };
+  // Multi-select is locked to "move" at init since LiteGraph has no
+  // multi-resize handle.
+  //
+  // Identity check: in multi mode the change-detect anchor can shift
+  // tick-to-tick if iteration order of _nodes shifts, so we accept any
+  // member of the captured origIds as the same session. Re-init only if
+  // single<->multi flips or if a non-member node is dragged.
+  const sessionMatches = state.dragInfo && (
+    (multiNodes && state.dragInfo.multiSelect && state.dragInfo.origIds?.has(draggedNode.id)) ||
+    (!multiNodes && !state.dragInfo.multiSelect && state.dragInfo.nodeId === draggedNode.id)
+  );
+  if (!sessionMatches) {
+    if (multiNodes) {
+      const titleH = window.LiteGraph?.NODE_TITLE_HEIGHT || 30;
+      const origPositions = new Map();
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const n of multiNodes) {
+        origPositions.set(n.id, { x: n.pos[0], y: n.pos[1] });
+        const visTop = n.pos[1] - (n.flags?.collapsed ? 0 : titleH);
+        minX = Math.min(minX, n.pos[0]);
+        minY = Math.min(minY, visTop);
+        maxX = Math.max(maxX, n.pos[0] + n.size[0]);
+        maxY = Math.max(maxY, n.pos[1] + n.size[1]);
+      }
+      state.dragInfo = {
+        nodeId: draggedNode.id,
+        cursorX: e.clientX,
+        cursorY: e.clientY,
+        lockType: "move",
+        multiSelect: true,
+        origPositions,
+        origBBox: { x: minX, y: minY, w: maxX - minX, h: maxY - minY },
+        origIds: new Set(multiNodes.map((n) => n.id)),
+        stickyMoveX: null, stickyMoveY: null,
+      };
+    } else {
+      state.dragInfo = {
+        nodeId: draggedNode.id,
+        posX: draggedNode.pos[0],
+        posY: draggedNode.pos[1],
+        cursorX: e.clientX,
+        cursorY: e.clientY,
+        sizeW: draggedNode.size[0],
+        sizeH: draggedNode.size[1],
+        lockType: null,
+        multiSelect: false,
+        // Cache of which edges have moved at least once in this resize. Once an
+        // edge "moves" we treat it as moving for the rest of the drag, even if
+        // a later tick clamps it (so snap doesn't reset).
+        leftMoves: false, rightMoves: false, topMoves: false, botMoves: false,
+        // Hysteresis: remember which target line each axis/edge snapped to last
+        // tick so we can use a wider threshold to STAY snapped, narrower to
+        // ENGAGE. Prevents wiggle at the snap-zone boundary.
+        stickyMoveX: null, stickyMoveY: null,
+        stickyResizeL: null, stickyResizeR: null, stickyResizeT: null, stickyResizeB: null,
+      };
+    }
     return;
   }
 
@@ -459,6 +515,56 @@ function onWindowPointerMove(e) {
   }
 
   // From here, lockType === "move".
+
+  if (state.dragInfo.multiSelect) {
+    // Rigid bbox move: cursor delta drives the captured bounding box, snap is
+    // computed on the bbox's six reference lines against every non-selected
+    // node, and the resulting (cursor + snap) delta is applied uniformly to
+    // each selected node from its original drag-start position. Selected
+    // nodes never become snap targets (skipped via origIds).
+    const di = state.dragInfo;
+    const dxGraph = (e.clientX - di.cursorX) / scale;
+    const dyGraph = (e.clientY - di.cursorY) / scale;
+    const movingRect = {
+      x: di.origBBox.x + dxGraph,
+      y: di.origBBox.y + dyGraph,
+      w: di.origBBox.w,
+      h: di.origBBox.h,
+    };
+    const movingE = rectEdges(movingRect);
+    const movingX = [movingE.left, movingE.right, movingE.centerX];
+    const movingY = [movingE.top, movingE.bottom, movingE.centerY];
+    const stickyG = snapGraph * 1.5;
+    const allNodes = c.graph?._nodes || [];
+    let bestX = null;
+    let bestY = null;
+    for (const other of allNodes) {
+      if (di.origIds.has(other.id)) continue;
+      if (other.flags?.collapsed) continue;
+      const oRect = nodeRect(other);
+      const dxc = Math.max(0, Math.max(oRect.x - (movingRect.x + movingRect.w), movingRect.x - (oRect.x + oRect.w)));
+      const dyc = Math.max(0, Math.max(oRect.y - (movingRect.y + movingRect.h), movingRect.y - (oRect.y + oRect.h)));
+      if (dxc > 2 * stickyG && dyc > 2 * stickyG) continue;
+      const oE = rectEdges(oRect);
+      const mx = findClosestSnap(movingX, [oE.left, oE.right, oE.centerX], snapGraph, di.stickyMoveX, stickyG);
+      if (mx && (!bestX || Math.abs(mx.delta) < Math.abs(bestX.delta))) bestX = mx;
+      const my = findClosestSnap(movingY, [oE.top, oE.bottom, oE.centerY], snapGraph, di.stickyMoveY, stickyG);
+      if (my && (!bestY || Math.abs(my.delta) < Math.abs(bestY.delta))) bestY = my;
+    }
+    di.stickyMoveX = bestX ? bestX.target : null;
+    di.stickyMoveY = bestY ? bestY.target : null;
+    const finalDx = dxGraph + (bestX ? bestX.delta : 0);
+    const finalDy = dyGraph + (bestY ? bestY.delta : 0);
+    for (const n of allNodes) {
+      if (!di.origIds.has(n.id)) continue;
+      const orig = di.origPositions.get(n.id);
+      if (!orig) continue;
+      n.pos[0] = orig.x + finalDx;
+      n.pos[1] = orig.y + finalDy;
+    }
+    c.setDirty?.(true, true);
+    return;
+  }
 
   // "Desired" position = where the cursor wants the node to be, with no snap.
   const totalDxScreen = e.clientX - state.dragInfo.cursorX;
