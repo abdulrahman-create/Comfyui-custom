@@ -111,6 +111,11 @@ function ensureCSS() {
     linear-gradient(45deg, transparent 45%, #d33 45%, #d33 55%, transparent 55%),
     repeating-conic-gradient(#888 0 25%, #444 0 50%) 50%/8px 8px;
 }
+.pix-cp-tile-clear.disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
+  filter: grayscale(1);
+}
 .pix-cp-sv-row {
   display: flex;
   gap: 6px;
@@ -657,11 +662,19 @@ export function openPixaromaColorPickerPopup(anchorEl, opts = {}) {
 export function openPixaromaCompactColorPickerPopup(anchorEl, opts = {}) {
   ensureCSS();
 
-  const swatches    = opts.swatches    ?? PIXAROMA_PALETTE;
-  const showClear   = !!opts.showClear;
-  const resetColor  = "resetColor"  in opts ? opts.resetColor  : "#f66744";
-  const initialColor = "initialColor" in opts ? opts.initialColor : null;
-  const onPick      = opts.onPick || (() => {});
+  const swatches      = opts.swatches    ?? PIXAROMA_PALETTE;
+  const showClear     = !!opts.showClear;
+  // clearPosition: "first" (default, legacy) or "last". Last is what
+  // every Pixaroma Note picker (text / highlight / Bg) currently uses
+  // so the swatch grids look identical across all three buttons.
+  const clearPosition = opts.clearPosition === "last" ? "last" : "first";
+  // clearDisabled: render the transparent tile but make it unclickable
+  // and dimmed. Used by text + Bg (where "no color" doesn't apply but
+  // the tile is kept so the grid layout matches the highlight picker).
+  const clearDisabled = !!opts.clearDisabled;
+  const resetColor    = "resetColor"  in opts ? opts.resetColor  : "#f66744";
+  const initialColor  = "initialColor" in opts ? opts.initialColor : null;
+  const onPick        = opts.onPick || (() => {});
 
   const popup = document.createElement("div");
   popup.className = "pix-cp-popup pix-cp-popup-compact";
@@ -687,19 +700,32 @@ export function openPixaromaCompactColorPickerPopup(anchorEl, opts = {}) {
     (initialColor !== null && hex !== null &&
       hex.toLowerCase() === initialColor.toLowerCase());
 
-  if (showClear) {
+  const buildClearTile = () => {
     const tile = document.createElement("button");
     tile.type = "button";
     tile.className = "pix-cp-tile pix-cp-tile-clear";
-    tile.title = "Transparent / clear color";
-    if (isCurMatch(null)) tile.classList.add("selected");
+    tile.title = clearDisabled
+      ? "Transparent (not available for this picker)"
+      : "Transparent / clear color";
+    if (clearDisabled) {
+      tile.classList.add("disabled");
+      tile.disabled = true;
+    } else if (isCurMatch(null)) {
+      tile.classList.add("selected");
+    }
     tile.addEventListener("mousedown", (e) => e.preventDefault());
-    tile.addEventListener("click", (e) => {
-      e.stopPropagation();
-      onPick(null);
-      close();
-    });
-    swatchGrid.appendChild(tile);
+    if (!clearDisabled) {
+      tile.addEventListener("click", (e) => {
+        e.stopPropagation();
+        onPick(null);
+        close();
+      });
+    }
+    return tile;
+  };
+
+  if (showClear && clearPosition === "first") {
+    swatchGrid.appendChild(buildClearTile());
   }
 
   for (const hex of swatches) {
@@ -716,6 +742,10 @@ export function openPixaromaCompactColorPickerPopup(anchorEl, opts = {}) {
       close();
     });
     swatchGrid.appendChild(tile);
+  }
+
+  if (showClear && clearPosition === "last") {
+    swatchGrid.appendChild(buildClearTile());
   }
   popup.appendChild(swatchGrid);
 

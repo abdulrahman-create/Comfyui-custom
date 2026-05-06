@@ -413,10 +413,15 @@ NoteEditor.prototype._buildToolbar = function () {
     const r = saveRange(this._editArea);
     openPixaromaCompactColorPickerPopup(textColorBtn, {
       initialColor: textColorBtn.style.getPropertyValue("--pix-note-tbtn-tint").trim() || null,
-      // No transparent tile for text — 36 palette colors fill 3 rows of
-      // 12 cleanly. Users can still revert text to default via the Tx
-      // clear-format button (Group 1) or via Reset (white).
-      showClear: false,
+      // Same 3-row 12-column layout as the highlight + Bg pickers, but
+      // with the transparent tile dimmed + unclickable: "no text colour"
+      // doesn't apply here (text is always coloured). Users still revert
+      // text to default via the Tx clear-format button (Group 1) or via
+      // Reset (white) below.
+      swatches: PIXAROMA_PALETTE.slice(0, 35),
+      showClear: true,
+      clearPosition: "last",
+      clearDisabled: true,
       // Reset returns to the editor's default text colour (white) so
       // the user can quickly back out of a coloured pick without
       // re-picking the white swatch.
@@ -499,10 +504,13 @@ NoteEditor.prototype._buildToolbar = function () {
     const r = saveRange(this._editArea);
     openPixaromaCompactColorPickerPopup(hiColorBtn, {
       initialColor: hiColorBtn.style.getPropertyValue("--pix-note-tbtn-tint").trim() || null,
-      // Transparent tile + 35 colors = 36 = 3 clean rows of 12 (drop the
-      // last palette swatch so we don't spill onto a 4th row).
+      // 35 colors + transparent tile at last position = 36 = 3 clean
+      // rows of 12. Same shape as the text + Bg pickers; transparent
+      // is the only one of the three pickers where the tile is active
+      // (highlights can be removed; text + Bg can't go transparent).
       swatches: PIXAROMA_PALETTE.slice(0, 35),
       showClear: true,
+      clearPosition: "last",
       // Reset returns to "no highlight" (transparent), matching the
       // default state of the picker. Routes through the same null
       // branch as clicking the transparent tile.
@@ -517,43 +525,44 @@ NoteEditor.prototype._buildToolbar = function () {
         const range = sel && sel.rangeCount > 0 ? sel.getRangeAt(0) : null;
 
         if (c == null) {
-          // Reset / transparent. Two cases:
+          // Reset / transparent. Stored-marks pattern (mirrors what
+          // ProseMirror / Slate / Quill / Lexical do for "remove mark
+          // at collapsed cursor"):
           //  - Range: strip bg from every element that intersects the
-          //    selection (mirror of the text-color Clear path).
-          //  - Collapsed: walk up from the caret and strip the bg on
-          //    the nearest containing inline-styled element. Without
-          //    this, Reset/transparent feel broken when the cursor is
-          //    sitting inside a single highlighted span.
-          if (range) {
-            if (!range.collapsed) {
-              const ca = range.commonAncestorContainer;
-              const scope = ca.nodeType === 1 ? ca : ca.parentNode;
-              const targets = new Set([scope, ...(scope.querySelectorAll?.("*") || [])]);
-              let p = scope.parentNode;
-              while (p && p !== this._editArea && p !== document.body) {
-                targets.add(p); p = p.parentNode;
-              }
-              for (const el of targets) {
-                if (!range.intersectsNode(el)) continue;
-                if (el.style && el.style.backgroundColor) {
-                  el.style.backgroundColor = "";
-                  if (!el.getAttribute("style")) el.removeAttribute("style");
-                }
-              }
-            } else {
-              let n = range.startContainer;
-              if (n && n.nodeType !== 1) n = n.parentElement;
-              while (n && n !== this._editArea && n !== document.body) {
-                if (n.style && n.style.backgroundColor) {
-                  n.style.backgroundColor = "";
-                  if (!n.getAttribute("style")) n.removeAttribute("style");
-                  break;
-                }
-                n = n.parentElement;
+          //    selection (mirror of the text-color Clear path) — works
+          //    immediately because the selection gives us a concrete
+          //    target, no Chrome quirks.
+          //  - Collapsed: stage a "clear next typed char" intent on
+          //    `_stagedHiClear`. NO DOM mutation here — the typed char
+          //    is intercepted in `_applyStagedHilite` and inserted as
+          //    a sibling text node OUTSIDE the surrounding bg span.
+          //    Earlier attempts (move-cursor-at-Reset, split-at-Reset)
+          //    failed because `_applyStagedHilite` produces ONE span
+          //    PER CHAR, so the "outermost bg ancestor" walk found a
+          //    single-char span and Chrome merged subsequent typing
+          //    back into the adjacent same-color sibling span.
+          if (range && !range.collapsed) {
+            const ca = range.commonAncestorContainer;
+            const scope = ca.nodeType === 1 ? ca : ca.parentNode;
+            const targets = new Set([scope, ...(scope.querySelectorAll?.("*") || [])]);
+            let p = scope.parentNode;
+            while (p && p !== this._editArea && p !== document.body) {
+              targets.add(p); p = p.parentNode;
+            }
+            for (const el of targets) {
+              if (!range.intersectsNode(el)) continue;
+              if (el.style && el.style.backgroundColor) {
+                el.style.backgroundColor = "";
+                if (!el.getAttribute("style")) el.removeAttribute("style");
               }
             }
           }
           this._stagedHi = null;
+          // Sticky like _pickedFg — stays true until the user picks a
+          // colour or clicks Reset again. Survives caret moves (so a
+          // user who clicks back into a highlight can still type
+          // unhighlighted text without re-clicking Reset).
+          this._stagedHiClear = true;
           hiColorBtn.style.removeProperty("--pix-note-tbtn-tint");
         } else {
           // Apply highlight. ALWAYS arm the JS stage (`this._stagedHi`)
@@ -570,6 +579,8 @@ NoteEditor.prototype._buildToolbar = function () {
           // (see _applyStagedHilite + core.mjs wiring) consumes the
           // stage one-shot on the next text input.
           this._stagedHi = c;
+          // Picking a colour cancels any pending clear-stage.
+          this._stagedHiClear = false;
           if (range && !range.collapsed && this._editArea.contains(range.startContainer)) {
             document.execCommand("hiliteColor", false, c);
             // Pattern #21: hiliteColor on a non-collapsed range clears
@@ -594,9 +605,11 @@ NoteEditor.prototype._buildToolbar = function () {
   // background-color and mirrors it onto this button's tint.
 
   // Page background colour — affects the whole editor interior AND the
-  // on-canvas node body after save (WYSIWYG). Default is the editor's
-  // dark-gray (#111111, matches .pix-note-editarea CSS); Clear resets
-  // to that.
+  // on-canvas node body after save (WYSIWYG). Uses the compact picker
+  // (same shell as text + highlight). Reset and the visual default
+  // both resolve to #111111. Pattern #4's null branch in onPick is
+  // kept intact for backward compat with notes saved under the older
+  // picker that had a transparent / Clear tile.
   const bgColorBtn = el("button", "pix-note-tbtn");
   bgColorBtn.type = "button";
   bgColorBtn.title = "Page background color";
@@ -617,17 +630,25 @@ NoteEditor.prototype._buildToolbar = function () {
   bgColorBtn.addEventListener("mousedown", (e) => e.preventDefault());
   bgColorBtn.addEventListener("click", (e) => {
     e.preventDefault();
-    openPixaromaColorPickerPopup(bgColorBtn, {
+    openPixaromaCompactColorPickerPopup(bgColorBtn, {
       initialColor: this.cfg.backgroundColor || "#111111",
+      // Same 3-row 12-column layout as text + highlight, with the
+      // transparent tile dimmed + unclickable: a transparent node
+      // background would let the canvas grid bleed through which is
+      // never what the user wants. Reset returns to the dark default
+      // (#111111). The Pattern #4 clear-override path is no longer
+      // reachable from inside the picker — see Bg picker comment
+      // above for the implication.
+      swatches: PIXAROMA_PALETTE.slice(0, 35),
       showClear: true,
+      clearPosition: "last",
+      clearDisabled: true,
       resetColor: "#111111",
       onPick: (c) => {
-        // Clear (c == null) -> cfg.backgroundColor = null AND null
-        // out node.color/bgcolor so the editor instantly reflects the
-        // reset (dark default) instead of falling back to a stale
-        // node.bgcolor in _applyEditAreaBg. Save will mirror this to
-        // the workflow JSON; renderContent's null branch handles the
-        // canvas-side revert (Pattern #4).
+        // c == null is no longer reachable from this picker (showClear
+        // is false and resetColor is a hex), but the branch is kept so
+        // any legacy code path that calls onPick(null) still routes to
+        // the documented Pattern #4 clear-override behaviour.
         if (c == null) {
           this.cfg.backgroundColor = null;
           if (this.node) {
@@ -1118,8 +1139,15 @@ NoteEditor.prototype._mirrorPickerColors = function () {
     // to whatever colour the user clicks into between pick and type
     // and the toolbar would lie about what the next character will
     // get.
+    //
+    // _stagedHiClear is the symmetric "no highlight" sticky flag set
+    // by Reset / transparent. It must beat the cursor-bg mirror —
+    // otherwise the icon flips back to the cursor's surrounding
+    // highlight colour as soon as selectionchange fires after Reset.
     if (this._stagedHi) {
       this._hiColorBtn.style.setProperty("--pix-note-tbtn-tint", this._stagedHi);
+    } else if (this._stagedHiClear) {
+      this._hiColorBtn.style.removeProperty("--pix-note-tbtn-tint");
     } else if (bgHex) {
       this._hiColorBtn.style.setProperty("--pix-note-tbtn-tint", bgHex);
     } else {
@@ -1136,31 +1164,177 @@ NoteEditor.prototype._mirrorPickerColors = function () {
 // (e.g. user picked, typed, kept typing in the same span), we skip
 // the insertion to avoid pointless nesting.
 NoteEditor.prototype._applyStagedHilite = function (e) {
-  if (!this._stagedHi) return;
+  // Two stage modes:
+  //  - _stagedHi (a hex string): apply this highlight on the next char
+  //  - _stagedHiClear (true): escape the surrounding bg span on the
+  //    next char so the typed text is NOT highlighted. Stored-marks
+  //    pattern (ProseMirror / Slate / Quill / Lexical equivalent).
+  if (!this._stagedHi && !this._stagedHiClear) return;
   if (e.inputType !== "insertText" && e.inputType !== "insertCompositionText") return;
   const sel = window.getSelection();
   if (!sel || sel.rangeCount === 0) return;
   const r = sel.getRangeAt(0);
   if (!this._editArea?.contains(r.startContainer)) return;
 
+  // Normalise the edit area so any loose text / inline / <br> nodes
+  // that landed directly under editArea (e.g. after Chrome's native
+  // backspace stripped a <p> wrapper) get re-wrapped in <p>. Range
+  // positions survive the appendChild moves — the moved nodes are
+  // still the same DOM nodes, just under a different parent. After
+  // normalisation the cleanups + cursor-descent below all see a
+  // well-formed structure with proper block wrappers.
+  this._normalizeEditArea?.();
+
   // Range case: delete the selected content first so the insertion
   // happens at a collapsed point. The walk-up below then runs against
-  // the post-deletion cursor location.
-  if (!r.collapsed) r.deleteContents();
+  // the post-deletion cursor location. Track wasNonCollapsed so the
+  // matching-bg short-circuit further down can be skipped — see the
+  // comment there for why.
+  const wasNonCollapsed = !r.collapsed;
+  if (wasNonCollapsed) r.deleteContents();
+
+  // editArea-level cursor → descend into a child block. After
+  // _placeCursorAtEnd (called on editor open) the cursor lives at
+  // (editArea, childCount) — i.e. AT editArea, after the only empty
+  // <p>. Without this descent, r.insertNode would place the span as
+  // a sibling of the <p>, producing a stray newline ("test" lands on
+  // line 2 of a brand-new note instead of line 1).
+  if (r.startContainer === this._editArea) {
+    const idx = r.startOffset;
+    const children = this._editArea.childNodes;
+    const target = children[idx - 1] || children[idx];
+    if (target && target.nodeType === 1) {
+      r.setStart(target, target.childNodes.length);
+      r.collapse(true);
+    }
+  }
+
+  // Empty-bg-span residue cleanup. After Ctrl+A + delete OR after
+  // backspacing all content out of a highlighted span, the cursor
+  // can land inside a now-empty `<span bg:colour></span>` residue.
+  // If we leave it, the matching-bg short-circuit below returns
+  // early "Chrome will extend this span naturally", but Chrome's
+  // default insertion strips the empty inline element and inserts
+  // plain text in the parent block — first-char-plain regression.
+  // Walk up while parent is still an empty bg span and peel each
+  // layer off, repositioning the range at each step. Runs
+  // unconditionally — harmless no-op when there's no residue.
+  {
+    let p = r.startContainer.nodeType === 1
+      ? r.startContainer
+      : r.startContainer.parentElement;
+    while (
+      p &&
+      p !== this._editArea &&
+      p.nodeName === "SPAN" &&
+      p.style?.backgroundColor &&
+      p.childNodes.length === 0 &&
+      p.parentNode
+    ) {
+      const parent = p.parentNode;
+      const idx = Array.from(parent.childNodes).indexOf(p);
+      parent.removeChild(p);
+      r.setStart(parent, idx);
+      r.collapse(true);
+      p = parent;
+    }
+  }
+
+  // Clear-stage path: insert the typed char OUTSIDE the surrounding
+  // outermost bg span. Three sub-cases by cursor offset within the
+  // span: at start → insert before; at end → insert after; in middle
+  // → split the span and insert between halves. If there's no bg
+  // ancestor, fall through to natural insertion (early return).
+  if (this._stagedHiClear) {
+    let n = r.startContainer.nodeType === 1 ? r.startContainer : r.startContainer.parentElement;
+    let bgAncestor = null;
+    while (n && n !== this._editArea && n !== document.body) {
+      if (n.style && n.style.backgroundColor) bgAncestor = n;
+      n = n.parentElement;
+    }
+    if (!bgAncestor || !bgAncestor.parentNode) return;
+
+    const parent = bgAncestor.parentNode;
+    const measureRange = document.createRange();
+    measureRange.selectNodeContents(bgAncestor);
+    let measureOk = true;
+    try { measureRange.setEnd(r.startContainer, r.startOffset); }
+    catch (err) { measureOk = false; }
+    const charsBefore = measureOk ? measureRange.toString().length : 0;
+    const totalChars = bgAncestor.textContent.length;
+
+    const data = typeof e.data === "string" ? e.data : "";
+    // If a fg colour is staged (_pickedFg), wrap the typed char in a
+    // colour span so it doesn't fall back to the editor's default
+    // (white) — same rationale as the apply-branch fix below.
+    let inserted, caretTarget, caretOffset;
+    if (this._pickedFg) {
+      const colorSpan = document.createElement("span");
+      colorSpan.style.color = this._pickedFg;
+      colorSpan.appendChild(document.createTextNode(data));
+      inserted = colorSpan;
+      caretTarget = colorSpan.firstChild;
+      caretOffset = data.length;
+    } else {
+      inserted = document.createTextNode(data);
+      caretTarget = inserted;
+      caretOffset = data.length;
+    }
+
+    if (charsBefore <= 0) {
+      parent.insertBefore(inserted, bgAncestor);
+    } else if (charsBefore >= totalChars) {
+      parent.insertBefore(inserted, bgAncestor.nextSibling);
+    } else {
+      // Split: extract from cursor to end of bgAncestor, re-wrap in a
+      // sibling bg span. Inserted node lands between the two halves.
+      const splitRange = document.createRange();
+      splitRange.setStart(r.startContainer, r.startOffset);
+      splitRange.setEnd(bgAncestor, bgAncestor.childNodes.length);
+      const tailFrag = splitRange.extractContents();
+      parent.insertBefore(inserted, bgAncestor.nextSibling);
+      if (tailFrag.firstChild || tailFrag.textContent) {
+        const tailSpan = document.createElement("span");
+        tailSpan.style.backgroundColor = bgAncestor.style.backgroundColor;
+        tailSpan.appendChild(tailFrag);
+        parent.insertBefore(tailSpan, inserted.nextSibling);
+      }
+    }
+
+    const newR = document.createRange();
+    newR.setStart(caretTarget, caretOffset);
+    newR.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(newR);
+    if (data) e.preventDefault();
+    // Sticky: _stagedHiClear stays true (until user picks a colour or
+    // hits Reset again). The next typed char re-runs this branch but
+    // bgAncestor is now null (cursor in plain textNode) so it
+    // early-returns and natural insertion takes over.
+    return;
+  }
 
   // Skip the wrap if the cursor's nearest inline-bg ancestor already
   // matches the staged colour — typing extends that span naturally.
-  let n = r.startContainer.nodeType === 1 ? r.startContainer : r.startContainer.parentElement;
+  // Only safe for collapsed-range entry points: after a deleteContents
+  // (Ctrl+A + type), the matching-bg ancestor may be an empty residue
+  // that Chrome strips during default insertion, producing a first-
+  // char-plain regression even though the empty-span cleanup above
+  // tries to mop most cases up. Force the explicit insert path in
+  // that case so the typed char gets a guaranteed bg span.
   let inMatchingBg = false;
-  while (n && n !== this._editArea && n !== document.body) {
-    if (n.style && n.style.backgroundColor) {
-      const existing = colorToHex(n.style.backgroundColor);
-      if (existing && existing.toLowerCase() === this._stagedHi.toLowerCase()) {
-        inMatchingBg = true;
+  if (!wasNonCollapsed) {
+    let n = r.startContainer.nodeType === 1 ? r.startContainer : r.startContainer.parentElement;
+    while (n && n !== this._editArea && n !== document.body) {
+      if (n.style && n.style.backgroundColor) {
+        const existing = colorToHex(n.style.backgroundColor);
+        if (existing && existing.toLowerCase() === this._stagedHi.toLowerCase()) {
+          inMatchingBg = true;
+        }
+        break;
       }
-      break;
+      n = n.parentElement;
     }
-    n = n.parentElement;
   }
 
   if (inMatchingBg) {
@@ -1168,6 +1342,31 @@ NoteEditor.prototype._applyStagedHilite = function (e) {
     // browser do its native insertion at the current selection — the
     // typed character will land inside the matching span.
     return;
+  }
+
+  // Empty-block <br> filler cleanup. When the cursor sits inside an
+  // empty <p><br></p> (Chrome's placeholder for an empty editable
+  // block), our manual `r.insertNode(span)` would slot the span next
+  // to the <br>, producing a stray newline ("test" on line 2 instead
+  // of line 1 for a brand-new note). Same scenario right after a
+  // Ctrl+A + delete: deleteContents can leave the block empty with a
+  // fresh <br> filler. Strip the placeholder first so the span ends
+  // up as the only child of the block. Chrome does this same cleanup
+  // natively when typing into an empty contenteditable; we mirror it.
+  {
+    const block = r.startContainer.nodeType === 1
+      ? r.startContainer
+      : r.startContainer.parentElement;
+    if (
+      block &&
+      block !== this._editArea &&
+      block.childNodes.length === 1 &&
+      block.firstChild.nodeName === "BR"
+    ) {
+      block.removeChild(block.firstChild);
+      r.setStart(block, 0);
+      r.collapse(true);
+    }
   }
 
   // Build a new bg span around the typed character and short-circuit
@@ -1178,8 +1377,18 @@ NoteEditor.prototype._applyStagedHilite = function (e) {
   // would land in the original (un-bg) text node and leave the
   // empty span we inserted as invisible litter. Manual insert +
   // preventDefault is the only reliable path.
+  //
+  // Apply _pickedFg too — Chrome's foreColor staging only takes
+  // effect during its NATIVE insertion path; our preventDefault
+  // bypasses it, so the manually-inserted span would otherwise have
+  // bg only and the typed char would be the editor's default fg
+  // (white). Subsequent chars route through the inMatchingBg
+  // short-circuit + Chrome-extends-naturally path so they pick up
+  // foreColor — producing a "first-char-white-rest-orange"
+  // regression after Ctrl+A + type when both fg and bg are set.
   const span = document.createElement("span");
   span.style.backgroundColor = this._stagedHi;
+  if (this._pickedFg) span.style.color = this._pickedFg;
   if (typeof e.data === "string" && e.data.length > 0) {
     span.textContent = e.data;
     r.insertNode(span);
