@@ -59,7 +59,7 @@ const ALLOWED_ATTRS = {
   "*": new Set(["class", "style"]),
   a: new Set(["class","style","href","target","rel","data-folder","data-size","data-label"]),
   label: new Set(["class","style"]),
-  span: new Set(["class","style","data-ic","data-size"]),
+  span: new Set(["class","style","data-ic","data-size","contenteditable"]),
 };
 
 function filterClass(value) {
@@ -165,6 +165,12 @@ function filterElement(el) {
       // data-size for Button Design pill sizing with its own values, so
       // we must NOT apply this regex there.
       if (!IC_SIZE_RE.test(a.value)) el.removeAttribute(a.name);
+    } else if (name === "contenteditable" && tag === "span") {
+      // Inline-icon atomic flag: only "false" is allowed (the spans we
+      // emit). Any other value or non-icon span gets stripped.
+      const v = (a.value || "").toLowerCase();
+      const isIconSpan = el.classList?.contains("pix-note-ic");
+      if (!isIconSpan || v !== "false") el.removeAttribute(a.name);
     }
   }
 

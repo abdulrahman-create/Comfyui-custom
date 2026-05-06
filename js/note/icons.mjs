@@ -137,7 +137,15 @@ export function renderIconHTML(id, color, size) {
   const style = hasColor ? ` style="color:${color}"` : "";
   const sizeAttr = (size === "s" || size === "l" || size === "xl")
     ? ` data-size="${size}"` : "";
-  return `<span data-ic="${safeId}"${sizeAttr} class="pix-note-ic"${style}></span>&nbsp;`;
+  // contenteditable="false" makes the icon an atomic block for the
+  // browser's selection/caret model: arrow keys step cleanly past it,
+  // the caret has well-defined "before" and "after" positions (no
+  // dead-zone where it disappears), and Backspace from after removes
+  // the whole span in one keystroke. Earlier attempt at this was
+  // reverted because Chrome's execCommand("formatBlock") split the
+  // paragraph around it - that no longer applies, headings now use
+  // manual DOM rename (Pattern #29).
+  return `<span data-ic="${safeId}"${sizeAttr} class="pix-note-ic" contenteditable="false"${style}></span>&nbsp;`;
 }
 
 // Popup picker. Mirrors openColorPop in toolbar.mjs (positioning,
