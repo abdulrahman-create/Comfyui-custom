@@ -180,6 +180,37 @@ export class NoteEditor {
         this._refreshActiveStates?.();
       };
       editArea.addEventListener("keydown", this._iconKeyHandler);
+
+      // Click on or near an icon: explicitly place the caret on the
+      // side of the icon nearest to the click point. Without this,
+      // contenteditable's default caret placement around inline-block
+      // elements with pointer-events:none (which we use so icons don't
+      // grab text-selection drags) was unreliable - the caret often
+      // failed to appear at all, or landed in an unrelated block.
+      // elementsFromPoint sees through pointer-events:none and gives
+      // us the icon under the click; click X relative to its midpoint
+      // decides which side gets the caret.
+      this._iconClickHandler = (e) => {
+        if (e.button !== 0) return; // left button only
+        const els = document.elementsFromPoint(e.clientX, e.clientY);
+        const ic = els.find((el) =>
+          el && el.classList && el.classList.contains("pix-note-ic")
+          && editArea.contains(el)
+        );
+        if (!ic) return;
+        e.preventDefault();
+        const rect = ic.getBoundingClientRect();
+        const mid  = rect.left + rect.width / 2;
+        const range = document.createRange();
+        if (e.clientX < mid) range.setStartBefore(ic);
+        else                 range.setStartAfter(ic);
+        range.collapse(true);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+        editArea.focus();
+      };
+      editArea.addEventListener("mousedown", this._iconClickHandler);
     }
     // Don't use installFocusTrap here — its mouseup refocus pulls focus
     // away from the contenteditable on any button click (breaking typing)
@@ -691,10 +722,12 @@ export class NoteEditor {
     // Reset icon-picker session state so the next open starts fresh.
     this._iconPickerColor = null;
     this._iconPickerSize = null;
-    // Drop the icon-deletion handler ref. The DOM node it was attached
-    // to (the contenteditable inside _el) was already removed above, so
-    // the listener is gone with it; this just clears the closure ref.
+    // Drop the icon-deletion + click-placement handler refs. The DOM
+    // node they were attached to (the contenteditable inside _el) was
+    // already removed above, so the listeners are gone with it; this
+    // just clears the closure refs.
     this._iconKeyHandler = null;
+    this._iconClickHandler = null;
   }
 
   save() {
