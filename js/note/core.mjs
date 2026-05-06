@@ -96,117 +96,8 @@ export class NoteEditor {
     this._build();
     document.body.appendChild(this._el);
 
-    // Atomic deletion around inline-icon spans (design 2026-05-06).
-    // Backspace immediately after an icon (with optional trailing &nbsp;)
-    // or Delete immediately before an icon removes the span + its &nbsp;
-    // in one keystroke, with a single undo step. Prevents partial-delete
-    // states and color-leak-into-next-character bugs without using
-    // contenteditable="false" (which broke caret + heading formatBlock
-    // in earlier attempts - see css.mjs comment near .pix-note-ic).
     if (this._editArea) {
       const editArea = this._editArea;
-      this._iconKeyHandler = (e) => {
-        if (e.key !== "Backspace" && e.key !== "Delete") return;
-        const sel = window.getSelection();
-        if (!sel || sel.rangeCount === 0) return;
-        const r = sel.getRangeAt(0);
-        if (!r.collapsed) return; // user has a selection - default behavior
-        if (!editArea.contains(r.startContainer)) return;
-
-        // Walk to the icon to delete. For Backspace look BEFORE the caret;
-        // for Delete look AFTER. Step past at most one nbsp text node.
-        const findIconAdjacent = (forward) => {
-          const node = r.startContainer;
-          const off  = r.startOffset;
-          let probe;
-          if (node.nodeType === 3) {
-            // Text node - caret must be at the very edge to be "adjacent".
-            // For Backspace (forward=false) we accept caret at offset 0
-            // OR at a position where everything before the caret is
-            // whitespace (nbsp + typed-then-deleted leftovers).
-            if (forward) {
-              if (off !== node.nodeValue.length) return null;
-            } else {
-              const before = node.nodeValue.slice(0, off);
-              if (!/^[\s ]*$/.test(before)) return null;
-            }
-            probe = forward ? node.nextSibling : node.previousSibling;
-          } else {
-            // Element node - caret is between children.
-            probe = forward ? node.childNodes[off] : node.childNodes[off - 1];
-          }
-          // Walk past harmless filler nodes between caret and a hopeful
-          // icon: whitespace-only text (incl. nbsp) and stray <br>s.
-          // Capped to keep this O(1) and avoid eating real user content.
-          let _walkSafety = 4;
-          while (probe && _walkSafety-- > 0 && (
-            (probe.nodeType === 3 && /^[\s ]*$/.test(probe.nodeValue || "")) ||
-            (probe.nodeType === 1 && probe.tagName === "BR")
-          )) {
-            probe = forward ? probe.nextSibling : probe.previousSibling;
-          }
-          // Direct icon hit
-          if (probe && probe.nodeType === 1 && probe.classList?.contains("pix-note-ic")) {
-            return probe;
-          }
-          // Wrapper-with-single-icon hit. Chrome's execCommand can wrap
-          // our inserted HTML in <font color="..."> or <span style=
-          // "color:..."> when foreColor is staged. Peer through such a
-          // wrapper if it contains exactly one icon span and no other
-          // meaningful text content - return the inner icon so the
-          // caller can remove it (and its wrapper, if it's now empty).
-          if (probe && probe.nodeType === 1) {
-            const ics = probe.querySelectorAll?.(".pix-note-ic");
-            if (ics && ics.length === 1) {
-              const txt = (probe.textContent || "").replace(/ /g, "").trim();
-              if (txt.length === 0) return ics[0];
-            }
-          }
-          return null;
-        };
-
-        const forward = (e.key === "Delete");
-        const icon = findIconAdjacent(forward);
-        if (!icon) return; // not adjacent to an icon - browser handles key
-
-        e.preventDefault();
-        e.stopPropagation();
-        this._snapBefore?.();
-        // renderIconHTML always appends a trailing &nbsp; AFTER the
-        // icon. Eat it too so there is no orphan nbsp left between
-        // former neighbours. Two shapes to handle:
-        //   (a) followerNbsp is a separate text node containing
-        //       exactly U+00A0 (fresh insert, no typing yet) -> remove.
-        //   (b) followerNbsp is a text node starting with U+00A0
-        //       followed by user-typed text (Chrome merged the nbsp
-        //       with subsequent text into one node) -> strip the
-        //       leading nbsp char only, keep the rest.
-        const wrapper = icon.parentElement;
-        const followerNbsp = icon.nextSibling;
-        if (followerNbsp && followerNbsp.nodeType === 3
-            && followerNbsp.nodeValue) {
-          if (followerNbsp.nodeValue === " ") {
-            followerNbsp.remove();
-          } else if (followerNbsp.nodeValue.charCodeAt(0) === 0x00A0) {
-            followerNbsp.nodeValue = followerNbsp.nodeValue.slice(1);
-          }
-        }
-        icon.remove();
-        // If removing the icon left an empty inline wrapper behind
-        // (Chrome-injected <font> / <span style="color:..."> around
-        // just this icon), unwrap it so the next typed character
-        // doesn't pick up the wrapper's color.
-        if (wrapper && wrapper !== editArea
-            && wrapper.children.length === 0
-            && (wrapper.textContent || "").trim().length === 0) {
-          wrapper.remove();
-        }
-        this._snapAfter?.();
-        this._dirty = true;
-        this._refreshActiveStates?.();
-      };
-      editArea.addEventListener("keydown", this._iconKeyHandler);
-
       // Track first user interaction so _insertInlineIcon can tell a
       // real caret position from the browser's default offset-0
       // selection on a freshly-opened contenteditable.
@@ -339,11 +230,86 @@ export class NoteEditor {
             return;
           }
         }
-        // Atomic Backspace/Delete around inline-icon spans is
-        // handled by _iconKeyHandler attached on editArea below (see
-        // open(), Pattern #29). Kept out of _keyBlock so the two
-        // handlers do not divergently match overlapping caret shapes.
-                // Escape → close (with dirty-confirm). If a child modal is open
+        // Atomic Backspace / Delete around inline-icon spans (Pattern
+        // #29). Has to live here, NOT on editArea bubble - this
+        // _keyBlock fires in window CAPTURE phase and ends with an
+        // unconditional stopImmediatePropagation, so editArea-bubble
+        // handlers would never see the event.
+        if ((key === "backspace" || key === "delete") && !mod) {
+          const sel = window.getSelection();
+          if (sel && sel.rangeCount > 0) {
+            const r = sel.getRangeAt(0);
+            if (r.collapsed && this._editArea?.contains(r.startContainer)) {
+              const findIconAdjacent = (forward) => {
+                const node = r.startContainer;
+                const off  = r.startOffset;
+                let probe;
+                if (node.nodeType === 3) {
+                  if (forward) {
+                    if (off !== node.nodeValue.length) return null;
+                  } else {
+                    const before = node.nodeValue.slice(0, off);
+                    if (!/^[\s ]*$/.test(before)) return null;
+                  }
+                  probe = forward ? node.nextSibling : node.previousSibling;
+                } else {
+                  probe = forward ? node.childNodes[off] : node.childNodes[off - 1];
+                }
+                let safety = 4;
+                while (probe && safety-- > 0 && (
+                  (probe.nodeType === 3 && /^[\s ]*$/.test(probe.nodeValue || "")) ||
+                  (probe.nodeType === 1 && probe.tagName === "BR")
+                )) {
+                  probe = forward ? probe.nextSibling : probe.previousSibling;
+                }
+                if (probe && probe.nodeType === 1 && probe.classList?.contains("pix-note-ic")) {
+                  return probe;
+                }
+                if (probe && probe.nodeType === 1) {
+                  const ics = probe.querySelectorAll?.(".pix-note-ic");
+                  if (ics && ics.length === 1) {
+                    const txt = (probe.textContent || "").replace(/[\s ]/g, "");
+                    if (txt.length === 0) return ics[0];
+                  }
+                }
+                return null;
+              };
+              const forward = (key === "delete");
+              const icon = findIconAdjacent(forward);
+              if (icon) {
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                this._snapBefore?.();
+                const wrapper = icon.parentElement;
+                // renderIconHTML always appends a trailing nbsp AFTER
+                // the icon. Two shapes:
+                //   (a) separate text node containing exactly U+00A0
+                //   (b) text node starting with U+00A0 followed by
+                //       user-typed text (Chrome merged them)
+                const followerNbsp = icon.nextSibling;
+                if (followerNbsp && followerNbsp.nodeType === 3
+                    && followerNbsp.nodeValue) {
+                  if (followerNbsp.nodeValue === " ") {
+                    followerNbsp.remove();
+                  } else if (followerNbsp.nodeValue.charCodeAt(0) === 0x00A0) {
+                    followerNbsp.nodeValue = followerNbsp.nodeValue.slice(1);
+                  }
+                }
+                icon.remove();
+                if (wrapper && wrapper !== this._editArea
+                    && wrapper.children.length === 0
+                    && (wrapper.textContent || "").trim().length === 0) {
+                  wrapper.remove();
+                }
+                this._snapAfter?.();
+                this._dirty = true;
+                this._refreshActiveStates?.();
+                return;
+              }
+            }
+          }
+        }
+        // Escape → close (with dirty-confirm). If a child modal is open
         // (code dialog, link dialog, block dialog, color popup, or the
         // confirm dialog itself) skip the editor-close so Esc doesn't
         // silently nuke everything. Those modals don't install their own
@@ -610,7 +576,6 @@ export class NoteEditor {
     // node they were attached to (the contenteditable inside _el) was
     // already removed above, so the listeners are gone with it; this
     // just clears the closure refs.
-    this._iconKeyHandler = null;
     this._iconClickHandler = null;
     this._touchHandler = null;
     this._editAreaTouched = false;
