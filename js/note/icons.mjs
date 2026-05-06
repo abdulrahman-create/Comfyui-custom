@@ -307,21 +307,36 @@ NoteEditor.prototype._insertInlineIcon = async function (anchorBtn) {
   injectIconCSS();
 
   openIconPop(anchorBtn, icons, this, (id) => {
+    // Always normalize first - guarantees every root child is a block
+    // element, so execCommand("insertHTML") never inserts at the
+    // contenteditable root (which Chrome handles by wrapping the
+    // inserted HTML in a new block, breaking the layout).
+    this._normalizeEditArea?.(this._editArea);
+    this._editArea.focus();
+    const sel = window.getSelection();
     if (savedRange) {
-      this._editArea.focus();
-      const sel = window.getSelection();
       sel.removeAllRanges();
-      sel.addRange(savedRange);
+      // If the saved range points AT the editArea root (offset N
+      // among block children), snap it into the matching block child
+      // so the insert lands inside that block, not at the root.
+      let r = savedRange;
+      if (r.startContainer === this._editArea) {
+        const idx = Math.min(r.startOffset, this._editArea.childNodes.length - 1);
+        const target = this._editArea.childNodes[Math.max(0, idx)];
+        if (target && target.nodeType === 1) {
+          const r2 = document.createRange();
+          r2.selectNodeContents(target);
+          // If the original offset was at or past the end, collapse
+          // to end of the target block; otherwise to start.
+          r2.collapse(r.startOffset > idx);
+          r = r2;
+        }
+      }
+      sel.addRange(r);
     } else {
-      // No prior caret in the editArea (user opened the picker without
-      // first clicking into the note body, or focus was elsewhere).
-      // Normalize so every root child is a block, then drop the caret
-      // at the end of the last block - the icon lands inside a real
-      // block instead of wherever execCommand decides to put it.
-      this._normalizeEditArea?.(this._editArea);
-      this._editArea.focus();
+      // No prior caret in the editArea (focus elsewhere). Drop the
+      // caret at the end of the last block.
       const last = this._editArea.lastElementChild;
-      const sel = window.getSelection();
       const r = document.createRange();
       if (last) {
         r.selectNodeContents(last);
