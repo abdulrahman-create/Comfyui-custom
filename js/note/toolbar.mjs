@@ -455,9 +455,17 @@ NoteEditor.prototype._buildToolbar = function () {
             }
           }
           textColorBtn.style.removeProperty("--pix-note-tbtn-tint");
+          // Clear sticky pick — back to "no explicit pick" state where
+          // the cursor-mirror takes over the icon again.
+          this._pickedFg = null;
         } else {
           document.execCommand("foreColor", false, c);
           textColorBtn.style.setProperty("--pix-note-tbtn-tint", c);
+          // Sticky pick: lock the tint to this colour. Mirror skips
+          // text-tint updates while _pickedFg is set, so the icon and
+          // typing both stay on the picked colour until the user
+          // explicitly picks something else.
+          this._pickedFg = c;
         }
         this._dirty = true;
         this._refreshActiveStates();
@@ -1084,8 +1092,19 @@ NoteEditor.prototype._mirrorPickerColors = function () {
 
   const fgHex = colorToHex(fg);
   if (this._textColorBtn) {
-    if (fgHex) this._textColorBtn.style.setProperty("--pix-note-tbtn-tint", fgHex);
-    else this._textColorBtn.style.removeProperty("--pix-note-tbtn-tint");
+    // Sticky pick (`_pickedFg`) locks the icon — match what subsequent
+    // typing will produce regardless of the cursor's current parent
+    // colour. Without the lock, after the suppress window expires the
+    // icon would flip to the cursor's effective colour and
+    // `_restageColors` would stage that colour, breaking the user's
+    // explicit pick.
+    if (this._pickedFg) {
+      this._textColorBtn.style.setProperty("--pix-note-tbtn-tint", this._pickedFg);
+    } else if (fgHex) {
+      this._textColorBtn.style.setProperty("--pix-note-tbtn-tint", fgHex);
+    } else {
+      this._textColorBtn.style.removeProperty("--pix-note-tbtn-tint");
+    }
   }
 
   const bgHex = colorToHex(bg);
@@ -1146,10 +1165,12 @@ NoteEditor.prototype._applyStagedHilite = function (e) {
     sel.removeAllRanges();
     sel.addRange(newR);
   }
-  // One-shot: clear after consumption regardless of whether we
-  // inserted, so the staged pick doesn't keep applying to subsequent
-  // typing sessions in unrelated areas.
-  this._stagedHi = null;
+  // Sticky pick: do NOT clear _stagedHi after consume. The user's
+  // explicit highlight pick stays armed across cursor moves and
+  // typing sessions until they pick a different colour or hit
+  // Reset / transparent. Symmetrical with text-color's _pickedFg.
+  // The inMatchingBg check above prevents nested-span bloat when the
+  // cursor is already inside a span that matches the staged colour.
 };
 
 NoteEditor.prototype._refreshActiveStates = function () {

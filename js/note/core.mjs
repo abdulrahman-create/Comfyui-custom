@@ -549,6 +549,7 @@ export class NoteEditor {
       this._beforeInputHandler = null;
     }
     this._stagedHi = null;
+    this._pickedFg = null;
     if (this._onWindowResize) {
       window.removeEventListener("resize", this._onWindowResize);
       this._onWindowResize = null;
