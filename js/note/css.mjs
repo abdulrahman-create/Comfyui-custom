@@ -858,12 +858,13 @@ export function injectCSS() {
 }
 .pix-note-iconpop-color-grid {
   display: grid;
-  grid-template-columns: repeat(7, 18px);
-  grid-auto-rows: 18px;
-  gap: 4px;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 3px;
+  width: 100%;
 }
 .pix-note-iconpop-color-tile {
-  width: 18px; height: 18px;
+  width: 100%;
+  aspect-ratio: 1;
   border-radius: 3px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   cursor: pointer;

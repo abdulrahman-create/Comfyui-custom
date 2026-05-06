@@ -10,7 +10,22 @@
 // file. Removing the import now only to re-add it would churn the
 // circular-dep analysis documented in core.mjs::open().
 import { NoteEditor } from "./core.mjs";
-import { SWATCHES } from "./toolbar.mjs";
+
+// 36-color palette for the icon picker. 3 rows x 12 cols, fills the
+// popup width edge-to-edge. Independent from the text/highlight/Btn/Ln
+// pickers' SWATCHES (in toolbar.mjs) so we can tune this set without
+// disturbing the rest of the editor.
+const ICON_SWATCHES = [
+  // Row 1: neutrals (white -> black ramp)
+  "#ffffff","#e6e6e6","#cccccc","#b3b3b3","#999999","#808080",
+  "#666666","#4d4d4d","#333333","#1a1a1a","#0a0a0a","#000000",
+  // Row 2: vibrants across the hue spectrum
+  "#ff5555","#ff8c42","#ffd166","#a3e635","#4ade80","#22d3ee",
+  "#5a8cff","#818cf8","#c075f6","#f472b6","#ec4899","#f66744",
+  // Row 3: muted / earth tones for accent variety
+  "#7c2d12","#a16207","#65a30d","#0e7490","#1e40af","#581c87",
+  "#a16d3a","#b08968","#ddb892","#a07e6a","#5a4634","#2c2620",
+];
 
 // Module-level cache. `null` = not yet fetched; `[]` = fetched empty;
 // `[icons...]` = fetched with content. Survives across editor opens
@@ -218,7 +233,7 @@ function openIconPop(anchorBtn, icons, editor, onPick) {
   const colorGrid = document.createElement("div");
   colorGrid.className = "pix-note-iconpop-color-grid";
   const colorTiles = [];
-  for (const hex of SWATCHES) {
+  for (const hex of ICON_SWATCHES) {
     const tile = document.createElement("button");
     tile.type = "button";
     tile.className = "pix-note-iconpop-color-tile";
@@ -271,6 +286,11 @@ function openIconPop(anchorBtn, icons, editor, onPick) {
   let curHsv = hexToHsv(initSeed);
 
   function renderSV() {
+    // Match the canvas's pixel buffer to its rendered CSS width so the
+    // picker dot stays a circle (otherwise the bitmap is stretched
+    // horizontally and the marker becomes oval).
+    const cssW = svCanvas.clientWidth || svCanvas.width;
+    if (cssW > 0 && svCanvas.width !== cssW) svCanvas.width = cssW;
     const ctx = svCanvas.getContext("2d");
     const w = svCanvas.width, h = svCanvas.height;
     const hueHex = hsvToHex(curHsv.h, 1, 1);
@@ -484,10 +504,13 @@ function openIconPop(anchorBtn, icons, editor, onPick) {
   refreshColorSelection();
   refreshSizeSelection();
   repaintGrid();
-  renderSV();
-  renderHue();
 
   document.body.appendChild(pop);
+  // Now that the popup is in the DOM, the SV canvas has a meaningful
+  // clientWidth - render after append so the pixel buffer matches the
+  // rendered size and the marker dot stays circular.
+  renderSV();
+  renderHue();
 
   const onDocDown = (e) => {
     if (!pop.contains(e.target) && e.target !== anchorBtn) close();
