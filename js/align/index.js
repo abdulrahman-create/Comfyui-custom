@@ -182,6 +182,7 @@ app.registerExtension({
     console.log("[Pixaroma.Align] setup: enabled=", state.enabled, "snapDist=", state.snapDistPx);
     mountToolbarButton();
     installPointerHook();
+    installDrawHook();
   },
 });
 
@@ -205,6 +206,63 @@ function installPointerHook() {
   window.addEventListener("pointercancel", resetDrag, false);
   _hookInstalled = true;
   console.log("[Pixaroma.Align] pointer hook installed");
+}
+
+// =============================================================================
+// Render hook - wrap LGraphCanvas.prototype.drawFrontCanvas (the canvas-level
+// render bottleneck) so we draw guides AFTER LiteGraph finishes drawing nodes
+// and connections. The canvas-level onDrawForeground hook is documented as
+// unreliable in the Vue frontend (CLAUDE.md Vue Frontend Compatibility #1) so
+// we wrap drawFrontCanvas instead, which is provably called (Compare /
+// Preview Image Pixaroma nodes render correctly via LiteGraph's draw pipe).
+//
+// We draw in SCREEN space using a manual graph -> screen transform so the
+// stroke is exactly 1 screen pixel at any zoom (lineWidth = 1) and we don't
+// depend on the canvas's world transform being applied at the time we run
+// (it is restored before drawFrontCanvas returns).
+// =============================================================================
+
+let _drawHookInstalled = false;
+
+function installDrawHook() {
+  if (_drawHookInstalled) return;
+  const proto = window.LGraphCanvas?.prototype;
+  if (typeof proto?.drawFrontCanvas !== "function") {
+    console.warn("[Pixaroma.Align] LGraphCanvas.drawFrontCanvas not found - guides will not render");
+    return;
+  }
+  const orig = proto.drawFrontCanvas;
+  proto.drawFrontCanvas = function () {
+    const ret = orig.apply(this, arguments);
+    if (state.activeGuides.length === 0) return ret;
+    const ctx = this.ctx;
+    if (!ctx) return ret;
+    const scale = this.ds?.scale || 1;
+    const offset = this.ds?.offset || [0, 0];
+    const overhang = 16;
+    const toScreenX = (gx) => (gx + offset[0]) * scale;
+    const toScreenY = (gy) => (gy + offset[1]) * scale;
+    ctx.save();
+    ctx.strokeStyle = BRAND;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (const g of state.activeGuides.slice(0, 6)) {
+      if (g.axis === "X") {
+        const x = toScreenX(g.value);
+        ctx.moveTo(x, toScreenY(g.minPerp - overhang));
+        ctx.lineTo(x, toScreenY(g.maxPerp + overhang));
+      } else {
+        const y = toScreenY(g.value);
+        ctx.moveTo(toScreenX(g.minPerp - overhang), y);
+        ctx.lineTo(toScreenX(g.maxPerp + overhang), y);
+      }
+    }
+    ctx.stroke();
+    ctx.restore();
+    return ret;
+  };
+  _drawHookInstalled = true;
+  console.log("[Pixaroma.Align] drawFrontCanvas hooked for guide rendering");
 }
 
 // Build the 6 reference lines for a graph-space rect.
