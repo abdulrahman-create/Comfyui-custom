@@ -200,9 +200,9 @@ function installPointerHook() {
   // Reset drag state on every release. Without this, a release-then-click
   // sequence with no intervening pointermove leaves stale dragInfo (with
   // its old lockType) attached to the next drag, breaking classification.
-  const _reset = () => { state.dragInfo = null; state._prevNodeStates = null; };
-  window.addEventListener("pointerup", _reset, false);
-  window.addEventListener("pointercancel", _reset, false);
+  // resetDrag also clears active guides so they vanish on release.
+  window.addEventListener("pointerup", resetDrag, false);
+  window.addEventListener("pointercancel", resetDrag, false);
   _hookInstalled = true;
   console.log("[Pixaroma.Align] pointer hook installed");
 }
@@ -252,13 +252,34 @@ function findClosestSnap(movingValues, targetValues, threshold, stickyTarget, st
   return best;
 }
 
+// Record a guide for later rendering. axis = "X" or "Y". value is the snap
+// line position in graph space. perpRange is [minPerp, maxPerp] of the rects
+// being aligned (perp = the OTHER axis).
+function pushGuide(axis, value, perpRange) {
+  if (state.activeGuides.length >= 6) return;
+  state.activeGuides.push({ axis, value, minPerp: perpRange[0], maxPerp: perpRange[1] });
+}
+
+// Drop drag bookkeeping AND clear active guides. Use this for both
+// pointerup/cancel and any mid-tick bail (disabled, Shift, no buttons).
+// Setting setDirty triggers a redraw so any visible guides disappear
+// promptly; redraw is cheap when there's nothing to draw.
+function resetDrag() {
+  state.dragInfo = null;
+  state._prevNodeStates = null;
+  if (state.activeGuides.length) {
+    state.activeGuides = [];
+    app.canvas?.setDirty?.(true, true);
+  }
+}
+
 function onWindowPointerMove(e) {
-  if (!state.enabled) { state.dragInfo = null; state._prevNodeStates = null; return; }
+  if (!state.enabled) { resetDrag(); return; }
   // Shift bypasses snap (Alt is taken by ComfyUI for "duplicate during drag").
-  if (e.shiftKey) { state.dragInfo = null; state._prevNodeStates = null; return; }
+  if (e.shiftKey) { resetDrag(); return; }
   const c = app.canvas;
-  if (!c?.last_mouse_dragging) { state.dragInfo = null; state._prevNodeStates = null; return; }
-  if (!(e.buttons & 1)) { state.dragInfo = null; state._prevNodeStates = null; return; }
+  if (!c?.last_mouse_dragging) { resetDrag(); return; }
+  if (!(e.buttons & 1)) { resetDrag(); return; }
 
   // Find the dragged/resized node. The MOST reliable signal is "which node
   // did LiteGraph just modify this tick?" - found by comparing pos/size to
@@ -302,7 +323,7 @@ function onWindowPointerMove(e) {
       state._prevNodeStates.set(n.id, { x: n.pos[0], y: n.pos[1], w: n.size[0], h: n.size[1] });
     }
   }
-  if (!draggedNode || draggedNode.flags?.collapsed) { state.dragInfo = null; return; }
+  if (!draggedNode || draggedNode.flags?.collapsed) { resetDrag(); return; }
 
   // Multi-select detection. If 2+ uncollapsed nodes are selected AND the
   // identified draggedNode is in that selection, the drag is treated as a
@@ -453,11 +474,11 @@ function onWindowPointerMove(e) {
     const stickyG = snapGraph * 1.5;
     const nodes = c.graph?._nodes || [];
     let snapLeft = null, snapRight = null, snapTop = null, snapBot = null;
-    const tryTarget = (curBest, t, value, sticky) => {
+    const tryTarget = (curBest, t, value, sticky, rect) => {
       const d = t - value;
       const allowed = (sticky != null && Math.abs(t - sticky) < 0.01) ? stickyG : snapGraph;
       if (Math.abs(d) <= allowed && (!curBest || Math.abs(d) < Math.abs(curBest.delta))) {
-        return { delta: d, target: t };
+        return { delta: d, target: t, rect };
       }
       return curBest;
     };
@@ -468,22 +489,22 @@ function onWindowPointerMove(e) {
       const oE = rectEdges(oRect);
       if (leftMoves) {
         for (const t of [oE.left, oE.right, oE.centerX]) {
-          snapLeft = tryTarget(snapLeft, t, dLeft, state.dragInfo.stickyResizeL);
+          snapLeft = tryTarget(snapLeft, t, dLeft, state.dragInfo.stickyResizeL, oRect);
         }
       }
       if (rightMoves) {
         for (const t of [oE.left, oE.right, oE.centerX]) {
-          snapRight = tryTarget(snapRight, t, dRight, state.dragInfo.stickyResizeR);
+          snapRight = tryTarget(snapRight, t, dRight, state.dragInfo.stickyResizeR, oRect);
         }
       }
       if (topMoves) {
         for (const t of [oE.top, oE.bottom, oE.centerY]) {
-          snapTop = tryTarget(snapTop, t, dTop, state.dragInfo.stickyResizeT);
+          snapTop = tryTarget(snapTop, t, dTop, state.dragInfo.stickyResizeT, oRect);
         }
       }
       if (botMoves) {
         for (const t of [oE.top, oE.bottom, oE.centerY]) {
-          snapBot = tryTarget(snapBot, t, dBot, state.dragInfo.stickyResizeB);
+          snapBot = tryTarget(snapBot, t, dBot, state.dragInfo.stickyResizeB, oRect);
         }
       }
     }
@@ -510,6 +531,34 @@ function onWindowPointerMove(e) {
     draggedNode.pos[1] = fTop + titleH;
     draggedNode.size[0] = fRight - fLeft;
     draggedNode.size[1] = fBot - (fTop + titleH);
+
+    // Push one guide per engaged edge. fLeft/fRight/fTop/fBot are visual
+    // coords; matched rects (snapXxx.rect) are also visual via nodeRect().
+    state.activeGuides = [];
+    if (snapLeft && snapLeft.rect) {
+      pushGuide("X", snapLeft.target, [
+        Math.min(fTop, snapLeft.rect.y),
+        Math.max(fBot, snapLeft.rect.y + snapLeft.rect.h),
+      ]);
+    }
+    if (snapRight && snapRight.rect) {
+      pushGuide("X", snapRight.target, [
+        Math.min(fTop, snapRight.rect.y),
+        Math.max(fBot, snapRight.rect.y + snapRight.rect.h),
+      ]);
+    }
+    if (snapTop && snapTop.rect) {
+      pushGuide("Y", snapTop.target, [
+        Math.min(fLeft, snapTop.rect.x),
+        Math.max(fRight, snapTop.rect.x + snapTop.rect.w),
+      ]);
+    }
+    if (snapBot && snapBot.rect) {
+      pushGuide("Y", snapBot.target, [
+        Math.min(fLeft, snapBot.rect.x),
+        Math.max(fRight, snapBot.rect.x + snapBot.rect.w),
+      ]);
+    }
     c.setDirty?.(true, true);
     return;
   }
@@ -536,8 +585,8 @@ function onWindowPointerMove(e) {
     const movingY = [movingE.top, movingE.bottom, movingE.centerY];
     const stickyG = snapGraph * 1.5;
     const allNodes = c.graph?._nodes || [];
-    let bestX = null;
-    let bestY = null;
+    let bestX = null, bestXRect = null;
+    let bestY = null, bestYRect = null;
     for (const other of allNodes) {
       if (di.origIds.has(other.id)) continue;
       if (other.flags?.collapsed) continue;
@@ -547,9 +596,9 @@ function onWindowPointerMove(e) {
       if (dxc > 2 * stickyG && dyc > 2 * stickyG) continue;
       const oE = rectEdges(oRect);
       const mx = findClosestSnap(movingX, [oE.left, oE.right, oE.centerX], snapGraph, di.stickyMoveX, stickyG);
-      if (mx && (!bestX || Math.abs(mx.delta) < Math.abs(bestX.delta))) bestX = mx;
+      if (mx && (!bestX || Math.abs(mx.delta) < Math.abs(bestX.delta))) { bestX = mx; bestXRect = oRect; }
       const my = findClosestSnap(movingY, [oE.top, oE.bottom, oE.centerY], snapGraph, di.stickyMoveY, stickyG);
-      if (my && (!bestY || Math.abs(my.delta) < Math.abs(bestY.delta))) bestY = my;
+      if (my && (!bestY || Math.abs(my.delta) < Math.abs(bestY.delta))) { bestY = my; bestYRect = oRect; }
     }
     di.stickyMoveX = bestX ? bestX.target : null;
     di.stickyMoveY = bestY ? bestY.target : null;
@@ -561,6 +610,23 @@ function onWindowPointerMove(e) {
       if (!orig) continue;
       n.pos[0] = orig.x + finalDx;
       n.pos[1] = orig.y + finalDy;
+    }
+
+    // Guides span the moved bbox plus the rect that produced the matching
+    // edge. perp axis (Y for an X guide; X for a Y guide) takes the union.
+    const finalBBox = { x: di.origBBox.x + finalDx, y: di.origBBox.y + finalDy, w: di.origBBox.w, h: di.origBBox.h };
+    state.activeGuides = [];
+    if (bestX && bestXRect) {
+      pushGuide("X", bestX.target, [
+        Math.min(finalBBox.y, bestXRect.y),
+        Math.max(finalBBox.y + finalBBox.h, bestXRect.y + bestXRect.h),
+      ]);
+    }
+    if (bestY && bestYRect) {
+      pushGuide("Y", bestY.target, [
+        Math.min(finalBBox.x, bestYRect.x),
+        Math.max(finalBBox.x + finalBBox.w, bestYRect.x + bestYRect.w),
+      ]);
     }
     c.setDirty?.(true, true);
     return;
@@ -584,8 +650,8 @@ function onWindowPointerMove(e) {
 
   const stickyG = snapGraph * 1.5;
   const nodes = c.graph?._nodes || [];
-  let bestX = null;
-  let bestY = null;
+  let bestX = null, bestXRect = null;
+  let bestY = null, bestYRect = null;
   for (const other of nodes) {
     if (other === draggedNode) continue;
     if (other.flags?.collapsed) continue;
@@ -595,9 +661,9 @@ function onWindowPointerMove(e) {
     if (dxc > 2 * stickyG && dyc > 2 * stickyG) continue;
     const oE = rectEdges(oRect);
     const mx = findClosestSnap(movingX, [oE.left, oE.right, oE.centerX], snapGraph, state.dragInfo.stickyMoveX, stickyG);
-    if (mx && (!bestX || Math.abs(mx.delta) < Math.abs(bestX.delta))) bestX = mx;
+    if (mx && (!bestX || Math.abs(mx.delta) < Math.abs(bestX.delta))) { bestX = mx; bestXRect = oRect; }
     const my = findClosestSnap(movingY, [oE.top, oE.bottom, oE.centerY], snapGraph, state.dragInfo.stickyMoveY, stickyG);
-    if (my && (!bestY || Math.abs(my.delta) < Math.abs(bestY.delta))) bestY = my;
+    if (my && (!bestY || Math.abs(my.delta) < Math.abs(bestY.delta))) { bestY = my; bestYRect = oRect; }
   }
   state.dragInfo.stickyMoveX = bestX ? bestX.target : null;
   state.dragInfo.stickyMoveY = bestY ? bestY.target : null;
@@ -607,5 +673,22 @@ function onWindowPointerMove(e) {
   // never drift apart by more than snapGraph.
   draggedNode.pos[0] = bestX ? desiredX + bestX.delta : desiredX;
   draggedNode.pos[1] = bestY ? desiredY + bestY.delta : desiredY;
+
+  // Build the visual rect at the FINAL (post-snap) position so the guide
+  // line spans accurately along the perp axis.
+  const finalRect = { x: draggedNode.pos[0], y: draggedNode.pos[1] - titleH, w, h: h + titleH };
+  state.activeGuides = [];
+  if (bestX && bestXRect) {
+    pushGuide("X", bestX.target, [
+      Math.min(finalRect.y, bestXRect.y),
+      Math.max(finalRect.y + finalRect.h, bestXRect.y + bestXRect.h),
+    ]);
+  }
+  if (bestY && bestYRect) {
+    pushGuide("Y", bestY.target, [
+      Math.min(finalRect.x, bestYRect.x),
+      Math.max(finalRect.x + finalRect.w, bestYRect.x + bestYRect.w),
+    ]);
+  }
   c.setDirty?.(true, true);
 }
