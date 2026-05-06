@@ -238,8 +238,16 @@ function ensureCSS() {
   border-radius: 6px;
   padding: 14px;
   box-shadow: 0 8px 24px rgba(0,0,0,.6);
-  width: 280px;
+  width: 320px;
   box-sizing: border-box;
+}
+/* Photoshop-style square SV plane in the More-colors modal. The
+   inline picker normally renders SV as a wide rectangle (80px tall)
+   which is fine for narrow popups, but in the dedicated picker modal
+   we have room for a proper square saturation/value plane. */
+.pix-cp-modal-box .pix-cp-sv {
+  aspect-ratio: 1;
+  height: auto;
 }
 .pix-cp-modal-title {
   color: #ddd;
@@ -382,8 +390,13 @@ export function createPixaromaColorPicker(opts = {}) {
   root.appendChild(svRow);
 
   function renderSV() {
+    // Sync canvas internal dimensions to CSS-laid-out size so callers
+    // can resize the SV plane via CSS (e.g. the "More colors" modal
+    // makes it square) without the gradient looking squashed.
     const cssW = svCanvas.clientWidth || svCanvas.width;
     if (cssW > 0 && svCanvas.width !== cssW) svCanvas.width = cssW;
+    const cssH = svCanvas.clientHeight || svCanvas.height;
+    if (cssH > 0 && svCanvas.height !== cssH) svCanvas.height = cssH;
     const ctx = svCanvas.getContext("2d");
     const w = svCanvas.width, h = svCanvas.height;
     const hueHex = hsvToHex(curHsv.h, 1, 1);
@@ -413,6 +426,11 @@ export function createPixaromaColorPicker(opts = {}) {
     }
   }
   function renderHue() {
+    // Sync canvas internal height to CSS height — when the SV plane
+    // is square (modal context), the row stretches the hue strip via
+    // align-items:stretch and we need the gradient to match.
+    const cssH = hueCanvas.clientHeight || hueCanvas.height;
+    if (cssH > 0 && hueCanvas.height !== cssH) hueCanvas.height = cssH;
     const ctx = hueCanvas.getContext("2d");
     const w = hueCanvas.width, h = hueCanvas.height;
     const grad = ctx.createLinearGradient(0, 0, 0, h);
