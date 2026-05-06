@@ -56,7 +56,7 @@ No more guessing crop sizes with numbers! Visually draw your crop box, or set wi
 
 📥 [Download example workflow](workflows/Crop%20Pixaroma%20Workflow.json)
 
-![Image Crop Node](workflows/Crop%20Pixaroma%20Workflow.jpg?v=2)
+![Image Crop Node](workflows/Crop%20Pixaroma%20Workflow.jpg?v=3)
 ![Image Crop Editor](workflows/Crop%20Pixaroma%20Workflow%20v2.jpg?v=2)
 
 ### 🌓 Interactive Compare
