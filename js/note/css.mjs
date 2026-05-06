@@ -837,6 +837,52 @@ export function injectCSS() {
   text-align: center;
   line-height: 1.4;
 }
+/* Icon-popup color row - reuses the standard 28-color SWATCHES grid.
+   Clear tile sits in the same flex row to the right of the grid. */
+.pix-note-iconpop-toprow {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.pix-note-iconpop-color-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 18px);
+  gap: 4px;
+}
+.pix-note-iconpop-color-tile {
+  width: 18px; height: 18px;
+  border-radius: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  cursor: pointer;
+  padding: 0;
+  box-sizing: border-box;
+}
+.pix-note-iconpop-color-tile.selected {
+  outline: 2px solid ${BRAND};
+  outline-offset: 1px;
+}
+.pix-note-iconpop-color-clear {
+  flex: 0 0 auto;
+  width: 22px; height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid #444;
+  color: #999;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  align-self: center;
+}
+.pix-note-iconpop-color-clear:hover { color: ${BRAND}; border-color: ${BRAND}; }
+.pix-note-iconpop-color-clear.selected {
+  border-color: ${BRAND};
+  color: ${BRAND};
+}
+
 .pix-note-iconpop-empty code {
   background: rgba(255, 255, 255, 0.08);
   padding: 1px 4px;

@@ -10,6 +10,7 @@
 // file. Removing the import now only to re-add it would churn the
 // circular-dep analysis documented in core.mjs::open().
 import { NoteEditor } from "./core.mjs";
+import { SWATCHES } from "./toolbar.mjs";
 
 // Module-level cache. `null` = not yet fetched; `[]` = fetched empty;
 // `[icons...]` = fetched with content. Survives across editor opens
@@ -141,9 +142,11 @@ export function renderIconHTML(id, color, size) {
 
 // Popup picker. Mirrors openColorPop in toolbar.mjs (positioning,
 // outside-click dismiss, mousedown-preventDefault to keep the
-// editor's selection alive). Not exported — only _insertInlineIcon
-// uses it.
-function openIconPop(anchorBtn, icons, onPick) {
+// editor's selection alive). Hosts the color swatches + size pills +
+// icon grid; passes the picked id to onPick when a glyph is clicked.
+// Reads/writes editor._iconPickerColor and editor._iconPickerSize for
+// session-sticky picker state (Pattern #29, design 2026-05-06).
+function openIconPop(anchorBtn, icons, editor, onPick) {
   const pop = document.createElement("div");
   pop.className = "pix-note-iconpop";
   const rect = anchorBtn.getBoundingClientRect();
@@ -157,35 +160,110 @@ function openIconPop(anchorBtn, icons, onPick) {
       'No icons found. Drop SVG files into ' +
       '<code>assets/icons/note/</code> and reload the browser.';
     pop.appendChild(msg);
-  } else {
-    const grid = document.createElement("div");
-    grid.className = "pix-note-iconswatches";
-    for (const ic of icons) {
-      const tile = document.createElement("button");
-      tile.type = "button";
-      tile.className = "pix-note-iconswatch";
-      tile.setAttribute("data-ic", ic.id);
-      tile.title = ic.label;
-      // mousedown prevents the editArea from losing focus + selection
-      // when the user clicks a tile.
-      tile.addEventListener("mousedown", (e) => e.preventDefault());
-      tile.addEventListener("click", (e) => {
-        e.stopPropagation();
-        onPick(ic.id);
-        close();
-      });
-      const glyph = document.createElement("span");
-      glyph.className = "pix-note-ic";
-      glyph.setAttribute("data-ic", ic.id);
-      // No inline color — the glyph inherits currentColor from the
-      // popup, which is set to the editor's default text color (see
-      // .pix-note-iconpop in css.mjs). Matches the insert-time icon
-      // color so the picker is WYSIWYG for what will actually land.
-      tile.appendChild(glyph);
-      grid.appendChild(tile);
+    document.body.appendChild(pop);
+    const onDocDown = (e) => {
+      if (!pop.contains(e.target) && e.target !== anchorBtn) close();
+    };
+    function close() {
+      document.removeEventListener("mousedown", onDocDown, true);
+      pop.remove();
     }
-    pop.appendChild(grid);
+    setTimeout(() => document.addEventListener("mousedown", onDocDown, true), 0);
+    return;
   }
+
+  // Top row: color grid + Clear tile
+  const topRow = document.createElement("div");
+  topRow.className = "pix-note-iconpop-toprow";
+
+  const colorGrid = document.createElement("div");
+  colorGrid.className = "pix-note-iconpop-color-grid";
+  const colorTiles = []; // for selection-ring updates
+  for (const hex of SWATCHES) {
+    const tile = document.createElement("button");
+    tile.type = "button";
+    tile.className = "pix-note-iconpop-color-tile";
+    tile.style.background = hex;
+    tile.title = hex;
+    tile.addEventListener("mousedown", (e) => e.preventDefault());
+    tile.addEventListener("click", (e) => {
+      e.stopPropagation();
+      editor._iconPickerColor = hex;
+      refreshColorSelection();
+      repaintGrid();
+    });
+    colorGrid.appendChild(tile);
+    colorTiles.push({ tile, hex });
+  }
+  topRow.appendChild(colorGrid);
+
+  const clearBtn = document.createElement("button");
+  clearBtn.type = "button";
+  clearBtn.className = "pix-note-iconpop-color-clear";
+  clearBtn.title = "Clear color (inherit)";
+  clearBtn.textContent = "✕";
+  clearBtn.addEventListener("mousedown", (e) => e.preventDefault());
+  clearBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    editor._iconPickerColor = null;
+    refreshColorSelection();
+    repaintGrid();
+  });
+  topRow.appendChild(clearBtn);
+
+  pop.appendChild(topRow);
+
+  function refreshColorSelection() {
+    const cur = editor._iconPickerColor;
+    for (const { tile, hex } of colorTiles) {
+      tile.classList.toggle(
+        "selected",
+        !!cur && hex.toLowerCase() === cur.toLowerCase(),
+      );
+    }
+    clearBtn.classList.toggle("selected", !cur);
+  }
+
+  // Icon grid
+  const grid = document.createElement("div");
+  grid.className = "pix-note-iconswatches";
+  const gridTiles = [];
+  for (const ic of icons) {
+    const tile = document.createElement("button");
+    tile.type = "button";
+    tile.className = "pix-note-iconswatch";
+    tile.setAttribute("data-ic", ic.id);
+    tile.title = ic.label;
+    tile.addEventListener("mousedown", (e) => e.preventDefault());
+    tile.addEventListener("click", (e) => {
+      e.stopPropagation();
+      onPick(ic.id);
+      close();
+    });
+    const glyph = document.createElement("span");
+    glyph.className = "pix-note-ic";
+    glyph.setAttribute("data-ic", ic.id);
+    tile.appendChild(glyph);
+    grid.appendChild(tile);
+    gridTiles.push(glyph);
+  }
+  pop.appendChild(grid);
+
+  function repaintGrid() {
+    const c = editor._iconPickerColor;
+    const sz = editor._iconPickerSize || "m";
+    for (const glyph of gridTiles) {
+      if (c) glyph.style.color = c;
+      else glyph.style.removeProperty("color");
+      // Size driven via attribute so the existing CSS attribute
+      // selectors handle sizing (DRY with the inserted markup).
+      if (sz === "m") glyph.removeAttribute("data-size");
+      else glyph.setAttribute("data-size", sz);
+    }
+  }
+
+  refreshColorSelection();
+  repaintGrid();
 
   document.body.appendChild(pop);
 
@@ -196,8 +274,6 @@ function openIconPop(anchorBtn, icons, onPick) {
     document.removeEventListener("mousedown", onDocDown, true);
     pop.remove();
   }
-  // Defer attach by one tick so the click that opened us doesn't
-  // immediately close us.
   setTimeout(() => document.addEventListener("mousedown", onDocDown, true), 0);
 }
 
@@ -225,7 +301,7 @@ NoteEditor.prototype._insertInlineIcon = async function (anchorBtn) {
   const icons = await ensureIcons();
   injectIconCSS();
 
-  openIconPop(anchorBtn, icons, (id) => {
+  openIconPop(anchorBtn, icons, this, (id) => {
     if (savedRange) {
       this._editArea.focus();
       const sel = window.getSelection();
