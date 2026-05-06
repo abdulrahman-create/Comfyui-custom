@@ -89,6 +89,74 @@ export class NoteEditor {
     injectCSS();
     this._build();
     document.body.appendChild(this._el);
+
+    // Atomic deletion around inline-icon spans (design 2026-05-06).
+    // Backspace immediately after an icon (with optional trailing &nbsp;)
+    // or Delete immediately before an icon removes the span + its &nbsp;
+    // in one keystroke, with a single undo step. Prevents partial-delete
+    // states and color-leak-into-next-character bugs without using
+    // contenteditable="false" (which broke caret + heading formatBlock
+    // in earlier attempts - see css.mjs comment near .pix-note-ic).
+    if (this._editArea) {
+      const editArea = this._editArea;
+      this._iconKeyHandler = (e) => {
+        if (e.key !== "Backspace" && e.key !== "Delete") return;
+        const sel = window.getSelection();
+        if (!sel || sel.rangeCount === 0) return;
+        const r = sel.getRangeAt(0);
+        if (!r.collapsed) return; // user has a selection - default behavior
+        if (!editArea.contains(r.startContainer)) return;
+
+        // Walk to the icon to delete. For Backspace look BEFORE the caret;
+        // for Delete look AFTER. Step past at most one nbsp text node.
+        const findIconAdjacent = (forward) => {
+          const node = r.startContainer;
+          const off  = r.startOffset;
+          let probe;
+          if (node.nodeType === 3) {
+            // Text node - caret must be at the very edge to be "adjacent".
+            if (forward && off !== node.nodeValue.length) return null;
+            if (!forward && off !== 0) return null;
+            probe = forward ? node.nextSibling : node.previousSibling;
+          } else {
+            // Element node - caret is between children.
+            probe = forward ? node.childNodes[off] : node.childNodes[off - 1];
+          }
+          // Step past one trailing/leading nbsp text node. renderIconHTML
+          // emits exactly one "&nbsp;" (U+00A0) AFTER each icon. Match the
+          // EXACT nbsp char so a regular space (legitimate user content)
+          // is not consumed.
+          if (probe && probe.nodeType === 3 && probe.nodeValue === " ") {
+            probe = forward ? probe.nextSibling : probe.previousSibling;
+          }
+          if (probe && probe.nodeType === 1 && probe.classList?.contains("pix-note-ic")) {
+            return probe;
+          }
+          return null;
+        };
+
+        const forward = (e.key === "Delete");
+        const icon = findIconAdjacent(forward);
+        if (!icon) return; // not adjacent to an icon - browser handles key
+
+        e.preventDefault();
+        e.stopPropagation();
+        this._snapBefore?.();
+        // renderIconHTML always appends a trailing &nbsp; AFTER the icon.
+        // Eat it too so there is no orphan nbsp left between former
+        // neighbours. Match exact U+00A0.
+        const followerNbsp = icon.nextSibling;
+        if (followerNbsp && followerNbsp.nodeType === 3
+            && followerNbsp.nodeValue === " ") {
+          followerNbsp.remove();
+        }
+        icon.remove();
+        this._snapAfter?.();
+        this._dirty = true;
+        this._refreshActiveStates?.();
+      };
+      editArea.addEventListener("keydown", this._iconKeyHandler);
+    }
     // Don't use installFocusTrap here — its mouseup refocus pulls focus
     // away from the contenteditable on any button click (breaking typing)
     // and wipes the text selection on drag-select that ends outside the
@@ -599,6 +667,10 @@ export class NoteEditor {
     // Reset icon-picker session state so the next open starts fresh.
     this._iconPickerColor = null;
     this._iconPickerSize = null;
+    // Drop the icon-deletion handler ref. The DOM node it was attached
+    // to (the contenteditable inside _el) was already removed above, so
+    // the listener is gone with it; this just clears the closure ref.
+    this._iconKeyHandler = null;
   }
 
   save() {
