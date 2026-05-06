@@ -50,12 +50,16 @@ const ALLOWED_HREF_PROTOCOLS = ["http:", "https:", "mailto:"];
 // have; sanitizer has no view into the filesystem.
 const IC_SLUG_RE = /^[A-Za-z0-9_-]{1,64}$/;
 
+// Inline-icon size attribute: must be one of the 4 presets. Anything else
+// strips the attribute (icon falls back to M default).
+const IC_SIZE_RE = /^(s|m|l|xl)$/;
+
 // Per-tag attribute allowlist. "*" means "any tag".
 const ALLOWED_ATTRS = {
   "*": new Set(["class", "style"]),
   a: new Set(["class","style","href","target","rel","data-folder","data-size","data-label"]),
   label: new Set(["class","style"]),
-  span: new Set(["class","style","data-ic"]),
+  span: new Set(["class","style","data-ic","data-size"]),
 };
 
 function filterClass(value) {
@@ -156,6 +160,11 @@ function filterElement(el) {
       // (unwrap-not-remove policy, Pattern #1). Cross-file contract with
       // js/note/icons.mjs (cache + inject) and server_routes.py (list).
       if (!IC_SLUG_RE.test(a.value)) el.removeAttribute(a.name);
+    } else if (name === "data-size" && tag === "span") {
+      // Inline-icon size: only validate on <span>. The <a> tag uses
+      // data-size for Button Design pill sizing with its own values, so
+      // we must NOT apply this regex there.
+      if (!IC_SIZE_RE.test(a.value)) el.removeAttribute(a.name);
     }
   }
 
