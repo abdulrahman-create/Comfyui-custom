@@ -213,6 +213,41 @@ function openIconPop(anchorBtn, icons, editor, onPick) {
 
   pop.appendChild(topRow);
 
+  // Size pills row
+  const sizeRow = document.createElement("div");
+  sizeRow.className = "pix-note-iconpop-size-row";
+  const sizes = [
+    { id: "s",  label: "S"  },
+    { id: "m",  label: "M"  },
+    { id: "l",  label: "L"  },
+    { id: "xl", label: "XL" },
+  ];
+  const sizePills = [];
+  for (const sz of sizes) {
+    const pill = document.createElement("button");
+    pill.type = "button";
+    pill.className = "pix-note-iconpop-size-pill";
+    pill.textContent = sz.label;
+    pill.setAttribute("data-size-id", sz.id);
+    pill.addEventListener("mousedown", (e) => e.preventDefault());
+    pill.addEventListener("click", (e) => {
+      e.stopPropagation();
+      editor._iconPickerSize = sz.id;
+      refreshSizeSelection();
+      repaintGrid();
+    });
+    sizeRow.appendChild(pill);
+    sizePills.push(pill);
+  }
+  pop.appendChild(sizeRow);
+
+  function refreshSizeSelection() {
+    const cur = editor._iconPickerSize || "m";
+    for (const p of sizePills) {
+      p.classList.toggle("selected", p.getAttribute("data-size-id") === cur);
+    }
+  }
+
   function refreshColorSelection() {
     const cur = editor._iconPickerColor;
     for (const { tile, hex } of colorTiles) {
@@ -263,6 +298,7 @@ function openIconPop(anchorBtn, icons, editor, onPick) {
   }
 
   refreshColorSelection();
+  refreshSizeSelection();
   repaintGrid();
 
   document.body.appendChild(pop);

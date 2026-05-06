@@ -883,6 +883,37 @@ export function injectCSS() {
   color: ${BRAND};
 }
 
+/* Icon-popup size pills - 4 small buttons in a row, the active one
+   filled with BRAND orange. Mirrors the segmented control pattern
+   used elsewhere in the editor. */
+.pix-note-iconpop-size-row {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.pix-note-iconpop-size-pill {
+  flex: 1;
+  padding: 4px 0;
+  background: transparent;
+  border: 1px solid #444;
+  color: #999;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 11px;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  text-align: center;
+  transition: background 120ms, color 120ms, border-color 120ms;
+}
+.pix-note-iconpop-size-pill:hover {
+  background: rgba(255, 255, 255, 0.04);
+  color: #ccc;
+}
+.pix-note-iconpop-size-pill.selected {
+  background: rgba(246, 103, 68, 0.18);
+  border-color: ${BRAND};
+  color: ${BRAND};
+}
+
 .pix-note-iconpop-empty code {
   background: rgba(255, 255, 255, 0.08);
   padding: 1px 4px;
