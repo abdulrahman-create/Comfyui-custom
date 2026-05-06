@@ -1,4 +1,5 @@
 import { NoteEditor } from "./core.mjs";
+import { openPixaromaColorPickerPopup } from "../shared/color_picker.mjs";
 
 // Range helpers are kept for future modal-backed buttons (e.g. link dialog)
 // where focus genuinely leaves the edit area. For the current buttons,
@@ -42,69 +43,6 @@ export const SWATCHES = [
   // Row 4 — Modern soft + deep
   "#ff79c6","#f4a261","#c9a96e","#3a5a40","#1e3a5f","#4a3d6b","#2c3e50",
 ];
-
-function openColorPop(anchorBtn, currentColor, onPick, allowClear = false) {
-  const pop = document.createElement("div");
-  pop.className = "pix-note-colorpop";
-  const rect = anchorBtn.getBoundingClientRect();
-  pop.style.left = `${rect.left}px`;
-  pop.style.top = `${rect.bottom + 4}px`;
-
-  const sw = document.createElement("div");
-  sw.className = "pix-note-swatches";
-  SWATCHES.forEach((c) => {
-    const s = document.createElement("div");
-    s.className = "pix-note-swatch";
-    s.style.background = c;
-    if (c.toLowerCase() === (currentColor || "").toLowerCase()) s.classList.add("active");
-    s.addEventListener("mousedown", (e) => e.preventDefault());
-    s.addEventListener("click", (e) => { e.stopPropagation(); onPick(c); close(); });
-    sw.appendChild(s);
-  });
-  pop.appendChild(sw);
-
-  const row = document.createElement("div");
-  row.className = "pix-note-colorrow";
-  const picker = document.createElement("input");
-  picker.type = "color";
-  picker.value = /^#[0-9a-f]{6}$/i.test(currentColor || "") ? currentColor : "#f66744";
-  picker.addEventListener("mousedown", (e) => e.stopPropagation());
-  // Use `change` (fires once when native picker dialog closes) instead of
-  // `input` (fires on every drag). Native picker steals focus from the
-  // contenteditable; repeated live applies operate on a stale range.
-  picker.addEventListener("change", () => { onPick(picker.value); hex.value = picker.value; });
-  const hex = document.createElement("input");
-  hex.type = "text";
-  hex.value = currentColor || "";
-  hex.placeholder = "#rrggbb";
-  hex.addEventListener("mousedown", (e) => e.stopPropagation());
-  hex.oninput = () => {
-    const v = hex.value.startsWith("#") ? hex.value : `#${hex.value}`;
-    if (/^#[0-9a-f]{6}$/i.test(v)) { onPick(v); picker.value = v; }
-  };
-  row.appendChild(picker);
-  row.appendChild(hex);
-  if (allowClear) {
-    const cl = document.createElement("div");
-    cl.className = "clearbtn";
-    cl.title = "Clear";
-    cl.addEventListener("mousedown", (e) => e.preventDefault());
-    cl.addEventListener("click", (e) => { e.stopPropagation(); onPick(null); close(); });
-    row.appendChild(cl);
-  }
-  pop.appendChild(row);
-
-  document.body.appendChild(pop);
-
-  const onDocClick = (e) => {
-    if (!pop.contains(e.target) && e.target !== anchorBtn) close();
-  };
-  function close() {
-    document.removeEventListener("mousedown", onDocClick, true);
-    pop.remove();
-  }
-  setTimeout(() => document.addEventListener("mousedown", onDocClick, true), 0);
-}
 
 NoteEditor.prototype._buildToolbar = function () {
   const tb = this._toolbarEl;
@@ -430,24 +368,24 @@ NoteEditor.prototype._buildToolbar = function () {
   textColorBtn.addEventListener("click", (e) => {
     e.preventDefault();
     const r = saveRange(this._editArea);
-    openColorPop(textColorBtn, null, (c) => {
-      this._editArea.focus();
-      restoreRange(r);
-      // Force CSS output (<span style="color:...">) instead of legacy
-      // <font color="..."> so headings and the sanitizer preserve the color.
-      document.execCommand("styleWithCSS", false, true);
-      if (c == null) {
-        // "Clear" means reset to the body's default text color rather than
-        // execCommand("removeFormat") which would strip bold/italic/etc too.
-        document.execCommand("foreColor", false, "#e4e4e4");
-        textColorBtn.style.removeProperty("--pix-note-tbtn-tint");
-      } else {
-        document.execCommand("foreColor", false, c);
-        textColorBtn.style.setProperty("--pix-note-tbtn-tint", c);
-      }
-      this._dirty = true;
-      this._refreshActiveStates();
-    }, true);
+    openPixaromaColorPickerPopup(textColorBtn, {
+      initialColor: textColorBtn.style.getPropertyValue("--pix-note-tbtn-tint").trim() || null,
+      showClear: true,
+      onPick: (c) => {
+        this._editArea.focus();
+        restoreRange(r);
+        document.execCommand("styleWithCSS", false, true);
+        if (c == null) {
+          document.execCommand("foreColor", false, "#e4e4e4");
+          textColorBtn.style.removeProperty("--pix-note-tbtn-tint");
+        } else {
+          document.execCommand("foreColor", false, c);
+          textColorBtn.style.setProperty("--pix-note-tbtn-tint", c);
+        }
+        this._dirty = true;
+        this._refreshActiveStates();
+      },
+    });
   });
   g3.appendChild(textColorBtn);
 
@@ -472,53 +410,48 @@ NoteEditor.prototype._buildToolbar = function () {
   hiColorBtn.addEventListener("click", (e) => {
     e.preventDefault();
     const r = saveRange(this._editArea);
-    openColorPop(hiColorBtn, null, (c) => {
-      this._editArea.focus();
-      restoreRange(r);
-      document.execCommand("styleWithCSS", false, true);
-      if (c == null) {
-        // hiliteColor("transparent") creates a nested span instead of
-        // unsetting the parent span/li's color, so the old highlight
-        // persists. Walk the selection's ancestors + descendants and
-        // directly strip inline background-color.
-        const sel = window.getSelection();
-        if (sel && sel.rangeCount > 0) {
-          const ca = sel.getRangeAt(0).commonAncestorContainer;
-          const scope = ca.nodeType === 1 ? ca : ca.parentNode;
-          const targets = new Set([scope, ...scope.querySelectorAll("*")]);
-          let p = scope.parentNode;
-          while (p && p !== this._editArea && p !== document.body) {
-            targets.add(p); p = p.parentNode;
-          }
-          for (const el of targets) {
-            if (el.style && el.style.backgroundColor) {
-              el.style.backgroundColor = "";
-              if (!el.getAttribute("style")) el.removeAttribute("style");
+    openPixaromaColorPickerPopup(hiColorBtn, {
+      initialColor: hiColorBtn.style.getPropertyValue("--pix-note-tbtn-tint").trim() || null,
+      showClear: true,
+      onPick: (c) => {
+        this._editArea.focus();
+        restoreRange(r);
+        document.execCommand("styleWithCSS", false, true);
+        if (c == null) {
+          // hiliteColor("transparent") creates a nested span instead of
+          // unsetting the parent span/li's color. Walk the selection's
+          // ancestors + descendants and directly strip background-color.
+          const sel = window.getSelection();
+          if (sel && sel.rangeCount > 0) {
+            const ca = sel.getRangeAt(0).commonAncestorContainer;
+            const scope = ca.nodeType === 1 ? ca : ca.parentNode;
+            const targets = new Set([scope, ...scope.querySelectorAll("*")]);
+            let p = scope.parentNode;
+            while (p && p !== this._editArea && p !== document.body) {
+              targets.add(p); p = p.parentNode;
+            }
+            for (const el of targets) {
+              if (el.style && el.style.backgroundColor) {
+                el.style.backgroundColor = "";
+                if (!el.getAttribute("style")) el.removeAttribute("style");
+              }
             }
           }
+          hiColorBtn.style.removeProperty("--pix-note-tbtn-tint");
+        } else {
+          document.execCommand("hiliteColor", false, c);
+          // Chrome quirk (Pattern #21): hiliteColor on collapsed clears
+          // staged foreColor. Replay so they combine.
+          const stagedFg = textColorBtn.style.getPropertyValue("--pix-note-tbtn-tint").trim();
+          if (stagedFg) {
+            try { document.execCommand("foreColor", false, stagedFg); } catch (e) {}
+          }
+          hiColorBtn.style.setProperty("--pix-note-tbtn-tint", c);
         }
-        hiColorBtn.style.removeProperty("--pix-note-tbtn-tint");
-      } else {
-        document.execCommand("hiliteColor", false, c);
-        // Chrome quirk: execCommand("hiliteColor", ...) on a collapsed
-        // selection CREATES a new <span style="background-color:..."> at
-        // the cursor, and in doing so it CLEARS any previously-staged
-        // foreColor. If the user just picked a text color (staged but
-        // not yet in the DOM), typing would then get the default text
-        // color instead. Restage the text color by replaying
-        // execCommand("foreColor") immediately after hiliteColor so the
-        // two combine. We read the color back from the text-color
-        // icon's inline tint so we pick up the most recent A-button
-        // choice.
-        const stagedFg = textColorBtn.style.getPropertyValue("--pix-note-tbtn-tint").trim();
-        if (stagedFg) {
-          try { document.execCommand("foreColor", false, stagedFg); } catch (e) {}
-        }
-        hiColorBtn.style.setProperty("--pix-note-tbtn-tint", c);
-      }
-      this._dirty = true;
-      this._refreshActiveStates();
-    }, true);
+        this._dirty = true;
+        this._refreshActiveStates();
+      },
+    });
   });
   g3.appendChild(hiColorBtn);
 
@@ -550,18 +483,21 @@ NoteEditor.prototype._buildToolbar = function () {
   bgColorBtn.addEventListener("mousedown", (e) => e.preventDefault());
   bgColorBtn.addEventListener("click", (e) => {
     e.preventDefault();
-    openColorPop(bgColorBtn, this.cfg.backgroundColor || "#111111", (c) => {
-      // Clear (c == null) → set cfg.backgroundColor to NULL, not a
-      // hex default. null is the signal to renderContent() that the
-      // user explicitly cleared — it will revert node.color/bgcolor
-      // to LiteGraph defaults, allowing ComfyUI's native right-click
-      // Colors menu to take over. Setting to "#111111" here would
-      // permanently override the native picker (the original bug).
-      this.cfg.backgroundColor = (c == null) ? null : c;
-      this._applyEditAreaBg?.();
-      refreshBgSwatch();
-      this._dirty = true;
-    }, true);
+    openPixaromaColorPickerPopup(bgColorBtn, {
+      initialColor: this.cfg.backgroundColor || "#111111",
+      showClear: true,
+      resetColor: "#111111",
+      onPick: (c) => {
+        // Clear (c == null) -> set cfg.backgroundColor to NULL, not a
+        // hex default. null signals renderContent() that the user
+        // explicitly cleared; it reverts node.color/bgcolor to LiteGraph
+        // defaults so ComfyUI's right-click Colors menu takes over.
+        this.cfg.backgroundColor = (c == null) ? null : c;
+        this._applyEditAreaBg?.();
+        refreshBgSwatch();
+        this._dirty = true;
+      },
+    });
   });
   g3.appendChild(bgColorBtn);
 
@@ -596,12 +532,20 @@ NoteEditor.prototype._buildToolbar = function () {
     btn.addEventListener("mousedown", (e) => e.preventDefault());
     btn.addEventListener("click", (e) => {
       e.preventDefault();
-      openColorPop(btn, this.cfg[cfgKey] || fallback, (c) => {
-        this.cfg[cfgKey] = (c == null) ? fallback : c;
-        apply();
-        refreshSwatch();
-        this._dirty = true;
-      }, true);
+      openPixaromaColorPickerPopup(btn, {
+        initialColor: this.cfg[cfgKey] || fallback,
+        showClear: false,
+        resetColor: fallback,
+        onPick: (c) => {
+          // Btn / Ln have no Clear option (showClear: false), so c is
+          // never null. Reset returns to `fallback` (the picker's
+          // default Pixaroma orange), same as the previous behaviour.
+          this.cfg[cfgKey] = c || fallback;
+          apply();
+          refreshSwatch();
+          this._dirty = true;
+        },
+      });
     });
     return btn;
   };

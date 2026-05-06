@@ -762,29 +762,10 @@ export function injectCSS() {
 .pix-note-tgroup { display: inline-flex; gap: 3px; }
 .pix-note-tspacer { flex: 1 1 auto; min-width: 8px; }
 
-/* ── Color popover ───────────────────────────────────────── */
-.pix-note-colorpop {
-  position: absolute; background: #222; border: 1px solid #444; border-radius: 5px;
-  padding: 8px; z-index: 100000; display: flex; flex-direction: column; gap: 6px;
-  box-shadow: 0 6px 18px rgba(0,0,0,.5);
-}
-.pix-note-swatches { display: grid; grid-template-columns: repeat(7, 18px); gap: 4px; }
-.pix-note-swatch {
-  width: 18px; height: 18px; border-radius: 3px; cursor: pointer;
-  border: 1px solid rgba(255,255,255,.1);
-}
-.pix-note-swatch.active { outline: 2px solid ${BRAND}; outline-offset: 1px; }
-.pix-note-colorrow { display: flex; gap: 4px; align-items: center; }
-.pix-note-colorrow input[type="color"] { width: 26px; height: 22px; padding: 0; border: 1px solid #444; border-radius: 3px; background: #1a1a1a; cursor: pointer; }
-.pix-note-colorrow input[type="text"] {
-  flex: 1; width: 80px; background: #1a1a1a; border: 1px solid #444;
-  color: #ddd; padding: 3px 6px; font-size: 11px; font-family: "Consolas", monospace;
-  border-radius: 3px;
-}
-.pix-note-colorrow .clearbtn {
-  background: repeating-conic-gradient(#888 0 25%, #444 0 50%) 50%/8px 8px;
-  width: 22px; height: 22px; border: 1px solid #444; border-radius: 3px; cursor: pointer;
-}
+/* Color popover styles previously lived here; the 5 toolbar pickers
+   (text / highlight / Bg / Btn / Ln) now use the shared Pixaroma Color
+   Picker module (js/shared/color_picker.mjs) which injects its own
+   .pix-cp-* styles on first use. */
 
 /* Inline-icons picker popup — mirrors .pix-note-colorpop in
    positioning + dismiss behaviour, but shows a scrollable icon grid
