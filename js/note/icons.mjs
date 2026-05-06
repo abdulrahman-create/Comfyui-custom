@@ -140,6 +140,41 @@ export function renderIconHTML(id, color, size) {
   return `<span data-ic="${safeId}"${sizeAttr} class="pix-note-ic"${style}></span>&nbsp;`;
 }
 
+// HSV <-> hex helpers used by the inline color picker. h: 0-360,
+// s/v: 0-1. Returned hex strings always lowercase, 6-digit.
+function hexToHsv(hex) {
+  const m = /^#?([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(hex || "");
+  if (!m) return { h: 0, s: 0, v: 1 };
+  const r = parseInt(m[1], 16) / 255;
+  const g = parseInt(m[2], 16) / 255;
+  const b = parseInt(m[3], 16) / 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  const d = max - min;
+  let h = 0;
+  if (d > 0) {
+    if (max === r) h = ((g - b) / d) % 6;
+    else if (max === g) h = (b - r) / d + 2;
+    else h = (r - g) / d + 4;
+    h *= 60;
+    if (h < 0) h += 360;
+  }
+  return { h, s: max === 0 ? 0 : d / max, v: max };
+}
+function hsvToHex(h, s, v) {
+  const c = v * s;
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+  const m = v - c;
+  let r = 0, g = 0, b = 0;
+  if      (h < 60)  { r = c; g = x; }
+  else if (h < 120) { r = x; g = c; }
+  else if (h < 180) { g = c; b = x; }
+  else if (h < 240) { g = x; b = c; }
+  else if (h < 300) { r = x; b = c; }
+  else              { r = c; b = x; }
+  const to8 = (n) => Math.round((n + m) * 255).toString(16).padStart(2, "0");
+  return "#" + to8(r) + to8(g) + to8(b);
+}
+
 // Popup picker. Mirrors openColorPop in toolbar.mjs (positioning,
 // outside-click dismiss, mousedown-preventDefault to keep the
 // editor's selection alive). Hosts the color swatches + size pills +
@@ -194,6 +229,9 @@ function openIconPop(anchorBtn, icons, editor, onPick) {
       e.stopPropagation();
       editor._iconPickerColor = hex;
       hexInput.value = hex;
+      curHsv = hexToHsv(hex);
+      renderSV();
+      renderHue();
       refreshColorSelection();
       repaintGrid();
     });
@@ -201,6 +239,121 @@ function openIconPop(anchorBtn, icons, editor, onPick) {
     colorTiles.push({ tile, hex });
   }
   colorSection.appendChild(colorGrid);
+
+  // Inline HSV picker - SV plane + hue strip, custom canvas, no native
+  // dialog (which was opening a popup-over-popup that covered the icon
+  // grid). Drag inside the SV plane to pick saturation x value; drag
+  // along the hue strip to pick hue. Live-syncs the staged color, the
+  // hex input, the swatch-selection ring, and the icon-grid preview.
+  const svRow = document.createElement("div");
+  svRow.className = "pix-note-iconpop-svrow";
+
+  const svCanvas = document.createElement("canvas");
+  svCanvas.width  = 168;
+  svCanvas.height = 80;
+  svCanvas.className = "pix-note-iconpop-sv";
+
+  const hueCanvas = document.createElement("canvas");
+  hueCanvas.width  = 14;
+  hueCanvas.height = 80;
+  hueCanvas.className = "pix-note-iconpop-hue";
+
+  svRow.appendChild(svCanvas);
+  svRow.appendChild(hueCanvas);
+  colorSection.appendChild(svRow);
+
+  // Picker state initialised from current staged color (or default
+  // orange if none). Kept local to the popup; on each drag we write
+  // back to editor._iconPickerColor as a hex string.
+  const initSeed = /^#[0-9a-f]{6}$/i.test(editor._iconPickerColor || "")
+    ? editor._iconPickerColor
+    : "#f66744";
+  let curHsv = hexToHsv(initSeed);
+
+  function renderSV() {
+    const ctx = svCanvas.getContext("2d");
+    const w = svCanvas.width, h = svCanvas.height;
+    const hueHex = hsvToHex(curHsv.h, 1, 1);
+    const g1 = ctx.createLinearGradient(0, 0, w, 0);
+    g1.addColorStop(0, "#ffffff");
+    g1.addColorStop(1, hueHex);
+    ctx.fillStyle = g1;
+    ctx.fillRect(0, 0, w, h);
+    const g2 = ctx.createLinearGradient(0, 0, 0, h);
+    g2.addColorStop(0, "rgba(0,0,0,0)");
+    g2.addColorStop(1, "rgba(0,0,0,1)");
+    ctx.fillStyle = g2;
+    ctx.fillRect(0, 0, w, h);
+    const mx = curHsv.s * w;
+    const my = (1 - curHsv.v) * h;
+    ctx.beginPath();
+    ctx.arc(mx, my, 5, 0, Math.PI * 2);
+    ctx.strokeStyle = "#fff";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(mx, my, 5, 0, Math.PI * 2);
+    ctx.strokeStyle = "rgba(0,0,0,0.55)";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+  function renderHue() {
+    const ctx = hueCanvas.getContext("2d");
+    const w = hueCanvas.width, h = hueCanvas.height;
+    const grad = ctx.createLinearGradient(0, 0, 0, h);
+    for (let i = 0; i <= 6; i++) {
+      grad.addColorStop(i / 6, hsvToHex((i / 6) * 360, 1, 1));
+    }
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, w, h);
+    const my = (curHsv.h / 360) * h;
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, my - 1.5, w, 3);
+    ctx.fillStyle = "rgba(0,0,0,0.55)";
+    ctx.fillRect(0, my - 0.5, w, 1);
+  }
+  function applyPicker() {
+    const hex = hsvToHex(curHsv.h, curHsv.s, curHsv.v);
+    editor._iconPickerColor = hex;
+    if (hexInput) hexInput.value = hex;
+    renderSV();
+    renderHue();
+    refreshColorSelection();
+    repaintGrid();
+  }
+
+  let dragging = null;
+  const onSV = (e) => {
+    const r = svCanvas.getBoundingClientRect();
+    const x = Math.max(0, Math.min(svCanvas.width,  e.clientX - r.left));
+    const y = Math.max(0, Math.min(svCanvas.height, e.clientY - r.top));
+    curHsv.s = x / svCanvas.width;
+    curHsv.v = 1 - y / svCanvas.height;
+    applyPicker();
+  };
+  const onHue = (e) => {
+    const r = hueCanvas.getBoundingClientRect();
+    const y = Math.max(0, Math.min(hueCanvas.height, e.clientY - r.top));
+    curHsv.h = (y / hueCanvas.height) * 360;
+    applyPicker();
+  };
+  svCanvas.addEventListener("mousedown", (e) => {
+    e.preventDefault();
+    dragging = "sv";
+    onSV(e);
+  });
+  hueCanvas.addEventListener("mousedown", (e) => {
+    e.preventDefault();
+    dragging = "hue";
+    onHue(e);
+  });
+  const onWinMove = (e) => {
+    if (dragging === "sv") onSV(e);
+    else if (dragging === "hue") onHue(e);
+  };
+  const onWinUp = () => { dragging = null; };
+  window.addEventListener("mousemove", onWinMove);
+  window.addEventListener("mouseup", onWinUp);
 
   const hexRow = document.createElement("div");
   hexRow.className = "pix-note-iconpop-hexrow";
@@ -215,6 +368,9 @@ function openIconPop(anchorBtn, icons, editor, onPick) {
     const v = hexInput.value.startsWith("#") ? hexInput.value : `#${hexInput.value}`;
     if (/^#[0-9a-f]{6}$/i.test(v)) {
       editor._iconPickerColor = v;
+      curHsv = hexToHsv(v);
+      renderSV();
+      renderHue();
       refreshColorSelection();
       repaintGrid();
     }
@@ -231,6 +387,9 @@ function openIconPop(anchorBtn, icons, editor, onPick) {
     e.stopPropagation();
     editor._iconPickerColor = "#f66744";
     hexInput.value = "#f66744";
+    curHsv = hexToHsv("#f66744");
+    renderSV();
+    renderHue();
     refreshColorSelection();
     repaintGrid();
   });
@@ -325,6 +484,8 @@ function openIconPop(anchorBtn, icons, editor, onPick) {
   refreshColorSelection();
   refreshSizeSelection();
   repaintGrid();
+  renderSV();
+  renderHue();
 
   document.body.appendChild(pop);
 
@@ -333,6 +494,8 @@ function openIconPop(anchorBtn, icons, editor, onPick) {
   };
   function close() {
     document.removeEventListener("mousedown", onDocDown, true);
+    window.removeEventListener("mousemove", onWinMove);
+    window.removeEventListener("mouseup", onWinUp);
     pop.remove();
   }
   setTimeout(() => document.addEventListener("mousedown", onDocDown, true), 0);

@@ -874,6 +874,27 @@ export function injectCSS() {
   outline: 2px solid ${BRAND};
   outline-offset: 1px;
 }
+.pix-note-iconpop-svrow {
+  display: flex;
+  gap: 6px;
+  align-items: stretch;
+}
+.pix-note-iconpop-sv {
+  border: 1px solid #444;
+  border-radius: 3px;
+  cursor: crosshair;
+  display: block;
+  flex: 1 1 auto;
+  width: 100%;
+  height: 80px;
+}
+.pix-note-iconpop-hue {
+  border: 1px solid #444;
+  border-radius: 3px;
+  cursor: ns-resize;
+  display: block;
+  flex: 0 0 auto;
+}
 .pix-note-iconpop-hexrow {
   display: flex;
   gap: 6px;
