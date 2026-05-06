@@ -438,6 +438,10 @@ export function createPixaromaColorPicker(opts = {}) {
     element: root,
     getColor: () => curColor,
     setColor: (c) => {
+      // null means "transparent / inherit" - only valid when the
+      // picker was created with showClear: true. Ignore null otherwise
+      // so the internal HSV state stays consistent with curColor.
+      if (c === null && !showClear) return;
       curColor = c;
       if (c !== null) curHsv = hexToHsv(c);
       refresh();

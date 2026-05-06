@@ -172,14 +172,24 @@ export class NoteEditor {
         e.preventDefault();
         e.stopPropagation();
         this._snapBefore?.();
-        // renderIconHTML always appends a trailing &nbsp; AFTER the icon.
-        // Eat it too so there is no orphan nbsp left between former
-        // neighbours. Match exact U+00A0.
+        // renderIconHTML always appends a trailing &nbsp; AFTER the
+        // icon. Eat it too so there is no orphan nbsp left between
+        // former neighbours. Two shapes to handle:
+        //   (a) followerNbsp is a separate text node containing
+        //       exactly U+00A0 (fresh insert, no typing yet) -> remove.
+        //   (b) followerNbsp is a text node starting with U+00A0
+        //       followed by user-typed text (Chrome merged the nbsp
+        //       with subsequent text into one node) -> strip the
+        //       leading nbsp char only, keep the rest.
         const wrapper = icon.parentElement;
         const followerNbsp = icon.nextSibling;
         if (followerNbsp && followerNbsp.nodeType === 3
-            && followerNbsp.nodeValue === " ") {
-          followerNbsp.remove();
+            && followerNbsp.nodeValue) {
+          if (followerNbsp.nodeValue === " ") {
+            followerNbsp.remove();
+          } else if (followerNbsp.nodeValue.charCodeAt(0) === 0x00A0) {
+            followerNbsp.nodeValue = followerNbsp.nodeValue.slice(1);
+          }
         }
         icon.remove();
         // If removing the icon left an empty inline wrapper behind
@@ -329,169 +339,11 @@ export class NoteEditor {
             return;
           }
         }
-        // Backspace right after an icon+nbsp pair → delete both in
-        // one keystroke. The trailing &nbsp; emitted by
-        // renderIconHTML (js/note/icons.mjs) exists to give the
-        // caret a reliable landing character after the empty
-        // inline-block icon span, but it counts as a character for
-        // Backspace — without this handler, users have to press
-        // Backspace twice (first removes the nbsp, second removes
-        // the icon span) which feels wrong. Guard is tight: only
-        // fires when the selection is collapsed AND the caret sits
-        // immediately after "<icon-span>\u00A0|" so we don't steal
-        // normal Backspace behaviour anywhere else.
-        if (key === "backspace" && !mod) {
-          const sel = window.getSelection();
-          if (sel && sel.rangeCount > 0) {
-            const r = sel.getRangeAt(0);
-            if (r.collapsed && this._editArea?.contains(r.startContainer)) {
-              const node = r.startContainer;
-              const off = r.startOffset;
-              if (
-                node.nodeType === 3 &&
-                off === 1 &&
-                node.nodeValue &&
-                node.nodeValue[0] === "\u00A0"
-              ) {
-                const prev = node.previousSibling;
-                if (
-                  prev &&
-                  prev.nodeType === 1 &&
-                  prev.classList?.contains("pix-note-ic")
-                ) {
-                  e.preventDefault();
-                  e.stopImmediatePropagation();
-                  this._snapBefore?.();
-                  prev.remove();
-                  node.nodeValue = node.nodeValue.slice(1);
-                  // Reposition caret to where the icon used to be.
-                  // If the text node still has content, caret goes
-                  // to its start; otherwise remove the now-empty
-                  // text node and collapse to the parent block end.
-                  const parent = node.parentNode;
-                  const r2 = document.createRange();
-                  if (node.nodeValue.length > 0) {
-                    r2.setStart(node, 0);
-                  } else {
-                    const idx = Array.prototype.indexOf.call(
-                      parent.childNodes, node
-                    );
-                    parent.removeChild(node);
-                    r2.setStart(parent, Math.max(0, idx));
-                  }
-                  r2.collapse(true);
-                  sel.removeAllRanges();
-                  sel.addRange(r2);
-                  this._snapAfter?.();
-                  this._dirty = true;
-                  return;
-                }
-              }
-              // Text-node-offset-0 fallback. The user clicked
-              // BETWEEN the icon and the nbsp (visually: right
-              // after the icon glyph, before any space), so Chrome
-              // placed the caret at offset 0 of the text node that
-              // starts with nbsp — e.g. `(textNode "\u00A0Settings", 0)`.
-              // The strict text-node-offset-1 branch above requires
-              // off === 1 and bails; native Backspace then runs and
-              // refuses to delete an empty inline-block span. Match
-              // this caret shape and delete the icon + strip the
-              // leading nbsp.
-              if (
-                node.nodeType === 3 &&
-                off === 0 &&
-                node.nodeValue?.[0] === "\u00A0"
-              ) {
-                const prev = node.previousSibling;
-                if (
-                  prev &&
-                  prev.nodeType === 1 &&
-                  prev.classList?.contains("pix-note-ic")
-                ) {
-                  e.preventDefault();
-                  e.stopImmediatePropagation();
-                  this._snapBefore?.();
-                  prev.remove();
-                  node.nodeValue = node.nodeValue.slice(1);
-                  const parent = node.parentNode;
-                  const r2 = document.createRange();
-                  if (node.nodeValue.length > 0) {
-                    r2.setStart(node, 0);
-                  } else {
-                    const idx = Array.prototype.indexOf.call(
-                      parent.childNodes, node
-                    );
-                    parent.removeChild(node);
-                    r2.setStart(parent, Math.max(0, idx));
-                  }
-                  r2.collapse(true);
-                  sel.removeAllRanges();
-                  sel.addRange(r2);
-                  this._snapAfter?.();
-                  this._dirty = true;
-                  return;
-                }
-              }
-              // Element-container fallback. On fresh inserts Chrome
-              // programmatically parks the caret INSIDE the nbsp
-              // text node at offset 1 (branch above). On restored
-              // content (workflow reload), the user CLICKS near the
-              // icon to delete it and Chrome resolves the caret to
-              // the parent element at the boundary between the
-              // empty inline-block span and the following text node
-              // — e.g. `{container: <h1>, offset: 1}`. The strict
-              // text-node check above fails and native Backspace
-              // refuses to delete an empty inline-block span, so
-              // the icon appears un-deletable. Here we match the
-              // element-container shape: caret at (elem, N) where
-              // childNodes[N-1] is a .pix-note-ic span. Same
-              // delete-both semantics.
-              if (node.nodeType === 1 && off >= 1) {
-                const prev = node.childNodes[off - 1];
-                if (
-                  prev &&
-                  prev.nodeType === 1 &&
-                  prev.classList?.contains("pix-note-ic")
-                ) {
-                  e.preventDefault();
-                  e.stopImmediatePropagation();
-                  this._snapBefore?.();
-                  const next = node.childNodes[off];
-                  prev.remove();
-                  // Strip leading nbsp from the following text node
-                  // if present, matching the text-node branch above.
-                  if (
-                    next &&
-                    next.nodeType === 3 &&
-                    next.nodeValue?.[0] === "\u00A0"
-                  ) {
-                    next.nodeValue = next.nodeValue.slice(1);
-                    if (next.nodeValue.length === 0) {
-                      next.parentNode?.removeChild(next);
-                    }
-                  }
-                  const r2 = document.createRange();
-                  // After prev.remove(), childNodes shifted down by
-                  // 1, so the slot where the icon used to be is now
-                  // off-1. Clamp to childNodes.length for safety
-                  // (valid Range offset: 0..childNodes.length).
-                  const clamped = Math.min(
-                    Math.max(0, off - 1),
-                    node.childNodes.length
-                  );
-                  r2.setStart(node, clamped);
-                  r2.collapse(true);
-                  sel.removeAllRanges();
-                  sel.addRange(r2);
-                  this._snapAfter?.();
-                  this._dirty = true;
-                  return;
-                }
-              }
-            }
-          }
-        }
-        // Escape → close (with dirty-confirm). If a child modal is open
+        // Atomic Backspace/Delete around inline-icon spans is
+        // handled by _iconKeyHandler attached on editArea below (see
+        // open(), Pattern #29). Kept out of _keyBlock so the two
+        // handlers do not divergently match overlapping caret shapes.
+                // Escape → close (with dirty-confirm). If a child modal is open
         // (code dialog, link dialog, block dialog, color popup, or the
         // confirm dialog itself) skip the editor-close so Esc doesn't
         // silently nuke everything. Those modals don't install their own
@@ -1372,6 +1224,12 @@ NoteEditor.prototype._enterPreviewView = function () {
   }
   this._editArea.style.display = "";
   this._mode = "preview";
+  // The user clearly worked on the note (typed in Code view). Treat
+  // that as a "touch" so a subsequent icon insert lands at the caret
+  // position (or end-of-note fallback) rather than silently going to
+  // offset 0 - which is the browser's default selection on a fresh
+  // contenteditable that has no other interaction recorded.
+  this._editAreaTouched = true;
   this._editArea.focus();
 };
 
