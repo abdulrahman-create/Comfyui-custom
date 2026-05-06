@@ -93,6 +93,17 @@ function getUpstreamSnapshot(node) {
   return `link:${link.origin_id}/${link.origin_slot}`;
 }
 
+// Build a /view URL from a {filename, subfolder, type} record. Adds a fresh
+// cache-buster timestamp at runtime; persisted records (in node.properties)
+// store only the structural parts so workflow JSON stays clean.
+function buildSourceURL(part, withCacheBust) {
+  if (!part || !part.filename) return null;
+  const url = `/view?filename=${encodeURIComponent(part.filename)}` +
+              `&subfolder=${encodeURIComponent(part.subfolder || "")}` +
+              `&type=${encodeURIComponent(part.type || "temp")}`;
+  return withCacheBust ? `${url}&t=${Date.now()}` : url;
+}
+
 // ─── Global paste handler (clipboard → selected Crop node) ────────────────
 // Mirrors the way native LoadImage accepts a clipboard paste: when the user
 // presses Ctrl+V with an image in the clipboard AND a PixaromaCrop node is
@@ -230,9 +241,16 @@ app.registerExtension({
       this.imgs = null; // prevent native preview flash on restore
 
       // Restore cached source URL from saved properties (Vue Compat #11).
-      // node.properties is populated by LiteGraph deserialize before this fires.
-      if (this.properties?.pixaromaCropSourceURL && !this._pixaromaCropSourceURL) {
-        this._pixaromaCropSourceURL = this.properties.pixaromaCropSourceURL;
+      // Two formats supported: the new `pixaromaCropSource` (parts only —
+      // we rebuild the URL with a fresh cache-buster) and the legacy
+      // `pixaromaCropSourceURL` field (full URL string). node.properties is
+      // populated by LiteGraph deserialize before this fires.
+      if (!this._pixaromaCropSourceURL) {
+        if (this.properties?.pixaromaCropSource) {
+          this._pixaromaCropSourceURL = buildSourceURL(this.properties.pixaromaCropSource, true);
+        } else if (this.properties?.pixaromaCropSourceURL) {
+          this._pixaromaCropSourceURL = this.properties.pixaromaCropSourceURL;
+        }
       }
 
       if (this._pixaromaCropRefresh) {
@@ -471,12 +489,15 @@ app.registerExtension({
         // Cache the source URL so the mini-preview + editor pick it up
         // (mirrors the upstream-tensor path's URL caching).
         if (srcPath) {
-          const fname = srcPath.split(/[\\/]/).pop();
-          const url = `/view?filename=${encodeURIComponent(fname)}` +
-                      `&subfolder=pixaroma&type=input&t=${Date.now()}`;
-          node._pixaromaCropSourceURL = url;
+          const part = {
+            filename: srcPath.split(/[\\/]/).pop(),
+            subfolder: "pixaroma",
+            type: "input",
+          };
+          node._pixaromaCropSourceURL = buildSourceURL(part, true);
           if (!node.properties) node.properties = {};
-          node.properties.pixaromaCropSourceURL = url;
+          node.properties.pixaromaCropSource = part;
+          delete node.properties.pixaromaCropSourceURL;
         }
         node._pixaromaLastImageDims = { w: dims.w, h: dims.h };
 
@@ -511,7 +532,10 @@ app.registerExtension({
       if (inputName !== "image") return;
       // Wire changed → cached URL is stale.
       node._pixaromaCropSourceURL = null;
-      if (node.properties) delete node.properties.pixaromaCropSourceURL;
+      if (node.properties) {
+        delete node.properties.pixaromaCropSource;
+        delete node.properties.pixaromaCropSourceURL;
+      }
       if (connected) {
         rebuildPreviewFromUpstream();
       }
@@ -543,13 +567,12 @@ app.registerExtension({
       const frames = detail.output.pixaroma_crop_source;
       if (!frames?.length) return;
       const f = frames[0];
-      const url = `/view?filename=${encodeURIComponent(f.filename)}` +
-                  `&subfolder=${encodeURIComponent(f.subfolder || "")}` +
-                  `&type=${encodeURIComponent(f.type || "temp")}` +
-                  `&t=${Date.now()}`;
-      node._pixaromaCropSourceURL = url;
+      const part = { filename: f.filename, subfolder: f.subfolder || "", type: f.type || "temp" };
+      node._pixaromaCropSourceURL = buildSourceURL(part, true);
       if (!node.properties) node.properties = {};
-      node.properties.pixaromaCropSourceURL = url;
+      node.properties.pixaromaCropSource = part;
+      // Drop the legacy full-URL field if present (back-compat cleanup).
+      delete node.properties.pixaromaCropSourceURL;
       rebuildPreviewFromUpstream();
     };
     api.addEventListener("executed", onExec);

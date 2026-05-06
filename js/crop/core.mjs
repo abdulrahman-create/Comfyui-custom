@@ -120,34 +120,21 @@ export class CropEditor {
           this.cropAlign = defaultAlignForMeta(data);
         }
         this._alignSelect && (this._alignSelect.value = this.cropAlign);
-        // Restore crop coordinates, scaling proportionally if the loaded
-        // image's dims differ from the original-saved dims. If the aspect
-        // ratio changed significantly (>10%), reset to full-image crop --
-        // the inherited rect would otherwise look weird on the new source.
+        // Restore crop coordinates as ABSOLUTE pixels, clamped to image bounds.
+        // No proportional rescale — matches Python's _crop_tensor and the JS
+        // mini-preview rebuild. If the saved rect ends up entirely outside the
+        // new image, fall back to a full-image crop so the editor isn't empty.
         if (data.crop_x != null) {
-          const ow = data.original_w || this.imgW;
-          const oh = data.original_h || this.imgH;
-          const oldAspect = ow > 0 && oh > 0 ? ow / oh : 0;
-          const newAspect = this.imgW > 0 && this.imgH > 0 ? this.imgW / this.imgH : 0;
-          const aspectDelta = oldAspect && newAspect
-            ? Math.abs(newAspect - oldAspect) / oldAspect
-            : 0;
-
-          if (aspectDelta > 0.1) {
-            this.cropX = 0;
-            this.cropY = 0;
-            this.cropW = this.imgW;
-            this.cropH = this.imgH;
-          } else {
-            let cx = data.crop_x, cy = data.crop_y;
-            let cw = data.crop_w, ch = data.crop_h;
-            if (ow !== this.imgW || oh !== this.imgH) {
-              const sx = this.imgW / ow, sy = this.imgH / oh;
-              cx *= sx; cy *= sy; cw *= sx; ch *= sy;
-            }
-            this.cropX = cx; this.cropY = cy;
-            this.cropW = cw; this.cropH = ch;
+          let cx = Math.max(0, Math.min(data.crop_x, this.imgW));
+          let cy = Math.max(0, Math.min(data.crop_y, this.imgH));
+          let cw = Math.max(1, Math.min(data.crop_w, this.imgW - cx));
+          let ch = Math.max(1, Math.min(data.crop_h, this.imgH - cy));
+          if (cw < 2 || ch < 2) {
+            cx = 0; cy = 0;
+            cw = this.imgW; ch = this.imgH;
           }
+          this.cropX = cx; this.cropY = cy;
+          this.cropW = cw; this.cropH = ch;
         } else {
           // First open with this source -- default to full-image crop
           this.cropX = 0;

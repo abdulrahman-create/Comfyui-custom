@@ -321,6 +321,10 @@ proto._resetCrop = function () {
   this._canvasSettings.setRatio(0);
   this._canvasSettings.setSize(this.imgW, this.imgH);
   this._snapGrid.setActive(0);
+  // Also clear sticky alignment so Reset returns the dropdown to Free
+  // (matches the panel's "edit X/Y → Free" override semantics).
+  this.cropAlign = "free";
+  if (this._alignSelect) this._alignSelect.value = "free";
   this.cropX = 0;
   this.cropY = 0;
   this.cropW = this.imgW;
