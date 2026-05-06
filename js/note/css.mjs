@@ -276,18 +276,13 @@ export function injectCSS() {
   height: 18px;
   vertical-align: -4px;
   margin: 0 4px;
-  /* user-select:none stops a drag-select from grabbing the icon as
-     a draggable text fragment (which otherwise interferes with
-     caret placement). pointer-events: auto (default) lets arrow-key
-     caret traversal pause AT the icon edges - with pointer-events:
-     none the browser sometimes skips over the icon entirely when
-     arrow-keying, leaving the user unable to reach "before icon" /
-     "after icon" positions. The _iconClickHandler in core.mjs uses
-     getBoundingClientRect to place the caret on whichever side of
-     the icon was clicked, regardless of whether the click target
-     was the icon or its parent. */
-  user-select: none;
-  -webkit-user-select: none;
+  /* No user-select / pointer-events overrides. user-select:none
+     made Ctrl+A skip icons in the selection (so Delete left them
+     behind). pointer-events:none broke arrow-key caret traversal
+     (browser would skip the icon entirely instead of pausing at
+     its edges). The _iconClickHandler in core.mjs explicitly places
+     the caret based on click X relative to the icon's bbox, so we
+     don't need either CSS guard for click placement. */
   background-color: currentColor;
   -webkit-mask-size: contain;
           mask-size: contain;
