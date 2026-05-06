@@ -1,7 +1,8 @@
+import os
+import uuid
 import torch
 import numpy as np
 from PIL import Image
-import os
 import json
 import folder_paths
 from .node_ref import any_type, FlexibleOptionalInputType
@@ -52,6 +53,26 @@ class PixaromaCrop:
             pass
         return str(crop_data)
 
+    def _save_source_temp(self, tensor):
+        """Save the *input* tensor (full uncropped, batch slot 0) to ComfyUI's
+        temp/ as a UUID-named PNG so the JS editor + mini-preview can fetch
+        it via /view?type=temp. Best-effort — returns the filename or None
+        on any failure (never raise; the workflow must keep running)."""
+        try:
+            if not isinstance(tensor, torch.Tensor) or tensor.dim() != 4 or tensor.shape[0] == 0:
+                return None
+            arr = tensor[0].clamp(0.0, 1.0).cpu().numpy()
+            arr = (arr * 255.0 + 0.5).astype(np.uint8)
+            img = Image.fromarray(arr)
+            temp_dir = folder_paths.get_temp_directory()
+            os.makedirs(temp_dir, exist_ok=True)
+            fname = f"pixaroma_crop_src_{uuid.uuid4().hex}.png"
+            img.save(os.path.join(temp_dir, fname), "PNG")
+            return fname
+        except Exception as e:
+            print(f"[PixaromaCrop] temp source save failed: {e}")
+            return None
+
     def load_crop(self, **kwargs):
         empty_image = torch.ones((1, 1024, 1024, 3), dtype=torch.float32)
 
@@ -74,27 +95,42 @@ class PixaromaCrop:
                 except Exception as e:
                     print(f"[PixaromaCrop] crop_json parse error: {e}")
 
-        # ── Upstream tensor path ──────────────────────────────────────────────
-        # If an IMAGE is wired in, prefer it over the on-disk composite. This is
-        # the "drop-in after Load Image" workflow the user wants.
+        # Capture the *input* tensor URL for the JS editor + mini-preview.
+        # Best-effort: failures don't block the crop.
+        ui_payload = None
+        if isinstance(upstream, torch.Tensor):
+            src_fname = self._save_source_temp(upstream)
+            if src_fname:
+                ui_payload = {"pixaroma_crop_source": [
+                    {"filename": src_fname, "subfolder": "", "type": "temp"}
+                ]}
+
+        # ── Apply the crop ────────────────────────────────────────────────────
         if isinstance(upstream, torch.Tensor):
             try:
-                return self._crop_tensor(upstream, meta)
+                result = self._crop_tensor(upstream, meta)
             except Exception as e:
                 print(f"[PixaromaCrop] upstream crop error: {e}")
-                # Fall through to disk path
+                result = self._load_disk_composite(meta, empty_image)
+        else:
+            result = self._load_disk_composite(meta, empty_image)
 
-        # ── Disk composite path (back-compat) ─────────────────────────────────
-        return self._load_disk_composite(meta, empty_image)
+        if ui_payload:
+            return {"ui": ui_payload, "result": result}
+        return result
 
     # ─────────────────────────────────────────────────────────────────────────
 
     def _crop_tensor(self, tensor, meta):
         """Crop an upstream IMAGE tensor [B,H,W,C] using the saved rect.
 
-        Rect coords are scaled proportionally if upstream dims differ from the
-        original_w/original_h captured at editor save time. If meta is empty
-        (user wired upstream but never opened the editor), pass through unmodified.
+        Coordinates are treated as ABSOLUTE pixels (no proportional rescale
+        from original_w/original_h). The numeric panel + editor both write
+        literal pixel values; rescaling on dim mismatch was confusing — typing
+        W=430 on a 1920-wide source should crop 430 px, not "the same fraction"
+        of the new image. Out-of-bounds coords are clamped to the image rect.
+        If meta is empty (user wired upstream but never opened the editor or
+        edited the panel), pass through unmodified.
         """
         if tensor.dim() != 4 or tensor.shape[0] == 0:
             # Unexpected shape -- pass through unmodified
@@ -113,17 +149,6 @@ class PixaromaCrop:
         crop_y = float(meta.get("crop_y", 0))
         crop_w = float(meta.get("crop_w", w))
         crop_h = float(meta.get("crop_h", h))
-        orig_w = float(meta.get("original_w", w))
-        orig_h = float(meta.get("original_h", h))
-
-        # Scale rect proportionally if upstream dims changed since save
-        if orig_w > 0 and orig_h > 0 and (orig_w != w or orig_h != h):
-            sx = w / orig_w
-            sy = h / orig_h
-            crop_x *= sx
-            crop_y *= sy
-            crop_w *= sx
-            crop_h *= sy
 
         x0 = max(0, int(round(crop_x)))
         y0 = max(0, int(round(crop_y)))
@@ -138,25 +163,48 @@ class PixaromaCrop:
         return (cropped, int(x1 - x0), int(y1 - y0))
 
     def _load_disk_composite(self, meta, empty_image):
-        """Original behavior: load the editor-saved cropped PNG from input/pixaroma/."""
+        """Load a saved image from input/pixaroma/. Two paths:
+
+        1. composite_path: the editor-saved pre-cropped PNG. Returned as-is
+           (the editor already did the crop on the JS side).
+        2. src_path: the uncropped source (e.g. uploaded via Ctrl+V paste).
+           We load it and apply crop_x/y/w/h on the Python side, mirroring
+           _crop_tensor's behavior for upstream tensors. This lets the user
+           change crop dims in the on-node panel and have the workflow output
+           reflect the change without re-opening the editor.
+        """
         doc_w = int(meta.get("doc_w", 1024))
         doc_h = int(meta.get("doc_h", 1024))
 
         composite_path = meta.get("composite_path", "")
-        if not composite_path:
-            arr = np.ones((doc_h, doc_w, 3), dtype=np.float32)
-            return (torch.from_numpy(arr)[None,], doc_w, doc_h)
+        src_path = meta.get("src_path", "")
 
+        if composite_path:
+            return self._load_image_from_pixaroma(composite_path, doc_w, doc_h, empty_image)
+
+        if src_path:
+            return self._load_src_and_crop(src_path, meta, doc_w, doc_h, empty_image)
+
+        # Nothing on disk → return a blank doc-sized image
+        arr = np.ones((doc_h, doc_w, 3), dtype=np.float32)
+        return (torch.from_numpy(arr)[None,], doc_w, doc_h)
+
+    def _resolve_pixaroma_path(self, rel_path):
+        """Resolve a saved relative path inside input/pixaroma/, returning
+        an absolute path or None if it escapes the directory or doesn't exist."""
         input_dir = os.path.realpath(folder_paths.get_input_directory())
-        full_path = os.path.realpath(os.path.join(input_dir, composite_path))
-
+        full_path = os.path.realpath(os.path.join(input_dir, rel_path))
         if not full_path.startswith(input_dir + os.sep):
-            print("[PixaromaCrop] Security: composite_path escapes input directory, blocked.")
-            return (empty_image, doc_w, doc_h)
-
+            print("[PixaromaCrop] Security: path escapes input directory, blocked.")
+            return None
         if not os.path.exists(full_path):
-            return (empty_image, doc_w, doc_h)
+            return None
+        return full_path
 
+    def _load_image_from_pixaroma(self, rel_path, doc_w, doc_h, empty_image):
+        full_path = self._resolve_pixaroma_path(rel_path)
+        if not full_path:
+            return (empty_image, doc_w, doc_h)
         try:
             img = Image.open(full_path).convert("RGB")
             arr = np.array(img).astype(np.float32) / 255.0
@@ -164,6 +212,22 @@ class PixaromaCrop:
         except Exception as e:
             print(f"[PixaromaCrop] Load error: {e}")
             return (empty_image, 1024, 1024)
+
+    def _load_src_and_crop(self, src_path, meta, doc_w, doc_h, empty_image):
+        """Load the uncropped source image and apply crop_x/y/w/h. Used when
+        an image was pasted/uploaded but the editor was never opened to bake
+        the composite (or the user is tweaking crop dims via the panel)."""
+        full_path = self._resolve_pixaroma_path(src_path)
+        if not full_path:
+            return (empty_image, doc_w, doc_h)
+        try:
+            img = Image.open(full_path).convert("RGB")
+            arr = np.array(img).astype(np.float32) / 255.0
+            tensor = torch.from_numpy(arr)[None,]  # [1, H, W, 3]
+            return self._crop_tensor(tensor, meta)
+        except Exception as e:
+            print(f"[PixaromaCrop] src load error: {e}")
+            return (empty_image, doc_w, doc_h)
 
 
 NODE_CLASS_MAPPINGS = {
