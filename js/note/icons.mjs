@@ -368,6 +368,35 @@ NoteEditor.prototype._insertInlineIcon = async function (anchorBtn) {
     const color = this._iconPickerColor || "";
     const size  = this._iconPickerSize  || "m";
     this._snapBefore?.();
+
+    // If the target block is filler-only (just a <br> placeholder
+    // that fresh contenteditable / _normalizeEditArea produces for
+    // empty paragraphs), wipe its filler content and put the range
+    // at offset 0 of the block. Otherwise the icon would be inserted
+    // after the <br>, creating a visible blank line above the icon.
+    const findEnclosingBlock = (node) => {
+      let n = node;
+      while (n && n !== this._editArea) {
+        if (n.parentNode === this._editArea && n.nodeType === 1) return n;
+        n = n.parentNode;
+      }
+      return null;
+    };
+    const targetBlock = findEnclosingBlock(insertRange.startContainer);
+    if (targetBlock) {
+      const onlyFiller = Array.from(targetBlock.childNodes).every((c) => {
+        if (c.nodeType === 1 && c.tagName === "BR") return true;
+        if (c.nodeType === 3 && /^[\s ]*$/.test(c.nodeValue || "")) return true;
+        return false;
+      });
+      if (onlyFiller) {
+        while (targetBlock.firstChild) targetBlock.removeChild(targetBlock.firstChild);
+        insertRange = document.createRange();
+        insertRange.selectNodeContents(targetBlock);
+        insertRange.collapse(true);
+      }
+    }
+
     const tmpl = document.createElement("template");
     tmpl.innerHTML = renderIconHTML(id, color, size);
     const frag = tmpl.content;
