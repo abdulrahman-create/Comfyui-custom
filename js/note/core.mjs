@@ -438,7 +438,14 @@ export class NoteEditor {
       if (this._el && !this._el.isConnected) this._cleanup();
     });
     this._removalObserver.observe(document.body, { childList: true, subtree: false });
-    requestAnimationFrame(() => this._editArea?.focus());
+    // Focus the contenteditable AND place the caret at the end of
+    // the last block so the user sees a visibly blinking cursor at a
+    // natural typing position. Without explicit placement the caret
+    // lands at offset 0 (often invisible against icons or block start)
+    // and savedRange capture later picks up that hidden default,
+    // surprising the user when icon insert lands at the start of the
+    // note instead of where they expect.
+    requestAnimationFrame(() => this._placeCursorAtEnd?.());
   }
 
   async close(force = false) {
