@@ -52,7 +52,7 @@ A fast, easy-to-use painting tool. It features layers, custom brushes, and a smu
 ![Paint Editor](workflows/Paint%20Pixaroma%20Workflow%20v2.jpg?v=2)
 
 ### ✂️ Precision Crop
-No more guessing crop sizes with numbers! Visually draw your crop box. It includes standard presets (like 1:1 or 16:9) so your image is always framed perfectly for social media or video. Wire any **IMAGE** output directly into the node — drop it after a Load Image and the crop applies to the upstream image at execution time, just like a standard ComfyUI node.
+No more guessing crop sizes with numbers! Visually draw your crop box, or set width, height, position and a center/edge alignment right on the node — math expressions like `1024+512` work too. Standard presets (1:1, 16:9, 9:16…) keep social and video aspects locked. Wire **any IMAGE** output into the node (Load Image, VAE Decode, anything) and run the workflow once — the editor and mini-preview will show the live source. Or paste an image straight from the clipboard with **Ctrl+V**.
 
 📥 [Download example workflow](workflows/Crop%20Pixaroma%20Workflow.json)
 
