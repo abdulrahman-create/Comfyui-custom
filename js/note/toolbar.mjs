@@ -318,7 +318,20 @@ NoteEditor.prototype._buildToolbar = function () {
       if (!sel || sel.rangeCount === 0) return;
       const range = sel.getRangeAt(0);
       // Walk up from the caret to the top-level block child of editArea.
-      const findTopBlock = (start) => {
+      // Special case: if the start node IS editArea (happens after
+      // doUndo + _placeCursorAtEnd, which collapses to editArea at
+      // childNodes.length), pick the child at the relevant offset.
+      const findTopBlock = (start, off) => {
+        if (start === editArea) {
+          // offset is the index in childNodes. Use the child to the LEFT
+          // of the caret if there is one, else the one to the right.
+          const idx = Math.min(off ?? 0, editArea.childNodes.length);
+          const cand =
+            editArea.childNodes[idx - 1] ||
+            editArea.childNodes[idx] ||
+            null;
+          return (cand && cand.nodeType === 1) ? cand : null;
+        }
         let n = start;
         while (n && n !== editArea) {
           if (n.parentNode === editArea && n.nodeType === 1) return n;
@@ -326,8 +339,8 @@ NoteEditor.prototype._buildToolbar = function () {
         }
         return null;
       };
-      const startBlock = findTopBlock(range.startContainer);
-      const endBlock   = findTopBlock(range.endContainer);
+      const startBlock = findTopBlock(range.startContainer, range.startOffset);
+      const endBlock   = findTopBlock(range.endContainer,   range.endOffset);
       if (!startBlock) return;
       // Collect every block touched by the selection (or just the one).
       const blocks = [];
