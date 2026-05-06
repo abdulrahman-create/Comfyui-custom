@@ -1025,8 +1025,8 @@ export class NoteEditor {
         <div class="pix-note-help-section">
           <h4>Allowed Inline Styles</h4>
           <div class="pix-note-help-grid">
-            <b><code>color</code></b><span>Text foreground. Hex only (#rgb or #rrggbb). Other formats stripped.</span>
-            <b><code>background-color</code></b><span>Text highlight. Hex only.</span>
+            <b><code>color</code></b><span>Text foreground. Accepts <code>#rgb</code> / <code>#rrggbb</code>, <code>rgb(...)</code> / <code>rgba(...)</code>, <code>transparent</code> / <code>inherit</code> / <code>currentColor</code>, and a small set of named colours (black / white / red / green / blue / yellow / orange / purple / gray / grey).</span>
+            <b><code>background-color</code></b><span>Text highlight. Same value forms as <code>color</code>.</span>
             <b><code>text-align</code></b><span>left / right / center / justify</span>
           </div>
           <p style="margin:6px 0 0 0;color:#888;">Any other style (font-size, margin, display, …) is removed on save / paste / view-switch.</p>
@@ -1051,7 +1051,7 @@ export class NoteEditor {
             <b>&lt;iframe&gt; / &lt;img&gt;</b><span>Always removed</span>
             <b>on*=</b><span>All event handlers (onclick, onerror, onmouseover, …) stripped from every tag</span>
             <b>javascript:</b><span>URL scheme blocked on &lt;a&gt;</span>
-            <b>data-*</b><span>Only data-ic is kept (on span). Other data-attrs removed.</span>
+            <b>data-*</b><span>Allowlist: <code>data-ic</code> + <code>data-size</code> + <code>contenteditable</code> on <code>&lt;span&gt;</code> (inline icons); <code>data-folder</code> + <code>data-size</code> + <code>data-label</code> on <code>&lt;a&gt;</code> (Button Design pills). Everything else stripped.</span>
           </div>
         </div>
         <div class="pix-note-help-section">
