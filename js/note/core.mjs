@@ -19,6 +19,12 @@ export class NoteEditor {
     // within the same editor session; reset to defaults on _cleanup.
     this._iconPickerColor = "#f66744"; // Pixaroma orange default
     this._iconPickerSize  = "m";       // 1.2em, matches existing default
+    // True once the user has actually clicked or typed inside the
+    // editArea this session. Distinguishes a real caret position from
+    // the browser's default offset-0 selection on a fresh contenteditable.
+    // Used by _insertInlineIcon to decide whether to honor savedRange or
+    // fall back to "append at end of note".
+    this._editAreaTouched = false;
 
     // Sync cfg.backgroundColor to node.bgcolor on open when they
     // disagree. Happens when the user picks a color via ComfyUI's
@@ -181,6 +187,13 @@ export class NoteEditor {
       };
       editArea.addEventListener("keydown", this._iconKeyHandler);
 
+      // Track first user interaction so _insertInlineIcon can tell a
+      // real caret position from the browser's default offset-0
+      // selection on a freshly-opened contenteditable.
+      this._touchHandler = () => { this._editAreaTouched = true; };
+      editArea.addEventListener("mousedown", this._touchHandler);
+      editArea.addEventListener("keydown",   this._touchHandler);
+
       // Click on or near an icon: explicitly place the caret on the
       // side of the icon nearest to the click point. Without this,
       // contenteditable's default caret placement around inline-block
@@ -192,18 +205,27 @@ export class NoteEditor {
       // decides which side gets the caret.
       this._iconClickHandler = (e) => {
         if (e.button !== 0) return; // left button only
-        const els = document.elementsFromPoint(e.clientX, e.clientY);
-        const ic = els.find((el) =>
-          el && el.classList && el.classList.contains("pix-note-ic")
-          && editArea.contains(el)
-        );
-        if (!ic) return;
+        // Iterate visible icons to find one whose bbox contains the
+        // click. Direct bbox check is more predictable than
+        // elementsFromPoint (which can include the icon for clicks in
+        // the surrounding gap that visually feel "between" the icon
+        // and the next character).
+        const icons = editArea.querySelectorAll(".pix-note-ic");
+        let hit = null;
+        for (const ic of icons) {
+          const r = ic.getBoundingClientRect();
+          if (e.clientX >= r.left && e.clientX <= r.right &&
+              e.clientY >= r.top  && e.clientY <= r.bottom) {
+            hit = { ic, rect: r };
+            break;
+          }
+        }
+        if (!hit) return; // click is in the gap or on text - browser handles
         e.preventDefault();
-        const rect = ic.getBoundingClientRect();
-        const mid  = rect.left + rect.width / 2;
+        const mid = hit.rect.left + hit.rect.width / 2;
         const range = document.createRange();
-        if (e.clientX < mid) range.setStartBefore(ic);
-        else                 range.setStartAfter(ic);
+        if (e.clientX < mid) range.setStartBefore(hit.ic);
+        else                 range.setStartAfter(hit.ic);
         range.collapse(true);
         const sel = window.getSelection();
         sel.removeAllRanges();
@@ -728,6 +750,8 @@ export class NoteEditor {
     // just clears the closure refs.
     this._iconKeyHandler = null;
     this._iconClickHandler = null;
+    this._touchHandler = null;
+    this._editAreaTouched = false;
   }
 
   save() {

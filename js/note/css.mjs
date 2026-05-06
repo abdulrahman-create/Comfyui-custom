@@ -275,7 +275,7 @@ export function injectCSS() {
   width: 18px;
   height: 18px;
   vertical-align: -4px;
-  margin: 0 2px;
+  margin: 0 4px;
   /* pointer-events: none lets clicks pass through to the surrounding
      text so the caret lands based on horizontal position rather than
      getting absorbed by the icon's inline-block "select element"
