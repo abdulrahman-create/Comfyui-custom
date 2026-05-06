@@ -297,10 +297,77 @@ NoteEditor.prototype._buildToolbar = function () {
   tb.appendChild(el("div", "pix-note-tsep"));
 
   // Group 2 — headings
+  // Manual block rename instead of execCommand("formatBlock"). Chrome's
+  // formatBlock has a known quirk: when the current paragraph contains
+  // an inline-block element (our `.pix-note-ic`), formatBlock can split
+  // the paragraph and emit the heading on a new line, leaving the icon
+  // stranded in a separate `<p>`. Manual rename: find the top-level
+  // block containing the caret, create a fresh element with the target
+  // tag, transfer all children, replace in place. Mirror of the demote
+  // path used by the clear-format button (lines 287-293 above).
   const mkHeading = (tag, label) =>
-    makeBtn(label, `Heading ${tag.toUpperCase()}`, "", () =>
-      document.execCommand("formatBlock", false, tag)
-    );
+    makeBtn(label, `Heading ${tag.toUpperCase()}`, "", () => {
+      const editArea = this._editArea;
+      if (!editArea) return;
+      const sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0) return;
+      const range = sel.getRangeAt(0);
+      // Walk up from the caret to the top-level block child of editArea.
+      const findTopBlock = (start) => {
+        let n = start;
+        while (n && n !== editArea) {
+          if (n.parentNode === editArea && n.nodeType === 1) return n;
+          n = n.parentNode;
+        }
+        return null;
+      };
+      const startBlock = findTopBlock(range.startContainer);
+      const endBlock   = findTopBlock(range.endContainer);
+      if (!startBlock) return;
+      // Collect every block touched by the selection (or just the one).
+      const blocks = [];
+      if (startBlock === endBlock || !endBlock) {
+        blocks.push(startBlock);
+      } else {
+        let n = startBlock;
+        while (n) {
+          blocks.push(n);
+          if (n === endBlock) break;
+          n = n.nextSibling;
+        }
+      }
+      this._snapBefore?.();
+      const replacements = [];
+      for (const b of blocks) {
+        if (!b.parentNode) continue;
+        // Already the right tag? Skip (saves an unneeded DOM swap).
+        if (b.tagName.toLowerCase() === tag) {
+          replacements.push(b);
+          continue;
+        }
+        const fresh = document.createElement(tag);
+        while (b.firstChild) fresh.appendChild(b.firstChild);
+        b.parentNode.replaceChild(fresh, b);
+        replacements.push(fresh);
+      }
+      // Restore selection: place caret at end of the last replaced block,
+      // or span all replaced blocks if it was a multi-block selection.
+      if (replacements.length > 0) {
+        const newRange = document.createRange();
+        if (replacements.length === 1) {
+          newRange.selectNodeContents(replacements[0]);
+          newRange.collapse(false);
+        } else {
+          newRange.setStart(replacements[0], 0);
+          newRange.setEnd(replacements[replacements.length - 1],
+            replacements[replacements.length - 1].childNodes.length);
+        }
+        sel.removeAllRanges();
+        sel.addRange(newRange);
+      }
+      this._snapAfter?.();
+      this._dirty = true;
+    });
   const g2 = el("div", "pix-note-tgroup");
   const h1Btn = mkHeading("h1", "H1");
   const h2Btn = mkHeading("h2", "H2");
