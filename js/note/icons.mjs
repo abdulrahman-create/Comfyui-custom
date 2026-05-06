@@ -344,21 +344,16 @@ NoteEditor.prototype._insertInlineIcon = async function (anchorBtn) {
       sel.removeAllRanges();
       sel.addRange(savedRange);
     }
-    // Read the A text-color picker's currently-staged color and stamp
-    // it onto the icon. Chrome does NOT apply a staged foreColor to
-    // raw HTML inserted via execCommand("insertHTML") — the stage is
-    // consumed by TYPED characters, not by programmatic inserts.
-    // Without this read-and-stamp, picking green in the A picker and
-    // then inserting an icon would give a white icon, which is a
-    // surprise for the user. Empty string → no inline style, icon
-    // inherits currentColor (default behaviour for unpicked state).
-    const pickedColor = this._textColorBtn?.style
-      .getPropertyValue("--pix-note-tbtn-tint")
-      .trim() || "";
+    // Read color + size from the editor's session-sticky picker state
+    // (set inside openIconPop on swatch / pill clicks, defaults from
+    // open() in core.mjs). Decoupled from the A text-color picker so
+    // typing colors stay independent of icon colors.
+    const color = this._iconPickerColor || "";
+    const size  = this._iconPickerSize  || "m";
     document.execCommand(
       "insertHTML",
       false,
-      renderIconHTML(id, pickedColor),
+      renderIconHTML(id, color, size),
     );
     this._restageColors?.();
     this._dirty = true;
