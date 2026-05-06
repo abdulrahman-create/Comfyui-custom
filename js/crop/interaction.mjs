@@ -73,6 +73,7 @@ proto._onMouseDown = function (e) {
       startMy: pos.y,
       startCrop: { x: this.cropX, y: this.cropY, w: this.cropW, h: this.cropH },
     };
+    this._dragOverridesAlignment();
     return;
   }
   if (pos.x >= cx && pos.x <= cx + cw && pos.y >= cy && pos.y <= cy + ch) {
@@ -82,6 +83,7 @@ proto._onMouseDown = function (e) {
       startMy: pos.y,
       startCrop: { x: this.cropX, y: this.cropY, w: this.cropW, h: this.cropH },
     };
+    this._dragOverridesAlignment();
     return;
   }
   this.cropX = Math.max(0, Math.min(pos.x / s, this.imgW));
@@ -95,6 +97,17 @@ proto._onMouseDown = function (e) {
     startMy: pos.y,
     startCrop: { x: this.cropX, y: this.cropY, w: 0, h: 0 },
   };
+  this._dragOverridesAlignment();
+};
+
+// Any canvas drag (move OR resize) overrides the sticky alignment so the
+// user's manual position sticks. Mirrors the panel's "edit X/Y → switch
+// to Free" behavior. Dropdown UI is updated in lock-step.
+proto._dragOverridesAlignment = function () {
+  if (this.cropAlign && this.cropAlign !== "free") {
+    this.cropAlign = "free";
+    if (this._alignSelect) this._alignSelect.value = "free";
+  }
 };
 
 proto._onMouseMove = function (e) {

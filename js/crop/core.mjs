@@ -12,7 +12,7 @@ import {
   createCanvasSettings,
   createCanvasToolbar,
 } from "../framework/index.mjs";
-import { ALIGNMENTS, computeAlignedXY } from "./alignments.mjs";
+import { ALIGNMENTS, computeAlignedXY, defaultAlignForMeta } from "./alignments.mjs";
 
 export const RATIOS = [
   { label: "Free", w: 0, h: 0 },
@@ -111,8 +111,13 @@ export class CropEditor {
           this.snapIdx = data.snap_idx;
           this._snapGrid.setActive(data.snap_idx);
         }
+        // Default fresh data → "Center crop" (matches panel). Existing
+        // saved crops with no align field stay on "free" so their position
+        // sticks. If the user explicitly saved an align, respect it.
         if (typeof data.crop_align === "string") {
           this.cropAlign = data.crop_align;
+        } else {
+          this.cropAlign = defaultAlignForMeta(data);
         }
         this._alignSelect && (this._alignSelect.value = this.cropAlign);
         // Restore crop coordinates, scaling proportionally if the loaded
