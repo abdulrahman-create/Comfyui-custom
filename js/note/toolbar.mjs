@@ -309,6 +309,11 @@ NoteEditor.prototype._buildToolbar = function () {
     makeBtn(label, `Heading ${tag.toUpperCase()}`, "", () => {
       const editArea = this._editArea;
       if (!editArea) return;
+      // After Ctrl+Z, doUndo replaces innerHTML wholesale and the cursor
+      // can land on a bare text node directly under editArea (no block
+      // wrapper), which makes findTopBlock fail. Normalize first to wrap
+      // any loose text/inline children in <p>.
+      this._normalizeEditArea?.(editArea);
       const sel = window.getSelection();
       if (!sel || sel.rangeCount === 0) return;
       const range = sel.getRangeAt(0);
