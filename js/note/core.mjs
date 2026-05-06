@@ -129,8 +129,22 @@ export class NoteEditor {
           if (probe && probe.nodeType === 3 && probe.nodeValue === " ") {
             probe = forward ? probe.nextSibling : probe.previousSibling;
           }
+          // Direct icon hit
           if (probe && probe.nodeType === 1 && probe.classList?.contains("pix-note-ic")) {
             return probe;
+          }
+          // Wrapper-with-single-icon hit. Chrome's execCommand can wrap
+          // our inserted HTML in <font color="..."> or <span style=
+          // "color:..."> when foreColor is staged. Peer through such a
+          // wrapper if it contains exactly one icon span and no other
+          // meaningful text content - return the inner icon so the
+          // caller can remove it (and its wrapper, if it's now empty).
+          if (probe && probe.nodeType === 1) {
+            const ics = probe.querySelectorAll?.(".pix-note-ic");
+            if (ics && ics.length === 1) {
+              const txt = (probe.textContent || "").replace(/ /g, "").trim();
+              if (txt.length === 0) return ics[0];
+            }
           }
           return null;
         };
@@ -145,12 +159,22 @@ export class NoteEditor {
         // renderIconHTML always appends a trailing &nbsp; AFTER the icon.
         // Eat it too so there is no orphan nbsp left between former
         // neighbours. Match exact U+00A0.
+        const wrapper = icon.parentElement;
         const followerNbsp = icon.nextSibling;
         if (followerNbsp && followerNbsp.nodeType === 3
             && followerNbsp.nodeValue === " ") {
           followerNbsp.remove();
         }
         icon.remove();
+        // If removing the icon left an empty inline wrapper behind
+        // (Chrome-injected <font> / <span style="color:..."> around
+        // just this icon), unwrap it so the next typed character
+        // doesn't pick up the wrapper's color.
+        if (wrapper && wrapper !== editArea
+            && wrapper.children.length === 0
+            && (wrapper.textContent || "").trim().length === 0) {
+          wrapper.remove();
+        }
         this._snapAfter?.();
         this._dirty = true;
         this._refreshActiveStates?.();

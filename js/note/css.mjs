@@ -272,9 +272,10 @@ export function injectCSS() {
    side of the icon. */
 .pix-note-ic {
   display: inline-block;
-  width: 1.2em;
-  height: 1.2em;
-  vertical-align: -0.15em;
+  width: 18px;
+  height: 18px;
+  vertical-align: -4px;
+  margin: 0 1px;
   background-color: currentColor;
   -webkit-mask-size: contain;
           mask-size: contain;
@@ -284,14 +285,15 @@ export function injectCSS() {
           mask-position: center;
 }
 
-/* Inline-icon size attribute - drives the same 1.2em default block above
-   when absent (= M). Vertical-align tuned per size so the icon sits on
-   the text baseline without lifting the line-height. data-size="m"
-   intentionally has NO rule so the default doesn't need to be emitted
-   in saved markup. */
-.pix-note-ic[data-size="s"]  { width: 1em;   height: 1em;   vertical-align: -0.1em; }
-.pix-note-ic[data-size="l"]  { width: 1.6em; height: 1.6em; vertical-align: -0.25em; }
-.pix-note-ic[data-size="xl"] { width: 2em;   height: 2em;   vertical-align: -0.35em; }
+/* Inline-icon size attribute - fixed pixel dimensions so icons render
+   the same regardless of heading level (em-scaling caused inconsistent
+   sizes across H1/H2/H3 vs body text). data-size="m" intentionally has
+   NO rule so the default 18px stays implicit and saved markup is
+   minimal. The horizontal margin: 0 1px on the base rule gives a
+   clickable gap between adjacent icons (caret can land between them). */
+.pix-note-ic[data-size="s"]  { width: 14px; height: 14px; vertical-align: -3px; }
+.pix-note-ic[data-size="l"]  { width: 28px; height: 28px; vertical-align: -7px; }
+.pix-note-ic[data-size="xl"] { width: 40px; height: 40px; vertical-align: -10px; }
 
 /* Hover-reveal Edit button */
 .pix-note-editbtn {
