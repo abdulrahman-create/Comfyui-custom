@@ -793,16 +793,24 @@ export function injectCSS() {
   border-radius: 6px;
   padding: 14px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+  /* Fixed inner width so the colour picker, size pills, icon grid and
+     footer all align edge-to-edge — no awkward gap on the right of
+     the icon grid. 348px gives 7 ~42px tiles with 6px gaps. */
+  width: 348px;
   max-width: 90vw;
   max-height: 90vh;
+  box-sizing: content-box;
   display: flex;
   flex-direction: column;
 }
 .pix-note-iconswatches {
   display: grid;
-  grid-template-columns: repeat(7, 32px);
+  /* Stretch tiles edge-to-edge with the colour picker / size pills /
+     footer above and below. Aspect-ratio on the tile keeps them
+     square at whatever column width the grid resolves to. */
+  grid-template-columns: repeat(7, 1fr);
   gap: 6px;
-  max-height: 240px;
+  max-height: 280px;
   overflow-y: auto;
   padding-right: 4px;
 }
@@ -810,8 +818,9 @@ export function injectCSS() {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 100%;
+  aspect-ratio: 1;
+  min-width: 32px;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid transparent;
   border-radius: 4px;
