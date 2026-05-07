@@ -298,6 +298,19 @@ NoteEditor.prototype._buildToolbar = function () {
       const sel = window.getSelection();
       if (!sel || sel.rangeCount === 0) return;
       const range = sel.getRangeAt(0);
+      // Cursor inside a table cell? findTopBlock would walk up to the
+      // <table> and replace it whole — the grid would visibly
+      // disappear. Bail. The active-state hook below also greys these
+      // buttons out so the click never reaches here normally; this
+      // catch is for keyboard shortcuts / programmatic invocation.
+      const inTableCell = (n) => {
+        while (n && n !== editArea) {
+          if (n.nodeType === 1 && (n.tagName === "TD" || n.tagName === "TH")) return true;
+          n = n.parentNode;
+        }
+        return false;
+      };
+      if (inTableCell(range.startContainer)) return;
       // Walk up from the caret to the top-level block child of editArea.
       // Special case: if the start node IS editArea (happens after
       // doUndo + _placeCursorAtEnd, which collapses to editArea at
@@ -381,13 +394,35 @@ NoteEditor.prototype._buildToolbar = function () {
 
   // Heading active-state: queryCommandValue returns the current block tag
   // (e.g. "h1", "p"). Some browsers wrap it in angle brackets ("<h1>").
+  // Also drives the disabled state — headings inside a table cell would
+  // walk up to the <table> and replace it whole, so they're disabled
+  // while the caret is in a cell.
   const headingMap = { h1: h1Btn, h2: h2Btn, h3: h3Btn };
+  const HEADING_TITLE_DISABLED = "Headings can't be applied inside a table cell";
+  for (const [tag, btn] of Object.entries(headingMap)) {
+    btn.dataset.titleEnabled = `Heading ${tag.toUpperCase()}`;
+  }
   this._activeChecks.push(() => {
     let block = "";
     try { block = (document.queryCommandValue("formatBlock") || "").toString(); } catch (e) {}
     block = block.toLowerCase().replace(/[<>]/g, "");
+    // Detect cursor inside a table cell to drive disabled state.
+    let inCell = false;
+    const sel = window.getSelection();
+    const anchor = sel?.anchorNode;
+    if (anchor && this._editArea?.contains(anchor)) {
+      let n = anchor;
+      while (n && n !== this._editArea) {
+        if (n.nodeType === 1 && (n.tagName === "TD" || n.tagName === "TH")) {
+          inCell = true; break;
+        }
+        n = n.parentNode;
+      }
+    }
     for (const [tag, btn] of Object.entries(headingMap)) {
-      btn.classList.toggle("active", block === tag);
+      btn.classList.toggle("active", !inCell && block === tag);
+      btn.disabled = inCell;
+      btn.title = inCell ? HEADING_TITLE_DISABLED : btn.dataset.titleEnabled;
     }
   });
 

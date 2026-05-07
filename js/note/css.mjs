@@ -634,8 +634,18 @@ export function injectCSS() {
   color: #ddd; font-size: 12px; font-weight: 600; cursor: pointer;
   user-select: none;
 }
-.pix-note-tbtn:hover { background: #333; border-color: #444; }
+.pix-note-tbtn:hover:not(:disabled) { background: #333; border-color: #444; }
 .pix-note-tbtn.active { background: ${BRAND}; color: #fff; border-color: ${BRAND}; }
+/* Disabled toolbar button — grey it out and block clicks. Currently
+   driven by the heading active-state hook when the cursor is inside
+   a table cell (heading replace would clobber the whole table). */
+.pix-note-tbtn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  background: #2a2a2a;
+  border-color: transparent;
+  color: #777;
+}
 .pix-note-tbtn.pix-note-tbtn-accent {
   background: ${BRAND}; color: #fff; border-color: ${BRAND};
 }
