@@ -197,8 +197,13 @@ js/
 │                       #  getUpstreamImageUrl (Vue links Map/object dual access),
 │                       #  getInlineSourceUrl.
 │
-├── showtext/           # Show Text node (single file, 97 lines)
-│   └── index.js
+├── showtext/           # Show Text Pixaroma (single file, ~85 lines)
+│   └── index.js        # Read-only DOM <textarea> via addDOMWidget for native
+│                       #  text selection / copy + scrollbar. Free resize (min
+│                       #  200x120, default 280x200). STRING output named
+│                       #  "text" so it chains downstream. Widget value
+│                       #  serialized so last-shown text restores on workflow
+│                       #  load. No onDrawForeground (Vue Compat #1).
 │
 ├── reference/          # Reference node (single file, 140 lines)
     └── index.js
