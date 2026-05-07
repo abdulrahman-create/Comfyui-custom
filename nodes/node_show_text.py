@@ -1,9 +1,5 @@
 import torch
-import numpy as np
-from PIL import Image
-import os
-import json
-import folder_paths
+
 from .node_ref import any_type
 
 
@@ -12,15 +8,14 @@ class PixaromaShowText:
     def INPUT_TYPES(s):
         return {"required": {"source": (any_type, {})}}
 
-    RETURN_TYPES = ()
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("text",)
     FUNCTION = "show"
     OUTPUT_NODE = True
     CATEGORY = "👑 Pixaroma"
 
     def show(self, source):
         try:
-            import torch
-
             if isinstance(source, torch.Tensor):
                 text = (
                     f"Tensor  shape={tuple(source.shape)}"
@@ -35,7 +30,7 @@ class PixaromaShowText:
                 text = str(source)
         except Exception:
             text = str(source)
-        return {"ui": {"text": [text]}}
+        return {"ui": {"text": [text]}, "result": (text,)}
 
 
 NODE_CLASS_MAPPINGS = {
