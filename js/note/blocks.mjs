@@ -219,11 +219,26 @@ NoteEditor.prototype._insertFolderHintBlock = function (anchorBtn) {
       }
       return node && node.parentNode === this._editArea ? node : null;
     };
+    // A block is "empty placeholder" when it contains nothing or just
+    // a <br> filler. Replacing such a block (instead of inserting
+    // after it) avoids leaving a stray blank line above the hint.
+    const isEmptyBlock = (b) => {
+      if (!b || b.nodeType !== 1) return false;
+      const cs = b.childNodes;
+      if (cs.length === 0) return true;
+      if (cs.length === 1 && cs[0].nodeType === 1 && cs[0].tagName === "BR") return true;
+      return false;
+    };
     let anchorBlock = null;
     if (savedRange) anchorBlock = findTopBlock(savedRange.startContainer);
     if (anchorBlock && anchorBlock.parentNode === this._editArea) {
-      this._editArea.insertBefore(hint, anchorBlock.nextSibling);
-      this._editArea.insertBefore(trailing, hint.nextSibling);
+      if (isEmptyBlock(anchorBlock)) {
+        anchorBlock.replaceWith(hint);
+        hint.parentNode.insertBefore(trailing, hint.nextSibling);
+      } else {
+        this._editArea.insertBefore(hint, anchorBlock.nextSibling);
+        this._editArea.insertBefore(trailing, hint.nextSibling);
+      }
     } else {
       this._editArea.appendChild(hint);
       this._editArea.appendChild(trailing);
@@ -1372,16 +1387,31 @@ NoteEditor.prototype._insertGridBlock = function (anchorBtn) {
       }
       return node && node.parentNode === this._editArea ? node : null;
     };
+    // Empty placeholder block? Replace it instead of inserting after,
+    // so the user doesn't end up with a stray blank line above the
+    // table.
+    const isEmptyBlock = (b) => {
+      if (!b || b.nodeType !== 1) return false;
+      const cs = b.childNodes;
+      if (cs.length === 0) return true;
+      if (cs.length === 1 && cs[0].nodeType === 1 && cs[0].tagName === "BR") return true;
+      return false;
+    };
     let anchorBlock = null;
     if (savedRange) {
       anchorBlock = findTopBlock(savedRange.startContainer);
     }
     if (anchorBlock && anchorBlock.parentNode === this._editArea) {
-      // Insert AFTER the anchor block so the user's existing content
-      // keeps its inline formatting — split-through-insertHTML was
-      // the main way colors were getting dropped.
-      this._editArea.insertBefore(table, anchorBlock.nextSibling);
-      this._editArea.insertBefore(trailing, table.nextSibling);
+      if (isEmptyBlock(anchorBlock)) {
+        anchorBlock.replaceWith(table);
+        table.parentNode.insertBefore(trailing, table.nextSibling);
+      } else {
+        // Insert AFTER the anchor block so the user's existing content
+        // keeps its inline formatting — split-through-insertHTML was
+        // the main way colors were getting dropped.
+        this._editArea.insertBefore(table, anchorBlock.nextSibling);
+        this._editArea.insertBefore(trailing, table.nextSibling);
+      }
     } else {
       this._editArea.appendChild(table);
       this._editArea.appendChild(trailing);
@@ -1574,11 +1604,26 @@ NoteEditor.prototype._insertSeparatorBlock = function (anchorBtn) {
       }
       return node && node.parentNode === editor._editArea ? node : null;
     };
+    // Replace empty placeholder blocks (just a <br>) instead of
+    // inserting after them, so the user doesn't end up with a stray
+    // blank line ABOVE the rule.
+    const isEmptyBlock = (b) => {
+      if (!b || b.nodeType !== 1) return false;
+      const cs = b.childNodes;
+      if (cs.length === 0) return true;
+      if (cs.length === 1 && cs[0].nodeType === 1 && cs[0].tagName === "BR") return true;
+      return false;
+    };
     let anchorBlock = null;
     if (savedRange) anchorBlock = findTopBlock(savedRange.startContainer);
     if (anchorBlock && anchorBlock.parentNode === editor._editArea) {
-      editor._editArea.insertBefore(hr, anchorBlock.nextSibling);
-      editor._editArea.insertBefore(trailing, hr.nextSibling);
+      if (isEmptyBlock(anchorBlock)) {
+        anchorBlock.replaceWith(hr);
+        hr.parentNode.insertBefore(trailing, hr.nextSibling);
+      } else {
+        editor._editArea.insertBefore(hr, anchorBlock.nextSibling);
+        editor._editArea.insertBefore(trailing, hr.nextSibling);
+      }
     } else {
       editor._editArea.appendChild(hr);
       editor._editArea.appendChild(trailing);

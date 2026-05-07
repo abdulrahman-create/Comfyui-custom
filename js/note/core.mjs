@@ -324,6 +324,53 @@ export class NoteEditor {
             }
           }
         }
+        // Empty folder-hint Backspace / Delete: remove the whole div in
+        // one keystroke. Without this, Chrome treats the empty <div>
+        // (just a ::before icon, no text) as block-level whitespace —
+        // Backspace merges it with the previous block instead of
+        // removing the icon-bearing block, so the user has to press
+        // the key twice to actually delete the icon. Same key trap
+        // shape as the icon handler above.
+        if ((key === "backspace" || key === "delete") && !mod) {
+          const sel = window.getSelection();
+          if (sel && sel.rangeCount > 0) {
+            const r = sel.getRangeAt(0);
+            if (r.collapsed && this._editArea?.contains(r.startContainer)) {
+              let n = r.startContainer;
+              let folderhint = null;
+              while (n && n !== this._editArea) {
+                if (n.nodeType === 1 && n.classList?.contains("pix-note-folderhint")) {
+                  folderhint = n; break;
+                }
+                n = n.parentNode;
+              }
+              if (folderhint && (folderhint.textContent || "").trim() === "") {
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                this._snapBefore?.();
+                const fwd = (key === "delete");
+                const adjacent = fwd
+                  ? folderhint.nextElementSibling
+                  : folderhint.previousElementSibling;
+                folderhint.remove();
+                // Land caret at end of previous block (Backspace) or
+                // start of next block (Delete) so the typing flow
+                // continues naturally.
+                if (adjacent) {
+                  const r2 = document.createRange();
+                  r2.selectNodeContents(adjacent);
+                  r2.collapse(fwd); // fwd: collapse to start; !fwd: end
+                  sel.removeAllRanges();
+                  sel.addRange(r2);
+                }
+                this._snapAfter?.();
+                this._dirty = true;
+                this._refreshActiveStates?.();
+                return;
+              }
+            }
+          }
+        }
         // Escape → close (with dirty-confirm). If a child modal is open
         // (code dialog, link dialog, block dialog, color popup, or the
         // confirm dialog itself) skip the editor-close so Esc doesn't
