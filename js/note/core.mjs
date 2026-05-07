@@ -977,8 +977,7 @@ export class NoteEditor {
             <b><span class="pix-note-tbtn-maskicon-multi pix-note-icon-text-color"></span>A</b><span>Text color. Sticky pick — typing keeps the picked colour until you pick again. Picker has 36 swatches, Reset (white), and "More colors…" for HSV/hex.</span>
             <b><span class="pix-note-tbtn-maskicon-multi pix-note-icon-highlight-color"></span>Highlight</b><span>Coloured background behind text. Pick a colour then type — each char extends the highlight run. Switch colours to start a new run. Pick the same picker's transparent tile or Reset to stop highlighting subsequent typing (existing highlights stay). Typed spaces in a highlight become nbsp so consecutive spaces stay visible.</span>
             <b><span class="pix-note-tbtn-maskicon-multi pix-note-icon-bg-color"></span>Bg</b><span>Per-note background; drives both editor AND the canvas node. Reset returns to the dark default (#111111). Transparent tile is dimmed — to revert to ComfyUI's native right-click → Colors menu, leave Bg untouched on a fresh note.</span>
-            <b><span class="pix-note-tbtn-maskicon-multi pix-note-icon-button-color"></span>Btn</b><span>Button-pill color (Download / View Page / Read More)</span>
-            <b><span class="pix-note-tbtn-maskicon-multi pix-note-icon-line-color"></span>Ln</b><span>Line color (grid borders, HR, grid header underline, folder hint)</span>
+            <b><span class="pix-note-tbtn-maskicon-multi pix-note-icon-line-color"></span>Ln</b><span>Fallback line colour for legacy content (older grids / HRs / folder hints with no per-instance colour). New separator / grid / folder hint inserts each carry their OWN colour set in their modal — they don't follow Ln.</span>
           </div>
         </div>
         <div class="pix-note-help-section">
@@ -993,26 +992,28 @@ export class NoteEditor {
           <div class="pix-note-help-grid">
             <b><span class="pix-note-tbtn-maskicon pix-note-icon-link"></span>Link</b><span>http, https, or mailto URLs only. Opens in new tab.</span>
             <b><span class="pix-note-tbtn-maskicon pix-note-icon-code"></span>Code</b><span>Code block (&lt;pre&gt;&lt;code&gt;). Multi-line via the themed dialog</span>
-            <b><span class="pix-note-tbtn-maskicon pix-note-icon-separator"></span>Separator</b><span>&lt;hr&gt; horizontal rule</span>
-            <b><img class="pix-note-tbtn-icon" src="/pixaroma/assets/icons/ui/grid.svg">Grid</b><span>Table: 2–4 columns × 1–10 rows. Tab navigates cells</span>
-            <b><span class="pix-note-tbtn-maskicon pix-note-icon-icon-insert"></span>Icon</b><span>SVG from assets/icons/note/. Insert-icon popup has its own colour swatches + size pills (S / M / L / XL) — independent of the A text-color picker. Defaults: orange + M, sticky for the editor session.</span>
+            <b><span class="pix-note-tbtn-maskicon pix-note-icon-separator"></span>Separator</b><span>Centred modal — pick colour + variant (solid / dashed / dotted / double / thick), click Insert. Each separator carries its own colour.</span>
+            <b><img class="pix-note-tbtn-icon" src="/pixaroma/assets/icons/ui/grid.svg">Grid</b><span>Centred modal — pick border + header colours, columns (2–4), rows (1–10), header on/off, click Insert. Each grid carries its own border + header colours. Tab navigates cells.</span>
+            <b><span class="pix-note-tbtn-maskicon pix-note-icon-icon-insert"></span>Icon</b><span>Centred modal — SVG from assets/icons/note/, with its own colour + size pills (S / M / L / XL). Single-click selects, double-click inserts. Sticky pick within the editor session. Default: model-v1 + orange + M.</span>
           </div>
         </div>
         <div class="pix-note-help-section">
           <h4>Pixaroma Blocks</h4>
           <div class="pix-note-help-grid">
-            <b><img class="pix-note-tbtn-icon" src="/pixaroma/assets/icons/ui/button-design.svg">Button Design</b><span>Rich dialog — Download / View Page / Read More pill with icon + optional folder hint + size tag</span>
-            <b>Download pill</b><span>On canvas: click opens the URL in a new tab. The folder hint below is informational — save the file manually into that path.</span>
-            <b><img class="pix-note-tbtn-icon" src="/pixaroma/assets/icons/ui/youtube.svg">YouTube</b><span>Preset Pixaroma YouTube link (override freely)</span>
-            <b><img class="pix-note-tbtn-icon" src="/pixaroma/assets/icons/ui/discord.svg">Discord</b><span>Preset Pixaroma Discord link (override freely)</span>
+            <b><img class="pix-note-tbtn-icon" src="/pixaroma/assets/icons/ui/button-design.svg">Button</b><span>Centred modal — pick colour, button type (Download / View Page / Read More / No icon), label, URL, optional size hint. Each button carries its own colour.</span>
+            <b><img class="pix-note-tbtn-icon" src="/pixaroma/assets/icons/ui/folder.svg">Folder hint</b><span>Standalone "Place in: ComfyUI/&lt;path&gt;" line. Centred modal — pick colour + folder path. Use it under a Button to tell the reader where the downloaded file goes.</span>
+            <b>Pill behaviour</b><span>Click on the canvas opens the URL in a new tab. The folder hint is purely informational — save the file manually into the named path.</span>
+            <b><img class="pix-note-tbtn-icon" src="/pixaroma/assets/icons/ui/youtube.svg">YouTube</b><span>Centred modal — preset Pixaroma YouTube link, override freely. Brand red colour locked.</span>
+            <b><img class="pix-note-tbtn-icon" src="/pixaroma/assets/icons/ui/discord.svg">Discord</b><span>Centred modal — preset Pixaroma Discord link, override freely. Brand blurple locked.</span>
           </div>
         </div>
         <div class="pix-note-help-section">
           <h4>Editing Blocks In Place</h4>
           <div class="pix-note-help-grid">
-            <b>Pencil</b><span>Hover a link, pill, code block, or grid-free block — pencil appears, reopens its dialog pre-filled</span>
-            <b>Recolor Icon</b><span>Inline icons have their own colour + size pickers in the Insert-icon popup. To change an existing icon, delete it and re-insert with the new colour.</span>
-            <b>Delete Icon</b><span>Backspace once from right of icon (removes icon + trailing space in one step)</span>
+            <b>Pencil</b><span>Hover a button, folder hint, link, or code block — pencil appears, reopens its modal pre-filled (incl. the per-instance colour). Heading buttons are disabled while the caret is inside a table cell — heading replace would clobber the whole table.</span>
+            <b>Tables / separators</b><span>No pencil for these in v1. Edit text by typing into cells; for separator colour or variant, delete and re-insert.</span>
+            <b>Recolor Icon</b><span>Inline icons have their own colour + size pickers in the Icon modal. To change an existing icon, delete it and re-insert with the new colour.</span>
+            <b>Delete Icon</b><span>Backspace once from right of icon (removes icon + trailing space in one step). Same atomic-delete works for an empty folder hint.</span>
           </div>
         </div>
         <div class="pix-note-help-section">
@@ -1117,21 +1118,25 @@ export class NoteEditor {
         <div class="pix-note-help-section">
           <h4>Allowed Inline Styles</h4>
           <div class="pix-note-help-grid">
-            <b><code>color</code></b><span>Text foreground. Accepts <code>#rgb</code> / <code>#rrggbb</code>, <code>rgb(...)</code> / <code>rgba(...)</code>, <code>transparent</code> / <code>inherit</code> / <code>currentColor</code>, and a small set of named colours (black / white / red / green / blue / yellow / orange / purple / gray / grey).</span>
-            <b><code>background-color</code></b><span>Text highlight. Same value forms as <code>color</code>.</span>
+            <b><code>color</code></b><span>Text foreground (and used as the per-instance colour vehicle for separators and folder hints — currentColor flows into the border/icon). Accepts <code>#rgb</code> / <code>#rrggbb</code>, <code>rgb(...)</code> / <code>rgba(...)</code>, <code>transparent</code> / <code>inherit</code> / <code>currentColor</code>, and a small set of named colours (black / white / red / green / blue / yellow / orange / purple / gray / grey).</span>
+            <b><code>background-color</code></b><span>Text highlight, AND the per-instance colour for &lt;a class="pix-note-dl/vp/rm/btn-plain"&gt; pills. Same value forms as <code>color</code>.</span>
             <b><code>text-align</code></b><span>left / right / center / justify</span>
+            <b><code>--pix-note-grid-border</code></b><span>Per-instance grid cell border colour. Stamped on the &lt;table&gt;. Same value forms as <code>color</code>.</span>
+            <b><code>--pix-note-grid-header-bg</code></b><span>Per-instance grid header row background. Stamped on the &lt;table&gt;. Same value forms as <code>color</code>.</span>
           </div>
           <p style="margin:6px 0 0 0;color:#888;">Any other style (font-size, margin, display, …) is removed on save / paste / view-switch.</p>
         </div>
         <div class="pix-note-help-section">
           <h4>Allowed Classes</h4>
           <div class="pix-note-help-grid">
-            <b>pix-note-dl / vp / rm</b><span>Button Design pills (Download / View Page / Read More)</span>
-            <b>pix-note-btnblock</b><span>Button pill wrapper with folder hint</span>
+            <b>pix-note-dl / vp / rm</b><span>Button pills (Download / View Page / Read More)</span>
+            <b>pix-note-btn-plain</b><span>Button pill, no leading icon</span>
+            <b>pix-note-btnblock</b><span>Button pill wrapper (also wraps legacy bundled folder hints)</span>
             <b>pix-note-btnsize</b><span>Size tag inside a pill</span>
-            <b>pix-note-folderhint</b><span>"Place in: …" line under a Download pill</span>
-            <b>pix-note-yt / discord</b><span>YouTube / Discord pills</span>
-            <b>pix-note-grid</b><span>Tables — required on &lt;table&gt;</span>
+            <b>pix-note-folderhint</b><span>Standalone "Place in: …" line. New shape is &lt;div&gt;; legacy bundled hints still use &lt;span&gt; inside btnblock.</span>
+            <b>pix-note-yt / discord</b><span>YouTube / Discord pills (brand colours locked)</span>
+            <b>pix-note-grid</b><span>Tables — required on &lt;table&gt;. Pair with --pix-note-grid-border / --pix-note-grid-header-bg for per-instance colours.</span>
+            <b>pix-note-hr-solid / dashed / dotted / double / thick</b><span>Separator variants on &lt;hr&gt;. Pair with inline <code>style="color: ..."</code> for the per-instance colour.</span>
             <b>pix-note-ic</b><span>Inline icon span — with data-ic="&lt;slug&gt;" (slug = filename in assets/icons/note/, no .svg)</span>
           </div>
           <p style="margin:6px 0 0 0;color:#888;">Any other class is stripped silently.</p>
@@ -1151,10 +1156,17 @@ export class NoteEditor {
           <pre style="background:#0e0e0e;border:1px solid #2a2a2a;border-radius:4px;padding:8px;color:#ddd;font-size:10px;line-height:1.5;overflow-x:auto;margin:0;">&lt;h2&gt;Workflow overview&lt;/h2&gt;
 &lt;p&gt;Install &lt;span data-ic="CLIP" class="pix-note-ic"&gt;&lt;/span&gt;&amp;nbsp;then&lt;/p&gt;
 &lt;span class="pix-note-btnblock"&gt;
-  &lt;a class="pix-note-dl" href="https://example.com/model.safetensors"
-     target="_blank" rel="noopener noreferrer"&gt;Model 2 GB&lt;/a&gt;
-  &lt;span class="pix-note-folderhint"&gt;Place in: ComfyUI/models/loras&lt;/span&gt;
-&lt;/span&gt;</pre>
+  &lt;a class="pix-note-dl" style="background-color: #f66744"
+     href="https://example.com/model.safetensors"
+     target="_blank" rel="noopener noreferrer"&gt;Model&lt;span class="pix-note-btnsize"&gt;2 GB&lt;/span&gt;&lt;/a&gt;
+&lt;/span&gt;&amp;nbsp;
+&lt;div class="pix-note-folderhint" style="color: #f66744"&gt;Place in: ComfyUI/models/loras&lt;/div&gt;
+&lt;hr class="pix-note-hr-dashed" style="color: #818cf8"&gt;
+&lt;table class="pix-note-grid"
+       style="--pix-note-grid-border: #f66744; --pix-note-grid-header-bg: #1a1a1a"&gt;
+  &lt;thead&gt;&lt;tr&gt;&lt;th&gt;Name&lt;/th&gt;&lt;th&gt;Size&lt;/th&gt;&lt;/tr&gt;&lt;/thead&gt;
+  &lt;tbody&gt;&lt;tr&gt;&lt;td&gt;Flux 2&lt;/td&gt;&lt;td&gt;9 GB&lt;/td&gt;&lt;/tr&gt;&lt;/tbody&gt;
+&lt;/table&gt;</pre>
         </div>
       </div>
       <div class="pix-note-help-footer">
