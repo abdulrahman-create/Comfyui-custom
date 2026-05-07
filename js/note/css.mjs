@@ -1286,7 +1286,8 @@ hr.pix-note-hr-thick {
 .pix-note-prevwrap a.pix-note-yt,
 .pix-note-prevwrap a.pix-note-discord,
 .pix-note-prevwrap a.pix-note-vp,
-.pix-note-prevwrap a.pix-note-rm {
+.pix-note-prevwrap a.pix-note-rm,
+.pix-note-prevwrap a.pix-note-btn-plain {
   cursor: default;
   pointer-events: none;
   font-size: 12px;

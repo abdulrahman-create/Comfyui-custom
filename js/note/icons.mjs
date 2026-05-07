@@ -198,6 +198,7 @@ export function renderIconHTML(id, color, size) {
 // Reads/writes editor._iconPickerColor and editor._iconPickerSize for
 // session-sticky picker state (Pattern #29, design 2026-05-06).
 function openIconPop(anchorBtn, icons, editor, onPick) {
+  if (editor._activeCentredModalClose) return;
   const backdrop = document.createElement("div");
   backdrop.className = "pix-note-iconpop-backdrop";
 
@@ -230,12 +231,14 @@ function openIconPop(anchorBtn, icons, editor, onPick) {
     const onBackdropDown = (e) => { if (e.target === backdrop) close(); };
     const onKey = (e) => { if (e.key === "Escape") { e.stopPropagation(); close(); } };
     function close() {
+      editor._activeCentredModalClose = null;
       backdrop.removeEventListener("mousedown", onBackdropDown);
       window.removeEventListener("keydown", onKey, true);
       backdrop.remove();
     }
     backdrop.addEventListener("mousedown", onBackdropDown);
     window.addEventListener("keydown", onKey, true);
+    editor._activeCentredModalClose = close;
     return;
   }
 
@@ -411,6 +414,7 @@ function openIconPop(anchorBtn, icons, editor, onPick) {
     close();
   }
   function close() {
+    editor._activeCentredModalClose = null;
     backdrop.removeEventListener("mousedown", onBackdropDown);
     window.removeEventListener("keydown", onKey, true);
     cp.destroy();
@@ -418,6 +422,7 @@ function openIconPop(anchorBtn, icons, editor, onPick) {
   }
   backdrop.addEventListener("mousedown", onBackdropDown);
   window.addEventListener("keydown", onKey, true);
+  editor._activeCentredModalClose = close;
 }
 
 // Toolbar handler — opens the picker anchored to the button.

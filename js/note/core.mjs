@@ -572,6 +572,14 @@ export class NoteEditor {
   }
 
   _cleanup() {
+    // Centred modal still open? Close it first so its window-capture
+    // keydown listener gets removed — otherwise it leaks past the
+    // editor lifetime. Single-active-modal invariant means this is
+    // at most one call.
+    if (this._activeCentredModalClose) {
+      try { this._activeCentredModalClose(); } catch (_) { /* swallow */ }
+      this._activeCentredModalClose = null;
+    }
     if (this._removalObserver) {
       this._removalObserver.disconnect();
       this._removalObserver = null;

@@ -227,6 +227,15 @@ NoteEditor.prototype._insertFolderHintBlock = function (anchorBtn) {
       const cs = b.childNodes;
       if (cs.length === 0) return true;
       if (cs.length === 1 && cs[0].nodeType === 1 && cs[0].tagName === "BR") return true;
+      // Chrome leaves `<p>&nbsp;</p>` (or `<p> </p>` for the regular-
+      // space variant) when the user types-then-deletes everything in
+      // a paragraph. Treat such whitespace-only text-node-only blocks
+      // as empty placeholders too so consecutive insert flows don't
+      // leave a stray blank line above the inserted content.
+      if (cs.length === 1 && cs[0].nodeType === 3) {
+        const t = cs[0].nodeValue || "";
+        if (t.replace(/[\s ]/g, "") === "") return true;
+      }
       return false;
     };
     let anchorBlock = null;
@@ -302,23 +311,27 @@ NoteEditor.prototype._insertDownloadBlock = NoteEditor.prototype._insertButtonBl
 
 NoteEditor.prototype._insertYouTubeBlock = function (anchorBtn) {
   const savedRange = saveRange(this._editArea);
-  makeBrandedLinkModal("yt", (v, ctx) => {
+  makeBrandedLinkModal(this, "yt", (v, ctx) => {
     const check = validateUrl(v.url);
     if (!check.ok) { ctx.showError(check.message); return false; }
     const html = `<a class="pix-note-yt" href="${escapeHtml(v.url)}"` +
       ` target="_blank" rel="noopener noreferrer">${escapeHtml(v.label || "YouTube")}</a>&nbsp;`;
+    this._snapBefore?.();
     insertAtSavedRange(this, savedRange, html);
+    this._snapAfter?.();
   });
 };
 
 NoteEditor.prototype._insertDiscordBlock = function (anchorBtn) {
   const savedRange = saveRange(this._editArea);
-  makeBrandedLinkModal("discord", (v, ctx) => {
+  makeBrandedLinkModal(this, "discord", (v, ctx) => {
     const check = validateUrl(v.url);
     if (!check.ok) { ctx.showError(check.message); return false; }
     const html = `<a class="pix-note-discord" href="${escapeHtml(v.url)}"` +
       ` target="_blank" rel="noopener noreferrer">${escapeHtml(v.label || "Join Discord")}</a>&nbsp;`;
+    this._snapBefore?.();
     insertAtSavedRange(this, savedRange, html);
+    this._snapAfter?.();
   });
 };
 
@@ -335,6 +348,12 @@ const _BTN_ICON_OPTS = [
 ];
 
 function makeButtonModal(editor, onSubmit, initialValues) {
+  // Single-active-modal guard. Refuse a second open (e.g. fast double-
+  // click on the toolbar button); leaves the existing modal in place.
+  // close() is a hoisted function declaration so the assignment below
+  // resolves cleanly. _cleanup() also calls this fn so the modal is
+  // torn down if the editor force-closes mid-edit.
+  if (editor._activeCentredModalClose) return;
   const state = {
     icon:   editor._btnPickerIcon   || "dl",
     color:  editor._btnPickerColor  || "#f66744",
@@ -517,8 +536,12 @@ function makeButtonModal(editor, onSubmit, initialValues) {
   resetBtn.addEventListener("click", () => {
     state.icon = "dl";
     state.color = "#f66744";
+    state.label = "";
+    state.url = "";
     state.sizeOn = false;
     state.size = "";
+    labelInput.value = "";
+    urlInput.value = "";
     sizeInput.value = "";
     editor._btnPickerIcon = state.icon;
     editor._btnPickerColor = state.color;
@@ -603,8 +626,10 @@ function makeButtonModal(editor, onSubmit, initialValues) {
   };
   backdrop.addEventListener("mousedown", onBackdropDown);
   window.addEventListener("keydown", onKey, true);
+  editor._activeCentredModalClose = close;
 
   function close() {
+    editor._activeCentredModalClose = null;
     backdrop.removeEventListener("mousedown", onBackdropDown);
     window.removeEventListener("keydown", onKey, true);
     backdrop.remove();
@@ -635,6 +660,7 @@ function makeModalField(labelText) {
 //     Place in: ComfyUI/{folder}
 //   </span>&nbsp;
 function makeFolderHintModal(editor, onSubmit, initialValues) {
+  if (editor._activeCentredModalClose) return;
   const state = {
     color:  editor._folderHintPickerColor  || "#f66744",
     folder: editor._folderHintPickerFolder || "models/diffusion_models",
@@ -761,8 +787,10 @@ function makeFolderHintModal(editor, onSubmit, initialValues) {
   };
   backdrop.addEventListener("mousedown", onBackdropDown);
   window.addEventListener("keydown", onKey, true);
+  editor._activeCentredModalClose = close;
 
   function close() {
+    editor._activeCentredModalClose = null;
     backdrop.removeEventListener("mousedown", onBackdropDown);
     window.removeEventListener("keydown", onKey, true);
     backdrop.remove();
@@ -813,7 +841,8 @@ const _LINK_PRESETS = {
   },
 };
 
-function makeBrandedLinkModal(kind, onSubmit, initialValues) {
+function makeBrandedLinkModal(editor, kind, onSubmit, initialValues) {
+  if (editor._activeCentredModalClose) return;
   const p = _LINK_PRESETS[kind];
   const state = {
     label: initialValues?.label ?? "",
@@ -929,8 +958,10 @@ function makeBrandedLinkModal(kind, onSubmit, initialValues) {
   };
   backdrop.addEventListener("mousedown", onBackdropDown);
   window.addEventListener("keydown", onKey, true);
+  editor._activeCentredModalClose = close;
 
   function close() {
+    editor._activeCentredModalClose = null;
     backdrop.removeEventListener("mousedown", onBackdropDown);
     window.removeEventListener("keydown", onKey, true);
     backdrop.remove();
@@ -1180,7 +1211,7 @@ NoteEditor.prototype._dispatchBlockEdit = function (target, anchorBtn) {
 function openLinkEditor(editor, target, kind, anchorBtn) {
   const values = extractLinkValues(target);
   const className = _LINK_PRESETS[kind].pillClass;
-  makeBrandedLinkModal(kind, (v, ctx) => {
+  makeBrandedLinkModal(editor, kind, (v, ctx) => {
     const check = validateUrl(v.url);
     if (!check.ok) { ctx.showError(check.message); return false; }
     editor._snapBefore?.();
@@ -1230,6 +1261,7 @@ function renderGridHTML(cols, rows, header, borderColor, headerBg) {
 }
 
 function makeGridModal(editor, onSubmit) {
+  if (editor._activeCentredModalClose) return;
   const state = {
     cols:   editor._gridPickerCols   || 3,
     rows:   editor._gridPickerRows   || 3,
@@ -1463,8 +1495,10 @@ function makeGridModal(editor, onSubmit) {
   };
   backdrop.addEventListener("mousedown", onBackdropDown);
   window.addEventListener("keydown", onKey, true);
+  editor._activeCentredModalClose = close;
 
   function close() {
+    editor._activeCentredModalClose = null;
     backdrop.removeEventListener("mousedown", onBackdropDown);
     window.removeEventListener("keydown", onKey, true);
     backdrop.remove();
@@ -1525,6 +1559,15 @@ NoteEditor.prototype._insertGridBlock = function (anchorBtn) {
       const cs = b.childNodes;
       if (cs.length === 0) return true;
       if (cs.length === 1 && cs[0].nodeType === 1 && cs[0].tagName === "BR") return true;
+      // Chrome leaves `<p>&nbsp;</p>` (or `<p> </p>` for the regular-
+      // space variant) when the user types-then-deletes everything in
+      // a paragraph. Treat such whitespace-only text-node-only blocks
+      // as empty placeholders too so consecutive insert flows don't
+      // leave a stray blank line above the inserted content.
+      if (cs.length === 1 && cs[0].nodeType === 3) {
+        const t = cs[0].nodeValue || "";
+        if (t.replace(/[\s ]/g, "") === "") return true;
+      }
       return false;
     };
     let anchorBlock = null;
@@ -1583,6 +1626,7 @@ const _SEP_VARIANTS = [
 
 NoteEditor.prototype._insertSeparatorBlock = function (anchorBtn) {
   if (!this._editArea) return;
+  if (this._activeCentredModalClose) return;
 
   // Capture caret position synchronously — modal focus moves into the
   // colour picker's hex input and would otherwise drop the selection.
@@ -1697,8 +1741,10 @@ NoteEditor.prototype._insertSeparatorBlock = function (anchorBtn) {
   };
   backdrop.addEventListener("mousedown", onBackdropDown);
   window.addEventListener("keydown", onKey, true);
+  editor._activeCentredModalClose = close;
 
   function close() {
+    editor._activeCentredModalClose = null;
     backdrop.removeEventListener("mousedown", onBackdropDown);
     window.removeEventListener("keydown", onKey, true);
     cp.destroy();
@@ -1742,6 +1788,15 @@ NoteEditor.prototype._insertSeparatorBlock = function (anchorBtn) {
       const cs = b.childNodes;
       if (cs.length === 0) return true;
       if (cs.length === 1 && cs[0].nodeType === 1 && cs[0].tagName === "BR") return true;
+      // Chrome leaves `<p>&nbsp;</p>` (or `<p> </p>` for the regular-
+      // space variant) when the user types-then-deletes everything in
+      // a paragraph. Treat such whitespace-only text-node-only blocks
+      // as empty placeholders too so consecutive insert flows don't
+      // leave a stray blank line above the inserted content.
+      if (cs.length === 1 && cs[0].nodeType === 3) {
+        const t = cs[0].nodeValue || "";
+        if (t.replace(/[\s ]/g, "") === "") return true;
+      }
       return false;
     };
     let anchorBlock = null;
