@@ -882,6 +882,32 @@ function makeGridModal(editor, onSubmit) {
   headerColorRow.appendChild(headerColorSwatch);
   pop.appendChild(headerColorRow);
 
+  // The header-toggle elements and the preview grid are created up
+  // front (but appended later, in visual order) so the stepper's
+  // initial set() → refresh() call below has live references to them.
+  // Same TDZ pattern the legacy makeGridDialog used.
+  const headRow = document.createElement("div");
+  headRow.className = "pix-note-optrow";
+  const headLbl = document.createElement("div");
+  headLbl.className = "lbl";
+  headLbl.textContent = "First row as header";
+  const headToggle = document.createElement("div");
+  headToggle.className = "pix-note-toggle";
+  headRow.appendChild(headLbl);
+  headRow.appendChild(headToggle);
+  headRow.addEventListener("click", (e) => {
+    if (e.target.closest("input")) return;
+    state.header = !state.header;
+    editor._gridPickerHeader = state.header;
+    refresh();
+  });
+
+  const previewWrap = document.createElement("div");
+  previewWrap.className = "pix-note-prevwrap";
+  const preview = document.createElement("div");
+  preview.className = "pix-note-gridprev";
+  previewWrap.appendChild(preview);
+
   // ── Stepper builder (cols + rows) ──────────────────────────────
   function makeStepper(labelText, key, min, max) {
     const row = document.createElement("div");
@@ -924,31 +950,7 @@ function makeGridModal(editor, onSubmit) {
   }
   pop.appendChild(makeStepper("Columns", "cols", GRID_COL_MIN, GRID_COL_MAX));
   pop.appendChild(makeStepper("Rows",    "rows", GRID_ROW_MIN, GRID_ROW_MAX));
-
-  // ── Header toggle ──────────────────────────────────────────────
-  const headRow = document.createElement("div");
-  headRow.className = "pix-note-optrow";
-  const headLbl = document.createElement("div");
-  headLbl.className = "lbl";
-  headLbl.textContent = "First row as header";
-  const headToggle = document.createElement("div");
-  headToggle.className = "pix-note-toggle";
-  headRow.appendChild(headLbl);
-  headRow.appendChild(headToggle);
-  headRow.addEventListener("click", (e) => {
-    if (e.target.closest("input")) return;
-    state.header = !state.header;
-    editor._gridPickerHeader = state.header;
-    refresh();
-  });
   pop.appendChild(headRow);
-
-  // ── Live preview ───────────────────────────────────────────────
-  const previewWrap = document.createElement("div");
-  previewWrap.className = "pix-note-prevwrap";
-  const preview = document.createElement("div");
-  preview.className = "pix-note-gridprev";
-  previewWrap.appendChild(preview);
   pop.appendChild(previewWrap);
 
   // ── Footer ─────────────────────────────────────────────────────
