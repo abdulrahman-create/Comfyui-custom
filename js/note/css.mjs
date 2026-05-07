@@ -845,6 +845,17 @@ export function injectCSS() {
   text-align: center;
   line-height: 1.4;
 }
+/* One-line helper at the top of the picker — walks the user through
+   the workflow order. Sits above the colour picker. */
+.pix-note-iconpop-hint {
+  color: #aaa;
+  font-size: 11.5px;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  line-height: 1.4;
+  margin-bottom: 10px;
+  text-align: center;
+}
+
 /* Icon-popup color section. Picker UI is rendered by the shared
    Pixaroma Color Picker module (.pix-cp-* classes in
    js/shared/color_picker.mjs). The wrapper just adds bottom margin

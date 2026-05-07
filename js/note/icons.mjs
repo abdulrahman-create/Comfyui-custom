@@ -197,6 +197,13 @@ function openIconPop(anchorBtn, icons, editor, onPick) {
     return;
   }
 
+  // Helper hint at the top — walks the user through the order:
+  // pick colour → pick size → pick icon → Insert.
+  const hint = document.createElement("div");
+  hint.className = "pix-note-iconpop-hint";
+  hint.textContent = "Pick a colour, choose a size, select an icon, then click Insert.";
+  pop.appendChild(hint);
+
   // Pixaroma Color Picker (shared module). Live preview: each change
   // writes editor._iconPickerColor and re-tints the icon-grid glyphs
   // so the user sees what will land before clicking Insert. showClear
