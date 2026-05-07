@@ -838,12 +838,15 @@ export function injectCSS() {
   border-color: #f66744;
   background: rgba(246, 103, 68, 0.15);
 }
-/* Selected tile — single-selection visual that survives the next
-   hover (so the user can confirm what's about to be inserted before
-   clicking Insert). Slightly stronger orange than hover. */
-.pix-note-iconswatch.selected {
+/* Selected tile — outline-only so the icon's actual colour stays
+   readable underneath. Strong orange border + inset ring for double-
+   stroke contrast against the dark base. Override hover-on-selected
+   so an orange tint doesn't paint over the icon while the cursor is
+   on the selected tile. */
+.pix-note-iconswatch.selected,
+.pix-note-iconswatch.selected:hover {
+  background: rgba(255, 255, 255, 0.04);
   border-color: ${BRAND};
-  background: rgba(246, 103, 68, 0.25);
   box-shadow: 0 0 0 1px ${BRAND} inset;
 }
 .pix-note-iconswatch .pix-note-ic {
@@ -993,9 +996,12 @@ export function injectCSS() {
   border-color: ${BRAND};
   background: rgba(246, 103, 68, 0.15);
 }
-.pix-note-sep-variant.selected {
+/* Outline-only selected state — see the matching .pix-note-iconswatch
+   rule for why we drop the orange tint and override hover. */
+.pix-note-sep-variant.selected,
+.pix-note-sep-variant.selected:hover {
+  background: rgba(255, 255, 255, 0.04);
   border-color: ${BRAND};
-  background: rgba(246, 103, 68, 0.25);
   box-shadow: 0 0 0 1px ${BRAND} inset;
 }
 .pix-note-sep-variant hr {
