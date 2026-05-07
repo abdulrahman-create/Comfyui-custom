@@ -30,6 +30,13 @@ const ALLOWED_CLASS_VALUES = new Set([
   "pix-note-grid",
   // Inline-icon span marker (data-ic slug on <span>)
   "pix-note-ic",
+  // Separator (<hr>) variant classes — each instance carries inline
+  // color so they're independent of the toolbar Ln colour picker.
+  "pix-note-hr-solid",
+  "pix-note-hr-dashed",
+  "pix-note-hr-dotted",
+  "pix-note-hr-double",
+  "pix-note-hr-thick",
 ]);
 
 // Inline-style properties we allow. Values are validated separately.

@@ -911,11 +911,15 @@ NoteEditor.prototype._buildToolbar = function () {
   });
   g5.appendChild(codeBlockBtn);
 
-  g5.appendChild(makeBtn(
+  const sepBtn = makeBtn(
     '<span class="pix-note-tbtn-maskicon pix-note-icon-separator"></span>',
-    "Horizontal separator", "", () => {
-    document.execCommand("insertHTML", false, `<hr><p><br></p>`);
-  }));
+    "Horizontal separator", "", () => {},
+  );
+  sepBtn.onclick = (e) => {
+    e.preventDefault();
+    this._insertSeparatorBlock(sepBtn);
+  };
+  g5.appendChild(sepBtn);
 
   const gridIcon = `<img class="pix-note-tbtn-icon" src="/pixaroma/assets/icons/ui/grid.svg" draggable="false">`;
   const gridBtn = makeBtn(gridIcon, "Insert grid (table)", "", () => {});

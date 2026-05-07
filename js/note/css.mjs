@@ -767,13 +767,17 @@ export function injectCSS() {
    Picker module (js/shared/color_picker.mjs) which injects its own
    .pix-cp-* styles on first use. */
 
-/* Inline-icons picker — centred modal with backdrop. The backdrop sits
-   above the editor overlay (.pix-note-overlay z-index 99990) and dims
-   the editor while the picker is open. The box is laid out by flex
-   alignment on the backdrop. Pattern #27: .pix-note-iconpop is in the
-   editor's hasModal selectors so Esc / overlay-mousedown don't tear
-   the editor down while this picker is open. */
-.pix-note-iconpop-backdrop {
+/* Generic picker-modal shell — used by the icon picker and the
+   separator picker (and intended for future picker buttons that need
+   a centred modal). Two parallel class names (.pix-note-iconpop-* and
+   .pix-note-modal-*) resolve to the same styles via grouped selectors.
+   The icon picker uses the legacy iconpop-* names; new pickers use the
+   generic modal-* names. The editor's hasModal selectors include both
+   .pix-note-iconpop AND .pix-note-modal-backdrop so Esc / overlay-
+   mousedown don't tear the editor down while either is open
+   (Pattern #27). */
+.pix-note-iconpop-backdrop,
+.pix-note-modal-backdrop {
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.55);
@@ -782,7 +786,8 @@ export function injectCSS() {
   align-items: center;
   justify-content: center;
 }
-.pix-note-iconpop {
+.pix-note-iconpop,
+.pix-note-modal {
   background: #1a1a1a;
   /* Popup inherits this color down to .pix-note-iconswatch .pix-note-ic
      — tile previews show what the icon will look like when inserted
@@ -858,7 +863,8 @@ export function injectCSS() {
 }
 /* One-line helper at the top of the picker — walks the user through
    the workflow order. Sits above the colour picker. */
-.pix-note-iconpop-hint {
+.pix-note-iconpop-hint,
+.pix-note-modal-hint {
   color: #aaa;
   font-size: 11.5px;
   font-family: "Segoe UI", system-ui, sans-serif;
@@ -912,17 +918,20 @@ export function injectCSS() {
   color: #ddd;
 }
 
-/* Footer for the icon picker modal — Insert (primary) + Cancel.
-   Mirrors .pix-cp-modal-actions but kept local to avoid coupling to
-   the shared color picker module. Insert is disabled until the user
-   selects a tile. */
-.pix-note-iconpop-footer {
+/* Footer for picker modals — Insert (primary) + Cancel. Mirrors
+   .pix-cp-modal-actions but kept local to avoid coupling to the
+   shared color picker module. Insert is disabled until the user
+   makes a selection. Two parallel class names so legacy iconpop
+   markup and generic modal markup share the same look. */
+.pix-note-iconpop-footer,
+.pix-note-modal-footer {
   display: flex;
   gap: 8px;
   justify-content: flex-end;
   margin-top: 12px;
 }
-.pix-note-iconpop-btn {
+.pix-note-iconpop-btn,
+.pix-note-modal-btn {
   height: 28px;
   padding: 0 14px;
   background: transparent;
@@ -933,23 +942,93 @@ export function injectCSS() {
   font-size: 12px;
   font-family: "Segoe UI", system-ui, sans-serif;
 }
-.pix-note-iconpop-btn:hover:not(:disabled) {
+.pix-note-iconpop-btn:hover:not(:disabled),
+.pix-note-modal-btn:hover:not(:disabled) {
   color: ${BRAND};
   border-color: ${BRAND};
 }
-.pix-note-iconpop-btn.primary {
+.pix-note-iconpop-btn.primary,
+.pix-note-modal-btn.primary {
   background: ${BRAND};
   border-color: ${BRAND};
   color: #fff;
 }
-.pix-note-iconpop-btn.primary:hover:not(:disabled) {
+.pix-note-iconpop-btn.primary:hover:not(:disabled),
+.pix-note-modal-btn.primary:hover:not(:disabled) {
   background: #d54f2c;
   border-color: #d54f2c;
   color: #fff;
 }
-.pix-note-iconpop-btn:disabled {
+.pix-note-iconpop-btn:disabled,
+.pix-note-modal-btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+
+/* ── Separator picker modal ─────────────────────────────────────
+   Variant chooser: 5 vertical tiles, each rendering an actual <hr>
+   sample with the picked colour. Click selects, double-click commits
+   (matches icon-picker UX). Default selection = solid (current
+   visual). Each instance carries its own inline color so they don't
+   share state with the toolbar's Ln colour picker. */
+.pix-note-sep-variants {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.pix-note-sep-variant {
+  display: flex;
+  align-items: center;
+  height: 36px;
+  padding: 0 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  text-align: left;
+}
+.pix-note-sep-variant:hover {
+  border-color: ${BRAND};
+  background: rgba(246, 103, 68, 0.15);
+}
+.pix-note-sep-variant.selected {
+  border-color: ${BRAND};
+  background: rgba(246, 103, 68, 0.25);
+  box-shadow: 0 0 0 1px ${BRAND} inset;
+}
+.pix-note-sep-variant hr {
+  width: 100%;
+  margin: 0;
+}
+/* Variant rules — these render BOTH inside the variant chooser tiles
+   (where the tile sets `color: ...`) AND inside the editor body /
+   on-canvas note (where the inserted <hr> carries inline `color: ...`).
+   currentColor wires the picked colour into border-top so each
+   separator instance is independent of the toolbar Ln picker. */
+hr.pix-note-hr-solid {
+  border: none;
+  border-top: 1px solid currentColor;
+  margin: 12px 0;
+}
+hr.pix-note-hr-dashed {
+  border: none;
+  border-top: 1px dashed currentColor;
+  margin: 12px 0;
+}
+hr.pix-note-hr-dotted {
+  border: none;
+  border-top: 2px dotted currentColor;
+  margin: 12px 0;
+}
+hr.pix-note-hr-double {
+  border: none;
+  border-top: 3px double currentColor;
+  margin: 12px 0;
+}
+hr.pix-note-hr-thick {
+  border: none;
+  border-top: 3px solid currentColor;
+  margin: 12px 0;
 }
 
 /* Toolbar button mask-icon for the "Insert icon" entry.

@@ -19,6 +19,11 @@ export class NoteEditor {
     // within the same editor session; reset to defaults on _cleanup.
     this._iconPickerColor = "#f66744"; // Pixaroma orange default
     this._iconPickerSize  = "m";       // 1.2em, matches existing default
+    // Separator picker session state — independent of the toolbar Ln
+    // colour picker so each <hr> carries its own inline colour and
+    // doesn't track other tools. Sticky within an editor session.
+    this._sepPickerColor = "#f66744";
+    this._sepPickerVariant = "solid";
     // Sync cfg.backgroundColor to node.bgcolor on open when they
     // disagree. Happens when the user picks a color via ComfyUI's
     // native right-click Colors menu between saves: node.bgcolor is
@@ -310,7 +315,7 @@ export class NoteEditor {
         // Cancel/outside to dismiss.
         if (key === "escape") {
           const hasModal = !!document.querySelector(
-            ".pix-note-blockdlg, .pix-note-confirm-backdrop, .pix-cp-popup, .pix-cp-modal-backdrop, .pix-note-iconpop, .pix-note-help-overlay"
+            ".pix-note-blockdlg, .pix-note-confirm-backdrop, .pix-cp-popup, .pix-cp-modal-backdrop, .pix-note-iconpop, .pix-note-modal-backdrop, .pix-note-help-overlay"
           );
           e.preventDefault();
           e.stopImmediatePropagation();
@@ -579,6 +584,9 @@ export class NoteEditor {
     // Reset icon-picker session state so the next open starts fresh.
     this._iconPickerColor = null;
     this._iconPickerSize = null;
+    // Reset separator-picker session state.
+    this._sepPickerColor = null;
+    this._sepPickerVariant = null;
     // Drop the icon-deletion + click-placement handler refs. The DOM
     // node they were attached to (the contenteditable inside _el) was
     // already removed above, so the listeners are gone with it; this
@@ -670,7 +678,7 @@ export class NoteEditor {
       // unsaved-changes prompt ON TOP of the still-open modal. Mirrors
       // the same hasModal check the Escape-key handler already uses above.
       const hasModal = !!document.querySelector(
-        ".pix-note-blockdlg, .pix-note-confirm-backdrop, .pix-cp-popup, .pix-cp-modal-backdrop, .pix-note-iconpop, .pix-note-help-overlay"
+        ".pix-note-blockdlg, .pix-note-confirm-backdrop, .pix-cp-popup, .pix-cp-modal-backdrop, .pix-note-iconpop, .pix-note-modal-backdrop, .pix-note-help-overlay"
       );
       if (hasModal) return;
       this.close();

@@ -1,4 +1,5 @@
 import { NoteEditor } from "./core.mjs";
+import { createPixaromaColorPicker } from "../shared/color_picker.mjs";
 
 // Icon → pill class (must match css.mjs / sanitize.mjs allowlist).
 const ICON_TO_CLASS = {
@@ -1002,4 +1003,190 @@ NoteEditor.prototype._insertGridBlock = function (anchorBtn) {
     this._dirty = true;
     return true;
   });
+};
+
+// ── Separator picker ─────────────────────────────────────────────
+// Centred modal with backdrop, colour picker, 5 variant tiles, and
+// Insert / Cancel buttons. Mirrors the icon picker UX (Pattern #29
+// modal shell). Each inserted <hr> carries inline `style="color:..."`
+// so the colour is independent of the toolbar Ln picker — picking a
+// red separator HERE doesn't change other separators in the note.
+const _SEP_VARIANTS = [
+  { id: "solid",  label: "Solid line"      },
+  { id: "dashed", label: "Dashed line"     },
+  { id: "dotted", label: "Dotted line"     },
+  { id: "double", label: "Double line"     },
+  { id: "thick",  label: "Thick solid line"},
+];
+
+NoteEditor.prototype._insertSeparatorBlock = function (anchorBtn) {
+  if (!this._editArea) return;
+
+  // Capture caret position synchronously — modal focus moves into the
+  // colour picker's hex input and would otherwise drop the selection.
+  const savedRange = (() => {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return null;
+    const r = sel.getRangeAt(0);
+    if (!this._editArea.contains(r.commonAncestorContainer)) return null;
+    return r.cloneRange();
+  })();
+
+  const editor = this;
+
+  const backdrop = document.createElement("div");
+  backdrop.className = "pix-note-modal-backdrop";
+  const pop = document.createElement("div");
+  pop.className = "pix-note-modal";
+  backdrop.appendChild(pop);
+
+  // Hint
+  const hint = document.createElement("div");
+  hint.className = "pix-note-modal-hint";
+  hint.textContent = "Pick a colour, choose a separator style, then click Insert.";
+  pop.appendChild(hint);
+
+  // Colour picker — own state on editor._sepPickerColor so it doesn't
+  // share with the toolbar Ln colour picker.
+  const cp = createPixaromaColorPicker({
+    initialColor: editor._sepPickerColor || "#f66744",
+    showClear: false,
+    resetColor: "#f66744",
+    onChange: (c) => {
+      editor._sepPickerColor = c;
+      repaintVariants();
+    },
+  });
+  pop.appendChild(cp.element);
+
+  // Variant chooser — 5 tiles, each rendering an actual <hr> sample.
+  const variantWrap = document.createElement("div");
+  variantWrap.className = "pix-note-sep-variants";
+  let selectedVariant = editor._sepPickerVariant || "solid";
+  const variantTiles = new Map();
+  for (const v of _SEP_VARIANTS) {
+    const tile = document.createElement("button");
+    tile.type = "button";
+    tile.className = "pix-note-sep-variant";
+    tile.title = v.label;
+    tile.setAttribute("data-variant", v.id);
+    if (v.id === selectedVariant) tile.classList.add("selected");
+    tile.addEventListener("mousedown", (e) => e.preventDefault());
+    tile.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const prev = variantTiles.get(selectedVariant);
+      if (prev) prev.classList.remove("selected");
+      selectedVariant = v.id;
+      editor._sepPickerVariant = v.id;
+      tile.classList.add("selected");
+    });
+    tile.addEventListener("dblclick", (e) => {
+      e.stopPropagation();
+      commit();
+    });
+    const sampleHr = document.createElement("hr");
+    sampleHr.className = `pix-note-hr-${v.id}`;
+    tile.appendChild(sampleHr);
+    variantWrap.appendChild(tile);
+    variantTiles.set(v.id, tile);
+  }
+  pop.appendChild(variantWrap);
+
+  function repaintVariants() {
+    // Each tile's color drives the inner <hr>'s currentColor.
+    const c = editor._sepPickerColor || "#f66744";
+    for (const tile of variantTiles.values()) {
+      tile.style.color = c;
+    }
+  }
+  repaintVariants();
+
+  // Footer
+  const footer = document.createElement("div");
+  footer.className = "pix-note-modal-footer";
+  const cancelBtn = document.createElement("button");
+  cancelBtn.type = "button";
+  cancelBtn.className = "pix-note-modal-btn";
+  cancelBtn.textContent = "Cancel";
+  cancelBtn.addEventListener("mousedown", (e) => e.preventDefault());
+  cancelBtn.addEventListener("click", () => close());
+  footer.appendChild(cancelBtn);
+  const insertBtn = document.createElement("button");
+  insertBtn.type = "button";
+  insertBtn.className = "pix-note-modal-btn primary";
+  insertBtn.textContent = "Insert";
+  insertBtn.addEventListener("mousedown", (e) => e.preventDefault());
+  insertBtn.addEventListener("click", () => commit());
+  footer.appendChild(insertBtn);
+  pop.appendChild(footer);
+
+  document.body.appendChild(backdrop);
+
+  const onBackdropDown = (e) => { if (e.target === backdrop) close(); };
+  const onKey = (e) => {
+    if (e.key === "Escape") { e.stopPropagation(); close(); }
+    else if (e.key === "Enter") { e.stopPropagation(); e.preventDefault(); commit(); }
+  };
+  backdrop.addEventListener("mousedown", onBackdropDown);
+  window.addEventListener("keydown", onKey, true);
+
+  function close() {
+    backdrop.removeEventListener("mousedown", onBackdropDown);
+    window.removeEventListener("keydown", onKey, true);
+    cp.destroy();
+    backdrop.remove();
+  }
+
+  function commit() {
+    close();
+    const color = editor._sepPickerColor || "#f66744";
+    const variant = selectedVariant;
+
+    editor._normalizeEditArea?.();
+    editor._editArea.focus();
+    editor._snapBefore?.();
+
+    // Build the nodes: <hr> + trailing <p><br></p> for caret landing.
+    const wrapper = document.createElement("div");
+    wrapper.innerHTML =
+      `<hr class="pix-note-hr-${variant}" style="color: ${color}">` +
+      `<p><br></p>`;
+    const hr = wrapper.firstElementChild;
+    const trailing = wrapper.lastElementChild;
+
+    // Find the top-level block inside editArea that contains the saved
+    // range (or fall back to end-of-editArea). Direct DOM insert mirrors
+    // _insertGridBlock — execCommand("insertHTML") on a block element
+    // mishandles caret placement and drops staged colours.
+    const findTopBlock = (node) => {
+      if (!node) return null;
+      if (node.nodeType !== 1) node = node.parentNode;
+      while (node && node.parentNode !== editor._editArea && node !== editor._editArea) {
+        node = node.parentNode;
+      }
+      return node && node.parentNode === editor._editArea ? node : null;
+    };
+    let anchorBlock = null;
+    if (savedRange) anchorBlock = findTopBlock(savedRange.startContainer);
+    if (anchorBlock && anchorBlock.parentNode === editor._editArea) {
+      editor._editArea.insertBefore(hr, anchorBlock.nextSibling);
+      editor._editArea.insertBefore(trailing, hr.nextSibling);
+    } else {
+      editor._editArea.appendChild(hr);
+      editor._editArea.appendChild(trailing);
+    }
+
+    // Caret in the trailing <p> so typing lands below the rule.
+    const r = document.createRange();
+    r.selectNodeContents(trailing);
+    r.collapse(true);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(r);
+
+    editor._restageColors?.();
+    editor._snapAfter?.();
+    editor._dirty = true;
+    editor._refreshActiveStates?.();
+  }
 };
