@@ -999,9 +999,8 @@ export class NoteEditor {
         <div class="pix-note-help-section">
           <h4>Pixaroma Blocks</h4>
           <div class="pix-note-help-grid">
-            <b><img class="pix-note-tbtn-icon" src="/pixaroma/assets/icons/ui/button-design.svg">Button</b><span>Centred modal: pick colour, button type (Download / View Page / Read More / No icon), label, URL, optional size hint. Each button carries its own colour.</span>
-            <b><img class="pix-note-tbtn-icon" src="/pixaroma/assets/icons/ui/folder.svg">Folder hint</b><span>Standalone "Place in: ComfyUI/&lt;path&gt;" line. Centred modal: pick colour and folder path. Use it under a Button to tell the reader where the downloaded file goes.</span>
-            <b>Pill behaviour</b><span>Click on the canvas opens the URL in a new tab. The folder hint is purely informational; save the file manually into the named path.</span>
+            <b><img class="pix-note-tbtn-icon" src="/pixaroma/assets/icons/ui/button-design.svg">Button</b><span>Centred modal: pick colour, button type (Download / View Page / Read More / No icon), label, URL, optional size hint. Each button carries its own colour. On the canvas, clicking the button opens its URL in a new tab.</span>
+            <b><img class="pix-note-tbtn-icon" src="/pixaroma/assets/icons/ui/folder.svg">Folder hint</b><span>Standalone "Place in: ComfyUI/&lt;path&gt;" line. Centred modal: pick colour and folder path. Use it under a Button to tell the reader where to save the downloaded file. Purely informational; nothing happens on click.</span>
             <b><img class="pix-note-tbtn-icon" src="/pixaroma/assets/icons/ui/youtube.svg">YouTube</b><span>Centred modal with preset Pixaroma YouTube link (override freely). Brand red colour locked.</span>
             <b><img class="pix-note-tbtn-icon" src="/pixaroma/assets/icons/ui/discord.svg">Discord</b><span>Centred modal with preset Pixaroma Discord link (override freely). Brand blurple locked.</span>
           </div>
