@@ -1039,6 +1039,49 @@ hr.pix-note-hr-thick {
   margin: 12px 0;
 }
 
+/* ── Generic modal form rows ──────────────────────────────────────
+   Reusable label + control rows for the new picker modals
+   (separator chooser doesn't use them; grid picker does). Each row
+   is a flex line: left label, right control. */
+.pix-note-modal-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 8px;
+  font-family: "Segoe UI", system-ui, sans-serif;
+}
+.pix-note-modal-row .lbl {
+  font-size: 11px;
+  font-weight: 600;
+  color: #bbb;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.pix-note-modal-row.disabled .lbl {
+  color: #555;
+}
+
+/* Colour swatch button — opens the compact Pixaroma colour picker on
+   click. Sized to read as a touchable target without dominating the
+   row. The current colour is applied inline by the JS that owns it. */
+.pix-note-modal-swatch {
+  width: 36px;
+  height: 22px;
+  background: #f66744;
+  border: 1px solid #444;
+  border-radius: 3px;
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+}
+.pix-note-modal-swatch:hover:not(:disabled) {
+  border-color: ${BRAND};
+}
+.pix-note-modal-swatch:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 /* Toolbar button mask-icon for the "Insert icon" entry.
    Single-layer (no outline+drop split) — uses the existing
    .pix-note-tbtn-maskicon class for currentColor tinting. */
@@ -1279,7 +1322,10 @@ hr.pix-note-hr-thick {
 .pix-note-body table.pix-note-grid td,
 .pix-note-editarea table.pix-note-grid th,
 .pix-note-editarea table.pix-note-grid td {
-  border: 1px solid var(--pix-note-line, ${BRAND});
+  /* Per-instance border colour comes from --pix-note-grid-border on
+     the <table> (set by the grid picker). Falls back to the toolbar
+     Ln picker for grids authored before per-instance colours. */
+  border: 1px solid var(--pix-note-grid-border, var(--pix-note-line, ${BRAND}));
   padding: 6px 8px;
   vertical-align: middle;
   word-wrap: break-word;
@@ -1288,14 +1334,19 @@ hr.pix-note-hr-thick {
 }
 .pix-note-body table.pix-note-grid thead th,
 .pix-note-editarea table.pix-note-grid thead th {
-  background: #1a1a1a;
+  /* Per-instance header background — falls back to the previous
+     hardcoded dark grey for older grids without the custom prop. */
+  background: var(--pix-note-grid-header-bg, #1a1a1a);
   color: #fff;
   font-weight: 700;
-  border-bottom: 2px solid var(--pix-note-line, ${BRAND});
+  border-bottom: 2px solid var(--pix-note-grid-border, var(--pix-note-line, ${BRAND}));
 }
 
 /* ── Grid insert dialog (preview + steppers) ──────────────────────── */
-.pix-note-griddlg .pix-note-prevwrap {
+/* Preview wrap: legacy anchored dialog (.pix-note-griddlg) AND new
+   centred modal (.pix-note-gridmodal). Same look, two host classes. */
+.pix-note-griddlg .pix-note-prevwrap,
+.pix-note-gridmodal .pix-note-prevwrap {
   display: block;
   text-align: left;
   padding: 8px 0;

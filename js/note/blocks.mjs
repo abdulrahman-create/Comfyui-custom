@@ -1,5 +1,8 @@
 import { NoteEditor } from "./core.mjs";
-import { createPixaromaColorPicker } from "../shared/color_picker.mjs";
+import {
+  createPixaromaColorPicker,
+  openPixaromaCompactColorPickerPopup,
+} from "../shared/color_picker.mjs";
 
 // Icon → pill class (must match css.mjs / sanitize.mjs allowlist).
 const ICON_TO_CLASS = {
@@ -771,45 +774,158 @@ const GRID_COL_MAX = 4;
 const GRID_ROW_MIN = 1;
 const GRID_ROW_MAX = 10;
 
-function renderGridHTML(cols, rows, header) {
+function renderGridHTML(cols, rows, header, borderColor, headerBg) {
   const cell = "<td><br></td>";
   const headCell = "<th><br></th>";
   const bodyRow = `<tr>${cell.repeat(cols)}</tr>`;
   const headRow = `<tr>${headCell.repeat(cols)}</tr>`;
   const thead = header ? `<thead>${headRow}</thead>` : "";
   const tbody = `<tbody>${bodyRow.repeat(rows)}</tbody>`;
+  // Per-instance colours stamped as CSS custom properties on the
+  // <table>. CSS rules read them with fallback to --pix-note-line so
+  // grids authored before per-instance colour still render correctly.
+  const styleParts = [];
+  if (/^#[0-9a-f]{3,8}$/i.test(borderColor || "")) {
+    styleParts.push(`--pix-note-grid-border: ${borderColor}`);
+  }
+  if (header && /^#[0-9a-f]{3,8}$/i.test(headerBg || "")) {
+    styleParts.push(`--pix-note-grid-header-bg: ${headerBg}`);
+  }
+  const style = styleParts.length ? ` style="${styleParts.join("; ")}"` : "";
   // Trailing <p><br></p> so the caret has a paragraph to land in after
   // the table — otherwise the user has to click BELOW the table in the
   // padding area to keep typing, which Chrome sometimes routes into the
   // last table cell instead.
-  return `<table class="pix-note-grid">${thead}${tbody}</table><p><br></p>`;
+  return `<table class="pix-note-grid"${style}>${thead}${tbody}</table><p><br></p>`;
 }
 
-function makeGridDialog(anchorBtn, onSubmit) {
-  const state = { cols: 3, rows: 3, header: false };
+function makeGridModal(editor, onSubmit) {
+  const state = {
+    cols:   editor._gridPickerCols   || 3,
+    rows:   editor._gridPickerRows   || 3,
+    header: editor._gridPickerHeader || false,
+    borderColor: editor._gridPickerBorderColor || "#f66744",
+    headerBg:    editor._gridPickerHeaderBg    || "#1a1a1a",
+  };
 
-  const dlg = document.createElement("div");
-  dlg.className = "pix-note-blockdlg pix-note-griddlg";
-  const rect = anchorBtn.getBoundingClientRect();
-  dlg.style.left = `${Math.max(8, rect.left)}px`;
-  dlg.style.top = `${rect.bottom + 6}px`;
+  const backdrop = document.createElement("div");
+  backdrop.className = "pix-note-modal-backdrop";
+  const pop = document.createElement("div");
+  pop.className = "pix-note-modal pix-note-gridmodal";
+  backdrop.appendChild(pop);
 
-  const h = document.createElement("h4");
-  h.textContent = "Insert grid";
-  dlg.appendChild(h);
+  const hint = document.createElement("div");
+  hint.className = "pix-note-modal-hint";
+  hint.textContent = "Pick colours, set columns and rows, then click Insert.";
+  pop.appendChild(hint);
 
-  // Preview — CSS grid of div cells mirroring current cols/rows.
-  const previewWrap = document.createElement("div");
-  previewWrap.className = "pix-note-prevwrap";
-  const preview = document.createElement("div");
-  preview.className = "pix-note-gridprev";
-  previewWrap.appendChild(preview);
-  dlg.appendChild(previewWrap);
+  // ── Border colour row ──────────────────────────────────────────
+  const borderRow = document.createElement("div");
+  borderRow.className = "pix-note-modal-row";
+  const borderLbl = document.createElement("span");
+  borderLbl.className = "lbl";
+  borderLbl.textContent = "Border colour";
+  borderRow.appendChild(borderLbl);
+  const borderSwatch = document.createElement("button");
+  borderSwatch.type = "button";
+  borderSwatch.className = "pix-note-modal-swatch";
+  borderSwatch.title = "Click to pick the border colour";
+  borderSwatch.style.background = state.borderColor;
+  borderSwatch.addEventListener("mousedown", (e) => e.preventDefault());
+  borderSwatch.addEventListener("click", (e) => {
+    e.stopPropagation();
+    openPixaromaCompactColorPickerPopup(borderSwatch, {
+      initialColor: state.borderColor,
+      showClear: false,
+      resetColor: "#f66744",
+      onPick: (c) => {
+        const next = c || "#f66744";
+        state.borderColor = next;
+        editor._gridPickerBorderColor = next;
+        borderSwatch.style.background = next;
+        refresh();
+      },
+    });
+  });
+  borderRow.appendChild(borderSwatch);
+  pop.appendChild(borderRow);
 
-  // Header toggle — created (but not yet appended to the dialog) before
-  // the steppers so the stepper's initial set() → refresh() can read
-  // `headToggle` without hitting the TDZ. Visual order stays "preview,
-  // steppers, header toggle" because appendChild happens further below.
+  // ── Header colour row (greyed when toggle is off) ──────────────
+  const headerColorRow = document.createElement("div");
+  headerColorRow.className = "pix-note-modal-row";
+  const headerColorLbl = document.createElement("span");
+  headerColorLbl.className = "lbl";
+  headerColorLbl.textContent = "Header colour";
+  headerColorRow.appendChild(headerColorLbl);
+  const headerColorSwatch = document.createElement("button");
+  headerColorSwatch.type = "button";
+  headerColorSwatch.className = "pix-note-modal-swatch";
+  headerColorSwatch.title = "Click to pick the header background colour";
+  headerColorSwatch.style.background = state.headerBg;
+  headerColorSwatch.addEventListener("mousedown", (e) => e.preventDefault());
+  headerColorSwatch.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (headerColorSwatch.disabled) return;
+    openPixaromaCompactColorPickerPopup(headerColorSwatch, {
+      initialColor: state.headerBg,
+      showClear: false,
+      resetColor: "#1a1a1a",
+      onPick: (c) => {
+        const next = c || "#1a1a1a";
+        state.headerBg = next;
+        editor._gridPickerHeaderBg = next;
+        headerColorSwatch.style.background = next;
+        refresh();
+      },
+    });
+  });
+  headerColorRow.appendChild(headerColorSwatch);
+  pop.appendChild(headerColorRow);
+
+  // ── Stepper builder (cols + rows) ──────────────────────────────
+  function makeStepper(labelText, key, min, max) {
+    const row = document.createElement("div");
+    row.className = "pix-note-modal-row";
+    const lbl = document.createElement("span");
+    lbl.className = "lbl";
+    lbl.textContent = labelText;
+    row.appendChild(lbl);
+    const stepper = document.createElement("div");
+    stepper.className = "pix-note-stepper";
+    const minus = document.createElement("button");
+    minus.type = "button";
+    minus.className = "pix-note-step";
+    minus.textContent = "−";
+    const num = document.createElement("span");
+    num.className = "pix-note-stepnum";
+    num.textContent = String(state[key]);
+    const plus = document.createElement("button");
+    plus.type = "button";
+    plus.className = "pix-note-step";
+    plus.textContent = "+";
+    stepper.appendChild(minus);
+    stepper.appendChild(num);
+    stepper.appendChild(plus);
+    row.appendChild(stepper);
+    function set(v) {
+      state[key] = Math.max(min, Math.min(max, v));
+      editor[`_gridPicker${key === "cols" ? "Cols" : "Rows"}`] = state[key];
+      num.textContent = String(state[key]);
+      minus.disabled = state[key] <= min;
+      plus.disabled = state[key] >= max;
+      refresh();
+    }
+    minus.addEventListener("mousedown", (e) => e.preventDefault());
+    plus.addEventListener("mousedown", (e) => e.preventDefault());
+    minus.addEventListener("click", () => set(state[key] - 1));
+    plus.addEventListener("click", () => set(state[key] + 1));
+    set(state[key]);
+    return row;
+  }
+  pop.appendChild(makeStepper("Columns", "cols", GRID_COL_MIN, GRID_COL_MAX));
+  pop.appendChild(makeStepper("Rows",    "rows", GRID_ROW_MIN, GRID_ROW_MAX));
+
+  // ── Header toggle ──────────────────────────────────────────────
   const headRow = document.createElement("div");
   headRow.className = "pix-note-optrow";
   const headLbl = document.createElement("div");
@@ -822,76 +938,41 @@ function makeGridDialog(anchorBtn, onSubmit) {
   headRow.addEventListener("click", (e) => {
     if (e.target.closest("input")) return;
     state.header = !state.header;
+    editor._gridPickerHeader = state.header;
     refresh();
   });
+  pop.appendChild(headRow);
 
-  // Stepper builder — shared between cols + rows.
-  function makeStepper(labelText, key, min, max) {
-    const row = document.createElement("div");
-    row.className = "field";
-    const lbl = document.createElement("label");
-    lbl.className = "lbl";
-    lbl.textContent = labelText;
-    const stepper = document.createElement("div");
-    stepper.className = "pix-note-stepper";
-    const minus = document.createElement("button");
-    minus.type = "button";
-    minus.className = "pix-note-step";
-    minus.textContent = "\u2212"; // en-minus, more visually balanced than "-"
-    const num = document.createElement("span");
-    num.className = "pix-note-stepnum";
-    num.textContent = String(state[key]);
-    const plus = document.createElement("button");
-    plus.type = "button";
-    plus.className = "pix-note-step";
-    plus.textContent = "+";
-    stepper.appendChild(minus);
-    stepper.appendChild(num);
-    stepper.appendChild(plus);
-    row.appendChild(lbl);
-    row.appendChild(stepper);
-    function set(v) {
-      state[key] = Math.max(min, Math.min(max, v));
-      num.textContent = String(state[key]);
-      minus.disabled = state[key] <= min;
-      plus.disabled = state[key] >= max;
-      refresh();
-    }
-    minus.addEventListener("mousedown", (e) => e.preventDefault());
-    plus.addEventListener("mousedown", (e) => e.preventDefault());
-    minus.addEventListener("click", () => set(state[key] - 1));
-    plus.addEventListener("click", () => set(state[key] + 1));
-    set(state[key]); // initial disabled state
-    return row;
-  }
+  // ── Live preview ───────────────────────────────────────────────
+  const previewWrap = document.createElement("div");
+  previewWrap.className = "pix-note-prevwrap";
+  const preview = document.createElement("div");
+  preview.className = "pix-note-gridprev";
+  previewWrap.appendChild(preview);
+  pop.appendChild(previewWrap);
 
-  dlg.appendChild(makeStepper("Columns", "cols", GRID_COL_MIN, GRID_COL_MAX));
-  dlg.appendChild(makeStepper("Rows", "rows", GRID_ROW_MIN, GRID_ROW_MAX));
-  dlg.appendChild(headRow);
-
-  // Inline error row kept for consistency with other dialogs; no URL
-  // validation here, so it stays empty.
-  const errEl = document.createElement("div");
-  errEl.className = "pix-note-linkerr";
-  dlg.appendChild(errEl);
-
+  // ── Footer ─────────────────────────────────────────────────────
   const footer = document.createElement("div");
-  footer.className = "dlgfooter";
-  const cancel = document.createElement("button");
-  cancel.className = "pix-note-btn";
-  cancel.textContent = "Cancel";
-  const ok = document.createElement("button");
-  ok.className = "pix-note-btn primary";
-  ok.textContent = "Insert";
-  footer.appendChild(cancel);
-  footer.appendChild(ok);
-  dlg.appendChild(footer);
+  footer.className = "pix-note-modal-footer";
+  const cancelBtn = document.createElement("button");
+  cancelBtn.type = "button";
+  cancelBtn.className = "pix-note-modal-btn";
+  cancelBtn.textContent = "Cancel";
+  cancelBtn.addEventListener("mousedown", (e) => e.preventDefault());
+  cancelBtn.addEventListener("click", () => close());
+  footer.appendChild(cancelBtn);
+  const insertBtn = document.createElement("button");
+  insertBtn.type = "button";
+  insertBtn.className = "pix-note-modal-btn primary";
+  insertBtn.textContent = "Insert";
+  insertBtn.addEventListener("mousedown", (e) => e.preventDefault());
+  insertBtn.addEventListener("click", () => commit());
+  footer.appendChild(insertBtn);
+  pop.appendChild(footer);
 
-  document.body.appendChild(dlg);
+  document.body.appendChild(backdrop);
 
   function refresh() {
-    // Rebuild the preview as a CSS grid. Uses 3px gap + 1px-solid borders
-    // to visually read as a tiny grid without needing a real <table>.
     preview.innerHTML = "";
     preview.style.gridTemplateColumns = `repeat(${state.cols}, 1fr)`;
     const totalRows = state.rows + (state.header ? 1 : 0);
@@ -899,37 +980,40 @@ function makeGridDialog(anchorBtn, onSubmit) {
       for (let c = 0; c < state.cols; c++) {
         const cell = document.createElement("div");
         cell.className = "pix-note-gridprevcell";
-        if (state.header && r === 0) cell.classList.add("head");
+        cell.style.borderColor = state.borderColor;
+        if (state.header && r === 0) {
+          cell.classList.add("head");
+          cell.style.background = state.headerBg;
+          cell.style.borderBottom = `2px solid ${state.borderColor}`;
+        }
         preview.appendChild(cell);
       }
     }
     headToggle.classList.toggle("on", state.header);
+    headerColorSwatch.disabled = !state.header;
+    headerColorRow.classList.toggle("disabled", !state.header);
   }
+  refresh();
+
+  const onBackdropDown = (e) => { if (e.target === backdrop) close(); };
+  const onKey = (e) => {
+    if (e.key === "Escape") { e.stopPropagation(); close(); }
+    else if (e.key === "Enter") { e.stopPropagation(); e.preventDefault(); commit(); }
+  };
+  backdrop.addEventListener("mousedown", onBackdropDown);
+  window.addEventListener("keydown", onKey, true);
 
   function close() {
-    dlg.remove();
-    document.removeEventListener("mousedown", onOutside, true);
-    document.removeEventListener("keydown", onKey, true);
+    backdrop.removeEventListener("mousedown", onBackdropDown);
+    window.removeEventListener("keydown", onKey, true);
+    backdrop.remove();
   }
-  const onOutside = (e) => { if (!dlg.contains(e.target)) close(); };
-  const onKey = (e) => {
-    if (e.key === "Escape") { e.preventDefault(); close(); }
-    else if (e.key === "Enter") { e.preventDefault(); submit(); }
-  };
-  setTimeout(() => {
-    document.addEventListener("mousedown", onOutside, true);
-    document.addEventListener("keydown", onKey, true);
-  }, 0);
-
-  function submit() {
-    const r = onSubmit({ ...state });
-    if (r !== false) close();
+  function commit() {
+    onSubmit({ ...state });
+    close();
   }
-  cancel.addEventListener("click", close);
-  ok.addEventListener("click", submit);
-
-  refresh();
 }
+
 
 NoteEditor.prototype._insertGridBlock = function (anchorBtn) {
   // Capture the saved range AND the top-level block containing it, like
@@ -951,11 +1035,13 @@ NoteEditor.prototype._insertGridBlock = function (anchorBtn) {
   // after it, and explicitly position the caret inside that <p>.
   const savedRange = saveRange(this._editArea);
   this._normalizeEditArea?.();
-  makeGridDialog(anchorBtn, (v) => {
+  makeGridModal(this, (v) => {
     this._snapBefore?.();
     // Build the nodes: <table> + trailing <p><br></p> for caret landing.
     const wrapper = document.createElement("div");
-    wrapper.innerHTML = renderGridHTML(v.cols, v.rows, v.header);
+    wrapper.innerHTML = renderGridHTML(
+      v.cols, v.rows, v.header, v.borderColor, v.headerBg
+    );
     const table = wrapper.querySelector("table");
     const trailing = wrapper.querySelector("p");
     if (!table || !trailing) { this._snapAfter?.(); return true; }

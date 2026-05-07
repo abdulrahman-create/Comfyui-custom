@@ -24,6 +24,14 @@ export class NoteEditor {
     // doesn't track other tools. Sticky within an editor session.
     this._sepPickerColor = "#f66744";
     this._sepPickerVariant = "solid";
+    // Grid picker session state — same decoupling principle. Two
+    // colours, plus sticky cols/rows/header so re-opening the dialog
+    // remembers what the user last picked.
+    this._gridPickerBorderColor = "#f66744";
+    this._gridPickerHeaderBg = "#1a1a1a";
+    this._gridPickerCols = 3;
+    this._gridPickerRows = 3;
+    this._gridPickerHeader = false;
     // Sync cfg.backgroundColor to node.bgcolor on open when they
     // disagree. Happens when the user picks a color via ComfyUI's
     // native right-click Colors menu between saves: node.bgcolor is
@@ -587,6 +595,12 @@ export class NoteEditor {
     // Reset separator-picker session state.
     this._sepPickerColor = null;
     this._sepPickerVariant = null;
+    // Reset grid-picker session state.
+    this._gridPickerBorderColor = null;
+    this._gridPickerHeaderBg = null;
+    this._gridPickerCols = null;
+    this._gridPickerRows = null;
+    this._gridPickerHeader = null;
     // Drop the icon-deletion + click-placement handler refs. The DOM
     // node they were attached to (the contenteditable inside _el) was
     // already removed above, so the listeners are gone with it; this

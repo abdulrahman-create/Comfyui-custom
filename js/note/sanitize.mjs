@@ -40,8 +40,14 @@ const ALLOWED_CLASS_VALUES = new Set([
 ]);
 
 // Inline-style properties we allow. Values are validated separately.
+// CSS custom properties prefixed with --pix-note-grid- carry per-instance
+// grid colours (border + header bg) so each table is self-contained
+// instead of tracking the toolbar Ln picker. Sanitiser validates them
+// as colours via COLOR_RE the same way as `color` / `background-color`.
 const ALLOWED_STYLE_PROPS = new Set([
   "color", "background-color", "text-align",
+  "--pix-note-grid-border",
+  "--pix-note-grid-header-bg",
 ]);
 
 // Color pattern: #abc, #aabbcc, rgb(), rgba(), or a narrow set of named colors.
@@ -86,7 +92,15 @@ function filterStyle(value) {
     const prop = chunk.slice(0, ix).trim().toLowerCase();
     const val = chunk.slice(ix + 1).trim();
     if (!ALLOWED_STYLE_PROPS.has(prop)) continue;
-    if ((prop === "color" || prop === "background-color") && !COLOR_RE.test(val)) continue;
+    // Validate every colour-bearing property the same way — extending
+    // the allowlist with new colour custom-properties adds an entry
+    // here, not a new branch.
+    const isColorProp =
+      prop === "color" ||
+      prop === "background-color" ||
+      prop === "--pix-note-grid-border" ||
+      prop === "--pix-note-grid-header-bg";
+    if (isColorProp && !COLOR_RE.test(val)) continue;
     if (prop === "text-align" && !ALIGN_RE.test(val)) continue;
     out.push(`${prop}: ${val}`);
   }
