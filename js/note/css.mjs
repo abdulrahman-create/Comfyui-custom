@@ -975,6 +975,8 @@ export function injectCSS() {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  /* Breathing room after the colour picker / hex row above. */
+  margin-top: 12px;
 }
 .pix-note-sep-variant {
   display: flex;
