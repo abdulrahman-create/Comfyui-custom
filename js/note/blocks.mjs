@@ -185,9 +185,62 @@ NoteEditor.prototype._insertButtonBlock = function (anchorBtn) {
 };
 
 NoteEditor.prototype._insertFolderHintBlock = function (anchorBtn) {
-  const savedRange = saveRange(this._editArea);
+  if (!this._editArea) return;
+  // Capture the saved range synchronously so the modal's hex input
+  // doesn't lose it. Mirrors the separator + grid pattern.
+  const savedRange = (() => {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return null;
+    const r = sel.getRangeAt(0);
+    if (!this._editArea.contains(r.commonAncestorContainer)) return null;
+    return r.cloneRange();
+  })();
+
   makeFolderHintModal(this, (v) => {
-    insertAtSavedRange(this, savedRange, renderFolderHintHTML(v));
+    this._normalizeEditArea?.();
+    this._editArea.focus();
+    this._snapBefore?.();
+
+    // Build the nodes: <div class="pix-note-folderhint"> + trailing
+    // <p><br></p> for caret landing. Direct DOM insertion sidesteps
+    // execCommand("insertHTML") quirks that were merging adjacent
+    // folder-hint spans on consecutive inserts.
+    const wrapper = document.createElement("div");
+    wrapper.innerHTML = renderFolderHintHTML(v) + "<p><br></p>";
+    const hint = wrapper.firstElementChild;
+    const trailing = wrapper.lastElementChild;
+    if (!hint || !trailing) { this._snapAfter?.(); return; }
+
+    const findTopBlock = (node) => {
+      if (!node) return null;
+      if (node.nodeType !== 1) node = node.parentNode;
+      while (node && node.parentNode !== this._editArea && node !== this._editArea) {
+        node = node.parentNode;
+      }
+      return node && node.parentNode === this._editArea ? node : null;
+    };
+    let anchorBlock = null;
+    if (savedRange) anchorBlock = findTopBlock(savedRange.startContainer);
+    if (anchorBlock && anchorBlock.parentNode === this._editArea) {
+      this._editArea.insertBefore(hint, anchorBlock.nextSibling);
+      this._editArea.insertBefore(trailing, hint.nextSibling);
+    } else {
+      this._editArea.appendChild(hint);
+      this._editArea.appendChild(trailing);
+    }
+
+    // Caret in the trailing <p> so typing lands below the hint.
+    const r = document.createRange();
+    r.selectNodeContents(trailing);
+    r.collapse(true);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(r);
+
+    this._restageColors?.();
+    this._snapAfter?.();
+    this._dirty = true;
+    this._refreshActiveStates?.();
   });
 };
 
@@ -723,8 +776,15 @@ function renderFolderHintHTML(v) {
   const colorAttr = /^#[0-9a-f]{3,8}$/i.test(v.color || "")
     ? ` style="color: ${v.color}"`
     : "";
-  return `<span class="pix-note-folderhint"${colorAttr}>` +
-    `Place in: ComfyUI/${escapeHtml(v.folder)}</span>&nbsp;`;
+  // <div> rather than <span>: spans with display:block can be merged
+  // by Chrome's execCommand insertion when adjacent in flow, leaving
+  // the second insertion's class stripped — that's the "second hint
+  // shows only text" bug. Block-level <div> is the natural element
+  // and never gets normalised away. Old notes that have
+  // <span class="pix-note-folderhint"> still render fine because the
+  // CSS rules target the class only.
+  return `<div class="pix-note-folderhint"${colorAttr}>` +
+    `Place in: ComfyUI/${escapeHtml(v.folder)}</div>`;
 }
 
 
@@ -899,10 +959,11 @@ NoteEditor.prototype._dispatchBlockEdit = function (target, anchorBtn) {
     return;
   }
 
-  // Standalone folder hint: span.pix-note-folderhint NOT inside a
-  // btnblock (the in-btnblock case is escalated to the btnblock by
-  // the pencil mouseover handler in core.mjs).
-  if (target.tagName === "SPAN" && target.classList.contains("pix-note-folderhint")) {
+  // Standalone folder hint: <div class="pix-note-folderhint"> (new
+  // design) OR <span class="pix-note-folderhint"> (legacy, when not
+  // inside a btnblock — the in-btnblock case is escalated by the
+  // pencil mouseover handler in core.mjs).
+  if (target.classList?.contains("pix-note-folderhint")) {
     const values = extractFolderHintValues(target);
     if (!values) return;
     makeFolderHintModal(this, (v) => {

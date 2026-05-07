@@ -1315,7 +1315,11 @@ NoteEditor.prototype._placeCursorAtEnd = function () {
 // in both places.
 const PENCIL_BLOCK_SELECTORS = [
   "span.pix-note-btnblock",
-  "span.pix-note-folderhint",
+  // Folder hint: new design uses <div>, legacy bundled hints inside
+  // btnblocks use <span>. Tag-agnostic class match covers both. The
+  // pencil mouseover handler escalates the in-btnblock case to the
+  // parent btnblock so the click edits the whole bundle.
+  ".pix-note-folderhint",
   "a.pix-note-yt",
   "a.pix-note-discord",
   "pre",
@@ -1358,10 +1362,10 @@ NoteEditor.prototype._installPencil = function (main, editArea) {
     if (!t || !editArea.contains(t)) return;
     // A folder hint that lives INSIDE a Button Design block edits the
     // whole button block (the bundled folder line is part of the
-    // button). Standalone folder hints (the new design) edit
+    // button). Standalone folder hints (the new design — <div>) edit
     // themselves. closest() returns the folderhint first because
     // it's the user's actual target, so we escalate manually.
-    if (t.tagName === "SPAN" && t.classList.contains("pix-note-folderhint")) {
+    if (t.classList?.contains("pix-note-folderhint")) {
       const bb = t.closest("span.pix-note-btnblock");
       if (bb) t = bb;
     }
