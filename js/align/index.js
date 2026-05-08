@@ -373,6 +373,20 @@ function onWindowPointerMove(e) {
   const c = app.canvas;
   if (!c?.last_mouse_dragging) { resetDrag(); return; }
   if (!(e.buttons & 1)) { resetDrag(); return; }
+  // Bail when LiteGraph is drawing a marquee or panning the canvas - those
+  // are not node drags and the snap math must not run. (Don't gate on
+  // isDragging: LiteGraph sets it after a 6px/150ms drag threshold, so the
+  // first ticks of a legit multi-node drag would be wrongly bailed.)
+  if (c.dragging_rectangle != null) { resetDrag(); return; }
+  if (c.dragging_canvas) { resetDrag(); return; }
+  // Also bail during the pre-threshold dead zone (the ~6px / 150ms window
+  // BEFORE LiteGraph commits to a drag mode). dragging_rectangle is still
+  // null in that window even though the user is starting a marquee, so the
+  // fallback chain below would pick a previously-selected node and leak
+  // cursor delta into its position. pointer.dragStarted flips true at the
+  // exact threshold crossing for any drag type. Use === false so undefined
+  // (older builds) falls through to existing behaviour.
+  if (c.pointer && c.pointer.dragStarted === false) { resetDrag(); return; }
 
   // Find the dragged/resized node. The MOST reliable signal is "which node
   // did LiteGraph just modify this tick?" - found by comparing pos/size to
