@@ -373,6 +373,12 @@ function onWindowPointerMove(e) {
   const c = app.canvas;
   if (!c?.last_mouse_dragging) { resetDrag(); return; }
   if (!(e.buttons & 1)) { resetDrag(); return; }
+  // Bail unless LiteGraph confirms an item is actually being dragged.
+  // Marquee-select (Ctrl+drag), canvas pan, and the pre-threshold dead zone
+  // all leave isDragging false; only proceed when a node/group is moving.
+  if (c.dragging_rectangle != null) { resetDrag(); return; }
+  if (c.dragging_canvas) { resetDrag(); return; }
+  if (c.isDragging === false) { resetDrag(); return; }
 
   // Find the dragged/resized node. The MOST reliable signal is "which node
   // did LiteGraph just modify this tick?" - found by comparing pos/size to
