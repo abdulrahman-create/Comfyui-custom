@@ -47,4 +47,18 @@ app.registerExtension({
       }
     });
   },
+
+  async beforeRegisterNodeDef(nodeType, nodeData) {
+    if (nodeData.name !== "NotifyPixaroma") return;
+    const onCreated = nodeType.prototype.onNodeCreated;
+    nodeType.prototype.onNodeCreated = function () {
+      onCreated?.apply(this, arguments);
+      this.addWidget("button", "▶ Preview", null, () => {
+        const sound = this.widgets.find((w) => w.name === "sound")?.value;
+        const volume =
+          this.widgets.find((w) => w.name === "volume")?.value ?? 80;
+        if (sound) playSound(sound, volume / 100);
+      });
+    };
+  },
 });
