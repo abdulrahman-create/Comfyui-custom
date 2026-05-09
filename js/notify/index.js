@@ -1,6 +1,19 @@
 import { app } from "../../../scripts/app.js";
 import { api } from "../../../scripts/api.js";
 
+async function playSound(filename, volume01) {
+  if (typeof filename !== "string" || !filename) return;
+  const url = `/pixaroma/assets/sounds/${encodeURIComponent(filename)}`;
+  const audio = new Audio(url);
+  const v = Number(volume01);
+  audio.volume = Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0.8;
+  try {
+    await audio.play();
+  } catch (e) {
+    console.warn("[Notify Pixaroma] playback failed:", e?.message || e);
+  }
+}
+
 app.registerExtension({
   name: "Pixaroma.Notify",
 
@@ -28,8 +41,9 @@ app.registerExtension({
       }
       for (const ev of out) {
         console.log(
-          `[Notify Pixaroma] (received) ${ev.label}  (${ev.sound} @ ${ev.volume}%)`
+          `[Notify Pixaroma] ▶ ${ev.label}  (${ev.sound} @ ${ev.volume}%)`
         );
+        playSound(ev.sound, (ev.volume ?? 80) / 100);
       }
     });
   },
