@@ -152,6 +152,12 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
+### **May 10, 2026**
+- **Image Composer fix:** the canvas background colour you pick in the editor now survives the workflow run. Previously, if a Composer had placeholder slots (or auto-rembg or eraser masks), running the workflow flipped the background from your chosen colour to black in BOTH the in-node mini preview and the downstream Preview Image. Re-save any existing project to carry the colour forward; older saves without a saved bg colour fall back to the editor's default dark grey.
+- **Editor mini-preview squaring fix:** the small preview thumbnail under Image Composer / Paint / Image Crop / 3D Builder nodes now stays square as you resize the node, instead of locking into a wide letterboxed rectangle that only "snapped right" once you ran the workflow. Caused by ComfyUI's new Vue frontend not reliably firing `node.onResize` for DOM-widget resizes; switched to a `ResizeObserver` so size changes always update.
+- **Help panel polish (every node):** ComfyUI's right-side Info tab now shows real Description text for every Pixaroma node instead of blank rows. Each input also has a hover tooltip explaining what to wire and what it does.
+- **Banner notice rewrite:** the "Some Pixaroma nodes conflict with Nodes 2.0" line at startup was a bright orange one-liner that several users read as an error. It's now two grey lines starting with "This is a notice, not an error" and only the **Pixaroma** brand word stays orange. Same intent, less alarm.
+
 ### **May 09, 2026**
 - **NEW: Notify Pixaroma** - a tiny terminal node that plays a sound when reached during a workflow run. Drop one at the end of a workflow to hear "render finished" when you're in another browser tab or app, or branch one off any checkpoint. 10 bundled sounds in `assets/sounds/` (drop in your own `.mp3`/`.wav`/`.ogg` to extend). Per-node enabled toggle, volume slider, label, and a **▶ Preview** button to audition a sound without running the workflow. Master toggle under **Settings → 👑 Pixaroma → Notify** silences every Notify node at once. Always re-fires on every Run, even when upstream is fully cached. Help panel now shows full Description + per-input tooltips.
 
