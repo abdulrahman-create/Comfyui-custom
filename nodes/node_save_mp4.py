@@ -87,6 +87,22 @@ class PixaromaSaveMp4:
     iterate without cluttering output/. No conflict with VHS Video Combine —
     separate class, separate category, fewer knobs, opinionated defaults."""
 
+    DESCRIPTION = (
+        "Save Mp4 Pixaroma - encode an IMAGE batch (and optional AUDIO) to a "
+        "single H.264 mp4 with a built-in <video> preview right on the node "
+        "body so you can watch the result without leaving ComfyUI.\n\n"
+        "Frames stream straight to ffmpeg's stdin (no temp PNG files); audio "
+        "is muxed in as AAC 192k. Pairs with AudioReact Pixaroma but works "
+        "with any source that produces frames + AUDIO.\n\n"
+        "ffmpeg binary is auto-located: imageio-ffmpeg's bundled exe is "
+        "preferred (no system install needed - 'pip install imageio-ffmpeg'), "
+        "with ffmpeg on PATH as a fallback. yuv420p requires even width and "
+        "height; the node surfaces a clear error rather than ffmpeg's opaque "
+        "crash if dimensions are odd.\n\n"
+        "Encoder is hardcoded to libx264 / preset medium / CRF 19. Bring those "
+        "back to INPUT_TYPES if a workflow needs per-clip control."
+    )
+
     # Hardcoded encoder defaults — exposed as widgets earlier, removed for a
     # cleaner UI. Bring them back to INPUT_TYPES if a workflow needs control.
     _CRF = 19

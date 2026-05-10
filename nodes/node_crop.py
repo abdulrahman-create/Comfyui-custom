@@ -9,6 +9,22 @@ from .node_ref import any_type, FlexibleOptionalInputType
 
 
 class PixaromaCrop:
+    DESCRIPTION = (
+        "Image Crop Pixaroma - crop any image visually instead of typing pixel "
+        "coordinates. Wire any upstream IMAGE source into the input slot (Load "
+        "Image, VAE Decode, ControlNet output, anything), or paste an image "
+        "straight from the clipboard with Ctrl+V.\n\n"
+        "The on-node panel exposes Width / Height / X / Y / Ratio / Alignment "
+        "fields - math expressions like '1024+512' or '512*2' work in the "
+        "number fields. The fullscreen editor shows a draggable crop rectangle "
+        "with handles, plus standard preset ratios (1:1, 16:9, 9:16, etc.) for "
+        "social-media-friendly aspects.\n\n"
+        "Outputs the cropped IMAGE plus its new width and height for downstream "
+        "nodes.\n\n"
+        "The 'image' input slot is dynamic (added by the editor when you wire "
+        "an upstream IMAGE); its tooltip lives on the JS side."
+    )
+
     @classmethod
     def INPUT_TYPES(self):
         return {

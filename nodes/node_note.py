@@ -1,6 +1,22 @@
 class PixaromaNote:
     """Rich annotation note — pure UI node, no image processing."""
 
+    DESCRIPTION = (
+        "Note Pixaroma - a rich-text annotation editor that lives on the canvas. "
+        "Open the fullscreen editor to write multi-paragraph notes with bold / "
+        "italic / underline / strikethrough, headings (H1 / H2 / H3), bulleted "
+        "and numbered lists, code blocks (with copy button), inline icons (CLIP, "
+        "LORA, GGUF, model versions, plus 30+ more), tables, separators, "
+        "custom-colored buttons (Download / View Page / Read More / plain), "
+        "folder hints, plus pre-styled YouTube and Discord pills.\n\n"
+        "Each block carries its own color, picked from a centered modal that "
+        "opens over the canvas. A Code view lets you hand-edit the underlying "
+        "HTML; a drop-in LLM prompt at assets/note-pixaroma-llm-prompt.txt lets "
+        "ChatGPT or Gemini generate Code-view-ready HTML for you.\n\n"
+        "Pure annotation - no image processing, no inputs to wire, no outputs "
+        "to chain. Saves and restores exactly how you styled it."
+    )
+
     @classmethod
     def INPUT_TYPES(s):
         return {
@@ -16,6 +32,7 @@ class PixaromaNote:
                         # "transparent" / "#111111" values on load.
                         "default": '{"version":1,"content":"","buttonColor":"#f66744","lineColor":"#f66744","width":420,"height":320}',
                         "multiline": True,
+                        "tooltip": "Internal serialized HTML + style state for the note. Do not edit directly - click the pencil button on the note to open the editor.",
                     },
                 ),
             }

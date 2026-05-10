@@ -6,6 +6,17 @@ import folder_paths
 
 
 class PixaromaCompare:
+    DESCRIPTION = (
+        "Image Compare Pixaroma - the easiest way to see the difference between "
+        "two images. Wire any two IMAGE outputs into image1 and image2 (e.g. "
+        "before / after upscaling, original / inpainted, two checkpoint variants), "
+        "then run the workflow.\n\n"
+        "The on-node viewer offers three modes: side-by-side with a draggable "
+        "slider, overlap with adjustable opacity, or 'diff' which highlights "
+        "exactly what changed between the two. The default mode is configurable "
+        "in Settings -> Pixaroma -> Compare."
+    )
+
     def __init__(self):
         self.output_dir = folder_paths.get_temp_directory()
         self.type = "temp"
@@ -18,8 +29,8 @@ class PixaromaCompare:
     def INPUT_TYPES(s):
         return {
             "required": {
-                "image1": ("IMAGE",),
-                "image2": ("IMAGE",),
+                "image1": ("IMAGE", {"tooltip": "First image to compare. Wire any IMAGE output here (e.g. the 'before' image)."}),
+                "image2": ("IMAGE", {"tooltip": "Second image to compare. Wire any IMAGE output here (e.g. the 'after' image). The on-node viewer lets you flip between side-by-side / overlap / diff modes after both images arrive."}),
             }
         }
 

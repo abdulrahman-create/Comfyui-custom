@@ -295,6 +295,25 @@ def _apply_layer_transform(img, layer, doc_w, doc_h):
 
 
 class PixaromaImageComposition:
+    DESCRIPTION = (
+        "Image Composer Pixaroma - combine and arrange multiple images on a "
+        "layered canvas. Open the fullscreen editor to add layers (drag-drop, "
+        "paste from clipboard, or wire upstream IMAGE inputs into placeholder "
+        "slots), move / scale / rotate them with handles, and apply per-layer "
+        "effects: opacity, blend modes (Normal, Multiply, Screen, Overlay, "
+        "Darken, Lighten, Color Dodge, Color Burn, Hard Light, Soft Light, "
+        "Difference, Exclusion, Hue, Saturation, Color, Luminosity), Gaussian "
+        "blur, and AI background removal (rembg-powered, picks the best "
+        "installed model: birefnet -> isnet -> u2net auto-fallback).\n\n"
+        "Eraser tool lets you mask any layer non-destructively. Per-layer blur "
+        "uses a quadratic curve (slider 0-100 -> 0-50 px) so low values give "
+        "fine control. Shift+Scroll on a selected layer scales it in place.\n\n"
+        "Outputs the final composite as an IMAGE plus its width and height.\n\n"
+        "Inputs are dynamic placeholder slots created by the editor when you "
+        "add a placeholder layer - wire any upstream IMAGE source into the "
+        "matching slot. Their tooltips live on the JS side."
+    )
+
     @classmethod
     def INPUT_TYPES(self):
         return {
@@ -357,8 +376,18 @@ class PixaromaImageComposition:
             has_masks = any(l.get("maskSrc") for l in layers)
 
             if has_placeholders or has_auto_rembg or has_masks:
-                # Composite from scratch so placeholder slots are filled, rembg and masks applied
-                canvas = Image.new("RGBA", (doc_w, doc_h), (0, 0, 0, 0))
+                # Composite from scratch so placeholder slots are filled, rembg and masks applied.
+                # Initialize with the user's saved BG color (project_json field
+                # `bg_color`, added in 1.3.18). Without this the canvas was always
+                # transparent here, and the eventual RGBA->RGB conversion in
+                # _save_preview_png + the workflow output silently turned the BG
+                # black even when the user had chosen a colour in the editor.
+                # Older saves (pre-1.3.18) had no bg_color field — fall back to
+                # the same default the editor's BG picker uses (#1e1e1e) so
+                # output matches what users saw inside the editor.
+                bg_hex = meta.get("bg_color") or "#1e1e1e"
+                bg_rgba = _hex_to_rgba(bg_hex)
+                canvas = Image.new("RGBA", (doc_w, doc_h), bg_rgba)
                 for layer in layers:
                     if not layer.get("visible", True):
                         continue

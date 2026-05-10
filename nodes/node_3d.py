@@ -18,7 +18,22 @@ class Pixaroma3D:
     RETURN_TYPES = ("IMAGE", "INT", "INT")
     RETURN_NAMES = ("image", "width", "height")
     FUNCTION = "load_render"
-    DESCRIPTION = "3D Builder — create 3D scenes with shapes, materials, and lighting"
+    DESCRIPTION = (
+        "3D Builder Pixaroma - a full 3D scene editor that runs inside ComfyUI. "
+        "Open the fullscreen editor on the node to drop in primitives (cubes, "
+        "spheres, cylinders, torus, blob, terrain, rock, teapot, hollow vessels), "
+        "composite assets (trees, houses, furniture, flowers), or import your own "
+        ".glb / .obj models.\n\n"
+        "Camera controls (orbit, pan, zoom), realistic lighting, undo / redo, and "
+        "live preview are all built in. Keyboard shortcuts use the Blender layout "
+        "(G to grab, S to scale, R to rotate, Shift+D to duplicate, plus Numpad "
+        "1/3/7 for view presets).\n\n"
+        "Outputs the final render as an IMAGE plus its width and height so you can "
+        "wire straight into ControlNet (great for depth maps, line art, normal maps) "
+        "or any img2img workflow.\n\n"
+        "Inputs are dynamic placeholder slots created by the editor when you add a "
+        "background-image layer; their tooltips live on the JS side."
+    )
     OUTPUT_NODE = True
 
     @classmethod
