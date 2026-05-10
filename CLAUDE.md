@@ -3,7 +3,7 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
-ComfyUI-Pixaroma is a custom node plugin for ComfyUI that adds interactive visual editors (3D Builder, Paint Studio, Image Composer, Image Crop, Note Pixaroma — a rich-text annotation node, Preview Image Pixaroma — an in-node image previewer with save-to-disk / save-to-output buttons) directly inside ComfyUI workflows. It also includes Align Pixaroma, a toggleable canvas-wide smart-snap and alignment-guide system (no nodes added; patches `LGraphCanvas` so any node drag/resize snaps to nearby edges and centers with orange guide lines). It has zero core dependencies — PIL and PyTorch come from ComfyUI's environment. All nodes share the `👑 Pixaroma` menu category.
+ComfyUI-Pixaroma is a custom node plugin for ComfyUI that adds interactive visual editors (3D Builder, Paint Studio, Image Composer, Image Crop, Note Pixaroma - a rich-text annotation node, Preview Image Pixaroma - an in-node image previewer with save-to-disk / save-to-output buttons, Notify Pixaroma - a terminal node that plays a sound from `assets/sounds/` when reached, useful as a workflow-completion alert when working in another window) directly inside ComfyUI workflows. It also includes Align Pixaroma, a toggleable canvas-wide smart-snap and alignment-guide system (no nodes added; patches `LGraphCanvas` so any node drag/resize snaps to nearby edges and centers with orange guide lines). It has zero core dependencies — PIL and PyTorch come from ComfyUI's environment. All nodes share the `👑 Pixaroma` menu category.
 
 ## Development Setup
 No build step. Install by placing this folder in `ComfyUI/custom_nodes/`. ComfyUI auto-imports `__init__.py` on startup.
@@ -174,6 +174,23 @@ js/
 │                       #  suggested_filename (auto-counter peek) for the Save
 │                       #  dialog, then writes via window.showSaveFilePicker
 │                       #  with <a download> fallback.
+│
+├── notify/             # Notify Pixaroma (single file, ~65 lines)
+│   └── index.js        # Terminal node that plays a sound from
+│                       #  assets/sounds/ when reached. Listens to
+│                       #  api.addEventListener("executed", ...) for
+│                       #  pixaroma_notify (custom UI key, Save Mp4
+│                       #  pattern). Settings master toggle
+│                       #  Pixaroma.Notify.Enabled. Native ▶ Preview
+│                       #  button bypasses both master and per-node
+│                       #  toggles (manual override - the user is
+│                       #  actively asking to hear the sound now,
+│                       #  toggles only gate automatic notifications).
+│                       #  Sounds served by existing /pixaroma/assets/
+│                       #  <subdir>/<filename> route, no new backend.
+│                       #  Python returns float("nan") from IS_CHANGED
+│                       #  so notification fires on every Run, even
+│                       #  when upstream is fully cached.
 │
 ├── audio_studio/       # AudioReact Pixaroma — fullscreen editor for audio-reactive effects
 │   ├── index.js        # Entry: button widget on the node, app.graphToPrompt hook
@@ -628,6 +645,9 @@ Files are named by concern. Match the task to the file:
 | Preview Image Pixaroma — change button or strip layout / geometry / colors | `js/preview/index.js` constants at the top (`BTN_H`, `BTN_GAP`, `MIN_W`, `MIN_H`, `DEFAULT_W`, `DEFAULT_H`, `IMG_STRIP_GAP`, `IMG_STRIP_V_PAD`, `IMG_STRIP_BORDER_W`, `BADGE_*`, `COLOR_ACTIVE_*` / `COLOR_DISABLED_*`). Button rects computed in `computeButtonRects`, painted in `paintBtn`. Strip rects computed in `layoutImgStrip`, painted in `createStripWidget().draw`. Buttons + strip live as `addCustomWidget`s (so they reserve vertical space, draw immediately on node-add, and Vue-compat works). Don't switch back to `onDrawForeground` (Vue Compat #1) and don't return `ui.images` from the Python node (LiteGraph would render its native strip underneath the custom one — use the `pixaroma_preview_frames` custom UI key instead, Save Mp4 pattern). |
 | Preview Image Pixaroma — change save flow / routes | Backend: `nodes/node_preview.py` (tensor → PNG, two modes: temp/ for preview, output/ for save with embedded metadata via shared `nodes/_save_helpers._build_pnginfo`) + `server_routes.py` helpers `_embed_workflow_metadata` (thin wrapper), `/pixaroma/api/preview/save`, `/pixaroma/api/preview/prepare`. Both routes validate `filename_prefix` via shared `nodes/_save_helpers._safe_prefix` (allows `subfolder/prefix` with `[A-Za-z0-9_-]` segments, no `..`). Prepare route returns JSON `{image_b64, suggested_filename}` — `suggested_filename` peeks `folder_paths.get_save_image_path` to pre-fill the Save-to-Disk picker with the next free counter. Frontend: `js/preview/index.js` `saveToOutput` / `saveToDisk` read the SELECTED frame from `node._pixaromaFrames[node._pixaromaSelectedFrame]`. Both POST a dataURL + the workflow/prompt from `app.graphToPrompt()`. Metadata embedding lives in `nodes/_save_helpers._build_pnginfo` only (single source of truth). |
 | Preview Image Pixaroma — add / change save_mode behavior or hidden inputs | `nodes/node_preview.py`. `INPUT_TYPES` declares `save_mode` as a required combo (`preview` / `save`, default `preview`) and `prompt: PROMPT, extra_pnginfo: EXTRA_PNGINFO` as hidden inputs. In `save` mode the node iterates the entire batch, calls `folder_paths.get_save_image_path`, and saves each frame to `output/{subfolder}/{name}_{counter+i:05}_.png` with embedded metadata — drop-in for native SaveImage. In `preview` mode it writes UUID-named PNGs to `temp/` (auto-cleared on ComfyUI restart). Either mode returns `ui.pixaroma_preview_frames` (custom key). |
+| Notify Pixaroma — add or swap a sound | Drop a `.mp3` (or `.wav`/`.ogg`) into `assets/sounds/`, restart ComfyUI. `_list_sounds()` in `nodes/node_notify.py` auto-enumerates the folder at every `INPUT_TYPES()` call. No code changes needed. To remove a sound, delete its file. |
+| Notify Pixaroma — change widgets / Python contract | `nodes/node_notify.py` (single file, ~80 lines). `INPUT_TYPES` declares `any` (AnyType wire), `enabled` (BOOLEAN), `sound` (combo from `_list_sounds()`), `volume` (INT 0-100), `label` (STRING). `IS_CHANGED` returns `float("nan")` so the node always re-executes (notification fires on every Run, even when upstream is fully cached). `notify()` returns `{"ui": {"pixaroma_notify": [{sound, volume, label}]}}` when enabled, else `{"ui": {}}`. AnyType class overrides `__ne__` to bypass ComfyUI's strict type matching. Per-node `enabled=false` is symmetric silent on Python and JS (no print, no event). |
+| Notify Pixaroma — change JS audio / Preview button / Settings | `js/notify/index.js` (single file, ~65 lines). `playSound(filename, volume01)` helper builds URL `/pixaroma/assets/sounds/<name>` and `<audio>.play()`s. `app.registerExtension` declares the master toggle `Pixaroma.Notify.Enabled` under category `["👑 Pixaroma", "Notify"]`. `setup()` registers ONE global `api.addEventListener("executed", ...)` listener that reads `pixaroma_notify` and gates on the master setting. `beforeRegisterNodeDef` adds a native `▶ Preview` button via `addWidget("button", ...)` that bypasses both master and per-node toggles (manual override - the user is actively asking to hear the sound now; toggles only gate automatic notifications during workflow runs). |
 
 ### 3. When adding a new method to an editor class
 - Add it to the most relevant existing `.mjs` file by concern (tools, events, render, etc.)
