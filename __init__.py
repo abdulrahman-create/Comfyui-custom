@@ -136,8 +136,12 @@ def display_pixaroma_banner(node_mappings, list_all_nodes=False):
         f"  {CLR_GREY}ComfyUI Tutorials: https://www.youtube.com/@pixaroma{CLR_RESET}"
     )
     print(
-        f"  {CLR_ORANGE}Some Pixaroma nodes conflict with Nodes 2.0 — "
-        f"consider turning it off from ComfyUI Menu.{CLR_RESET}"
+        f"  {CLR_GREY}This is a notice, not an error. Some {CLR_ORANGE}Pixaroma"
+        f"{CLR_GREY} nodes don't play nicely with ComfyUI's Nodes 2.0 mode.{CLR_RESET}"
+    )
+    print(
+        f"  {CLR_GREY}If something looks broken, disable Nodes 2.0 in the "
+        f"ComfyUI Menu.{CLR_RESET}"
     )
     print(horizontal_bar)
 
