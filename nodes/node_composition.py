@@ -295,6 +295,25 @@ def _apply_layer_transform(img, layer, doc_w, doc_h):
 
 
 class PixaromaImageComposition:
+    DESCRIPTION = (
+        "Image Composer Pixaroma - combine and arrange multiple images on a "
+        "layered canvas. Open the fullscreen editor to add layers (drag-drop, "
+        "paste from clipboard, or wire upstream IMAGE inputs into placeholder "
+        "slots), move / scale / rotate them with handles, and apply per-layer "
+        "effects: opacity, blend modes (Normal, Multiply, Screen, Overlay, "
+        "Darken, Lighten, Color Dodge, Color Burn, Hard Light, Soft Light, "
+        "Difference, Exclusion, Hue, Saturation, Color, Luminosity), Gaussian "
+        "blur, and AI background removal (rembg-powered, picks the best "
+        "installed model: birefnet -> isnet -> u2net auto-fallback).\n\n"
+        "Eraser tool lets you mask any layer non-destructively. Per-layer blur "
+        "uses a quadratic curve (slider 0-100 -> 0-50 px) so low values give "
+        "fine control. Shift+Scroll on a selected layer scales it in place.\n\n"
+        "Outputs the final composite as an IMAGE plus its width and height.\n\n"
+        "Inputs are dynamic placeholder slots created by the editor when you "
+        "add a placeholder layer - wire any upstream IMAGE source into the "
+        "matching slot. Their tooltips live on the JS side."
+    )
+
     @classmethod
     def INPUT_TYPES(self):
         return {

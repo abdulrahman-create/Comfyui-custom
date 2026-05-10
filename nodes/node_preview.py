@@ -27,13 +27,33 @@ class PixaromaPreview:
         shown in the strip preview.
     """
 
+    DESCRIPTION = (
+        "Preview Image Pixaroma - inline image preview with save buttons, "
+        "batch-aware. Wire any IMAGE output into the input. Single images and "
+        "full batches both render as a thumbnail strip with an 'i / N' counter; "
+        "click any thumbnail to expand it inline. Arrow keys (left / right) "
+        "flip through the batch, click anywhere on the open image to advance, "
+        "Esc or X collapses.\n\n"
+        "Two save buttons act on the currently selected frame:\n"
+        "- Save to Disk: pick any folder on your computer; the suggested "
+        "filename auto-increments per click.\n"
+        "- Save to Output: writes to ComfyUI's output/ folder. The "
+        "filename_prefix field accepts subfolder syntax like 'SDXL/portrait'.\n\n"
+        "Flip save_mode to 'save' and the node turns into a drop-in replacement "
+        "for SaveImage - every batch frame is automatically written to output/ "
+        "on each Run with embedded workflow metadata. Both save paths embed "
+        "the workflow into the PNG so you can drag it back into ComfyUI later.\n\n"
+        "The preview also survives workflow tab switching, so you can leave it "
+        "on a specific frame and come back to it."
+    )
+
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "image": ("IMAGE",),
-                "filename_prefix": ("STRING", {"default": "img"}),
-                "save_mode": (["preview", "save"], {"default": "preview"}),
+                "image": ("IMAGE", {"tooltip": "Image (or batch) to preview. Each frame appears as a thumbnail in the strip; click one to expand it inline. Wire any IMAGE source here."}),
+                "filename_prefix": ("STRING", {"default": "img", "tooltip": "Filename stem when writing PNGs to output/ (used by both the Save to Output button and save_mode=save). Accepts subfolder syntax: 'SDXL/portrait' writes to output/SDXL/portrait_NNNNN_.png. The node appends a 5-digit auto-incremented counter and .png."}),
+                "save_mode": (["preview", "save"], {"default": "preview", "tooltip": "preview: write each batch frame to ComfyUI's temp/ folder, auto-cleared on restart. Use this while iterating so you don't clutter output/. save: write every batch frame to output/ with embedded workflow metadata, exactly like the native SaveImage node. The on-node preview strip works the same in both modes; the manual Save to Disk / Save to Output buttons are independent of save_mode."}),
             },
             "hidden": {
                 "prompt": "PROMPT",

@@ -8,6 +8,23 @@ from .node_ref import any_type, FlexibleOptionalInputType
 
 
 class PixaromaPaint:
+    DESCRIPTION = (
+        "Paint Pixaroma - a fast, simple painting editor with layers. Open the "
+        "fullscreen editor to draw with pencil / brush / eraser / smudge / fill "
+        "/ shape / picker tools, on stacked layers with Photoshop-style controls "
+        "(drag to reorder, opacity, blend modes, merge, flatten). The brush "
+        "engine supports custom hardness / opacity, and the smudge tool gives "
+        "you smooth color blending.\n\n"
+        "AI Remove Background button (rembg-powered) on image-source layers "
+        "extracts subjects with one click. Save with transparent background "
+        "directly to disk via the toolbar checkbox.\n\n"
+        "Outputs the final composited IMAGE plus its width and height. Drop a "
+        "base image in via drag-drop, or wire any upstream IMAGE source into "
+        "the optional input slot the editor creates.\n\n"
+        "Inputs are dynamic placeholder slots created by the editor; their "
+        "tooltips live on the JS side."
+    )
+
     @classmethod
     def INPUT_TYPES(self):
         return {

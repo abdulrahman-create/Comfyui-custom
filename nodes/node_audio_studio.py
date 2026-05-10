@@ -103,12 +103,27 @@ class PixaromaAudioStudio:
     and surfaced via a fullscreen JS editor (Milestone D+).
     """
 
+    DESCRIPTION = (
+        "AudioReact Pixaroma - turn a single image into an audio-reactive video. "
+        "Open the fullscreen editor on the node to scrub the audio, pick a motion "
+        "mode (15 options: Pulse Zoom, Camera Shake, Glitch, Pinch, Wave, Tilt, "
+        "Pixelate, RGB Split, and more), and stack up to 8 overlay effects "
+        "(chroma shift, bloom, vignette, hue shift, cinematic teal/orange grade, "
+        "letterbox, scanlines, film grain). The live WebGL preview reacts to the "
+        "beat in real time as you drag.\n\n"
+        "No extra models needed. Pairs with Save Mp4 Pixaroma to encode the result "
+        "straight to MP4 with the audio muxed in. Requires WebGL2.\n\n"
+        "Both inputs are optional - you can wire upstream IMAGE / AUDIO from any "
+        "source, or load them inline inside the editor (drag-drop or pick file). "
+        "Inline picks override upstream wires until you toggle the inline-pin off."
+    )
+
     @classmethod
     def INPUT_TYPES(s):
         return {
             "optional": {
-                "image": ("IMAGE", {"tooltip": "Optional upstream image. If wired, used as the source. If unwired, the editor's inline-loaded image is used."}),
-                "audio": ("AUDIO", {"tooltip": "Optional upstream audio. Same dual-source pattern as image."}),
+                "image": ("IMAGE", {"tooltip": "Optional upstream image source. If wired, used as the still frame for the motion / overlay pipeline. If unwired, the editor's inline-loaded image is used. The 'inline-pin' toggle in the editor lets a fresh in-editor upload override the upstream wire."}),
+                "audio": ("AUDIO", {"tooltip": "Optional upstream audio source that drives the per-frame motion / overlay envelopes. Same dual-source pattern as image: upstream wins by default, but an inline-loaded audio (drag-drop a WAV/MP3/OGG into the editor) overrides upstream when its inline-pin is toggled on."}),
             },
             "hidden": {
                 "studio_json": ("STRING", {"default": "{}"}),
