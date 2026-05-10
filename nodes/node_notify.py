@@ -42,17 +42,57 @@ def _list_sounds():
 
 
 class NotifyPixaroma:
+    DESCRIPTION = (
+        "Plays a notification sound when this node is reached during a workflow run. "
+        "Drop one at the end of a workflow to hear when rendering finishes, or branch "
+        "one off any node mid-graph to be alerted at a checkpoint. Useful when you are "
+        "in another browser tab or app while ComfyUI is running.\n\n"
+        "Sound files are auto-enumerated from assets/sounds/ - drop in a .mp3, .wav, "
+        "or .ogg there to add more (restart ComfyUI to pick up new files).\n\n"
+        "A master toggle lives in Settings -> Pixaroma -> Notify -> Enabled. Each "
+        "node also has its own per-node enabled toggle. The Preview button bypasses "
+        "both toggles, since clicking it is a manual request to hear the sound right now."
+    )
+
     @classmethod
     def INPUT_TYPES(cls):
         sounds = _list_sounds()
         default = "Vista.mp3" if "Vista.mp3" in sounds else sounds[0]
         return {
             "required": {
-                "any": (ANY, {}),
-                "enabled": ("BOOLEAN", {"default": True}),
-                "sound": (sounds, {"default": default}),
-                "volume": ("INT", {"default": 80, "min": 0, "max": 100, "step": 1}),
-                "label": ("STRING", {"default": "", "multiline": False}),
+                "any": (ANY, {
+                    "tooltip":
+                        "Connect any node's output here. The notification fires "
+                        "when this node is reached during workflow execution. The "
+                        "wire's data is not used or modified - this node is a "
+                        "terminal (no output)."
+                }),
+                "enabled": ("BOOLEAN", {
+                    "default": True,
+                    "tooltip":
+                        "Per-node mute toggle. When OFF, this specific node stays "
+                        "silent on every Run (no sound, no console log). Other "
+                        "Notify nodes in the workflow are unaffected."
+                }),
+                "sound": (sounds, {
+                    "default": default,
+                    "tooltip":
+                        "Notification sound to play. The dropdown lists every "
+                        ".mp3 / .wav / .ogg in assets/sounds/."
+                }),
+                "volume": ("INT", {
+                    "default": 80, "min": 0, "max": 100, "step": 1,
+                    "tooltip":
+                        "Playback volume from 0 (silent) to 100 (full). Affects "
+                        "both the Run-time notification and the Preview button."
+                }),
+                "label": ("STRING", {
+                    "default": "", "multiline": False,
+                    "tooltip":
+                        "Optional name shown in browser and ComfyUI console logs "
+                        "when the node fires. Helpful when multiple Notify nodes "
+                        "fire in one workflow. Leave blank to use the sound name."
+                }),
             },
         }
 
