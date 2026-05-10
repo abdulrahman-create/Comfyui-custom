@@ -53,16 +53,16 @@ class PixaromaPreview:
             "required": {
                 "image": ("IMAGE", {"tooltip": "Image (or batch) to preview. Each frame appears as a thumbnail in the strip; click one to expand it inline. Wire any IMAGE source here."}),
                 "filename_prefix": ("STRING", {"default": "img", "tooltip": (
-                    "Filename stem when writing PNGs to output/ (used by both the Save to Output button and save_mode=save). "
-                    "The node appends a 5-digit auto-incremented counter and .png.\n\n"
-                    "Accepts subfolder syntax with '/'. Supports date tokens like other ComfyUI save nodes:\n"
-                    "  img                              -> output/img_00001_.png\n"
-                    "  SDXL/portrait                    -> output/SDXL/portrait_00001_.png\n"
-                    "  %date:yyyy-MM-dd%/img            -> output/2026-05-10/img_00001_.png\n"
-                    "  %date:yyyy-MM%/img_%date:dd-HH%  -> output/2026-05/img_10-14_00001_.png\n"
-                    "  %year%-%month%/img               -> output/2026-05/img_00001_.png  (native tokens also work)\n\n"
-                    "Date format codes (Java-style): yyyy yy MM dd HH mm ss. Native ComfyUI tokens: "
-                    "%year% %month% %day% %hour% %minute% %second% %width% %height%."
+                    "Filename stem written to ComfyUI's output/ folder by the Save to Output button and by save_mode=save. "
+                    "The node appends a 5-digit auto-increment counter and .png extension, so 'img' writes to output/img_00001_.png.\n\n"
+                    "Subfolders: use '/' to nest. 'SDXL/portrait' writes to output/SDXL/portrait_00001_.png.\n\n"
+                    "Date tokens (same syntax as VHS / VideoHelperSuite save nodes): "
+                    "'%date:yyyy-MM-dd%' expands to today's date. "
+                    "Example: '%date:yyyy-MM-dd%/img' writes to output/2026-05-10/img_00001_.png. "
+                    "You can also put the date in the basename, e.g. 'img_%date:HH-mm%' writes to output/img_14-30_00001_.png. "
+                    "Format codes (Java-style): yyyy (4-digit year), yy (2-digit), MM (month), dd (day), HH (hour), mm (minute), ss (second).\n\n"
+                    "Native ComfyUI tokens also work: %year%, %month%, %day%, %hour%, %minute%, %second%, %width%, %height%. "
+                    "Example: '%year%-%month%/img' writes to output/2026-05/img_00001_.png."
                 )}),
                 "save_mode": (["preview", "save"], {"default": "preview", "tooltip": "preview: write each batch frame to ComfyUI's temp/ folder, auto-cleared on restart. Use this while iterating so you don't clutter output/. save: write every batch frame to output/ with embedded workflow metadata, exactly like the native SaveImage node. The on-node preview strip works the same in both modes; the manual Save to Disk / Save to Output buttons are independent of save_mode."}),
             },
