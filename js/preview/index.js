@@ -503,16 +503,20 @@ function layoutImgStrip(widgetWidth, widgetY, widgetHeight, frames) {
   return { slots, imgs };
 }
 
-// 2D-wrapped grid layout. Native PreviewImage uses this style: 3 imgs -> 2x2,
-// 5 imgs -> 2x3 (rows = ceil(sqrt(N)); cols = ceil(N/rows)). Cells fill the
-// widget body, image fitted inside cell preserving aspect, never upscaled.
+// 2D-wrapped grid layout. Native PreviewImage adapts the column count to
+// the widget's aspect ratio so cells stay roughly square as the user
+// resizes the node. Wide node -> more cols (5x1 for very wide), tall node
+// -> more rows (1x5 for very tall), square -> balanced (2x3 for N=5).
+// Formula: cols = round(sqrt(N * aspect)) where aspect = innerW / innerH.
+// This minimises |cellW - cellH|, which is the same as "make cells square".
 function layoutImgGrid(widgetWidth, widgetY, widgetHeight, frames) {
   const n = frames.length;
   if (!n) return { slots: [], imgs: [] };
   const innerW = Math.max(40, widgetWidth - 2 * SIDE_PAD);
   const innerH = Math.max(40, widgetHeight - 2 * IMG_STRIP_V_PAD);
-  const rows = Math.max(1, Math.ceil(Math.sqrt(n)));
-  const cols = Math.max(1, Math.ceil(n / rows));
+  const aspect = innerW / innerH;
+  const cols = Math.max(1, Math.min(n, Math.round(Math.sqrt(n * aspect))));
+  const rows = Math.ceil(n / cols);
   const cellGap = IMG_STRIP_GAP;
   const cellW = Math.max(16, Math.floor((innerW - cellGap * (cols - 1)) / cols));
   const cellH = Math.max(16, Math.floor((innerH - cellGap * (rows - 1)) / rows));
