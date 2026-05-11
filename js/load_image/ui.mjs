@@ -175,3 +175,78 @@ export function hideNativeImageCombo(node) {
   });
   return imageWidget;
 }
+
+// Open a popup listing the underlying combo's options. Clicking an item
+// sets the combo value and the dropdown's label.
+export function openImageDropdown(node, anchorEl, onPick) {
+  const imageWidget = node._pixLiImageWidget;
+  if (!imageWidget) return;
+  const values = imageWidget.options?.values || [];
+
+  // Close any existing popup
+  document.querySelector(".pix-li-popup")?.remove();
+
+  const popup = document.createElement("div");
+  popup.className = "pix-li-popup";
+  Object.assign(popup.style, {
+    position: "fixed",
+    zIndex: 99999,
+    background: "#1d1d1d",
+    border: `1px solid #444`,
+    borderRadius: "4px",
+    boxShadow: "0 4px 16px rgba(0,0,0,0.4)",
+    maxHeight: "300px",
+    overflowY: "auto",
+    fontSize: "11px",
+    fontFamily: "ui-sans-serif, system-ui, sans-serif",
+    color: "#ccc",
+    minWidth: "200px",
+  });
+
+  const rect = anchorEl.getBoundingClientRect();
+  popup.style.left = `${rect.left}px`;
+  popup.style.top = `${rect.bottom + 2}px`;
+  popup.style.width = `${rect.width}px`;
+
+  if (values.length === 0) {
+    const empty = document.createElement("div");
+    empty.style.padding = "8px";
+    empty.style.color = "#666";
+    empty.textContent = "(no images uploaded yet)";
+    popup.appendChild(empty);
+  } else {
+    for (const v of values) {
+      const item = document.createElement("div");
+      item.style.padding = "6px 10px";
+      item.style.cursor = "pointer";
+      item.style.borderBottom = "1px solid #2a2a2a";
+      if (v === imageWidget.value) {
+        item.style.color = "#f66744";
+        item.style.fontWeight = "600";
+      }
+      item.textContent = v;
+      item.addEventListener("mouseenter", () => { item.style.background = "#2a2a2a"; });
+      item.addEventListener("mouseleave", () => { item.style.background = ""; });
+      item.addEventListener("click", (e) => {
+        e.stopPropagation();
+        imageWidget.value = v;
+        node.graph?.setDirtyCanvas?.(true, true);
+        popup.remove();
+        if (onPick) onPick(v);
+      });
+      popup.appendChild(item);
+    }
+  }
+
+  document.body.appendChild(popup);
+
+  // Click anywhere else to close.
+  const onDocClick = (e) => {
+    if (!popup.contains(e.target)) {
+      popup.remove();
+      document.removeEventListener("mousedown", onDocClick, true);
+    }
+  };
+  // Use capture phase + setTimeout so the opening click doesn't immediately close.
+  setTimeout(() => document.addEventListener("mousedown", onDocClick, true), 0);
+}

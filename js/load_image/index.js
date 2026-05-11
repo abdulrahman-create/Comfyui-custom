@@ -1,16 +1,15 @@
 import { app } from "/scripts/app.js";
 import { BRAND, hideJsonWidget } from "../shared/index.mjs";
-import { injectCSS, buildRoot, hideNativeImageCombo } from "./ui.mjs";
+import { injectCSS, buildRoot, hideNativeImageCombo, openImageDropdown } from "./ui.mjs";
 import { pickAndUploadFile, pasteFromClipboard, uploadImageToInput } from "./api.mjs";
 
 let _activeLoadImageNode = null;
 
-// Stub — implemented in Task 14.
 function refreshDropdown(node) {
   const dd = node._pixLiRoot?.querySelector('[data-role="dropdown"] .name');
-  if (dd && node._pixLiImageWidget?.value) {
-    dd.textContent = node._pixLiImageWidget.value;
-  }
+  if (!dd) return;
+  const w = node._pixLiImageWidget;
+  dd.textContent = (w?.value && w.value !== "") ? w.value : "— no image —";
 }
 
 // Global Ctrl+V handler for the active load-image node.
@@ -136,6 +135,16 @@ function setupLoadImageNode(node) {
     }
   });
 
+  // Custom dropdown click → popup.
+  const dd = root.querySelector('[data-role="dropdown"]');
+  dd?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    openImageDropdown(node, dd, () => refreshDropdown(node));
+  });
+
+  // Initial dropdown sync (defer so the native combo's `value` is restored).
+  queueMicrotask(() => refreshDropdown(node));
+
   // Subsequent tasks render the contents inside `root`.
 }
 
@@ -153,6 +162,13 @@ app.registerExtension({
     nodeType.prototype.onDeselected = function () {
       this._pixLiOnDeselected?.();
       return _origDes?.apply(this, arguments);
+    };
+    const _origConfigure = nodeType.prototype.onConfigure;
+    nodeType.prototype.onConfigure = function (info) {
+      const r = _origConfigure?.apply(this, arguments);
+      // Wait a microtask so widget values are settled.
+      queueMicrotask(() => refreshDropdown(this));
+      return r;
     };
   },
 
