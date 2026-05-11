@@ -1,6 +1,6 @@
 import { app } from "/scripts/app.js";
 import { BRAND, hideJsonWidget } from "../shared/index.mjs";
-import { injectCSS, buildRoot, hideNativeImageCombo, openImageDropdown } from "./ui.mjs";
+import { injectCSS, buildRoot, hideNativeImageCombo, openImageDropdown, renderChips } from "./ui.mjs";
 import { pickAndUploadFile, pasteFromClipboard, uploadImageToInput } from "./api.mjs";
 
 let _activeLoadImageNode = null;
@@ -10,6 +10,22 @@ function refreshDropdown(node) {
   if (!dd) return;
   const w = node._pixLiImageWidget;
   dd.textContent = (w?.value && w.value !== "") ? w.value : "— no image —";
+}
+
+function renderUI(node) {
+  const root = node._pixLiRoot;
+  if (!root || !root.isConnected) return;
+  const state = readState(node);
+
+  // We keep the upload button + hint + dropdown stable across renders.
+  // Re-render only the dynamic parts: chip grid and the per-mode panel.
+
+  let chipsEl = root.querySelector(".pix-li-chips");
+  const newChips = renderChips(state);
+  if (chipsEl) chipsEl.replaceWith(newChips);
+  else root.appendChild(newChips);
+
+  // Mode panel comes in B3 (Task 16).
 }
 
 // Global Ctrl+V handler for the active load-image node.
@@ -145,7 +161,21 @@ function setupLoadImageNode(node) {
   // Initial dropdown sync (defer so the native combo's `value` is restored).
   queueMicrotask(() => refreshDropdown(node));
 
-  // Subsequent tasks render the contents inside `root`.
+  // Chip click → update state + re-render.
+  root.addEventListener("click", (e) => {
+    const chip = e.target.closest(".pix-li-chip");
+    if (!chip) return;
+    e.stopPropagation();
+    const mode = chip.dataset.modeId;
+    if (!mode) return;
+    const cur = readState(node);
+    if (cur.mode === mode) return;
+    writeState(node, { ...cur, mode });
+    renderUI(node);
+  });
+
+  // Initial render — defer so configure() has time to land state.
+  queueMicrotask(() => renderUI(node));
 }
 
 app.registerExtension({

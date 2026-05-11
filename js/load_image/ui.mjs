@@ -92,6 +92,30 @@ export function injectCSS() {
     .pix-li-root.drag-over .pix-li-drop-overlay { display: flex; }
     .pix-li-drop-overlay .icon { font-size: 32px; color: ${BRAND}; }
     .pix-li-drop-overlay .label { font-size: 13px; color: ${BRAND}; font-weight: 600; }
+    .pix-li-chips {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 3px;
+    }
+    .pix-li-chip {
+      background: #1d1d1d;
+      border: 1px solid #444;
+      border-radius: 4px;
+      padding: 6px 4px;
+      text-align: center;
+      font-size: 10px;
+      color: #ccc;
+      cursor: pointer;
+      user-select: none;
+      transition: background 0.08s, border-color 0.08s;
+    }
+    .pix-li-chip:hover { border-color: #666; }
+    .pix-li-chip.active {
+      background: ${BRAND};
+      color: #fff;
+      border-color: ${BRAND};
+    }
+    .pix-li-chip.span-full { grid-column: span 2; }
   `;
   const el = document.createElement("style");
   el.id = "pixaroma-load-image-css";
@@ -249,4 +273,28 @@ export function openImageDropdown(node, anchorEl, onPick) {
   };
   // Use capture phase + setTimeout so the opening click doesn't immediately close.
   setTimeout(() => document.addEventListener("mousedown", onDocClick, true), 0);
+}
+
+const MODE_CHIPS = [
+  { id: "off",            label: "Off" },
+  { id: "max_mp",         label: "Max megapixels" },
+  { id: "longest_side",   label: "Longest side" },
+  { id: "scale_factor",   label: "Scale by ×" },
+  { id: "fit_inside",     label: "Fit inside" },
+  { id: "cover",          label: "Crop to fill" },
+  { id: "match_ratio",    label: "Match aspect ratio", spanFull: true },
+];
+
+export function renderChips(state) {
+  const wrap = document.createElement("div");
+  wrap.className = "pix-li-chips";
+  for (const c of MODE_CHIPS) {
+    const el = document.createElement("div");
+    el.className = "pix-li-chip" + (c.spanFull ? " span-full" : "");
+    if (state.mode === c.id) el.classList.add("active");
+    el.dataset.modeId = c.id;
+    el.textContent = c.label;
+    wrap.appendChild(el);
+  }
+  return wrap;
 }
