@@ -1,5 +1,6 @@
 import { app } from "/scripts/app.js";
 import { BRAND, hideJsonWidget } from "../shared/index.mjs";
+import { injectCSS, buildRoot, hideNativeImageCombo } from "./ui.mjs";
 
 // State pattern mirrors Resolution Pixaroma (CLAUDE.md Vue Compat #9):
 // hidden Python input + node.properties + app.graphToPrompt injection.
@@ -38,16 +39,31 @@ export function writeState(node, state) {
 }
 
 function setupLoadImageNode(node) {
-  // Defensive: hide the hidden STRING widget if one was created (stale Python,
-  // or workflow loaded under an older architecture).
+  injectCSS();
   hideJsonWidget(node.widgets, HIDDEN_INPUT_NAME);
 
-  // Branded default colors (match Resolution Pixaroma).
+  // Hide the native `image` combo — our custom dropdown replaces it visually
+  // but reads/writes through its `.value`.
+  const imageWidget = hideNativeImageCombo(node);
+  node._pixLiImageWidget = imageWidget;
+
   if (!node.color) node.color = "#1d1d1d";
   if (!node.bgcolor) node.bgcolor = "#2a2a2a";
 
-  // Skeleton only — full UI build added in subsequent tasks.
-  console.log("[PixaromaLoadImage] node created", node.id);
+  const root = buildRoot();
+  node._pixLiRoot = root;
+
+  const widget = node.addDOMWidget("pixaroma_load_image_ui", "custom", root, {
+    canvasOnly: true,  // Vue Compat #15 — hide from Parameters tab
+    getValue: () => null,
+    setValue: () => {},
+    getMinHeight: () => 280,
+    margin: 4,
+    serialize: false,
+  });
+  node._pixLiWidget = widget;
+
+  // Subsequent tasks render the contents inside `root`.
 }
 
 app.registerExtension({
