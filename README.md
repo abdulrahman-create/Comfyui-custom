@@ -155,7 +155,7 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
-### **May 12, 2026 (1.4.0)**
+### **May 12, 2026 (1.3.21)**
 - **NEW: Load Image Pixaroma** — a drop-in replacement for ComfyUI's `LoadImage` with inline resize controls and 7 outputs. Same file-picker / drag-drop / Ctrl+V paste / multi-frame / alpha-to-mask behavior as native, plus 7 resize modes (Off, Max megapixels, Longest side, Scale by ×, Fit inside, Crop to fill, Match aspect ratio with Crop or Pad) all driven from chips and numeric inputs on the node — no need to open an editor. Match-aspect-ratio offers 11 presets + Custom (1:1, 16:9, 9:16, 2:1, 3:2, 2:3, 4:3, 3:4, 4:5, 21:9, 5:4) and a Pixaroma color picker for the Pad color. Snap-to-multiple (8 / 16 / 32 / 64), Resample picker with hint text under each option (Auto / Nearest / Bilinear / Bicubic / Lanczos), and an Allow-upscaling toggle apply as post-modifiers. Numeric fields accept math expressions like `1024+64` or `512*2`, ↑↓ arrow stepping (Shift+arrow = 10× step), and have visible +/- spinner buttons. A live INPUT → OUTPUT info bar with tiny aspect-ratio rectangles shows the source dims + resulting dims as you tweak settings, so you can see exactly what the workflow will produce before you Run. Outputs: `IMAGE`, `MASK`, `WIDTH`, `HEIGHT`, `FILENAME` (without extension), `ORIGINAL_WIDTH`, `ORIGINAL_HEIGHT` — eliminates downstream Get Image Size + Image Scale + Image Resize chains in most workflows.
 
 ### **May 10, 2026 (1.3.20)**
