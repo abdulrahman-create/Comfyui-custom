@@ -9,12 +9,14 @@ export function updateNativePreview(node, filename) {
   img.onload = () => {
     node.imgs = [img];
     node.graph?.setDirtyCanvas?.(true, true);
+    // Notify the index.js side that natural dims are now available, so
+    // the input/output dims info bar can refresh. The hook is attached
+    // by setupLoadImageNode and may be absent on stray calls.
+    node._pixLiOnImageLoaded?.();
   };
   img.onerror = () => {
-    // Don't crash — the file might be temp or moved. Just log.
     console.warn("[PixaromaLoadImage] preview fetch failed for", filename);
   };
-  // `subfolder=` empty + `type=input` matches the upload route's storage.
   img.src = `/view?filename=${encodeURIComponent(filename)}&type=input&subfolder=&t=${Date.now()}`;
 }
 

@@ -16,6 +16,93 @@ function refreshDropdown(node) {
   dd.textContent = (w?.value && w.value !== "") ? w.value : "— no image —";
 }
 
+// Reduce a w:h ratio to its simplest integer form when there's a clean
+// gcd match (e.g. 1920:1080 → 16:9). For non-clean ratios, return a
+// rounded decimal label (~1.78:1 / ~1:1.78) so the user still sees
+// something meaningful.
+function simplifyRatio(w, h) {
+  if (!w || !h) return "";
+  const gcd = (a, b) => b ? gcd(b, a % b) : a;
+  const g = gcd(Math.abs(w), Math.abs(h)) || 1;
+  const rw = w / g, rh = h / g;
+  // Cap at small integer pairs — bigger ratios mean the gcd reduction
+  // didn't land on a recognisable common form (1920:1081 etc).
+  if (rw <= 64 && rh <= 64) return `${rw}:${rh}`;
+  const r = w / h;
+  return r >= 1 ? `~${r.toFixed(2)}:1` : `~1:${(1 / r).toFixed(2)}`;
+}
+
+// Build a small aspect-ratio rectangle (~14×11 px max). Mirrors the
+// helper inside resize_modes.mjs but stays local so we don't have to
+// re-export it through index.mjs.
+function makeAspectRect(w, h, maxW = 14, maxH = 11) {
+  const el = document.createElement("span");
+  el.className = "pix-li-shape";
+  const a = w / h;
+  let pw, ph;
+  if (a >= maxW / maxH) { pw = maxW; ph = maxW / a; }
+  else                   { ph = maxH; pw = maxH * a; }
+  el.style.width = `${Math.max(1, Math.round(pw))}px`;
+  el.style.height = `${Math.max(1, Math.round(ph))}px`;
+  return el;
+}
+
+// Update the input/output dimensions info bar. Hides the upload hint
+// when an image is loaded. Shows: original dims + ratio (always when
+// loaded), and final dims + ratio when resize mode != Off.
+function updateInfoBar(node) {
+  const root = node._pixLiRoot;
+  if (!root) return;
+  const hint = root.querySelector('[data-role="hint"]');
+  const info = root.querySelector('[data-role="diminfo"]');
+  if (!info) return;
+
+  const img = node.imgs?.[0];
+  const W = img?.naturalWidth || 0;
+  const H = img?.naturalHeight || 0;
+
+  if (!W || !H) {
+    if (hint) hint.style.display = "";
+    info.style.display = "none";
+    info.innerHTML = "";
+    return;
+  }
+
+  if (hint) hint.style.display = "none";
+  info.style.display = "flex";
+  info.innerHTML = "";
+
+  const state = readState(node);
+  const { w: outW, h: outH } = previewResize(W, H, state);
+  const resizeActive = state.mode !== "off" && (outW !== W || outH !== H);
+
+  function makeRow(tag, w, h, isOut) {
+    const row = document.createElement("div");
+    row.className = "pix-li-diminfo-row" + (isOut ? " out" : "");
+    const tagEl = document.createElement("span");
+    tagEl.className = "pix-li-diminfo-tag";
+    tagEl.textContent = tag;
+    const rectEl = makeAspectRect(w, h);
+    const dimsEl = document.createElement("span");
+    dimsEl.className = "pix-li-diminfo-dims";
+    dimsEl.textContent = `${w} × ${h}`;
+    const ratioEl = document.createElement("span");
+    ratioEl.className = "pix-li-diminfo-ratio";
+    ratioEl.textContent = simplifyRatio(w, h);
+    row.append(tagEl, rectEl, dimsEl, ratioEl);
+    return row;
+  }
+
+  info.appendChild(makeRow("Input", W, H, false));
+  if (resizeActive) {
+    const arrow = document.createElement("div");
+    arrow.className = "pix-li-diminfo-arrow";
+    arrow.textContent = "↓";
+    info.appendChild(arrow);
+    info.appendChild(makeRow("Output", outW, outH, true));
+  }
+}
+
 function renderUI(node) {
   const root = node._pixLiRoot;
   if (!root) return;
@@ -34,31 +121,32 @@ function renderUI(node) {
   if (chipsEl) chipsEl.replaceWith(newChips);
   else root.appendChild(newChips);
 
-  // Remove the previous panel (if any) and append the new one for the current mode.
+  // Remove the previous panel (if any) and append the new one for the
+  // current mode. onChange is the non-destructive "update info bar"
+  // call — leaf events (input commit / quick-pick / color pick) need
+  // the info bar to refresh but MUST NOT destroy the panel itself, or
+  // Arrow / Tab break (the focused input would disappear).
   const oldPanel = root.querySelector(".pix-li-panel");
   if (oldPanel) oldPanel.remove();
-  const panel = buildModePanel(state.mode, node, state, writeState, () => { /* onChange is intentionally a no-op for leaf events (input
-       commits, quick-pick clicks, color picks). Re-rendering the panel from
-       a leaf event destroyed the focused input and broke Arrow / Tab keys.
-       State is written by the leaf's writeState call; that's all we need.
-       When B4 adds a live preview badge, this becomes a non-destructive
-       "update badge" call. */ });
+  const panel = buildModePanel(state.mode, node, state, writeState, () => updateInfoBar(node));
   if (panel) {
     // Insert AFTER the chip grid.
     const chips = root.querySelector(".pix-li-chips");
     chips.after(panel);
   }
 
-  // Remove old global controls (if any) and re-render.
+  // Remove old global controls (if any) and re-render. onChange here is
+  // the lightweight "non-destructive update" — used by snap chips,
+  // resample dropdown, allow-upscale toggle. They don't change panel
+  // structure but DO change the output dimensions, so the info bar
+  // needs to refresh.
   const oldGlobal = root.querySelector(".pix-li-global");
   if (oldGlobal) oldGlobal.remove();
-  const globals = renderGlobalControls(node, state, writeState, () => { /* onChange is intentionally a no-op for leaf events (input
-       commits, quick-pick clicks, color picks). Re-rendering the panel from
-       a leaf event destroyed the focused input and broke Arrow / Tab keys.
-       State is written by the leaf's writeState call; that's all we need.
-       When B4 adds a live preview badge, this becomes a non-destructive
-       "update badge" call. */ });
+  const globals = renderGlobalControls(node, state, writeState, () => updateInfoBar(node));
   root.appendChild(globals);
+
+  // Refresh dims info bar (input + output dims).
+  updateInfoBar(node);
 
   // Force an immediate resize ONLY when the content height actually
   // changed (mode switch). Without this, switching to a taller panel
@@ -190,6 +278,28 @@ function setupLoadImageNode(node) {
     if (_activeLoadImageNode === node) _activeLoadImageNode = null;
   };
 
+  // Called by api.mjs updateNativePreview() once a freshly-loaded image has
+  // its naturalWidth/naturalHeight available. Refreshes the dims info bar
+  // so input + output rows reflect the new source dimensions.
+  node._pixLiOnImageLoaded = () => updateInfoBar(node);
+
+  // Workflow-restore path: ComfyUI's image_upload hook fetches the saved
+  // image AFTER nodeCreated runs, so our initial renderUI sees no
+  // node.imgs. Poll for ~3 seconds to catch the late load and update the
+  // info bar. Cleared on success or timeout, and on node removal.
+  let imgPollTicks = 0;
+  const imgPoll = setInterval(() => {
+    if (node.imgs?.[0]?.naturalWidth) {
+      clearInterval(imgPoll);
+      node._pixLiImgPoll = null;
+      updateInfoBar(node);
+    } else if (++imgPollTicks > 30) {
+      clearInterval(imgPoll);
+      node._pixLiImgPoll = null;
+    }
+  }, 100);
+  node._pixLiImgPoll = imgPoll;
+
   // Wire upload button.
   const btn = root.querySelector(".pix-li-upload-btn");
   btn?.addEventListener("click", async (e) => {
@@ -274,7 +384,20 @@ app.registerExtension({
       const r = _origConfigure?.apply(this, arguments);
       // Wait a microtask so widget values are settled.
       queueMicrotask(() => refreshDropdown(this));
+      // Refresh info bar after a short delay so the image (set async by
+      // ComfyUI's image_upload hook on workflow restore) has a chance to
+      // populate node.imgs[0]. The poll inside setupLoadImageNode covers
+      // initial creation; this catches re-configure on workflow switch.
+      setTimeout(() => updateInfoBar(this), 600);
       return r;
+    };
+
+    const _origRemoved = nodeType.prototype.onRemoved;
+    nodeType.prototype.onRemoved = function () {
+      if (this._pixLiImgPoll) clearInterval(this._pixLiImgPoll);
+      this._pixLiImgPoll = null;
+      if (_activeLoadImageNode === this) _activeLoadImageNode = null;
+      return _origRemoved?.apply(this, arguments);
     };
   },
 

@@ -92,6 +92,50 @@ export function injectCSS() {
     .pix-li-root.drag-over .pix-li-drop-overlay { display: flex; }
     .pix-li-drop-overlay .icon { font-size: 32px; color: ${BRAND}; }
     .pix-li-drop-overlay .label { font-size: 13px; color: ${BRAND}; font-weight: 600; }
+    /* Dimensions info bar — replaces the "drag/paste" hint once an image
+       is loaded. Stacks: ORIGINAL on top, RESIZED below (when active).
+       Each line: tiny aspect rect, dims, simplified ratio label. */
+    .pix-li-diminfo {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      background: #1d1d1d;
+      border: 1px solid #333;
+      border-radius: 4px;
+      padding: 6px 8px;
+      font-size: 10px;
+    }
+    .pix-li-diminfo-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .pix-li-diminfo-tag {
+      font-size: 8px;
+      color: #777;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      min-width: 38px;
+    }
+    .pix-li-diminfo-dims {
+      color: #ddd;
+      flex: 1;
+    }
+    .pix-li-diminfo-ratio {
+      color: #888;
+    }
+    .pix-li-diminfo-arrow {
+      color: ${BRAND};
+      text-align: center;
+      font-size: 9px;
+      line-height: 1;
+      margin: -1px 0;
+    }
+    .pix-li-diminfo .pix-li-shape {
+      flex-shrink: 0;
+    }
+    /* Highlight the OUTPUT row by tinting the dims orange when resize active. */
+    .pix-li-diminfo-row.out .pix-li-diminfo-dims { color: ${BRAND}; font-weight: 600; }
     .pix-li-chips {
       display: grid;
       grid-template-columns: repeat(2, 1fr);
@@ -478,15 +522,47 @@ export function injectCSS() {
       color: #fff;
       border-color: ${BRAND};
     }
-    .pix-li-rs-select {
-      background: transparent;
-      border: none;
+    /* Resample row — custom dropdown trigger styled like the file picker. */
+    .pix-li-rs-row {
+      cursor: pointer;
+      user-select: none;
+    }
+    .pix-li-rs-row:hover { border-color: #666; }
+    .pix-li-rs-value {
       color: #ccc;
       font-size: 10px;
       margin-left: auto;
-      cursor: pointer;
-      font-family: inherit;
     }
+    .pix-li-rs-arrow {
+      color: ${BRAND};
+      font-size: 9px;
+      margin-left: 4px;
+    }
+    .pix-li-rs-popup {
+      position: fixed;
+      z-index: 99999;
+      background: #1d1d1d;
+      border: 1px solid #444;
+      border-radius: 4px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+      font-size: 11px;
+      color: #ccc;
+      min-width: 200px;
+      overflow: hidden;
+    }
+    .pix-li-rs-item {
+      padding: 6px 10px;
+      cursor: pointer;
+      border-bottom: 1px solid #2a2a2a;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .pix-li-rs-item:last-child { border-bottom: none; }
+    .pix-li-rs-item:hover { background: #2a2a2a; }
+    .pix-li-rs-item.active .pix-li-rs-item-label { color: ${BRAND}; font-weight: 600; }
+    .pix-li-rs-item-label { font-size: 11px; }
+    .pix-li-rs-item-hint { font-size: 9px; color: #777; }
     .pix-li-up-row {
       background: #1d1d1d;
       border: 1px solid #333;
@@ -536,18 +612,29 @@ export function buildRoot() {
   btn.append(ico, lbl);
   root.appendChild(btn);
 
-  // Hint line for alternate upload methods.
+  // Hint line for alternate upload methods (shown when no image yet).
   const hint = document.createElement("div");
   hint.className = "pix-li-hint";
+  hint.dataset.role = "hint";
   hint.innerHTML = `or drag here · paste with <kbd>Ctrl+V</kbd>`;
   root.appendChild(hint);
 
-  // Placeholder for the dropdown (filled in Task 14).
+  // File dropdown.
   const dd = document.createElement("div");
   dd.className = "pix-li-dropdown";
   dd.dataset.role = "dropdown";
   dd.innerHTML = `<span class="name">— no image —</span><span class="arrow">▾</span>`;
   root.appendChild(dd);
+
+  // Dimensions info bar — shows once an image is loaded. Replaces the
+  // hint text. Two rows when a resize is active (original → final), one
+  // row when mode = Off (only original). Each row has the dims, ratio
+  // label, and a tiny aspect rectangle.
+  const info = document.createElement("div");
+  info.className = "pix-li-diminfo";
+  info.dataset.role = "diminfo";
+  info.style.display = "none";
+  root.appendChild(info);
 
   return root;
 }
@@ -708,7 +795,66 @@ export function renderChips(state) {
 }
 
 const SNAP_OPTIONS = [0, 8, 16, 32, 64];
-const RESAMPLE_OPTIONS = ["auto", "nearest", "bilinear", "bicubic", "lanczos"];
+const RESAMPLE_OPTIONS = [
+  { id: "auto",     label: "Auto",     hint: "Lanczos for shrink, Bilinear for grow" },
+  { id: "nearest",  label: "Nearest",  hint: "Pixel-perfect, no smoothing" },
+  { id: "bilinear", label: "Bilinear", hint: "Fast, smooth" },
+  { id: "bicubic",  label: "Bicubic",  hint: "Slower, sharper" },
+  { id: "lanczos",  label: "Lanczos",  hint: "Slowest, sharpest" },
+];
+
+// Custom resample dropdown popup. Same look as the file dropdown popup —
+// fixed-position list anchored to the row, click an item to commit.
+function openResamplePopup(anchorEl, currentValue, onPick) {
+  document.querySelector(".pix-li-rs-popup")?.remove();
+
+  const popup = document.createElement("div");
+  popup.className = "pix-li-rs-popup";
+  const rect = anchorEl.getBoundingClientRect();
+  popup.style.left = `${rect.left}px`;
+  popup.style.top  = `${rect.bottom + 2}px`;
+  popup.style.width = `${rect.width}px`;
+
+  for (const opt of RESAMPLE_OPTIONS) {
+    const item = document.createElement("div");
+    item.className = "pix-li-rs-item" + (opt.id === currentValue ? " active" : "");
+    const lbl = document.createElement("span");
+    lbl.className = "pix-li-rs-item-label";
+    lbl.textContent = opt.label;
+    const hint = document.createElement("span");
+    hint.className = "pix-li-rs-item-hint";
+    hint.textContent = opt.hint;
+    item.append(lbl, hint);
+    item.addEventListener("click", (e) => {
+      e.stopPropagation();
+      onPick(opt.id);
+      close();
+    });
+    popup.appendChild(item);
+  }
+
+  document.body.appendChild(popup);
+
+  function close() {
+    popup.remove();
+    document.removeEventListener("mousedown", onDocDown, true);
+    document.removeEventListener("pointerdown", onDocDown, true);
+    document.removeEventListener("wheel", close, true);
+    document.removeEventListener("keydown", onKey, true);
+  }
+  const onDocDown = (e) => {
+    if (!popup.contains(e.target)) close();
+  };
+  const onKey = (e) => {
+    if (e.key === "Escape") close();
+  };
+  setTimeout(() => {
+    document.addEventListener("mousedown", onDocDown, true);
+    document.addEventListener("pointerdown", onDocDown, true);
+    document.addEventListener("wheel", close, true);
+    document.addEventListener("keydown", onKey, true);
+  }, 0);
+}
 
 export function renderGlobalControls(node, state, writeState, onChange) {
   const wrap = document.createElement("div");
@@ -733,23 +879,24 @@ export function renderGlobalControls(node, state, writeState, onChange) {
   snapRow.appendChild(snapBtns);
   wrap.appendChild(snapRow);
 
-  // Resample row (with Upscale toggle on its right, on a separate row)
+  // Resample row — custom Pixaroma-styled dropdown (native <select>
+  // renders very differently across Mac/Win/Linux; matching it to the
+  // rest of the node's look needs our own popup).
   const rsRow = document.createElement("div");
   rsRow.className = "pix-li-rs-row";
   const rsLabel = document.createElement("span");
   rsLabel.style.fontSize = "10px";
   rsLabel.style.color = "#888";
   rsLabel.textContent = "Resample";
-  const select = document.createElement("select");
-  select.className = "pix-li-rs-select";
-  for (const opt of RESAMPLE_OPTIONS) {
-    const o = document.createElement("option");
-    o.value = opt;
-    o.textContent = opt.charAt(0).toUpperCase() + opt.slice(1);
-    if (state.resample === opt) o.selected = true;
-    select.appendChild(o);
-  }
-  rsRow.append(rsLabel, select);
+  const rsValue = document.createElement("span");
+  rsValue.className = "pix-li-rs-value";
+  rsValue.dataset.role = "rs-value";
+  const curResample = state.resample || "auto";
+  rsValue.textContent = curResample.charAt(0).toUpperCase() + curResample.slice(1);
+  const rsArrow = document.createElement("span");
+  rsArrow.className = "pix-li-rs-arrow";
+  rsArrow.textContent = "▾";
+  rsRow.append(rsLabel, rsValue, rsArrow);
   wrap.appendChild(rsRow);
 
   // Upscale toggle row
@@ -776,10 +923,14 @@ export function renderGlobalControls(node, state, writeState, onChange) {
     writeState(node, { ...s, snap: v });
     onChange?.();
   });
-  select.addEventListener("change", () => {
-    const s = JSON.parse(node.properties?.loadImagePixState || "{}");
-    writeState(node, { ...s, resample: select.value });
-    onChange?.();
+  rsRow.addEventListener("click", (e) => {
+    e.stopPropagation();
+    openResamplePopup(rsRow, state.resample || "auto", (picked) => {
+      rsValue.textContent = picked.charAt(0).toUpperCase() + picked.slice(1);
+      const s = JSON.parse(node.properties?.loadImagePixState || "{}");
+      writeState(node, { ...s, resample: picked });
+      onChange?.();
+    });
   });
   cb.addEventListener("change", () => {
     const s = JSON.parse(node.properties?.loadImagePixState || "{}");

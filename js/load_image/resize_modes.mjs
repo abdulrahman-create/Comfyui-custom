@@ -1,4 +1,5 @@
 import { BRAND } from "../shared/index.mjs";
+import { openPixaromaCompactColorPickerPopup } from "../shared/color_picker.mjs";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -325,6 +326,7 @@ function buildMaxMPPanel(node, state, writeState, onChange) {
       }
       const s = JSON.parse(node.properties?.loadImagePixState || "{}");
       writeState(node, { ...s, max_mp: v });
+      onChange?.();
     },
   });
   inpWrap.classList.add("pix-li-input-wide");
@@ -381,6 +383,7 @@ function buildLongestSidePanel(node, state, writeState, onChange) {
       }
       const s = JSON.parse(node.properties?.loadImagePixState || "{}");
       writeState(node, { ...s, longest_side: v });
+      onChange?.();
     },
   });
   inpWrap.classList.add("pix-li-input-wide");
@@ -438,6 +441,7 @@ function buildScalePanel(node, state, writeState, onChange) {
       }
       const s = JSON.parse(node.properties?.loadImagePixState || "{}");
       writeState(node, { ...s, scale_factor: v });
+      onChange?.();
     },
   });
   inpWrap.classList.add("pix-li-input-wide");
@@ -487,6 +491,7 @@ function buildWHPanel(node, state, writeState, onChange, opts) {
         writeState(node, { ...s, [key]: v });
         wh[key] = v;
         refreshPreview();
+        onChange?.();
       },
     });
     inpWrap.classList.add("pix-li-wh-input-wrap");
@@ -623,6 +628,7 @@ function buildMatchRatioPanel(node, state, writeState, onChange) {
     chIn.value = String(h);
     const s = JSON.parse(node.properties?.loadImagePixState || "{}");
     writeState(node, { ...s, ratio_w: w, ratio_h: h });
+    onChange?.();
   }
 
   swapRatio.addEventListener("click", (e) => {
@@ -694,23 +700,25 @@ function buildMatchRatioPanel(node, state, writeState, onChange) {
     onChange?.();
   });
 
-  // Native color picker for v1; the Pixaroma compact picker can be wired
-  // later if a swatch row is wanted.
+  // Pixaroma compact picker — swatches + Reset / More-colors footer. Same
+  // picker the Note Pixaroma text / highlight / bg buttons use. The
+  // transparent tile is hidden here (showClear: false) — there's no
+  // meaningful "transparent pad" for cropping/padding to a target ratio.
   swatch.addEventListener("click", (e) => {
     e.stopPropagation();
-    const cp = document.createElement("input");
-    cp.type = "color";
-    cp.value = state.pad_color || "#000000";
-    cp.style.display = "none";
-    document.body.appendChild(cp);
-    cp.addEventListener("input", () => {
-      swatch.style.background = cp.value;
-      const s = JSON.parse(node.properties?.loadImagePixState || "{}");
-      writeState(node, { ...s, pad_color: cp.value });
-      onChange?.();
+    const cur = (node.properties?.loadImagePixState ?
+      (JSON.parse(node.properties.loadImagePixState).pad_color) : null)
+      || state.pad_color || "#000000";
+    openPixaromaCompactColorPickerPopup(swatch, {
+      initialColor: cur,
+      showClear: false,
+      onPick: (color) => {
+        const c = color || "#000000";
+        swatch.style.background = c;
+        const s = JSON.parse(node.properties?.loadImagePixState || "{}");
+        writeState(node, { ...s, pad_color: c });
+      },
     });
-    cp.addEventListener("change", () => cp.remove());
-    cp.click();
   });
 
   return panel;
