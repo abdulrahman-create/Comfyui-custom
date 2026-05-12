@@ -32,6 +32,8 @@ from .nodes.node_switch_wh import NODE_CLASS_MAPPINGS as _MAPS_SWITCH_WH
 from .nodes.node_switch_wh import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_SWITCH_WH
 from .nodes.node_wh import NODE_CLASS_MAPPINGS as _MAPS_WH
 from .nodes.node_wh import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_WH
+from .nodes.node_number import NODE_CLASS_MAPPINGS as _MAPS_NUMBER
+from .nodes.node_number import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_NUMBER
 
 # development mode for loading additional refrence nodes
 dev_mode = False
@@ -59,6 +61,7 @@ NODE_CLASS_MAPPINGS = {
     **_MAPS_SAVE_MP4,
     **_MAPS_SWITCH_WH,
     **_MAPS_WH,
+    **_MAPS_NUMBER,
     **_MAPS_UTILS,
     **_MAPS_SHOW_TEXT,
 }
@@ -77,6 +80,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     **_NAMES_SAVE_MP4,
     **_NAMES_SWITCH_WH,
     **_NAMES_WH,
+    **_NAMES_NUMBER,
     **_NAMES_UTILS,
     **_NAMES_PAINT,
     **_NAMES_PREVIEW,
