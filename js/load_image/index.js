@@ -239,8 +239,7 @@ function setupLoadImageNode(node) {
   const imageWidget = hideNativeImageCombo(node);
   node._pixLiImageWidget = imageWidget;
 
-  if (!node.color) node.color = "#1d1d1d";
-  if (!node.bgcolor) node.bgcolor = "#2a2a2a";
+  // Brand default colors applied globally by js/brand/index.js.
 
   const root = buildRoot();
   node._pixLiRoot = root;

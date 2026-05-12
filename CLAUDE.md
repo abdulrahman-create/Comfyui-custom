@@ -62,6 +62,17 @@ js/
 │   ├── preview.mjs     # createNodePreview, showNodePreview, restoreNodePreview
 │   └── label_css.mjs   # injectLabelCSS() for label editor
 │
+├── brand/              # Brand defaults (single global extension)
+│   └── index.js        # Pixaroma.BrandDefaults extension. Hooks
+│                       #  beforeRegisterNodeDef for ANY node whose Python
+│                       #  CATEGORY starts with "👑 Pixaroma" and applies the
+│                       #  dark title bar (#1d1d1d) + body (#2a2a2a) defaults.
+│                       #  Guarded with `if (!this.color)` / `!this.bgcolor`
+│                       #  so saved workflow colors and right-click → Colors
+│                       #  picks both win. ANY new Pixaroma node automatically
+│                       #  inherits the brand colors via the category prefix —
+│                       #  do NOT re-add per-node color guards.
+│
 ├── paint/              # Paint Studio (PaintStudio class, mixin pattern)
 │   ├── index.js        # Entry: ComfyUI extension registration
 │   ├── core.mjs        # Class shell: constructor, open/close, UI building
@@ -750,7 +761,7 @@ Files are named by concern. Match the task to the file:
 ### 4. When creating a new editor
 Follow the existing directory structure:
 1. Create `js/<name>/` with `index.js` (entry point, `.js`), `core.mjs`, and concern-based splits (all `.mjs`)
-2. Create `nodes/node_<name>.py` with mappings
+2. Create `nodes/node_<name>.py` with mappings + `CATEGORY = "👑 Pixaroma"` (the prefix is what makes the node inherit the brand colors via `js/brand/index.js` — do NOT re-add per-node `node.color` / `node.bgcolor` guards)
 3. Import and merge in `__init__.py`
 4. If it needs backend routes: add to `server_routes.py`
 5. Keep every file under ~300 lines
