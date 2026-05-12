@@ -124,11 +124,29 @@ function setupLoadImageNode(node) {
     canvasOnly: true,  // Vue Compat #15 — hide from Parameters tab
     getValue: () => null,
     setValue: () => {},
-    getMinHeight: () => 280,
+    // Dynamic height so the widget grows when the user picks a mode that
+    // has a taller panel (Match aspect ratio is the worst case). With a
+    // fixed minHeight the content overflowed downward INTO the native
+    // node.imgs preview slot. `scrollHeight` reads the actual rendered
+    // content height once root is attached; 280 is the floor for the
+    // initial paint before attachment (scrollHeight is 0 at that point).
+    getMinHeight: () => Math.max(280, root.scrollHeight || 0),
     margin: 4,
     serialize: false,
   });
   node._pixLiWidget = widget;
+
+  // ResizeObserver — fires when content height changes (mode switch, panel
+  // expand). LiteGraph polls getMinHeight on each canvas paint, but without
+  // an explicit dirty hint it won't repaint when content reflows. Mark the
+  // canvas dirty here so the new height takes effect immediately.
+  if (window.ResizeObserver) {
+    const ro = new ResizeObserver(() => {
+      node.graph?.setDirtyCanvas?.(true, true);
+    });
+    ro.observe(root);
+    node._pixLiResizeObserver = ro;
+  }
 
   // Track the currently-focused load-image node for Ctrl+V routing.
   // (One global listener; nodes register/unregister themselves on selection.)
