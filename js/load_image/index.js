@@ -251,12 +251,7 @@ function setupLoadImageNode(node) {
   });
 
   // Initial render — defer so configure() has time to land state.
-  queueMicrotask(() => { /* onChange is intentionally a no-op for leaf events (input
-       commits, quick-pick clicks, color picks). Re-rendering the panel from
-       a leaf event destroyed the focused input and broke Arrow / Tab keys.
-       State is written by the leaf's writeState call; that's all we need.
-       When B4 adds a live preview badge, this becomes a non-destructive
-       "update badge" call. */ });
+  queueMicrotask(() => renderUI(node));
 }
 
 app.registerExtension({
