@@ -294,13 +294,11 @@ export function injectCSS() {
       margin-bottom: 6px;
     }
     /* Custom ratio inputs sit inside a .pix-li-numinput wrapper — the
-       wrapper supplies border/background; we just give the wrapper a
-       fixed width and the inner input a slightly bigger font. */
-    .pix-li-custom-ratio-input-wrap { width: 72px; }
-    .pix-li-custom-ratio-input-wrap input { font-size: 13px !important; }
+       wrapper supplies border/background; we just fix the width. */
+    .pix-li-custom-ratio-input-wrap { width: 64px; }
     .pix-li-custom-ratio-swap {
-      width: 26px;
-      height: 24px;
+      width: 24px;
+      height: 22px;
       background: #2a2a2a;
       border: 1px solid #444;
       border-radius: 3px;
@@ -342,9 +340,9 @@ export function injectCSS() {
       background: transparent;
       border: none;
       outline: none;
-      padding: 3px 6px;
+      padding: 2px 6px;
       color: ${BRAND};
-      font-size: 12px;
+      font-size: 11px;
       font-weight: 600;
       text-align: center;
       font-family: inherit;
@@ -354,7 +352,7 @@ export function injectCSS() {
     .pix-li-spin {
       display: flex;
       flex-direction: column;
-      width: 14px;
+      width: 12px;
       border-left: 1px solid #444;
     }
     .pix-li-spin > button {
@@ -408,16 +406,14 @@ export function injectCSS() {
       letter-spacing: 0.5px;
       text-align: center;
     }
-    /* W/H input is inside a .pix-li-numinput wrap — the wrap provides
-       background/border, so the input itself stays transparent.
-       Only need to upsize the font compared to the default 12px. */
+    /* W/H input is inside a .pix-li-numinput wrap — wrap provides
+       border/background. The default 11px input font is fine. */
     .pix-li-wh-input-wrap { width: 100%; }
-    .pix-li-wh-input { font-size: 13px !important; }
-    /* Generic swap button used between W and H inputs. Height tuned to
-       roughly match the .pix-li-numinput control height (24-26 px). */
+    /* Generic swap button used between W and H inputs. Height matches
+       the trimmed .pix-li-numinput control height (~22 px). */
     .pix-li-swap {
-      width: 28px;
-      height: 26px;
+      width: 26px;
+      height: 22px;
       background: #2a2a2a;
       border: 1px solid #444;
       border-radius: 4px;
@@ -432,8 +428,8 @@ export function injectCSS() {
       position: absolute;
       inset: 0;
       background-color: currentColor;
-      -webkit-mask: url("/pixaroma/assets/icons/ui/swap.svg") center/14px 14px no-repeat;
-              mask: url("/pixaroma/assets/icons/ui/swap.svg") center/14px 14px no-repeat;
+      -webkit-mask: url("/pixaroma/assets/icons/ui/swap.svg") center/12px 12px no-repeat;
+              mask: url("/pixaroma/assets/icons/ui/swap.svg") center/12px 12px no-repeat;
       pointer-events: none;
     }
     .pix-li-swap:hover { color: ${BRAND}; border-color: ${BRAND}; }
