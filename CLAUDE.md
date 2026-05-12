@@ -3,7 +3,7 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
-ComfyUI-Pixaroma is a custom node plugin for ComfyUI that adds interactive visual editors (3D Builder, Paint Studio, Image Composer, Image Crop, Note Pixaroma - a rich-text annotation node, Preview Image Pixaroma - an in-node image previewer with save-to-disk / save-to-output buttons, Notify Pixaroma - a terminal node that plays a sound from `assets/sounds/` when reached, useful as a workflow-completion alert when working in another window, Load Image Pixaroma - a drop-in replacement for native LoadImage with inline resize controls and 7 outputs IMAGE/MASK/WIDTH/HEIGHT/FILENAME/ORIGINAL_WIDTH/ORIGINAL_HEIGHT) directly inside ComfyUI workflows. It also includes Align Pixaroma, a toggleable canvas-wide smart-snap and alignment-guide system (no nodes added; patches `LGraphCanvas` so any node drag/resize snaps to nearby edges and centers with orange guide lines). It has zero core dependencies — PIL and PyTorch come from ComfyUI's environment. All nodes share the `👑 Pixaroma` menu category.
+ComfyUI-Pixaroma is a custom node plugin for ComfyUI that adds interactive visual editors (3D Builder, Paint Studio, Image Composer, Image Crop, Note Pixaroma - a rich-text annotation node, Preview Image Pixaroma - an in-node image previewer with Save Disk / Save Output / Copy / Open buttons, Notify Pixaroma - a terminal node that plays a sound from `assets/sounds/` when reached, useful as a workflow-completion alert when working in another window, Load Image Pixaroma - a drop-in replacement for native LoadImage with inline resize controls and 7 outputs IMAGE/MASK/WIDTH/HEIGHT/FILENAME/ORIGINAL_WIDTH/ORIGINAL_HEIGHT) directly inside ComfyUI workflows. It also includes Align Pixaroma, a toggleable canvas-wide smart-snap and alignment-guide system (no nodes added; patches `LGraphCanvas` so any node drag/resize snaps to nearby edges and centers with orange guide lines). It has zero core dependencies — PIL and PyTorch come from ComfyUI's environment. All nodes share the `👑 Pixaroma` menu category.
 
 ## Development Setup
 No build step. Install by placing this folder in `ComfyUI/custom_nodes/`. ComfyUI auto-imports `__init__.py` on startup.
@@ -61,6 +61,17 @@ js/
 │   ├── utils.mjs       # BRAND, installFocusTrap, hideJsonWidget, downloadDataURL
 │   ├── preview.mjs     # createNodePreview, showNodePreview, restoreNodePreview
 │   └── label_css.mjs   # injectLabelCSS() for label editor
+│
+├── brand/              # Brand defaults (single global extension)
+│   └── index.js        # Pixaroma.BrandDefaults extension. Hooks
+│                       #  beforeRegisterNodeDef for ANY node whose Python
+│                       #  CATEGORY starts with "👑 Pixaroma" and applies the
+│                       #  dark title bar (#1d1d1d) + body (#2a2a2a) defaults.
+│                       #  Guarded with `if (!this.color)` / `!this.bgcolor`
+│                       #  so saved workflow colors and right-click → Colors
+│                       #  picks both win. ANY new Pixaroma node automatically
+│                       #  inherits the brand colors via the category prefix —
+│                       #  do NOT re-add per-node color guards.
 │
 ├── paint/              # Paint Studio (PaintStudio class, mixin pattern)
 │   ├── index.js        # Entry: ComfyUI extension registration
@@ -160,20 +171,30 @@ js/
 ├── compare/            # Compare Viewer (single file, 413 lines)
 │   └── index.js        # Full compare widget (LiteGraph node drawing)
 │
-├── preview/            # Preview Image Pixaroma (single file, ~520 lines)
-│   └── index.js        # Two orange buttons (Save to Disk / Save to Output) +
-│                       #  custom strip widget rendering all batch frames with
-│                       #  click-to-select (orange BRAND border + "i / N" badge).
-│                       #  Listens to api.addEventListener("executed", ...) for
+├── preview/            # Preview Image Pixaroma (single file, ~570 lines)
+│   └── index.js        # Four orange buttons in one row — Save Disk / Save
+│                       #  Output / Copy / Open — plus a custom strip widget
+│                       #  rendering all batch frames with click-to-select
+│                       #  (orange BRAND border + "i / N" badge). All buttons
+│                       #  act on the SELECTED frame. Listens to
+│                       #  api.addEventListener("executed", ...) for
 │                       #  pixaroma_preview_frames (custom UI key — Save Mp4
 │                       #  pattern, NOT ui.images, so LiteGraph doesn't render
-│                       #  its native strip underneath). Save buttons act on
-│                       #  the SELECTED frame. saveToOutput posts to
+│                       #  its native strip underneath). saveToOutput posts to
 │                       #  /pixaroma/api/preview/save; saveToDisk posts to
 │                       #  /pixaroma/api/preview/prepare and uses the route's
 │                       #  suggested_filename (auto-counter peek) for the Save
 │                       #  dialog, then writes via window.showSaveFilePicker
-│                       #  with <a download> fallback.
+│                       #  with <a download> fallback. copyToClipboard writes
+│                       #  the selected frame's PNG via navigator.clipboard
+│                       #  .write([new ClipboardItem({"image/png": blob})]) —
+│                       #  one-click replacement for ComfyUI's right-click
+│                       #  Copy (Clipspace) which only copies to ComfyUI's
+│                       #  internal clipspace, not the OS clipboard.
+│                       #  openInNewTab opens the selected frame's URL in a
+│                       #  new browser tab (window.open(..., "_blank",
+│                       #  "noopener")) for full-screen viewing or comparing
+│                       #  multiple images side-by-side.
 │
 ├── notify/             # Notify Pixaroma (single file, ~65 lines)
 │   └── index.js        # Terminal node that plays a sound from
@@ -593,6 +614,10 @@ These patterns were hard-won during the May-2026 batch + save-mode upgrade. Seve
 9. **Tracking the "active" preview node for global keybindings (`_activePreviewNode`).** Module-scope `let _activePreviewNode = null`. Set on click that enters expanded mode; clear on X close, Esc, OR `nodeType.prototype.onRemoved` (so deleted nodes don't dangle a reference and prevent GC of their loaded images). Window-level `keydown` listener routes ←/→/Esc to whichever node is active, with `INPUT/TEXTAREA/contentEditable` exclusion so the user can still type. Use capture-phase (`true` 3rd arg to `addEventListener`) so we preempt ComfyUI's canvas-pan keybindings. Same pattern can be reused for any other node that needs document-level keyboard control while focused.
 
 10. **Inline expand-in-place over fullscreen lightbox.** Native PreviewImage doesn't dim the canvas behind a lightbox — clicks on the strip thumbnail expand THE SAME widget into a single-image view (X close, counter, dimensions). Stay inside the node body. Two earlier attempts went different directions and were rejected by the user: (a) full-viewport overlay with 0.92 black backdrop ("not fullscreen"); (b) viewport-centered card without backdrop ("not like that, like preview imafge from comfyui does"). The final shape is: same strip widget, two render modes via `_pixaromaExpanded` flag, all controls drawn on the node canvas. Click-image-to-advance gives quick batch flipthrough without exiting expanded mode.
+
+11. **Self-heal `node.size` at draw time, not via `onResize`.** The buttons widget's `draw()` checks `node.size[0] < MIN_W` (and `MIN_H`) and clamps + `setDirtyCanvas` if so. `nodeType.prototype.onResize` is also installed but cannot be relied on alone: Vue Compat #13 says `onResize` doesn't reliably fire for DOM-widget resizes, AND Align Pixaroma's resize intercept (Align Pattern #6) writes `node.size` directly via cursor delta and bypasses the hook entirely. Symptom this prevents: drag the node smaller than `MIN_W` and the button row visually overflows the right edge of the node frame (buttons clamped to `BTN_MIN_W` × 4 still need >= `MIN_W` of node width, but `widget_width` was honestly small). The draw-time clamp self-heals on the next frame regardless of which path got us there. One-frame flash is acceptable. Pattern generalises: any Pixaroma node whose widgets have a hard minimum width should clamp in draw, not (only) onResize. Same lesson applies to Copy / Open buttons added in May 2026 — they raised `MIN_W` from 224 to 314, and saved workflows that already have smaller saved sizes self-correct on first paint.
+
+12. **Copy + Open buttons act on the SELECTED frame, just like Save.** Native ComfyUI's right-click menu on Preview Image Pixaroma shows "Copy (Clipspace)" — that's ComfyUI's INTERNAL clipspace (for paste-into-LoadImage flows), NOT the OS clipboard. There is no native "Copy Image" or "Open Image" because we use the custom `pixaroma_preview_frames` UI key (Pattern #3) so `node.imgs` isn't populated the way the native menu code expects. The Copy button fills that gap via `navigator.clipboard.write([new ClipboardItem({"image/png": pngBlob})])`. Force the blob MIME to `"image/png"` (some servers return `image/x-png` and `ClipboardItem` is strict). Browser support: Chrome / Edge / Firefox 127+ / Safari 16+ — fall back to a toast if `navigator.clipboard?.write` or `ClipboardItem` is undefined (don't crash, don't pretend it worked). The Open button does `window.open(frame.url, "_blank", "noopener")` — `noopener` so the new tab can't reach back into the ComfyUI window via `window.opener`, and we toast "Popup blocked" if `window.open` returns null. Both honour `node._pixaromaSelectedFrame` so the user gets the frame they clicked, not the first or last (a real upgrade over native which only ever sees one image).
 - `_safe_path()` in `server_routes.py` — validates all file paths stay within `PIXAROMA_INPUT_ROOT`
 - IDs validated against `^[a-zA-Z0-9_\-]+$` regex (max 64 chars)
 - Base64 payloads capped at 50 MB
@@ -736,7 +761,7 @@ Files are named by concern. Match the task to the file:
 ### 4. When creating a new editor
 Follow the existing directory structure:
 1. Create `js/<name>/` with `index.js` (entry point, `.js`), `core.mjs`, and concern-based splits (all `.mjs`)
-2. Create `nodes/node_<name>.py` with mappings
+2. Create `nodes/node_<name>.py` with mappings + `CATEGORY = "👑 Pixaroma"` (the prefix is what makes the node inherit the brand colors via `js/brand/index.js` — do NOT re-add per-node `node.color` / `node.bgcolor` guards)
 3. Import and merge in `__init__.py`
 4. If it needs backend routes: add to `server_routes.py`
 5. Keep every file under ~300 lines

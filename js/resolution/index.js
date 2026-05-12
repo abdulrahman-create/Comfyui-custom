@@ -1235,13 +1235,10 @@ function setupResolutionNode(node) {
   // and this is a no-op.
   hideJsonWidget(node.widgets, HIDDEN_INPUT_NAME);
 
-  // Branded default colors. Only applied when the node has no override yet —
-  // workflow-restored colors and right-click Color-menu picks both land on
-  // node.color / node.bgcolor before nodeCreated fires, so the user's choice
-  // wins. Title bar matches the chip surface (#1d1d1d), body matches the root
-  // surface (#2a2a2a) so the whole node reads as one cohesive dark panel.
-  if (!node.color)   node.color   = "#1d1d1d";
-  if (!node.bgcolor) node.bgcolor = "#2a2a2a";
+  // Brand default colors are applied globally by js/brand/index.js — no
+  // per-node guard needed. Title bar matches the chip surface (#1d1d1d),
+  // body matches the root surface (#2a2a2a) so the whole node reads as
+  // one cohesive dark panel.
 
   // Lock both dimensions. The chip grid is tuned for 240px wide, and the
   // height is sized to fit all 8 preset rows + chips with no scrollbar (see

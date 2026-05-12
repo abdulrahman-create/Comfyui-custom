@@ -72,26 +72,6 @@ export function injectCSS() {
     .pix-li-dropdown:hover { border-color: #666; }
     .pix-li-dropdown .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .pix-li-dropdown .arrow { color: ${BRAND}; font-size: 10px; margin-left: 6px; }
-    /* Drag-over highlight — applied to .pix-li-root */
-    .pix-li-root.drag-over { box-shadow: 0 0 0 2px ${BRAND}, 0 0 24px rgba(246,103,68,0.4); }
-    /* Drop overlay shown during drag */
-    .pix-li-drop-overlay {
-      position: absolute;
-      inset: 0;
-      background: rgba(246,103,68,0.15);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-direction: column;
-      gap: 8px;
-      pointer-events: none;
-      backdrop-filter: blur(2px);
-      z-index: 2;
-      display: none;
-    }
-    .pix-li-root.drag-over .pix-li-drop-overlay { display: flex; }
-    .pix-li-drop-overlay .icon { font-size: 32px; color: ${BRAND}; }
-    .pix-li-drop-overlay .label { font-size: 13px; color: ${BRAND}; font-weight: 600; }
     /* Dimensions info bar — replaces the "drag/paste" hint once an image
        is loaded. Stacks: ORIGINAL on top, RESIZED below (when active).
        Each line: tiny aspect rect, dims, simplified ratio label. */
@@ -584,19 +564,6 @@ export function injectCSS() {
 export function buildRoot() {
   const root = document.createElement("div");
   root.className = "pix-li-root";
-  root.style.position = "relative"; // so drop-overlay can be absolute-positioned
-
-  // Drop overlay (initially hidden; class toggle on .pix-li-root.drag-over shows it).
-  const drop = document.createElement("div");
-  drop.className = "pix-li-drop-overlay";
-  const dropIcon = document.createElement("div");
-  dropIcon.className = "icon";
-  dropIcon.textContent = "📥";
-  const dropLabel = document.createElement("div");
-  dropLabel.className = "label";
-  dropLabel.textContent = "Drop to upload";
-  drop.append(dropIcon, dropLabel);
-  root.appendChild(drop);
 
   // Upload button (orange, prominent, primary action).
   const btn = document.createElement("button");
