@@ -4,16 +4,17 @@ import { BRAND } from "../shared/utils.mjs";
 
 // ---- button / node sizing ----
 const BTN_H = 26;
-const BTN_GAP = 8;
-const BTN_MIN_W = 100;
+const BTN_GAP = 6;
+const BTN_MIN_W = 70;
 const BTN_MAX_W = 160;
+const BTN_COUNT = 4;
 const STRIP_V_PAD = 6;              // vertical padding inside the button strip
 const SIDE_PAD = 8;                 // side margin inside the widget strip
 
-// Minimum node size so the two buttons always fit fully.
-const MIN_W = BTN_MIN_W * 2 + BTN_GAP + SIDE_PAD * 2;   // 224
+// Minimum node size so all four buttons always fit fully.
+const MIN_W = BTN_MIN_W * BTN_COUNT + BTN_GAP * (BTN_COUNT - 1) + SIDE_PAD * 2;
 const MIN_H = 260;
-const DEFAULT_W = 320;
+const DEFAULT_W = 360;
 const DEFAULT_H = 380;
 
 const COLOR_ACTIVE_FILL = BRAND;
@@ -149,15 +150,25 @@ function handleStripClick(node, lx, ly) {
 function computeButtonRects(widgetWidth, stripY) {
   const gap = BTN_GAP;
   const maxTotal = widgetWidth - SIDE_PAD * 2;
-  let btnW = Math.floor((maxTotal - gap) / 2);
+  let btnW = Math.floor((maxTotal - gap * (BTN_COUNT - 1)) / BTN_COUNT);
   btnW = Math.max(BTN_MIN_W, Math.min(BTN_MAX_W, btnW));
-  const totalW = btnW * 2 + gap;
+  const totalW = btnW * BTN_COUNT + gap * (BTN_COUNT - 1);
   const x0 = Math.max(SIDE_PAD, (widgetWidth - totalW) / 2);
   const y = stripY + STRIP_V_PAD;
-  return [
-    { id: "disk",   x: x0,              y, w: btnW, h: BTN_H, label: "Save to Disk" },
-    { id: "output", x: x0 + btnW + gap, y, w: btnW, h: BTN_H, label: "Save to Output" },
+  const labels = [
+    { id: "disk",   label: "Save Disk" },
+    { id: "output", label: "Save Output" },
+    { id: "copy",   label: "Copy" },
+    { id: "open",   label: "Open" },
   ];
+  return labels.map((l, i) => ({
+    id: l.id,
+    label: l.label,
+    x: x0 + i * (btnW + gap),
+    y,
+    w: btnW,
+    h: BTN_H,
+  }));
 }
 
 function hitTest(rect, lx, ly) {
@@ -186,9 +197,11 @@ function paintBtn(ctx, rect, active, hovered) {
 }
 
 function paintToast(ctx, rects, text) {
+  if (!rects.length) return;
+  const last = rects[rects.length - 1];
   const x = rects[0].x;
   const y = rects[0].y;
-  const w = rects[1].x + rects[1].w - x;
+  const w = last.x + last.w - x;
   const h = rects[0].h;
   ctx.save();
   ctx.fillStyle = "rgba(0,0,0,0.86)";
@@ -269,6 +282,47 @@ function readFilenamePrefix(node) {
   const w = node.widgets?.find((x) => x.name === "filename_prefix");
   const v = (w?.value ?? "img").toString().trim();
   return v || "img";
+}
+
+// ---- copy / open handlers ----
+async function copyToClipboard(node) {
+  if (!node._pixaromaFrames?.length && !node.imgs?.length) {
+    showToast(node, "Run the workflow first");
+    return;
+  }
+  if (!navigator.clipboard?.write || typeof ClipboardItem === "undefined") {
+    showToast(node, "Clipboard not supported in this browser");
+    return;
+  }
+  try {
+    const blob = await getPreviewBlob(node);
+    if (!blob) throw new Error("no preview blob");
+    // Force image/png — some servers return image/x-png and ClipboardItem
+    // is strict about the MIME type matching what's actually in the blob.
+    const pngBlob = blob.type === "image/png" ? blob : new Blob([blob], { type: "image/png" });
+    await navigator.clipboard.write([new ClipboardItem({ "image/png": pngBlob })]);
+    showToast(node, "Copied to clipboard");
+  } catch (err) {
+    showToast(node, `Copy failed: ${err.message || err}`);
+  }
+}
+
+function openInNewTab(node) {
+  if (!node._pixaromaFrames?.length && !node.imgs?.length) {
+    showToast(node, "Run the workflow first");
+    return;
+  }
+  const idx = node._pixaromaSelectedFrame ?? 0;
+  const frame = node._pixaromaFrames?.[idx];
+  const url = frame?.url || node.imgs?.[0]?.src;
+  if (!url) {
+    showToast(node, "No image to open");
+    return;
+  }
+  // noopener: don't leak `window.opener` to the new tab (it would inherit
+  // a reference back to the ComfyUI window).
+  const win = window.open(url, "_blank", "noopener");
+  if (!win) showToast(node, "Popup blocked");
 }
 
 // ---- save handlers ----
@@ -401,6 +455,20 @@ function createButtonsWidget() {
       return [width, BTN_H + STRIP_V_PAD * 2];
     },
     draw(ctx, node, widget_width, y) {
+      // Enforce minimum width at draw time. onResize is unreliable on the Vue
+      // frontend (Compat #13) and Align Pixaroma's resize intercept (Align
+      // Pattern #6) can bypass it entirely — both can leave the node narrower
+      // than MIN_W with the buttons overflowing past the node frame. Draw
+      // always runs, so we self-heal here. setDirtyCanvas triggers the next
+      // paint at the corrected width.
+      if (node.size[0] < MIN_W) {
+        node.size[0] = MIN_W;
+        node.setDirtyCanvas(true, true);
+      }
+      if (node.size[1] < MIN_H) {
+        node.size[1] = MIN_H;
+        node.setDirtyCanvas(true, true);
+      }
       const active = !!(node._pixaromaFrames?.length || node.imgs?.length);
       const rects = computeButtonRects(widget_width, y);
       node._pixaromaButtonRects = rects;
@@ -436,6 +504,8 @@ function createButtonsWidget() {
         if (hitTest(r, pos[0], pos[1])) {
           if (r.id === "output") saveToOutput(node);
           else if (r.id === "disk") saveToDisk(node);
+          else if (r.id === "copy") copyToClipboard(node);
+          else if (r.id === "open") openInNewTab(node);
           return true;
         }
       }
