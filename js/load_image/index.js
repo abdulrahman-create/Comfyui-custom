@@ -49,6 +49,10 @@ function renderUI(node) {
   if (oldGlobal) oldGlobal.remove();
   const globals = renderGlobalControls(node, state, writeState, () => renderUI(node));
   root.appendChild(globals);
+
+  // Force a repaint so LiteGraph re-polls getMinHeight — without this, the
+  // node body stays at its previous height even though the panel changed.
+  node.graph?.setDirtyCanvas?.(true, true);
 }
 
 // Global Ctrl+V handler for the active load-image node.
@@ -120,33 +124,39 @@ function setupLoadImageNode(node) {
   const root = buildRoot();
   node._pixLiRoot = root;
 
+  // Intrinsic content-height measurement. We DO NOT use root.scrollHeight
+  // or root.offsetHeight here: LiteGraph stretches root vertically when the
+  // node is taller than minimum, and reading the stretched value creates a
+  // feedback loop (every paint reports the new larger height → node grows
+  // → next paint reports even larger → user can never shrink, and a
+  // duplicated node inherits the inflated minimum). Instead, sum each
+  // child's natural offsetHeight (which is intrinsic to the child, NOT
+  // influenced by root's stretched size) plus flex gaps and root padding.
+  function measureContentHeight() {
+    let totalH = 0;
+    let visible = 0;
+    for (const child of root.children) {
+      const style = window.getComputedStyle(child);
+      if (style.position === "absolute" || style.position === "fixed") continue;
+      if (style.display === "none") continue;
+      totalH += child.offsetHeight;
+      visible += 1;
+    }
+    const padding = 16; // root padding: 8px top + 8px bottom
+    const gaps = Math.max(0, visible - 1) * 8; // flex `gap: 8px` between children
+    return Math.max(280, totalH + padding + gaps);
+  }
+  node._pixLiMeasureHeight = measureContentHeight;
+
   const widget = node.addDOMWidget("pixaroma_load_image_ui", "custom", root, {
     canvasOnly: true,  // Vue Compat #15 — hide from Parameters tab
     getValue: () => null,
     setValue: () => {},
-    // Dynamic height so the widget grows when the user picks a mode that
-    // has a taller panel (Match aspect ratio is the worst case). With a
-    // fixed minHeight the content overflowed downward INTO the native
-    // node.imgs preview slot. `scrollHeight` reads the actual rendered
-    // content height once root is attached; 280 is the floor for the
-    // initial paint before attachment (scrollHeight is 0 at that point).
-    getMinHeight: () => Math.max(280, root.scrollHeight || 0),
+    getMinHeight: measureContentHeight,
     margin: 4,
     serialize: false,
   });
   node._pixLiWidget = widget;
-
-  // ResizeObserver — fires when content height changes (mode switch, panel
-  // expand). LiteGraph polls getMinHeight on each canvas paint, but without
-  // an explicit dirty hint it won't repaint when content reflows. Mark the
-  // canvas dirty here so the new height takes effect immediately.
-  if (window.ResizeObserver) {
-    const ro = new ResizeObserver(() => {
-      node.graph?.setDirtyCanvas?.(true, true);
-    });
-    ro.observe(root);
-    node._pixLiResizeObserver = ro;
-  }
 
   // Track the currently-focused load-image node for Ctrl+V routing.
   // (One global listener; nodes register/unregister themselves on selection.)
