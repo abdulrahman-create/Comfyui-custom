@@ -254,8 +254,13 @@ def _apply_cover(pil_rgb, pil_mask, state, orig_w, orig_h):
     if not allow_upscale and factor > 1.0:
         # Degrade: image too small to fill target without upscaling. Fall
         # back to Fit-inside math so the user gets a clean output instead of
-        # an error. Documented in spec edge cases.
-        return _apply_fit_inside(pil_rgb, pil_mask, state, orig_w, orig_h)
+        # an error. MUST pass cover_w/cover_h as the target via a fit_w/fit_h
+        # alias — _apply_fit_inside reads fit_w/fit_h, NOT cover_w/cover_h.
+        # Without this aliasing the user's Crop-to-fill target dims were
+        # silently replaced by their separate Fit-inside settings, causing
+        # the JS preview readout to disagree with the Python output.
+        fallback_state = {**state, "fit_w": tw, "fit_h": th}
+        return _apply_fit_inside(pil_rgb, pil_mask, fallback_state, orig_w, orig_h)
 
     factor = min(factor, 8.0)
 
@@ -397,6 +402,15 @@ class PixaromaLoadImage:
         orig_w = orig_h = None
         final_w = final_h = None
 
+        # Match native LoadImage's tensor dtype so fp16 / bf16 pipelines
+        # don't need an extra cast downstream. Fall back to float32 if the
+        # comfy import isn't available (unit-test or non-Comfy runtime).
+        try:
+            import comfy.model_management as _mm
+            tensor_dtype = _mm.intermediate_dtype()
+        except Exception:
+            tensor_dtype = torch.float32
+
         state = _parse_state(LoadImagePixState)
 
         for frame in ImageSequence.Iterator(img):
@@ -433,9 +447,9 @@ class PixaromaLoadImage:
             final_w, final_h = frame_w, frame_h
 
             arr = np.array(rgb_resized).astype(np.float32) / 255.0
-            tensor = torch.from_numpy(arr)[None,]
+            tensor = torch.from_numpy(arr)[None,].to(dtype=tensor_dtype)
             mask_arr = np.array(mask_resized).astype(np.float32) / 255.0
-            mask_tensor = torch.from_numpy(mask_arr).unsqueeze(0)
+            mask_tensor = torch.from_numpy(mask_arr).unsqueeze(0).to(dtype=tensor_dtype)
 
             output_images.append(tensor)
             output_masks.append(mask_tensor)
@@ -446,8 +460,8 @@ class PixaromaLoadImage:
         if len(output_images) == 0:
             # Defensive — never happens for valid PIL images but keeps tensor
             # shapes consistent if we ever hit a pathological file.
-            zeros = torch.zeros((1, 64, 64, 3), dtype=torch.float32)
-            zeros_mask = torch.zeros((1, 64, 64), dtype=torch.float32)
+            zeros = torch.zeros((1, 64, 64, 3), dtype=tensor_dtype)
+            zeros_mask = torch.zeros((1, 64, 64), dtype=tensor_dtype)
             basename = os.path.splitext(os.path.basename(image_path))[0]
             return (zeros, zeros_mask, 64, 64, basename, 64, 64)
 

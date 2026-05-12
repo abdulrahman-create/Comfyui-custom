@@ -1,11 +1,11 @@
 import { app } from "/scripts/app.js";
-import { BRAND, hideJsonWidget } from "../shared/index.mjs";
+import { hideJsonWidget } from "../shared/index.mjs";
 import {
   injectCSS, buildRoot, hideNativeImageCombo, openImageDropdown,
   renderChips, renderGlobalControls,
 } from "./ui.mjs";
 import { pickAndUploadFile, pasteFromClipboard, uploadImageToInput } from "./api.mjs";
-import { buildModePanel, previewResize, formatMP } from "./resize_modes.mjs";
+import { buildModePanel, previewResize } from "./resize_modes.mjs";
 
 let _activeLoadImageNode = null;
 
@@ -148,20 +148,23 @@ function renderUI(node) {
   // Refresh dims info bar (input + output dims).
   updateInfoBar(node);
 
-  // Force an immediate resize ONLY when the content height actually
-  // changed (mode switch). Without this, switching to a taller panel
-  // takes 1-3 seconds because LiteGraph doesn't auto-adjust node.size
-  // when getMinHeight changes — it only re-measures during certain
-  // lifecycle events. Gating on "did height change" preserves the user's
-  // manual resize: snap / resample / upscale clicks also call renderUI
-  // but don't change content height, so we leave node.size alone there.
+  // Force an immediate resize ONLY when the content height grew past the
+  // current node height. Two reasons:
+  // (1) Without this, switching to a taller panel takes 1-3 seconds
+  //     because LiteGraph doesn't auto-adjust node.size when getMinHeight
+  //     changes — it only re-measures during certain lifecycle events.
+  // (2) Force-growing only (NEVER shrinking) preserves the user's manual
+  //     resize. If they dragged the node taller for a roomier preview and
+  //     then switch to a smaller panel, we leave the node's height alone.
+  //     They can manually shrink if they want.
   const newH = node._pixLiMeasureHeight?.();
   if (typeof newH === "number" && newH !== node._pixLiLastMeasuredH) {
     node._pixLiLastMeasuredH = newH;
     if (typeof node.computeSize === "function") {
       const min = node.computeSize();
       if (Array.isArray(min) && min.length === 2) {
-        node.size[1] = min[1];
+        // Only grow — preserve user's manual taller resize.
+        if (min[1] > (node.size?.[1] || 0)) node.size[1] = min[1];
       }
     }
   }

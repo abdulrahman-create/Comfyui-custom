@@ -1,4 +1,3 @@
-import { BRAND } from "../shared/index.mjs";
 import { openPixaromaCompactColorPickerPopup } from "../shared/color_picker.mjs";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
