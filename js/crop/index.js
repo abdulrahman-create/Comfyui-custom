@@ -267,12 +267,7 @@ app.registerExtension({
     node.size = [300, 380];  // taller default to fit the new panel
     node.imgs = null; // suppress native ComfyUI preview
 
-    // Branded default colors (match Resolution Pixaroma — title bar #1d1d1d
-    // matches the panel cell surface, body #2a2a2a is the panel surface, so
-    // the whole node reads as one cohesive dark panel). Only applied when
-    // the user hasn't picked an override via right-click → Color.
-    if (!node.color)   node.color   = "#1d1d1d";
-    if (!node.bgcolor) node.bgcolor = "#2a2a2a";
+    // Brand default colors applied globally by js/brand/index.js.
 
     // ── IMAGE input socket ──────────────────────────────────────────────
     // Only add if not already present (workflow restore re-creates inputs first).
