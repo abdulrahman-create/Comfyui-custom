@@ -290,22 +290,54 @@ function setupLoadImageNode(node) {
   // so input + output rows reflect the new source dimensions.
   node._pixLiOnImageLoaded = () => updateInfoBar(node);
 
-  // Workflow-restore path: ComfyUI's image_upload hook fetches the saved
-  // image AFTER nodeCreated runs, so our initial renderUI sees no
-  // node.imgs. Poll for ~3 seconds to catch the late load and update the
-  // info bar. Cleared on success or timeout, and on node removal.
-  let imgPollTicks = 0;
-  const imgPoll = setInterval(() => {
-    if (node.imgs?.[0]?.naturalWidth) {
-      clearInterval(imgPoll);
-      node._pixLiImgPoll = null;
-      updateInfoBar(node);
-    } else if (++imgPollTicks > 30) {
-      clearInterval(imgPoll);
+  // Refresh info bar once node.imgs[0] is loaded — covers both the
+  // workflow-restore path (image_upload hook fetches the saved image
+  // AFTER nodeCreated runs, so node.imgs starts empty and arrives
+  // asynchronously) and the native-drop path (ComfyUI's bottom preview
+  // area drop also fetches asynchronously). Reuses node._pixLiImgPoll
+  // so a new call cancels any in-flight poll, and the existing onRemoved
+  // cleanup picks up the same handle.
+  function refreshAfterImageReady() {
+    if (node._pixLiImgPoll) {
+      clearInterval(node._pixLiImgPoll);
       node._pixLiImgPoll = null;
     }
-  }, 100);
-  node._pixLiImgPoll = imgPoll;
+    if (node.imgs?.[0]?.naturalWidth) {
+      updateInfoBar(node);
+      return;
+    }
+    let ticks = 0;
+    const poll = setInterval(() => {
+      if (node.imgs?.[0]?.naturalWidth) {
+        clearInterval(poll);
+        node._pixLiImgPoll = null;
+        updateInfoBar(node);
+      } else if (++ticks > 30) {
+        clearInterval(poll);
+        node._pixLiImgPoll = null;
+      }
+    }, 100);
+    node._pixLiImgPoll = poll;
+  }
+  refreshAfterImageReady();
+
+  // Wrap imageWidget.callback so we get notified when ComfyUI's native
+  // drag-drop on the bottom preview area sets the value. ComfyUI's
+  // image_upload setter does its own fetch but doesn't go through our
+  // updateNativePreview path, so without this hook the dims info bar
+  // would show stale dimensions from the previous image after a native
+  // drop. Also refreshes the file dropdown's displayed name so the user
+  // sees the new filename in our custom dropdown. Wraps any existing
+  // callback (post-decoration) so other extensions still work.
+  if (imageWidget) {
+    const origCallback = imageWidget.callback;
+    imageWidget.callback = function () {
+      const ret = origCallback?.apply(this, arguments);
+      refreshAfterImageReady();
+      refreshDropdown(node);
+      return ret;
+    };
+  }
 
   // Wire upload button.
   const btn = root.querySelector(".pix-li-upload-btn");
@@ -320,19 +352,23 @@ function setupLoadImageNode(node) {
     }
   });
 
-  // Drag/drop on the root.
+  // Silent drop fallback on the DOM widget root. ComfyUI's native
+  // image_upload extension wires a node-level drop handler that covers
+  // the bottom preview area, but it's not guaranteed to reach over our
+  // DOM widget — so we keep this minimal pair (dragover for preventDefault
+  // so the drop event fires, then drop to upload) as a safety net. No
+  // visual overlay: the orange "Drop to upload" panel was misleading
+  // because it implied this was the only drop target when the whole
+  // node accepts drops via the native handler. Drop anywhere on the
+  // node now feels uniform.
   root.addEventListener("dragover", (e) => {
+    if (!e.dataTransfer?.types?.includes("Files")) return;
     e.preventDefault();
     e.stopPropagation();
-    root.classList.add("drag-over");
-  });
-  root.addEventListener("dragleave", (e) => {
-    if (e.target === root) root.classList.remove("drag-over");
   });
   root.addEventListener("drop", async (e) => {
     e.preventDefault();
     e.stopPropagation();
-    root.classList.remove("drag-over");
     const file = e.dataTransfer?.files?.[0];
     if (!file || !file.type.startsWith("image/")) return;
     try {
