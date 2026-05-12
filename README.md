@@ -167,6 +167,15 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
+### **May 12, 2026 (1.3.23)**
+- **NEW: WH Pixaroma** - tiny utility node with two number fields for width and height, and matching outputs. Type a target resolution manually somewhere in your workflow. Math expressions like `1024+64` work directly in the fields.
+- **NEW: Switch WH Pixaroma** - switch between two width/height sources with a single click. Wire two W+H pairs into the **A** and **B** inputs, then click A or B on the node body to pick which pair flows through. No rewiring. If one side is partially wired (one cable forgotten), the node uses the complete other side; if nothing is wired, you get a clear error message.
+- **NEW: Number Pixaroma** - one number field with two outputs: **int** and **float**. Useful when one downstream node wants a whole number and another wants a decimal from the same value. Accepts math expressions like `1024/3` and very large numbers (up to about 1 quadrillion). The int output rounds to the nearest whole number.
+- **NEW: Text Pixaroma** - multi-line text field with a STRING output. Write a prompt once and wire it into multiple downstream nodes; the field grows as you resize the node.
+- **Load Image Pixaroma - image preview fills the node when resized:** Dragging the node taller no longer leaves an awkward gap between the controls and the image preview. The image now grows to fill the available space.
+- **Preview Image Pixaroma - Save buttons honor wired filename:** When you wire a cable into the `filename_prefix` input (for example Load Image Pixaroma's FILENAME output), the **Save Disk** and **Save Output** buttons now use the wired filename. Previously they ignored the wire and saved as `img_...` regardless.
+- **README cleanup:** Tagline rewritten as "Useful ComfyUI nodes for everyday workflows" and changelog entries stripped of programming jargon so anyone can read what changed.
+
 ### **May 12, 2026 (1.3.22)**
 - **Preview Image Pixaroma - Copy and Open buttons:** Two new orange buttons next to Save Disk / Save Output. **Copy** copies the selected image to your clipboard so you can paste it into another node, a paint app, a chat message, anywhere. **Open** opens the selected image in a new browser tab for full-screen viewing or comparing several side by side. Both act on the image you're currently viewing when you have a batch, so you get the frame you clicked, not always the first or last. Also fixed: dragging the node smaller used to let the buttons spill outside the node frame; the buttons now stay inside.
 - **Drag-and-drop on Image Crop / Image Composer / Paint:** Drop an image file anywhere on the node and it loads in. **Image Crop** sets the dropped image as the source. **Image Composer** and **Paint** open the editor and add the dropped image as a new layer on top of any existing layers (never replaces, like Photoshop / Figma / Affinity).
