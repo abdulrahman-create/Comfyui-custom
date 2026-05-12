@@ -50,8 +50,23 @@ function renderUI(node) {
   const globals = renderGlobalControls(node, state, writeState, () => renderUI(node));
   root.appendChild(globals);
 
-  // Force a repaint so LiteGraph re-polls getMinHeight — without this, the
-  // node body stays at its previous height even though the panel changed.
+  // Force an immediate resize ONLY when the content height actually
+  // changed (mode switch). Without this, switching to a taller panel
+  // takes 1-3 seconds because LiteGraph doesn't auto-adjust node.size
+  // when getMinHeight changes — it only re-measures during certain
+  // lifecycle events. Gating on "did height change" preserves the user's
+  // manual resize: snap / resample / upscale clicks also call renderUI
+  // but don't change content height, so we leave node.size alone there.
+  const newH = node._pixLiMeasureHeight?.();
+  if (typeof newH === "number" && newH !== node._pixLiLastMeasuredH) {
+    node._pixLiLastMeasuredH = newH;
+    if (typeof node.computeSize === "function") {
+      const min = node.computeSize();
+      if (Array.isArray(min) && min.length === 2) {
+        node.size[1] = min[1];
+      }
+    }
+  }
   node.graph?.setDirtyCanvas?.(true, true);
 }
 
