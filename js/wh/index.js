@@ -9,7 +9,7 @@ import { app } from "/scripts/app.js";
 // computeSize so the title text never gets clipped. Users can still
 // drag the corner to make the node bigger.
 
-const TIGHT_H = 130;
+const TIGHT_H = 102;
 
 app.registerExtension({
   name: "Pixaroma.WH",
