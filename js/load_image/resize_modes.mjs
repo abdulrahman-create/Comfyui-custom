@@ -1,5 +1,142 @@
 import { BRAND } from "../shared/index.mjs";
 
+// ── Helpers ─────────────────────────────────────────────────────────────────
+
+// Recursive-descent math evaluator copied from Resolution Pixaroma. Supports
+// `+ - * / ( )` and decimals only. NEVER use eval()/Function() — a shared
+// workflow could otherwise execute arbitrary code on import. Returns NaN for
+// any invalid input. Examples: "1024", "1024+128", "512*2", "(1024+128)/2".
+function safeMathEval(str) {
+  if (typeof str !== "string") return NaN;
+  const s = str.trim();
+  if (!s) return NaN;
+  if (!/^[0-9+\-*/().\s]+$/.test(s)) return NaN;
+  if (s.length > 256) return NaN;
+  let pos = 0;
+  const MAX_DEPTH = 64;
+  let depth = 0;
+  const skipWs = () => { while (pos < s.length && s[pos] === " ") pos++; };
+  const eat = (ch) => { skipWs(); if (s[pos] === ch) { pos++; return true; } return false; };
+  function parseExpr() {
+    let v = parseTerm();
+    for (;;) {
+      skipWs();
+      if (eat("+")) v += parseTerm();
+      else if (eat("-")) v -= parseTerm();
+      else break;
+    }
+    return v;
+  }
+  function parseTerm() {
+    let v = parseFactor();
+    for (;;) {
+      skipWs();
+      if (eat("*")) v *= parseFactor();
+      else if (eat("/")) {
+        const d = parseFactor();
+        if (d === 0) return NaN;
+        v /= d;
+      } else break;
+    }
+    return v;
+  }
+  function parseFactor() {
+    if (++depth > MAX_DEPTH) return NaN;
+    skipWs();
+    if (eat("+"))  { const r = parseFactor(); depth--; return r; }
+    if (eat("-"))  { const r = -parseFactor(); depth--; return r; }
+    if (eat("(")) {
+      const v = parseExpr();
+      if (!eat(")")) { depth--; return NaN; }
+      depth--;
+      return v;
+    }
+    let num = "";
+    while (pos < s.length && /[0-9.]/.test(s[pos])) num += s[pos++];
+    depth--;
+    if (!num) return NaN;
+    if ((num.match(/\./g) || []).length > 1) return NaN;
+    return parseFloat(num);
+  }
+  const v = parseExpr();
+  skipWs();
+  if (pos !== s.length) return NaN;
+  return v;
+}
+
+// Shared text-input factory with math eval, arrow stepping, and proper
+// event isolation so ComfyUI's canvas shortcuts don't steal Enter/Tab/Arrow
+// keys while the user is typing.
+//   opts: { value, min, max, step, format(v)->string, parse(s)->number, onCommit(num) }
+function makeNumericInput(opts) {
+  const inp = document.createElement("input");
+  inp.type = "text";
+  inp.inputMode = "decimal";
+  inp.spellcheck = false;
+  inp.autocomplete = "off";
+  inp.title = "Math allowed: 1024+64, 512*2, (1024+128)/2";
+  const fmt = opts.format || ((v) => String(v));
+  const parse = opts.parse || ((s) => {
+    const v = safeMathEval(s);
+    return Number.isFinite(v) ? v : NaN;
+  });
+  inp.value = fmt(opts.value);
+
+  function clamp(v) {
+    return Math.max(opts.min ?? -Infinity, Math.min(opts.max ?? Infinity, v));
+  }
+
+  function commit() {
+    const raw = parse(inp.value);
+    let v;
+    if (Number.isFinite(raw)) {
+      v = clamp(raw);
+    } else {
+      v = opts.value;
+    }
+    inp.value = fmt(v);
+    opts.value = v;
+    opts.onCommit?.(v);
+  }
+
+  inp.addEventListener("blur", commit);
+  inp.addEventListener("keydown", (e) => {
+    // stopImmediatePropagation — needed because LiteGraph / ComfyUI Vue
+    // listen at the document level with capture phase and would otherwise
+    // grab Arrow / Tab / Enter to pan the canvas or switch workflow tabs.
+    e.stopImmediatePropagation();
+    if (e.key === "Enter") {
+      e.preventDefault();
+      inp.blur();
+      return;
+    }
+    if (e.key === "Tab") {
+      // Commit so the value lands before the focus moves to the next field.
+      // Default Tab behavior (browser-native focus traversal) is preserved.
+      commit();
+      return;
+    }
+    if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+      e.preventDefault();
+      const dir = e.key === "ArrowUp" ? 1 : -1;
+      const mult = e.shiftKey ? 10 : 1;
+      const step = opts.step ?? 1;
+      const raw = parse(inp.value);
+      const base = Number.isFinite(raw) ? raw : opts.value;
+      const next = clamp(base + dir * step * mult);
+      // For integer-stepping inputs (step === 1), avoid float drift.
+      const rounded = step === 1 ? Math.round(next) : next;
+      inp.value = fmt(rounded);
+      opts.value = rounded;
+      opts.onCommit?.(rounded);
+    }
+  });
+
+  return inp;
+}
+
+// ── Preview math (mirrors Python _resize_frame in node_load_image.py) ───────
+
 // JS mirror of Python's resize math. Returns post-resize (W, H) WITHOUT
 // actually transforming any image. Used for the live preview badge.
 export function previewResize(W, H, state) {
@@ -34,7 +171,6 @@ export function previewResize(W, H, state) {
     const tw = +state.cover_w || 1024, th = +state.cover_h || 1024;
     const f = Math.max(tw / W, th / H);
     if (!allowUp && f > 1) {
-      // Degrade to fit_inside
       const f2 = Math.min(tw / W, th / H, 1.0);
       ({ w: nw, h: nh } = applyFactor(f2));
     } else {
@@ -69,9 +205,24 @@ export function formatMP(w, h) {
   return ((w * h) / 1_000_000).toFixed(2);
 }
 
-// Each builder returns a DOM element representing the per-mode controls.
-// All take (node, state, writeState, onChange) — onChange is called when the
-// user mutates a value and the parent re-renders the preview readout.
+// ── Aspect-ratio chip shape (tiny rectangle scaled to W:H) ──────────────────
+
+function makeAspectShape(rw, rh, maxW = 14, maxH = 11) {
+  const shape = document.createElement("span");
+  shape.className = "pix-li-shape";
+  const aspect = rw / rh;
+  let w, h;
+  if (aspect >= maxW / maxH) {
+    w = maxW; h = maxW / aspect;
+  } else {
+    h = maxH; w = maxH * aspect;
+  }
+  shape.style.width = `${Math.max(1, Math.round(w))}px`;
+  shape.style.height = `${Math.max(1, Math.round(h))}px`;
+  return shape;
+}
+
+// ── Panel-section helpers ───────────────────────────────────────────────────
 
 function makePanelHeader(text) {
   const lbl = document.createElement("div");
@@ -87,13 +238,22 @@ function makeReadout(text) {
   return ro;
 }
 
+function makeSwapButton(title) {
+  const swap = document.createElement("button");
+  swap.type = "button";
+  swap.className = "pix-li-swap";
+  swap.title = title || "Swap";
+  swap.setAttribute("aria-label", title || "Swap");
+  return swap;
+}
+
+// ── Per-mode panel builders ─────────────────────────────────────────────────
+
 function buildMaxMPPanel(node, state, writeState, onChange) {
   const panel = document.createElement("div");
   panel.className = "pix-li-panel";
   panel.appendChild(makePanelHeader("Max Megapixels"));
 
-  // Quick-pick chips for common MP targets — covers SDXL-friendly 1 MP,
-  // 2 MP for high-res passes, 4 MP and 8 MP for full output sizes.
   const quickWrap = document.createElement("div");
   quickWrap.className = "pix-li-quickpicks";
   quickWrap.style.gridTemplateColumns = "repeat(3, 1fr)";
@@ -110,40 +270,39 @@ function buildMaxMPPanel(node, state, writeState, onChange) {
   }
   panel.appendChild(quickWrap);
 
-  // Numeric input for custom MP values (covers everything in between).
   const row = document.createElement("div");
-  row.className = "pix-li-panel-row";
-  const inp = document.createElement("input");
-  inp.type = "number";
-  inp.min = "0.1";
-  inp.max = "64";
-  inp.step = "0.1";
-  inp.value = String(cur);
+  row.className = "pix-li-panel-row pix-li-centered";
+  const inp = makeNumericInput({
+    value: cur,
+    min: 0.1, max: 64, step: 0.1,
+    format: (v) => String(v),
+    onCommit: (v) => {
+      v = parseFloat(v.toFixed(2));
+      for (const q of qpEls) {
+        q.classList.toggle("active", Math.abs(parseFloat(q.dataset.v) - v) < 0.001);
+      }
+      const s = JSON.parse(node.properties?.loadImagePixState || "{}");
+      writeState(node, { ...s, max_mp: v });
+      onChange?.();
+    },
+  });
+  inp.classList.add("pix-li-input-wide");
   row.appendChild(inp);
   panel.appendChild(row);
-
   panel.appendChild(makeReadout(""));
 
-  function commit(v) {
-    v = Math.max(0.1, Math.min(64, parseFloat(v.toFixed(2))));
-    inp.value = String(v);
-    for (const q of qpEls) {
-      q.classList.toggle("active", Math.abs(parseFloat(q.dataset.v) - v) < 0.001);
-    }
-    const s = JSON.parse(node.properties?.loadImagePixState || "{}");
-    writeState(node, { ...s, max_mp: v });
-    onChange?.();
-  }
-  inp.addEventListener("change", () => commit(parseFloat(inp.value) || 1.0));
-  inp.addEventListener("keydown", (e) => {
-    e.stopPropagation();
-    if (e.key === "Enter") { e.preventDefault(); inp.blur(); }
-  });
   quickWrap.addEventListener("click", (e) => {
     const q = e.target.closest(".pix-li-quickpick");
     if (!q) return;
     e.stopPropagation();
-    commit(parseFloat(q.dataset.v));
+    const v = parseFloat(q.dataset.v);
+    inp.value = String(v);
+    for (const el of qpEls) {
+      el.classList.toggle("active", Math.abs(parseFloat(el.dataset.v) - v) < 0.001);
+    }
+    const s = JSON.parse(node.properties?.loadImagePixState || "{}");
+    writeState(node, { ...s, max_mp: v });
+    onChange?.();
   });
   return panel;
 }
@@ -153,12 +312,11 @@ function buildLongestSidePanel(node, state, writeState, onChange) {
   panel.className = "pix-li-panel";
   panel.appendChild(makePanelHeader("Longest Side"));
 
-  // Quick chips
   const quickWrap = document.createElement("div");
   quickWrap.className = "pix-li-quickpicks";
   quickWrap.style.gridTemplateColumns = "repeat(5, 1fr)";
   const QUICK = [512, 768, 1024, 1536, 2048];
-  const cur = state.longest_side || 1024;
+  const cur = +state.longest_side || 1024;
   const qpEls = [];
   for (const v of QUICK) {
     const q = document.createElement("div");
@@ -170,38 +328,38 @@ function buildLongestSidePanel(node, state, writeState, onChange) {
   }
   panel.appendChild(quickWrap);
 
-  // Numeric input
   const row = document.createElement("div");
-  row.className = "pix-li-panel-row";
-  const inp = document.createElement("input");
-  inp.type = "number";
-  inp.min = "256";
-  inp.max = "8192";
-  inp.step = "1";
-  inp.value = String(cur);
+  row.className = "pix-li-panel-row pix-li-centered";
+  const inp = makeNumericInput({
+    value: cur,
+    min: 8, max: 16384, step: 1,
+    onCommit: (v) => {
+      v = Math.round(v);
+      for (const q of qpEls) {
+        q.classList.toggle("active", parseInt(q.dataset.v, 10) === v);
+      }
+      const s = JSON.parse(node.properties?.loadImagePixState || "{}");
+      writeState(node, { ...s, longest_side: v });
+      onChange?.();
+    },
+  });
+  inp.classList.add("pix-li-input-wide");
   row.appendChild(inp);
   panel.appendChild(row);
-
   panel.appendChild(makeReadout(""));
 
-  function commit(v) {
-    v = Math.max(256, Math.min(8192, Math.round(v)));
-    inp.value = String(v);
-    for (const q of qpEls) q.classList.toggle("active", parseInt(q.dataset.v, 10) === v);
-    const s = JSON.parse(node.properties?.loadImagePixState || "{}");
-    writeState(node, { ...s, longest_side: v });
-    onChange?.();
-  }
-  inp.addEventListener("change", () => commit(parseFloat(inp.value) || 1024));
-  inp.addEventListener("keydown", (e) => {
-    e.stopPropagation();
-    if (e.key === "Enter") { e.preventDefault(); inp.blur(); }
-  });
   quickWrap.addEventListener("click", (e) => {
     const q = e.target.closest(".pix-li-quickpick");
     if (!q) return;
     e.stopPropagation();
-    commit(parseInt(q.dataset.v, 10));
+    const v = parseInt(q.dataset.v, 10);
+    inp.value = String(v);
+    for (const el of qpEls) {
+      el.classList.toggle("active", parseInt(el.dataset.v, 10) === v);
+    }
+    const s = JSON.parse(node.properties?.loadImagePixState || "{}");
+    writeState(node, { ...s, longest_side: v });
+    onChange?.();
   });
   return panel;
 }
@@ -211,8 +369,6 @@ function buildScalePanel(node, state, writeState, onChange) {
   panel.className = "pix-li-panel";
   panel.appendChild(makePanelHeader("Scale by ×"));
 
-  // Quick-pick chips for common scale factors — covers half/quarter
-  // for thumbnails, 2x/4x for upscale (gated by Allow Upscaling).
   const quickWrap = document.createElement("div");
   quickWrap.className = "pix-li-quickpicks";
   quickWrap.style.gridTemplateColumns = "repeat(4, 1fr)";
@@ -229,107 +385,144 @@ function buildScalePanel(node, state, writeState, onChange) {
   }
   panel.appendChild(quickWrap);
 
-  // Numeric input for custom multipliers (0.1× to 4×).
   const row = document.createElement("div");
-  row.className = "pix-li-panel-row";
-  const inp = document.createElement("input");
-  inp.type = "number";
-  inp.min = "0.1";
-  inp.max = "4";
-  inp.step = "0.05";
-  inp.value = String(cur);
+  row.className = "pix-li-panel-row pix-li-centered";
+  const inp = makeNumericInput({
+    value: cur,
+    min: 0.1, max: 4, step: 0.05,
+    format: (v) => String(v),
+    onCommit: (v) => {
+      v = parseFloat(v.toFixed(2));
+      for (const q of qpEls) {
+        q.classList.toggle("active", Math.abs(parseFloat(q.dataset.v) - v) < 0.001);
+      }
+      const s = JSON.parse(node.properties?.loadImagePixState || "{}");
+      writeState(node, { ...s, scale_factor: v });
+      onChange?.();
+    },
+  });
+  inp.classList.add("pix-li-input-wide");
   row.appendChild(inp);
   panel.appendChild(row);
-
   panel.appendChild(makeReadout(""));
 
-  function commit(v) {
-    v = Math.max(0.1, Math.min(4.0, parseFloat(v.toFixed(2))));
-    inp.value = String(v);
-    for (const q of qpEls) {
-      q.classList.toggle("active", Math.abs(parseFloat(q.dataset.v) - v) < 0.001);
-    }
-    const s = JSON.parse(node.properties?.loadImagePixState || "{}");
-    writeState(node, { ...s, scale_factor: v });
-    onChange?.();
-  }
-  inp.addEventListener("change", () => commit(parseFloat(inp.value) || 1.0));
-  inp.addEventListener("keydown", (e) => {
-    e.stopPropagation();
-    if (e.key === "Enter") { e.preventDefault(); inp.blur(); }
-  });
   quickWrap.addEventListener("click", (e) => {
     const q = e.target.closest(".pix-li-quickpick");
     if (!q) return;
     e.stopPropagation();
-    commit(parseFloat(q.dataset.v));
+    const v = parseFloat(q.dataset.v);
+    inp.value = String(v);
+    for (const el of qpEls) {
+      el.classList.toggle("active", Math.abs(parseFloat(el.dataset.v) - v) < 0.001);
+    }
+    const s = JSON.parse(node.properties?.loadImagePixState || "{}");
+    writeState(node, { ...s, scale_factor: v });
+    onChange?.();
   });
   return panel;
 }
 
+// W × H panels (Fit inside + Crop to fill) share this builder. Adds a swap
+// button between the W and H fields and a small ratio-preview rectangle
+// below them.
 function buildWHPanel(node, state, writeState, onChange, opts) {
-  // opts: { headerLabel, wKey, hKey }
   const panel = document.createElement("div");
   panel.className = "pix-li-panel";
   panel.appendChild(makePanelHeader(opts.headerLabel));
 
   const row = document.createElement("div");
-  row.className = "pix-li-panel-row";
-  row.style.gap = "6px";
+  row.className = "pix-li-wh-row";
 
-  function makeField(labelText, value, onCommit) {
+  function makeField(labelText, value, key) {
     const wrap = document.createElement("div");
-    wrap.style.flex = "1";
-    wrap.style.display = "flex";
-    wrap.style.flexDirection = "column";
-    wrap.style.gap = "3px";
+    wrap.className = "pix-li-wh-field";
     const lbl = document.createElement("div");
-    lbl.style.fontSize = "9px";
-    lbl.style.color = "#888";
-    lbl.style.textTransform = "uppercase";
-    lbl.style.letterSpacing = "0.5px";
-    lbl.style.textAlign = "center";
+    lbl.className = "pix-li-wh-label";
     lbl.textContent = labelText;
-    const inp = document.createElement("input");
-    inp.type = "number";
-    inp.min = "8";
-    inp.max = "16384";
-    inp.step = "1";
-    inp.value = String(value);
-    inp.style.width = "100%";
-    inp.addEventListener("change", () => onCommit(Math.max(8, Math.min(16384, Math.round(parseFloat(inp.value) || 1024)))));
-    inp.addEventListener("keydown", (e) => {
-      e.stopPropagation();
-      if (e.key === "Enter") { e.preventDefault(); inp.blur(); }
+    const inp = makeNumericInput({
+      value,
+      min: 8, max: 16384, step: 1,
+      onCommit: (v) => {
+        v = Math.round(v);
+        const s = JSON.parse(node.properties?.loadImagePixState || "{}");
+        writeState(node, { ...s, [key]: v });
+        wh[key] = v;
+        refreshPreview();
+        onChange?.();
+      },
     });
+    inp.classList.add("pix-li-wh-input");
     wrap.append(lbl, inp);
     return { wrap, inp };
   }
 
-  const wField = makeField("Width", state[opts.wKey] ?? 1024, (v) => {
-    const s = JSON.parse(node.properties?.loadImagePixState || "{}");
-    writeState(node, { ...s, [opts.wKey]: v });
-    wField.inp.value = String(v);
-    onChange?.();
-  });
-  const hField = makeField("Height", state[opts.hKey] ?? 1024, (v) => {
-    const s = JSON.parse(node.properties?.loadImagePixState || "{}");
-    writeState(node, { ...s, [opts.hKey]: v });
-    hField.inp.value = String(v);
-    onChange?.();
-  });
-  row.append(wField.wrap, hField.wrap);
+  const wh = {
+    [opts.wKey]: state[opts.wKey] ?? 1024,
+    [opts.hKey]: state[opts.hKey] ?? 1024,
+  };
+  const wField = makeField("Width", wh[opts.wKey], opts.wKey);
+  const swap = makeSwapButton("Swap Width ↔ Height");
+  const hField = makeField("Height", wh[opts.hKey], opts.hKey);
+  row.append(wField.wrap, swap, hField.wrap);
   panel.appendChild(row);
-  panel.appendChild(makeReadout(""));
+
+  // Aspect-ratio preview rectangle + readout
+  const previewWrap = document.createElement("div");
+  previewWrap.className = "pix-li-wh-preview";
+  const previewRect = document.createElement("div");
+  previewRect.className = "pix-li-wh-rect";
+  const previewLabel = document.createElement("div");
+  previewLabel.className = "pix-li-wh-rect-label";
+  previewWrap.append(previewRect, previewLabel);
+  panel.appendChild(previewWrap);
+
+  const PREVIEW_MAX_W = 90;
+  const PREVIEW_MAX_H = 40;
+  function refreshPreview() {
+    const w = wh[opts.wKey] || 1, h = wh[opts.hKey] || 1;
+    const a = w / h;
+    let pw, ph;
+    if (a >= PREVIEW_MAX_W / PREVIEW_MAX_H) {
+      pw = PREVIEW_MAX_W; ph = PREVIEW_MAX_W / a;
+    } else {
+      ph = PREVIEW_MAX_H; pw = PREVIEW_MAX_H * a;
+    }
+    previewRect.style.width = `${Math.max(2, Math.round(pw))}px`;
+    previewRect.style.height = `${Math.max(2, Math.round(ph))}px`;
+    previewLabel.textContent = `${w} × ${h}`;
+  }
+  refreshPreview();
+
+  swap.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const a = wh[opts.wKey], b = wh[opts.hKey];
+    wh[opts.wKey] = b; wh[opts.hKey] = a;
+    wField.inp.value = String(b);
+    hField.inp.value = String(a);
+    const s = JSON.parse(node.properties?.loadImagePixState || "{}");
+    writeState(node, { ...s, [opts.wKey]: b, [opts.hKey]: a });
+    refreshPreview();
+    onChange?.();
+  });
+
   return panel;
 }
 
+// ── Match aspect ratio panel ────────────────────────────────────────────────
+
+// 9 presets to match Resolution Pixaroma's chip grid + Custom in slot 10.
+// Each chip renders a tiny aspect-shape rectangle next to its label, so the
+// user recognises the shape of every preset at a glance.
 const RATIO_PRESETS = [
-  { id: "1:1",  w: 1, h: 1, label: "1:1" },
-  { id: "16:9", w: 16, h: 9, label: "16:9" },
-  { id: "9:16", w: 9, h: 16, label: "9:16" },
-  { id: "4:3",  w: 4, h: 3, label: "4:3" },
-  { id: "3:4",  w: 3, h: 4, label: "3:4" },
+  { id: "1:1",  w: 1,  h: 1,  label: "1:1" },
+  { id: "16:9", w: 16, h: 9,  label: "16:9" },
+  { id: "9:16", w: 9,  h: 16, label: "9:16" },
+  { id: "2:1",  w: 2,  h: 1,  label: "2:1" },
+  { id: "3:2",  w: 3,  h: 2,  label: "3:2" },
+  { id: "2:3",  w: 2,  h: 3,  label: "2:3" },
+  { id: "4:3",  w: 4,  h: 3,  label: "4:3" },
+  { id: "3:4",  w: 3,  h: 4,  label: "3:4" },
+  { id: "4:5",  w: 4,  h: 5,  label: "4:5" },
   { id: "custom", w: null, h: null, label: "Custom" },
 ];
 
@@ -338,7 +531,6 @@ function buildMatchRatioPanel(node, state, writeState, onChange) {
   panel.className = "pix-li-panel";
   panel.appendChild(makePanelHeader("Match Aspect Ratio"));
 
-  // Ratio chips
   const chipsWrap = document.createElement("div");
   chipsWrap.className = "pix-li-ratio-chips";
   const chipEls = [];
@@ -346,26 +538,55 @@ function buildMatchRatioPanel(node, state, writeState, onChange) {
     const el = document.createElement("div");
     el.className = "pix-li-ratio-chip" + (state.ratio_preset === r.id ? " active" : "");
     el.dataset.rid = r.id;
-    el.textContent = r.label;
+    if (r.id === "custom") {
+      el.classList.add("pix-li-ratio-custom-chip");
+      el.textContent = r.label;
+    } else {
+      const shape = makeAspectShape(r.w, r.h);
+      const labelEl = document.createElement("span");
+      labelEl.textContent = r.label;
+      el.append(shape, labelEl);
+    }
     chipsWrap.appendChild(el);
     chipEls.push(el);
   }
   panel.appendChild(chipsWrap);
 
-  // Custom ratio row (only visible when preset = custom)
+  // Custom ratio row — larger inputs + swap button between them.
   const customRow = document.createElement("div");
   customRow.className = "pix-li-custom-ratio-row";
-  const cwIn = document.createElement("input");
-  cwIn.type = "number"; cwIn.min = "1"; cwIn.max = "999"; cwIn.step = "1";
-  cwIn.value = String(state.ratio_w || 1);
-  const colon = document.createElement("span");
-  colon.textContent = ":";
-  const chIn = document.createElement("input");
-  chIn.type = "number"; chIn.min = "1"; chIn.max = "999"; chIn.step = "1";
-  chIn.value = String(state.ratio_h || 1);
-  customRow.append(cwIn, colon, chIn);
+  const cwIn = makeNumericInput({
+    value: state.ratio_w || 1,
+    min: 1, max: 999, step: 1,
+    onCommit: (v) => commitCustomRatio(Math.round(v), parseFloat(chIn.value) || 1),
+  });
+  cwIn.classList.add("pix-li-custom-ratio-input");
+  const swapRatio = makeSwapButton("Swap ratio W ↔ H");
+  swapRatio.classList.add("pix-li-custom-ratio-swap");
+  const chIn = makeNumericInput({
+    value: state.ratio_h || 1,
+    min: 1, max: 999, step: 1,
+    onCommit: (v) => commitCustomRatio(parseFloat(cwIn.value) || 1, Math.round(v)),
+  });
+  chIn.classList.add("pix-li-custom-ratio-input");
+  customRow.append(cwIn, swapRatio, chIn);
   customRow.style.display = state.ratio_preset === "custom" ? "flex" : "none";
   panel.appendChild(customRow);
+
+  function commitCustomRatio(rw, rh) {
+    const w = Math.max(1, Math.min(999, Math.round(rw || 1)));
+    const h = Math.max(1, Math.min(999, Math.round(rh || 1)));
+    cwIn.value = String(w);
+    chIn.value = String(h);
+    const s = JSON.parse(node.properties?.loadImagePixState || "{}");
+    writeState(node, { ...s, ratio_w: w, ratio_h: h });
+    onChange?.();
+  }
+
+  swapRatio.addEventListener("click", (e) => {
+    e.stopPropagation();
+    commitCustomRatio(parseFloat(chIn.value) || 1, parseFloat(cwIn.value) || 1);
+  });
 
   // Crop / Pad segmented toggle
   const seg = document.createElement("div");
@@ -381,7 +602,7 @@ function buildMatchRatioPanel(node, state, writeState, onChange) {
   seg.append(cropOpt, padOpt);
   panel.appendChild(seg);
 
-  // Pad color row (visible when action = pad)
+  // Pad color row
   const padRow = document.createElement("div");
   padRow.className = "pix-li-pad-row";
   padRow.innerHTML = `<span>Pad color</span>`;
@@ -394,7 +615,7 @@ function buildMatchRatioPanel(node, state, writeState, onChange) {
 
   panel.appendChild(makeReadout(""));
 
-  // Wire events
+  // Wire chip clicks
   chipsWrap.addEventListener("click", (e) => {
     const el = e.target.closest(".pix-li-ratio-chip");
     if (!el) return;
@@ -418,24 +639,6 @@ function buildMatchRatioPanel(node, state, writeState, onChange) {
     onChange?.();
   });
 
-  function commitCustom() {
-    const cw = Math.max(1, Math.min(999, Math.round(parseFloat(cwIn.value) || 1)));
-    const ch = Math.max(1, Math.min(999, Math.round(parseFloat(chIn.value) || 1)));
-    cwIn.value = String(cw);
-    chIn.value = String(ch);
-    const s = JSON.parse(node.properties?.loadImagePixState || "{}");
-    writeState(node, { ...s, ratio_w: cw, ratio_h: ch });
-    onChange?.();
-  }
-  cwIn.addEventListener("change", commitCustom);
-  chIn.addEventListener("change", commitCustom);
-  for (const inp of [cwIn, chIn]) {
-    inp.addEventListener("keydown", (e) => {
-      e.stopPropagation();
-      if (e.key === "Enter") { e.preventDefault(); inp.blur(); }
-    });
-  }
-
   seg.addEventListener("click", (e) => {
     const opt = e.target.closest("[data-action]");
     if (!opt) return;
@@ -449,8 +652,8 @@ function buildMatchRatioPanel(node, state, writeState, onChange) {
     onChange?.();
   });
 
-  // Simple native color picker for v1 (Pixaroma compact picker can be wired
-  // in v2 if needed). Click swatch → spawn hidden <input type="color">.
+  // Native color picker for v1; the Pixaroma compact picker can be wired
+  // later if a swatch row is wanted.
   swatch.addEventListener("click", (e) => {
     e.stopPropagation();
     const cp = document.createElement("input");

@@ -34,7 +34,7 @@ DEFAULT_STATE = {
     "pad_color": "#000000",
     "snap": 0,
     "resample": "auto",
-    "allow_upscale": False,
+    "allow_upscale": True,
 }
 
 

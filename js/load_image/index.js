@@ -107,7 +107,7 @@ export const DEFAULT_STATE = {
   pad_color: "#000000",
   snap: 0,
   resample: "auto",
-  allow_upscale: false,
+  allow_upscale: true,
 };
 
 export function readState(node) {

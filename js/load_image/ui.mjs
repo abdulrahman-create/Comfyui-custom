@@ -246,26 +246,155 @@ export function injectCSS() {
       display: flex;
       align-items: center;
       justify-content: center;
-      gap: 4px;
+      gap: 6px;
       margin-bottom: 6px;
     }
-    .pix-li-custom-ratio-row input {
-      width: 38px;
+    .pix-li-custom-ratio-input {
+      width: 64px !important;
       background: #2a2a2a;
       border: 1px solid #444;
       border-radius: 3px;
-      padding: 3px 5px;
+      padding: 6px 8px !important;
       color: ${BRAND};
-      font-size: 11px;
+      font-size: 14px !important;
       font-weight: 600;
       text-align: center;
       font-family: inherit;
       box-sizing: border-box;
     }
-    .pix-li-custom-ratio-row span {
-      color: #aaa;
-      font-size: 10px;
+    .pix-li-custom-ratio-input:focus {
+      outline: none;
+      border-color: ${BRAND};
     }
+    .pix-li-custom-ratio-swap {
+      width: 28px;
+      height: 28px;
+      background: #2a2a2a;
+      border: 1px solid #444;
+      border-radius: 3px;
+      color: #aaa;
+      cursor: pointer;
+      position: relative;
+      padding: 0;
+      display: inline-block;
+    }
+    .pix-li-custom-ratio-swap::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background-color: currentColor;
+      -webkit-mask: url("/pixaroma/assets/icons/ui/swap.svg") center/14px 14px no-repeat;
+              mask: url("/pixaroma/assets/icons/ui/swap.svg") center/14px 14px no-repeat;
+      pointer-events: none;
+    }
+    .pix-li-custom-ratio-swap:hover { color: ${BRAND}; border-color: ${BRAND}; }
+    /* Center single-input panel rows (Max MP / Longest side / Scale by ×). */
+    .pix-li-panel-row.pix-li-centered { justify-content: center; }
+    .pix-li-input-wide {
+      width: 70% !important;
+      max-width: 200px;
+    }
+    /* Width × Height panels (Fit inside, Crop to fill) with swap between. */
+    .pix-li-wh-row {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      gap: 6px;
+      align-items: end;
+    }
+    .pix-li-wh-field {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .pix-li-wh-label {
+      font-size: 9px;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      text-align: center;
+    }
+    .pix-li-wh-input {
+      background: #2a2a2a !important;
+      border: 1px solid #444 !important;
+      border-radius: 4px !important;
+      padding: 6px 8px !important;
+      color: ${BRAND} !important;
+      font-size: 14px !important;
+      font-weight: 600 !important;
+      text-align: center;
+      font-family: inherit;
+      box-sizing: border-box;
+      width: 100%;
+    }
+    .pix-li-wh-input:focus {
+      outline: none;
+      border-color: ${BRAND} !important;
+    }
+    /* Generic swap button used between W and H inputs. */
+    .pix-li-swap {
+      width: 32px;
+      height: 32px;
+      background: #2a2a2a;
+      border: 1px solid #444;
+      border-radius: 4px;
+      color: #aaa;
+      cursor: pointer;
+      padding: 0;
+      position: relative;
+      align-self: end;
+    }
+    .pix-li-swap::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background-color: currentColor;
+      -webkit-mask: url("/pixaroma/assets/icons/ui/swap.svg") center/16px 16px no-repeat;
+              mask: url("/pixaroma/assets/icons/ui/swap.svg") center/16px 16px no-repeat;
+      pointer-events: none;
+    }
+    .pix-li-swap:hover { color: ${BRAND}; border-color: ${BRAND}; }
+    /* Aspect-ratio preview block under W / H fields. */
+    .pix-li-wh-preview {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      margin-top: 8px;
+    }
+    .pix-li-wh-rect {
+      background: rgba(246,103,68,0.18);
+      border: 1px solid ${BRAND};
+      border-radius: 2px;
+      transition: width 0.12s ease, height 0.12s ease;
+    }
+    .pix-li-wh-rect-label {
+      font-size: 9px;
+      color: #999;
+      font-family: inherit;
+    }
+    /* Tiny aspect-ratio shape rendered INSIDE each Match-ratio chip,
+       same idea Resolution Pixaroma uses to make every ratio recognisable
+       at a glance without reading the label. */
+    .pix-li-ratio-chip {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+    }
+    .pix-li-shape {
+      display: inline-block;
+      background: rgba(180,180,180,0.25);
+      border: 1px solid #888;
+      border-radius: 1px;
+      box-sizing: border-box;
+      flex-shrink: 0;
+    }
+    .pix-li-ratio-chip.active .pix-li-shape {
+      background: rgba(255,255,255,0.4);
+      border-color: rgba(255,255,255,0.85);
+    }
+    /* Custom chip has no shape (no fixed aspect) — keep text-only. */
+    .pix-li-ratio-chip.pix-li-ratio-custom-chip { display: block; }
     .pix-li-global {
       display: flex;
       flex-direction: column;
