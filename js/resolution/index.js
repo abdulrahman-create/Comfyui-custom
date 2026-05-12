@@ -109,7 +109,7 @@ function injectCSS() {
       display: flex;
       align-items: center;
       justify-content: center;
-      font-family: ui-monospace, monospace;
+      font-family: inherit;
       color: #ccc;
     }
     .pix-res-row:last-child { border-bottom: none; }
@@ -146,12 +146,12 @@ function injectCSS() {
       background: #2a2a2a;
       border: 1px solid #444;
       border-radius: 4px;
-      padding: 6px 8px;
+      padding: 2px 6px;
       color: ${BRAND};
-      font-size: 14px;
+      font-size: 11px;
       font-weight: 600;
       text-align: center;
-      font-family: ui-monospace, monospace;
+      font-family: inherit;
       box-sizing: border-box;
       width: 100%;
     }
@@ -163,8 +163,8 @@ function injectCSS() {
        Uses CSS mask-image so the SVG inherits color via the button's color property
        — same technique Note Pixaroma uses for toolbar mask-icons. */
     .pix-res-swap {
-      width: 32px;
-      height: 32px;
+      width: 26px;
+      height: 22px;
       background: #2a2a2a;
       border: 1px solid #444;
       border-radius: 4px;
@@ -179,8 +179,8 @@ function injectCSS() {
       position: absolute;
       inset: 0;
       background-color: currentColor;
-      -webkit-mask: url("/pixaroma/assets/icons/ui/swap.svg") center / 16px 16px no-repeat;
-              mask: url("/pixaroma/assets/icons/ui/swap.svg") center / 16px 16px no-repeat;
+      -webkit-mask: url("/pixaroma/assets/icons/ui/swap.svg") center / 12px 12px no-repeat;
+              mask: url("/pixaroma/assets/icons/ui/swap.svg") center / 12px 12px no-repeat;
       pointer-events: none;
     }
     .pix-res-swap:hover { color: ${BRAND}; border-color: ${BRAND}; }
@@ -216,7 +216,7 @@ function injectCSS() {
       transition: width 0.15s ease, height 0.15s ease;
     }
     .pix-res-preview-label {
-      font-family: ui-monospace, monospace;
+      font-family: inherit;
       font-size: 10px;
       color: #999;
     }
@@ -249,7 +249,7 @@ function injectCSS() {
       padding: 2px 5px;
       min-width: 18px;
       cursor: pointer;
-      font-family: ui-monospace, monospace;
+      font-family: inherit;
       line-height: 1;
     }
     .pix-res-snap-btn:hover { color: #ddd; border-color: #666; }
@@ -283,12 +283,12 @@ function injectCSS() {
       background: #2a2a2a;
       border: 1px solid #444;
       border-radius: 3px;
-      padding: 4px 6px;
+      padding: 2px 6px;
       color: ${BRAND};
-      font-size: 12px;
+      font-size: 11px;
       font-weight: 600;
       text-align: center;
-      font-family: ui-monospace, monospace;
+      font-family: inherit;
       box-sizing: border-box;
     }
     .pix-res-ratio-input-row input:focus { outline: none; border-color: ${BRAND}; }
@@ -327,7 +327,7 @@ function injectCSS() {
       color: #ccc;
       padding: 5px 0;
       font-size: 10px;
-      font-family: ui-monospace, monospace;
+      font-family: inherit;
       cursor: pointer;
       transition: background 0.08s, border-color 0.08s;
     }
