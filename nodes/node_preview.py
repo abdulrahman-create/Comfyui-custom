@@ -74,6 +74,14 @@ class PixaromaPreview:
     OUTPUT_NODE = True
     CATEGORY = "👑 Pixaroma"
 
+    @classmethod
+    def IS_CHANGED(cls, **kwargs):
+        # Always re-execute so each Run re-saves the file and emits fresh
+        # frame URLs. Without this, if the user deletes the saved file on
+        # disk and clicks Run, ComfyUI's input-hash cache skips execution
+        # and the preview shows stale URLs pointing to the deleted file.
+        return float("nan")
+
     def preview(
         self,
         image,
