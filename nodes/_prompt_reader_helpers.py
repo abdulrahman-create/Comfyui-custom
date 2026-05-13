@@ -9,10 +9,19 @@ Used by both the Python node (run-time output) and the server route
 """
 
 import json
+import os
 import re
 from typing import Optional
 
 from PIL import Image
+
+# folder_paths is a ComfyUI runtime module; not available in unit-test
+# environments. The chase-through-PromptReader feature degrades silently
+# when it can't resolve a path.
+try:
+    import folder_paths as _folder_paths
+except ImportError:
+    _folder_paths = None
 
 
 # Frozenset for O(1) `key in _TEXT_KEYS` membership checks - this DFS runs
@@ -29,6 +38,11 @@ _COND_LINK_KEYS = frozenset({
 })
 _SAMPLER_RE = re.compile(r"sampler", re.IGNORECASE)
 _MAX_WALK_DEPTH = 24
+# Chase depth caps how many PixaromaPromptReader hops we follow when an image
+# was generated from a workflow that itself contained a PromptReader pointing
+# at yet another image. Five levels is plenty for realistic histories and
+# bounds the work cleanly.
+_MAX_CHASE_DEPTH = 5
 
 
 def read_png_text_chunks(file_path: str) -> dict:
@@ -49,18 +63,57 @@ def read_png_text_chunks(file_path: str) -> dict:
     return out
 
 
+def _chase_pixaroma_prompt_reader(node: dict, chase_depth: int) -> Optional[str]:
+    """When the walker hits a PixaromaPromptReader node, the embedded workflow
+    only records `inputs.image = "<filename>"` - the actual prompt text was a
+    runtime output, never saved into the prompt JSON. To recover it, resolve
+    the image filename and recursively read THAT file's metadata.
+
+    Returns None when the source file is missing (e.g. the user deleted it),
+    when folder_paths isn't available, or when the chase cap is reached.
+    """
+    if chase_depth >= _MAX_CHASE_DEPTH or _folder_paths is None:
+        return None
+    inputs = node.get("inputs") or {}
+    image_name = inputs.get("image")
+    if not isinstance(image_name, str) or not image_name:
+        return None
+    try:
+        image_path = _folder_paths.get_annotated_filepath(image_name)
+    except Exception:
+        return None
+    if not image_path or not os.path.isfile(image_path):
+        return None
+    chunks = read_png_text_chunks(image_path)
+    if "prompt" in chunks:
+        positive = extract_positive_from_comfy_prompt(
+            chunks["prompt"], _chase_depth=chase_depth + 1,
+        )
+        if positive:
+            return positive
+    if "parameters" in chunks:
+        positive = extract_positive_from_a1111(chunks["parameters"])
+        if positive:
+            return positive
+    return None
+
+
 def _walk_for_text(
     node_id: str,
     nodes: dict,
     captured: list,
     visited: set,
     depth: int = 0,
+    chase_depth: int = 0,
 ) -> None:
     """DFS from `node_id` collecting string text-widget values.
 
     Follows known conditioning / text link inputs backwards through the graph
     so chains like KSampler -> ConditioningCombine -> CLIPTextEncode resolve
     to the underlying text. Visited-set + depth cap guard against cycles.
+    PixaromaPromptReader nodes are special-cased: their text output is a
+    runtime value (not stored in the prompt JSON), so we chase the source
+    image file and recursively extract its prompt.
     """
     if depth > _MAX_WALK_DEPTH:
         return
@@ -72,6 +125,14 @@ def _walk_for_text(
     node = nodes.get(sid)
     if not isinstance(node, dict):
         return
+
+    # Special-case Pixaroma Prompt Reader: chase the source file.
+    if node.get("class_type") == "PixaromaPromptReader":
+        chased = _chase_pixaroma_prompt_reader(node, chase_depth)
+        if chased:
+            captured.append(chased)
+        return
+
     inputs = node.get("inputs") or {}
     if not isinstance(inputs, dict):
         return
@@ -83,7 +144,7 @@ def _walk_for_text(
             if s:
                 captured.append(s)
         elif isinstance(v, list) and len(v) >= 1:
-            _walk_for_text(v[0], nodes, captured, visited, depth + 1)
+            _walk_for_text(v[0], nodes, captured, visited, depth + 1, chase_depth)
 
     for key, v in inputs.items():
         if key in _TEXT_KEYS:
@@ -91,10 +152,12 @@ def _walk_for_text(
         if key not in _COND_LINK_KEYS:
             continue
         if isinstance(v, list) and len(v) >= 1:
-            _walk_for_text(v[0], nodes, captured, visited, depth + 1)
+            _walk_for_text(v[0], nodes, captured, visited, depth + 1, chase_depth)
 
 
-def extract_positive_from_comfy_prompt(prompt_json: str) -> Optional[str]:
+def extract_positive_from_comfy_prompt(
+    prompt_json: str, _chase_depth: int = 0,
+) -> Optional[str]:
     """Parse the ComfyUI 'prompt' PNG chunk and return the positive prompt.
 
     Strategy: find every sampler-like node (class_type matches /sampler/i),
@@ -102,6 +165,9 @@ def extract_positive_from_comfy_prompt(prompt_json: str) -> Optional[str]:
     string text-widget value reached. De-duplicate while preserving order
     and join with paragraph separators when multiple distinct texts are
     found (e.g. SDXL CLIPTextEncodeSDXL with text_g + text_l).
+
+    `_chase_depth` is internal - used when the walker follows a PromptReader
+    node into its source image's metadata.
 
     Returns None when no sampler exists OR no text is reached - the caller
     then tries the A1111 fallback.
@@ -132,7 +198,7 @@ def extract_positive_from_comfy_prompt(prompt_json: str) -> Optional[str]:
             continue
         pos = (node.get("inputs") or {}).get("positive")
         if isinstance(pos, list) and len(pos) >= 1:
-            _walk_for_text(pos[0], nodes, captured, visited, 0)
+            _walk_for_text(pos[0], nodes, captured, visited, 0, _chase_depth)
         elif isinstance(pos, str) and pos.strip():
             captured.append(pos.strip())
 
@@ -204,6 +270,29 @@ def read_prompt_from_image(file_path: str) -> dict:
         positive = extract_positive_from_a1111(chunks["parameters"])
         if positive:
             return {"found": True, "text": positive, "source": "a1111"}
+
+    # If the workflow contains a Pixaroma Prompt Reader and we still got
+    # nothing, the failure mode is almost always "the original source image
+    # is no longer in input/" (the chase couldn't resolve it). Surface a
+    # specific message rather than the generic one so the user knows what
+    # to do.
+    if "prompt" in chunks:
+        try:
+            nodes = json.loads(chunks["prompt"])
+            if isinstance(nodes, dict) and any(
+                isinstance(n, dict) and n.get("class_type") == "PixaromaPromptReader"
+                for n in nodes.values()
+            ):
+                return {
+                    "found": False,
+                    "message": (
+                        "The prompt came from a Prompt Reader Pixaroma "
+                        "node, but its source image is no longer in the "
+                        "input folder so the prompt couldn't be traced."
+                    ),
+                }
+        except Exception:
+            pass
 
     return {
         "found": False,
