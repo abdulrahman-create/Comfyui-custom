@@ -92,6 +92,9 @@ Encode video frames + optional audio straight to MP4. Built-in `<video>` preview
 ### 💬 Show Text Pixaroma
 See what text or data is flowing through your nodes, with a real read-only text box you can **select and copy** from. **Resize the node freely** in any direction; long text scrolls with a scrollbar instead of forcing the node to grow. New **STRING output** lets you chain it into other nodes (great for inspecting a prompt before passing it on). Saves and restores with your workflow.
 
+### 🔍 Prompt Reader Pixaroma
+Load any PNG that was generated with ComfyUI (or Automatic1111 / Forge) and read the **positive prompt** saved inside its metadata. No image preview - just the text. Drag-drop a file, click **Upload Image**, or pick from the file combo; the prompt appears the moment you choose a file, so you see it before running. One orange **Copy** button puts the prompt on your clipboard. The **STRING output** wires straight into CLIPTextEncode (or any text input) so you can re-use the prompt without retyping. Handles complex workflows with chained text nodes (ConditioningCombine, StringConcatenate, SDXL dual-text encoders). If the image has no prompt (JPG, screenshot, or a PNG whose metadata was stripped), you get a short clear message instead of a silent fail.
+
 ### 🖼️ Preview Image Pixaroma
 A handy way to preview your images right on the node, but better! Works with **single images and full batches**: every frame appears as a thumbnail strip with a `i / N` counter - click any thumbnail to open it large inside the node. Use the **arrow keys** (← →) to flip through the batch, click anywhere on the open image to advance to the next, hit `Esc` or the `×` button to collapse back. Two save buttons act on the currently selected frame: **Save to Disk** (choose any folder on your computer; the suggested filename auto-increments per click) and **Save to Output** (saves to ComfyUI's `output/`, supports subfolder syntax like `SDXL/portrait`). Flip the **save_mode** widget to `save` and the node turns into a drop-in replacement for SaveImage - every batch frame is automatically written to `output/` with embedded workflow metadata. Both modes embed your workflow into the saved PNG so you can drag it back into ComfyUI later. The preview also **survives workflow tab switching**, so you can leave it on a frame and come back to it later.
 
@@ -166,6 +169,9 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 ---
 
 ## 🛠 Changelog
+
+### **May 13, 2026 (1.3.27)**
+- **NEW: Prompt Reader Pixaroma** - drop a PNG that was generated with ComfyUI (or Automatic1111 / Forge) onto the node and instantly see the **positive prompt** that was saved inside its metadata. No image preview, just the text. One orange **Copy** button puts the prompt on your clipboard; the **STRING output** wires straight into CLIPTextEncode so you can re-use the prompt without retyping. The reader walks back through chained text nodes (ConditioningCombine, StringConcatenate, SDXL dual-text encoders) so workflows with complex prompt structures still work. If the image has no prompt (JPG, screenshot, or a PNG whose metadata was stripped), you get a short clear message instead of a silent fail.
 
 ### **May 13, 2026 (1.3.26)**
 - **AudioReact - long audio no longer crashes:** Rendering audio longer than ~30 seconds at HD used to slow to a crawl past the 50% mark and crash after eating most of your free disk space. The render now uses much less memory. If the chosen settings would still need more memory than your computer has free, you now see a clear message right away (with what to lower) instead of waiting through a partial render that ends in a crash.

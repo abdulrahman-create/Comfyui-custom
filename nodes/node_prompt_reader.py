@@ -16,16 +16,21 @@ from ._prompt_reader_helpers import read_prompt_from_image
 
 class PixaromaPromptReader:
     DESCRIPTION = (
-        "Prompt Reader Pixaroma - load an image that was generated with "
-        "ComfyUI (or Automatic1111 / Forge) and read the positive prompt "
-        "saved inside its PNG metadata. No image preview, just the text. "
-        "Outputs the prompt as STRING so you can wire it straight into a "
-        "CLIPTextEncode (or any text input) and re-use it.\n\n"
-        "Drag-drop a PNG onto the node, hit the Upload button, or pick from "
-        "the input combo. If the image has no embedded prompt (e.g. JPG, "
-        "screenshot, or a PNG whose metadata was stripped), the readout "
-        "shows a short explanatory message and the STRING output carries "
-        "that same message so downstream wiring still works."
+        "Prompt Reader Pixaroma - load an image generated with ComfyUI "
+        "(or Automatic1111 / Forge) and read the positive prompt saved "
+        "inside its PNG metadata. No image preview, just the text. "
+        "Outputs the prompt as STRING so you can wire it into a "
+        "CLIPTextEncode or any other text input and re-use it. "
+        "Drag-drop a PNG onto the node, click Upload Image, or pick "
+        "from the file combo. The readout updates the moment a file is "
+        "selected, so you see the prompt before running the workflow. "
+        "If the image has no embedded prompt (JPG, screenshot, or a "
+        "PNG that lost its metadata), the readout shows a short "
+        "explanation and the STRING output carries the same explanation "
+        "so downstream wiring does not break. Handles ComfyUI workflows "
+        "with chained text nodes (ConditioningCombine, "
+        "StringConcatenate, SDXL dual-text encoders) and the "
+        "Automatic1111 / Forge 'parameters' format."
     )
 
     @classmethod
