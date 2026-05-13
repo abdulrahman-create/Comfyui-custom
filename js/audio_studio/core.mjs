@@ -1,7 +1,8 @@
 // js/audio_studio/core.mjs
 import { app } from "../../../../scripts/app.js";
 import { decodeAudio, computeAll, encodeWav, getAudioContext } from "./audio_analysis.mjs";
-import { getUpstreamImageUrl, getInlineSourceUrl, uploadSource } from "./api.mjs";
+import { getUpstreamImageUrl, getInlineSourceUrl, uploadSource, getSysInfo } from "./api.mjs";
+import { computeEngineWH } from "./ui.mjs";
 import { createEditorLayout, createButton } from "../framework/index.mjs";
 import { UI_ICON } from "../framework/theme.mjs";
 
@@ -39,6 +40,29 @@ function injectAudioStudioCSS() {
       background: #3a3a3a;
       margin: 0 4px;
     }
+    /* RAM-need pill — pinned to right end of the source row via margin:auto.
+       Colour ramps from neutral → green → amber → red as the estimated RAM
+       approaches and exceeds the engine's safety cap. */
+    .pix-as-mem-pill {
+      margin-left: auto;
+      display: flex; align-items: center; gap: 8px;
+      padding: 4px 12px;
+      border-radius: 4px;
+      font-size: 11px;
+      background: #2a2a2a;
+      border: 1px solid #3a3a3a;
+      white-space: nowrap;
+      cursor: default;
+    }
+    .pix-as-mem-pill .label { color: #888; }
+    .pix-as-mem-pill .value { color: #ddd; font-weight: 600; font-family: monospace; }
+    .pix-as-mem-pill .sep   { color: #555; }
+    .pix-as-mem-pill.ok    { border-color: #4caf50; background: rgba(76,175,80,0.10); }
+    .pix-as-mem-pill.ok    .value { color: #c8e6c9; }
+    .pix-as-mem-pill.warn  { border-color: #ff9800; background: rgba(255,152,0,0.10); }
+    .pix-as-mem-pill.warn  .value { color: #ffcc80; }
+    .pix-as-mem-pill.err   { border-color: #e74c3c; background: rgba(231,76,60,0.10); }
+    .pix-as-mem-pill.err   .value { color: #f5b7b1; }
 
     /* Canvas host inside framework workspace */
     .pix-as-canvas-host {
@@ -257,6 +281,7 @@ export class AudioStudioEditor {
 
     this._resolveImageSource();
     this._resolveAudioSource();
+    this._initSysInfo();
 
     // Drag-drop image / audio onto the canvas (or anywhere in the workspace).
     layout.workspace.addEventListener("dragover", (e) => { e.preventDefault(); });
@@ -379,8 +404,100 @@ export class AudioStudioEditor {
     audCell.append(audBtn, audStatus);
     this.audioPill = audStatus;
 
-    row.append(imgCell, sep, audCell);
+    // RAM-need pill (pinned to far right via margin:auto). Shows the live
+    // estimate for the current settings + how much RAM the system has free,
+    // so users see the same number the engine will use BEFORE pressing Run.
+    const memCell = document.createElement("div");
+    memCell.className = "pix-as-mem-pill";
+    memCell.title = "Estimated system RAM the render will need with current "
+                  + "settings, vs RAM currently free on this machine. Lower "
+                  + "fps, shorten the audio, or reduce resolution to shrink.";
+    const memNeedLabel = document.createElement("span");
+    memNeedLabel.className = "label";
+    memNeedLabel.textContent = "RAM needed:";
+    const memNeedValue = document.createElement("span");
+    memNeedValue.className = "value";
+    memNeedValue.textContent = "—";
+    const memSep = document.createElement("span");
+    memSep.className = "sep";
+    memSep.textContent = "·";
+    const memFreeLabel = document.createElement("span");
+    memFreeLabel.className = "label";
+    memFreeLabel.textContent = "Free:";
+    const memFreeValue = document.createElement("span");
+    memFreeValue.className = "value";
+    memFreeValue.textContent = "—";
+    memCell.append(memNeedLabel, memNeedValue, memSep, memFreeLabel, memFreeValue);
+    this._memPill = { root: memCell, need: memNeedValue, free: memFreeValue };
+
+    row.append(imgCell, sep, audCell, memCell);
     host.appendChild(row);
+  }
+
+  /**
+   * Recompute the "RAM needed / Free" pill from current cfg + loaded sources.
+   * Cheap (one fps × W × H × duration multiplication) — safe to call from
+   * every cfg change. The cap value comes from a once-per-open server fetch.
+   *
+   * The math mirrors generate_video()'s output tensor: total_frames × H × W
+   * × 3 × 4 bytes (float32 RGB). Aspect-ratio + mult-of-8 snapping matches
+   * process_aspect() so the estimate is what the engine will actually
+   * allocate.
+   */
+  _refreshMemPill() {
+    if (!this._memPill) return;
+    const pill = this._memPill;
+    const fps = this.cfg.fps || 24;
+    const duration = this._audioBuffer ? this._audioBuffer.duration : 0;
+    const totalFrames = Math.floor(duration * fps);
+    let w = 0, h = 0;
+    const eff = computeEngineWH(
+      this.cfg.aspect_ratio || "Original",
+      this.cfg.custom_width || 1024,
+      this.cfg.custom_height || 1024,
+    );
+    if (eff) {
+      w = eff.w; h = eff.h;
+    } else {
+      // "Original" aspect — use loaded image dims, snapped to mult-of-8
+      // (matches process_aspect's snap).
+      w = Math.floor((this._imageW || 0) / 8) * 8;
+      h = Math.floor((this._imageH || 0) / 8) * 8;
+    }
+    const estBytes = (totalFrames > 0 && w > 0 && h > 0)
+      ? totalFrames * w * h * 3 * 4 : 0;
+    const estGb = estBytes / (1024 ** 3);
+    const sys = this._sysinfo || {};
+    const freeGb = sys.available_gb;
+    const capGb  = sys.cap_gb;
+
+    pill.need.textContent = estGb > 0
+      ? `${estGb < 10 ? estGb.toFixed(2) : estGb.toFixed(1)} GB`
+      : "—";
+    pill.free.textContent = (freeGb != null)
+      ? `${freeGb < 10 ? freeGb.toFixed(1) : freeGb.toFixed(0)} GB`
+      : "—";
+
+    pill.root.classList.remove("ok", "warn", "err");
+    if (estGb > 0 && capGb != null) {
+      if (estGb > capGb)              pill.root.classList.add("err");
+      else if (estGb > capGb * 0.75)  pill.root.classList.add("warn");
+      else                            pill.root.classList.add("ok");
+    }
+  }
+
+  /**
+   * Fetch system RAM once per editor open and cache on the instance. Then
+   * paint the pill. Safe if psutil isn't available server-side — fields
+   * come back null and the pill just hides the Free / cap colouring.
+   */
+  async _initSysInfo() {
+    try {
+      this._sysinfo = await getSysInfo();
+    } catch {
+      this._sysinfo = { total_gb: null, available_gb: null, cap_gb: null };
+    }
+    this._refreshMemPill();
   }
 
   _refreshSaveBtnState() {
@@ -437,6 +554,7 @@ export class AudioStudioEditor {
     // flood the stack — only the settled value is captured.
     this._snapForUndo(false);
     this._refreshSaveBtnState();
+    this._refreshMemPill();
     // Only recompute audio when an analysis-affecting param changed. The
     // FFT + 4-band envelope on a 60s clip is ~6k samples per band; running
     // it on every tick made the smoothing slider feel sticky in particular,
@@ -612,6 +730,7 @@ AudioStudioEditor.prototype.loadAudioBlob = async function (blob) {
   const buf = await decodeAudio(ab);
   this._audioBuffer = buf;
   this._recomputeAudio();
+  this._refreshMemPill?.();
 };
 
 // ---------------------------------------------------------------------------

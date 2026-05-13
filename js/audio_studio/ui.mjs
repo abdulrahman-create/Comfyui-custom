@@ -98,7 +98,7 @@ function isCustomHeightAspect(v) {
  * the Output W × H pair so users see the real numbers, not stale stored
  * values.
  */
-function computeEngineWH(ar, customW, customH) {
+export function computeEngineWH(ar, customW, customH) {
   if (ar === "Original") return null;
   let bw, bh;
   if (ar === "Custom (Use Width & Height below)") {
