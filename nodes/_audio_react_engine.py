@@ -909,20 +909,23 @@ def generate_video(image: torch.Tensor, audio: dict, params: Params) -> torch.Te
 
     # ComfyUI's IMAGE contract holds the full (N, H, W, 3) float32 batch at
     # the node boundary in system RAM (not VRAM), so very long audio at HD
-    # blows past consumer memory. Default cap scales with the user's actual
-    # system RAM (80% of total, leaving headroom for the OS, ComfyUI itself,
-    # and other apps). Env var override for power users.
+    # blows past consumer memory. Default cap = 90% of currently-AVAILABLE
+    # RAM (matching ComfyUI's own model_management.py pattern of reading
+    # .available for live allocation decisions). Using .available instead
+    # of .total correctly accounts for diffusion models already pinned in
+    # RAM via CPU-offload. Env var override for power users.
     estimated_output_gb = (total_frames * H * W * 3 * 4) / (1024 ** 3)
     try:
         import psutil
-        total_ram_gb = psutil.virtual_memory().total / (1024 ** 3)
-        default_cap_gb = total_ram_gb * 0.80
+        available_ram_gb = psutil.virtual_memory().available / (1024 ** 3)
+        default_cap_gb = available_ram_gb * 0.90
     except Exception:
         default_cap_gb = 12.0
     try:
-        max_ram_gb = float(os.environ.get(
+        override = float(os.environ.get(
             "PIXAROMA_AUDIOREACT_MAX_RAM_GB", str(default_cap_gb),
         ))
+        max_ram_gb = override if override > 0 else default_cap_gb
     except (TypeError, ValueError):
         max_ram_gb = default_cap_gb
     if estimated_output_gb > max_ram_gb:
@@ -930,7 +933,7 @@ def generate_video(image: torch.Tensor, audio: dict, params: Params) -> torch.Te
             f"[Pixaroma] Audio engine: this render would need about "
             f"{estimated_output_gb:.1f} GB of system RAM (not VRAM) just for "
             f"the output frames ({total_frames} frames at {W}x{H}), above "
-            f"the {max_ram_gb:.1f} GB safety limit on this machine. Lower "
+            f"the {max_ram_gb:.1f} GB currently free on this machine. Lower "
             f"the fps, shorten the audio, or reduce the resolution. To "
             f"raise the limit, set the environment variable "
             f"PIXAROMA_AUDIOREACT_MAX_RAM_GB before launching ComfyUI."
