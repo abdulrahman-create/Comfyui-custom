@@ -770,6 +770,31 @@ Follow the existing directory structure:
 ### 5. Do not read framework CSS
 `js/framework/theme.mjs` is ~660 lines but ~580 are a CSS string literal. You almost never need to read it. Only read it if you're adding a new CSS class or changing the color theme.
 
+### 6. Picking a default `node.size` — paste-into-console sizer snippet
+When the user wants you to bake a default size for a new node (or change an existing one), don't guess. Hand them this snippet, ask them to paste it into the browser console (F12) with at least one of the target nodes on the canvas, drag-resize to taste, and report the W × H back. Then set `node.size[0] = W; node.size[1] = H;` inside the node's `setupNode` (or equivalent `nodeCreated` path) AFTER `addDOMWidget` — LiteGraph's `configure` runs after `nodeCreated` and overwrites `node.size` from saved workflow JSON, so existing workflows keep their saved size while fresh-on-canvas drops get the new default. Replace `<COMFY_CLASS>` with the actual class name (e.g. `PixaromaPromptReader`).
+
+```js
+(() => {
+  const node = (app.graph?._nodes || app.graph?.nodes || [])
+    .find(n => n.comfyClass === "<COMFY_CLASS>");
+  if (!node) { console.warn("Target node not on canvas"); return; }
+  document.querySelector("#pix-sizer")?.remove();
+  const box = document.createElement("div");
+  box.id = "pix-sizer";
+  box.style.cssText = "position:fixed;bottom:20px;right:20px;background:#1d1d1d;color:#fff;font:14px monospace;padding:10px 14px;border-radius:6px;border:2px solid #f66744;z-index:99999;pointer-events:none;";
+  document.body.appendChild(box);
+  const update = () => { box.textContent = `${node.comfyClass}: ${Math.round(node.size[0])} × ${Math.round(node.size[1])}`; };
+  update();
+  clearInterval(window._pixSizerInterval);
+  window._pixSizerInterval = setInterval(update, 100);
+  window.setNodeSize = (w, h) => { node.size[0] = w; node.size[1] = h; app.graph.setDirtyCanvas(true, true); update(); };
+  window.removePixSizer = () => { clearInterval(window._pixSizerInterval); document.querySelector("#pix-sizer")?.remove(); };
+  console.log("Drag-resize and watch the bottom-right corner. setNodeSize(w, h) to set exact. removePixSizer() to hide.");
+})();
+```
+
+Defaults should reflect the node's CONTENT, not a generic minimum. A text-heavy readout node (Prompt Reader Pixaroma) wants ~400 × 300 so a typical prompt is visible without scrolling; a compact control node (Resolution Pixaroma, Switch WH) wants something smaller. Always ask the user — taste is per-node.
+
 ## Important Note
 After major changes, please update this file (@CLUADE.me). Keep this file up-to-date with the project's status.
 
