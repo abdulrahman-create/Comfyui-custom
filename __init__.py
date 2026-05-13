@@ -20,6 +20,8 @@ from .nodes.node_paint import NODE_CLASS_MAPPINGS as _MAPS_PAINT
 from .nodes.node_paint import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_PAINT
 from .nodes.node_preview import NODE_CLASS_MAPPINGS as _MAPS_PREVIEW
 from .nodes.node_preview import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_PREVIEW
+from .nodes.node_prompt_reader import NODE_CLASS_MAPPINGS as _MAPS_PROMPT_READER
+from .nodes.node_prompt_reader import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_PROMPT_READER
 from .nodes.node_resolution import NODE_CLASS_MAPPINGS as _MAPS_RESOLUTION
 from .nodes.node_resolution import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_RESOLUTION
 from .nodes.node_show_text import NODE_CLASS_MAPPINGS as _MAPS_SHOW_TEXT
@@ -53,6 +55,7 @@ NODE_CLASS_MAPPINGS = {
     **_MAPS_COMPOSITION,
     **_MAPS_PAINT,
     **_MAPS_PREVIEW,
+    **_MAPS_PROMPT_READER,
     **_MAPS_RESOLUTION,
     **_MAPS_COMPARE,
     **_MAPS_CROP,
@@ -88,6 +91,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     **_NAMES_UTILS,
     **_NAMES_PAINT,
     **_NAMES_PREVIEW,
+    **_NAMES_PROMPT_READER,
     **_NAMES_RESOLUTION,
     **_NAMES_SHOW_TEXT,
 }

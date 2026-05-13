@@ -11,6 +11,7 @@ from PIL.PngImagePlugin import PngInfo
 import folder_paths
 
 from .nodes._save_helpers import _build_pnginfo, _safe_prefix
+from .nodes._prompt_reader_helpers import read_prompt_from_image
 
 # --- PORTABLE COMFYUI FIX ---
 # Force rembg to download and read AI models from ComfyUI/models/rembg
@@ -817,3 +818,41 @@ async def api_preview_prepare(request):
         "image_b64": image_data_uri,
         "suggested_filename": suggested_filename,
     })
+
+
+@PromptServer.instance.routes.get("/pixaroma/api/prompt_reader/extract")
+async def api_prompt_reader_extract(request):
+    """Live readout endpoint for Prompt Reader Pixaroma.
+
+    Query: ?filename=<image-name>   (supports ComfyUI's [input] suffix)
+    Resolves the path inside ComfyUI's input directory and returns the
+    extracted positive prompt, or a short message explaining why none
+    could be read. Always 200 OK so the frontend never has to branch on
+    HTTP status - it just renders `text` (or `message`) in the readout.
+    """
+    filename = request.query.get("filename", "")
+    if not filename:
+        return web.json_response({
+            "found": False,
+            "message": "No image selected.",
+        })
+    try:
+        image_path = folder_paths.get_annotated_filepath(filename)
+    except Exception:
+        return web.json_response({
+            "found": False,
+            "message": "Image file not found in the input folder.",
+        })
+    if not image_path or not os.path.isfile(image_path):
+        return web.json_response({
+            "found": False,
+            "message": "Image file not found in the input folder.",
+        })
+    try:
+        result = read_prompt_from_image(image_path)
+    except Exception as e:
+        return web.json_response({
+            "found": False,
+            "message": f"Could not read metadata: {e}",
+        })
+    return web.json_response(result)
