@@ -237,7 +237,10 @@ async function getPreviewBlob(node) {
   const frame = node._pixaromaFrames?.[idx];
   if (frame?.url) {
     const resp = await fetch(frame.url);
-    if (!resp.ok) throw new Error(`preview fetch failed: ${resp.status}`);
+    if (!resp.ok) {
+      if (resp.status === 404) throw new Error("preview file missing — Run the workflow again");
+      throw new Error(`preview fetch failed: ${resp.status}`);
+    }
     return await resp.blob();
   }
   // Fallback (legacy state where _pixaromaFrames hasn't populated yet)

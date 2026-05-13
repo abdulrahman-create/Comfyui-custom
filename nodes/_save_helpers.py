@@ -78,23 +78,43 @@ def _expand_date_tokens(s):
     return _DATE_TOKEN_RE.sub(_sub, s)
 
 
-# ---- prefix validation ----
+# ---- prefix sanitization ----
 
-# Allow native ComfyUI tokens (%year%, %month%, etc.) to pass through
-# validation untouched; get_save_image_path expands them later.
-_SAFE_SEG_RE = re.compile(r"^[a-zA-Z0-9_\-%]+$")
-_PREFIX_MAX_LEN = 256
+# Characters allowed verbatim in a segment. '%' is permitted so native
+# ComfyUI tokens like %year% survive and reach folder_paths.get_save_image_path
+# for final expansion. Anything else is replaced with '_' (sanitization,
+# not rejection), so wiring an upstream filename like "Bunny Cubes - Copy.png"
+# just works instead of failing the save.
+_DISALLOWED_CHAR_RE = re.compile(r"[^A-Za-z0-9_\-%]")
+_MULTI_UNDERSCORE_RE = re.compile(r"_+")
+_PREFIX_MAX_LEN = 256       # input cap (reject obvious garbage early)
+_PREFIX_OUTPUT_MAX = 100    # output cap so pasted paragraphs / multi-line
+                            # text don't blow past Windows MAX_PATH
+
+
+def _sanitize_segment(seg):
+    """Replace disallowed chars with '_', collapse repeats, strip edges.
+
+    Caller must reject '..' before calling. Returns "" if nothing usable
+    survives (e.g. segment was all dots / whitespace).
+    """
+    cleaned = _DISALLOWED_CHAR_RE.sub("_", seg)
+    cleaned = _MULTI_UNDERSCORE_RE.sub("_", cleaned)
+    return cleaned.strip("_")
 
 
 def _safe_prefix(s):
-    """Return cleaned prefix string, or None if invalid.
+    """Return sanitized prefix string, or None if input is unrecoverable.
 
-    Pipeline: expand %date:FMT% tokens first, then validate. Allows path
-    segments separated by '/', each matching [A-Za-z0-9_-%] (the '%' is
-    permitted so native ComfyUI tokens like %year% survive validation
-    and reach folder_paths.get_save_image_path for final expansion).
+    Pipeline: expand %date:FMT% tokens, then per segment replace any
+    char outside [A-Za-z0-9_\\-%] with '_', collapse repeated '_', strip
+    leading/trailing '_'. Path segments are separated by '/'.
 
-    Rejects '..', leading '/', empty segments, total length > 256.
+    Empty segments (e.g. trailing slashes, doubled slashes) are silently
+    dropped — so 'teasda......////' becomes 'teasda' rather than failing.
+    Returns None only for truly unrecoverable input: non-string, empty
+    after strip, length > 256, leading '/', any segment that's literally
+    '..' (path traversal), or nothing usable left after sanitization.
     Backslashes are normalized to forward slashes (Windows convenience).
 
     Caller decides what to do with None:
@@ -110,9 +130,18 @@ def _safe_prefix(s):
     if s.startswith("/"):
         return None
     parts = s.split("/")
-    if any(not p or p == ".." or not _SAFE_SEG_RE.match(p) for p in parts):
+    if any(p == ".." for p in parts):
         return None
-    return s
+    cleaned_parts = [_sanitize_segment(p) for p in parts if p]
+    cleaned_parts = [p for p in cleaned_parts if p]
+    if not cleaned_parts:
+        return None
+    result = "/".join(cleaned_parts)
+    if len(result) > _PREFIX_OUTPUT_MAX:
+        result = result[:_PREFIX_OUTPUT_MAX].rstrip("/_-")
+        if not result:
+            return None
+    return result
 
 
 # ---- workflow metadata embedding ----

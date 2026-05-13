@@ -718,7 +718,11 @@ export function openImageDropdown(node, anchorEl, onPick) {
   const onDocDown = (e) => {
     if (!popup.contains(e.target)) closePopup();
   };
-  const onWheel = () => closePopup();
+  // Only close on wheel OUTSIDE the popup — the popup itself is scrollable
+  // (overflowY: auto + maxHeight), users need wheel to navigate the list.
+  const onWheel = (e) => {
+    if (!popup.contains(e.target)) closePopup();
+  };
   const onKey = (e) => {
     if (e.key === "Escape") closePopup();
   };
@@ -803,10 +807,13 @@ function openResamplePopup(anchorEl, currentValue, onPick) {
     popup.remove();
     document.removeEventListener("mousedown", onDocDown, true);
     document.removeEventListener("pointerdown", onDocDown, true);
-    document.removeEventListener("wheel", close, true);
+    document.removeEventListener("wheel", onWheel, true);
     document.removeEventListener("keydown", onKey, true);
   }
   const onDocDown = (e) => {
+    if (!popup.contains(e.target)) close();
+  };
+  const onWheel = (e) => {
     if (!popup.contains(e.target)) close();
   };
   const onKey = (e) => {
@@ -815,7 +822,7 @@ function openResamplePopup(anchorEl, currentValue, onPick) {
   setTimeout(() => {
     document.addEventListener("mousedown", onDocDown, true);
     document.addEventListener("pointerdown", onDocDown, true);
-    document.addEventListener("wheel", close, true);
+    document.addEventListener("wheel", onWheel, true);
     document.addEventListener("keydown", onKey, true);
   }, 0);
 }
