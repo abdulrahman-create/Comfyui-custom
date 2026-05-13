@@ -195,8 +195,11 @@ export function previewResize(W, H, state) {
 
   if (mode === "max_mp") {
     const tgt = +state.max_mp || 1.0;
-    const mp = (W * H) / 1_000_000;
-    const f = mp > 0 ? Math.sqrt(tgt / mp) : 1.0;
+    // ComfyUI binary-MP convention: 1 MP = 1024*1024 = 1,048,576 pixels.
+    // Matches native ImageScaleToTotalPixels so 1024² at 1 MP is unchanged.
+    const targetPx = tgt * 1024 * 1024;
+    const currentPx = W * H;
+    const f = currentPx > 0 ? Math.sqrt(targetPx / currentPx) : 1.0;
     ({ w: nw, h: nh } = applyFactor(f));
   } else if (mode === "longest_side") {
     const tgt = +state.longest_side || 1024;
@@ -232,11 +235,14 @@ export function previewResize(W, H, state) {
     }
   }
 
-  // Snap post-modifier
+  // Snap post-modifier — FLOOR to nearest multiple, not round-to-nearest.
+  // Floor guarantees the snap step never pushes a dim ABOVE the cap of a
+  // cap-bounded mode (max_mp, longest_side, fit_inside). Mirrors Python's
+  // _apply_snap in node_load_image.py.
   const snap = +state.snap || 0;
   if (snap > 0) {
-    nw = Math.max(8, Math.round(nw / snap) * snap);
-    nh = Math.max(8, Math.round(nh / snap) * snap);
+    nw = Math.max(8, Math.floor(nw / snap) * snap);
+    nh = Math.max(8, Math.floor(nh / snap) * snap);
   }
   nw = Math.max(8, Math.min(nw, 16384));
   nh = Math.max(8, Math.min(nh, 16384));
