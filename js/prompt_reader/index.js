@@ -209,6 +209,19 @@ function buildRoot() {
   dd.innerHTML = `<span class="name">— no image —</span><span class="arrow">▾</span>`;
   root.appendChild(dd);
 
+  // Order: dropdown → readout → status (info + Copy). The status pill is
+  // placed AFTER the readout because (a) the user reads the prompt first
+  // and the info chip below acts as a small caption, and (b) the Copy
+  // button colocated with the status sits naturally underneath the text
+  // it copies.
+  const readout = document.createElement("textarea");
+  readout.className = "pix-pr-readout empty";
+  readout.readOnly = true;
+  readout.value = "";
+  readout.placeholder = "The positive prompt will appear here.";
+  readout.dataset.role = "readout";
+  root.appendChild(readout);
+
   const status = document.createElement("div");
   status.className = "pix-pr-status";
   status.dataset.role = "status";
@@ -218,14 +231,6 @@ function buildRoot() {
     <button class="pix-pr-copy" data-role="copy" disabled>Copy</button>
   `;
   root.appendChild(status);
-
-  const readout = document.createElement("textarea");
-  readout.className = "pix-pr-readout empty";
-  readout.readOnly = true;
-  readout.value = "";
-  readout.placeholder = "The positive prompt will appear here.";
-  readout.dataset.role = "readout";
-  root.appendChild(readout);
 
   return root;
 }
@@ -685,17 +690,19 @@ function setupNode(node) {
   });
 
   // Initial population - defer past configure() so widget value is restored
-  // (Vue Compat #8 - nodeCreated fires BEFORE configure resolves saved values).
+  // (Vue Compat #8 - nodeCreated fires BEFORE configure resolves saved
+  // values). We always re-extract on load rather than using the cached
+  // state, so any message-text changes from a Pixaroma update propagate
+  // to existing workflows without the user having to re-pick a file.
   queueMicrotask(() => {
     refreshDropdown(node);
-    const s = readState(node);
     const wval = imageWidget?.value || "";
-    // If we have cached state for the currently-selected file, use it (fast).
-    // Otherwise, kick off a live extract so the user always sees something.
-    if (s.filename && s.filename === wval && (s.text || s.message)) {
-      restoreFromState(node);
-    } else if (wval) {
+    if (wval) {
       onImageChanged(node);
+    } else {
+      // No image selected - restore at least the cached UI text so the
+      // user sees the previous result on tab switch without a flash.
+      restoreFromState(node);
     }
   });
 }
@@ -712,7 +719,12 @@ app.registerExtension({
       const r = origCfg?.apply(this, arguments);
       queueMicrotask(() => {
         refreshDropdown(this);
-        restoreFromState(this);
+        const wval = this._pixPrImageWidget?.value || "";
+        if (wval) {
+          onImageChanged(this);
+        } else {
+          restoreFromState(this);
+        }
       });
       return r;
     };
