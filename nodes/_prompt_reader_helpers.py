@@ -15,15 +15,18 @@ from typing import Optional
 from PIL import Image
 
 
-_TEXT_KEYS = (
+# Frozenset for O(1) `key in _TEXT_KEYS` membership checks - this DFS runs
+# per-node-per-extract and the lists are short enough that the tuple linear
+# scan was fine, but the frozenset version is the obvious clean version.
+_TEXT_KEYS = frozenset({
     "text", "text_g", "text_l", "string", "prompt", "value", "wildcard_text",
     "text_a", "text_b", "str", "format", "template",
     "prepend", "append", "positive_prompt", "input_string",
-)
-_COND_LINK_KEYS = (
+})
+_COND_LINK_KEYS = frozenset({
     "conditioning", "conditioning_1", "conditioning_2",
     "cond", "positive", "from", "input",
-)
+})
 _SAMPLER_RE = re.compile(r"sampler", re.IGNORECASE)
 _MAX_WALK_DEPTH = 24
 

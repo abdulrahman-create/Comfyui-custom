@@ -7,7 +7,6 @@ has no embedded prompt, returns a short notice string explaining that, so
 downstream nodes still receive a usable value.
 """
 
-import hashlib
 import os
 
 import folder_paths
@@ -68,12 +67,16 @@ class PixaromaPromptReader:
 
     @classmethod
     def IS_CHANGED(cls, image):
+        # Use (mtime, size) instead of a full-file SHA hash. ComfyUI's native
+        # LoadImage hashes the file content, but we only need to know whether
+        # the file changed - a 50MB PNG hashed on every run is wasteful.
+        # mtime+size catches every realistic edit (the only false-negative is
+        # an in-place byte swap that preserves size AND mtime, which doesn't
+        # happen in practice when ComfyUI re-saves or the user re-uploads).
         try:
             image_path = folder_paths.get_annotated_filepath(image)
-            m = hashlib.sha256()
-            with open(image_path, "rb") as f:
-                m.update(f.read())
-            return m.hexdigest()
+            st = os.stat(image_path)
+            return f"{st.st_mtime_ns}:{st.st_size}"
         except Exception:
             return float("nan")
 

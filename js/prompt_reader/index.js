@@ -312,11 +312,23 @@ async function extractPrompt(filename) {
   }
 }
 
+// Per-node monotonic request id - rapid file-combo clicks would otherwise
+// race, and an out-of-order response could stamp stale text on the readout.
+// `onImageChanged` bumps node._pixPrReqId before fetching, then checks the
+// id is still current before applying the result.
+function nextReqId(node) {
+  node._pixPrReqId = (node._pixPrReqId | 0) + 1;
+  return node._pixPrReqId;
+}
+
 // ── Readout rendering ──────────────────────────────────────────────────────
 
 function applyResult(node, result) {
   const root = node._pixPrRoot;
-  if (!root) return;
+  // Guard: node may have been removed mid-fetch (onRemoved nulls _pixPrRoot).
+  // Without this guard the in-flight response would still try to write to
+  // detached DOM and persist state on a deleted node.
+  if (!root || !root.isConnected) return;
   const readout = root.querySelector('[data-role="readout"]');
   const status = root.querySelector('[data-role="status"]');
   const statusLabel = status?.querySelector(".pix-pr-status-label");
@@ -379,7 +391,11 @@ async function onImageChanged(node) {
   // Show a transient loading state.
   const statusLabel = node._pixPrRoot?.querySelector(".pix-pr-status-label");
   if (statusLabel) statusLabel.textContent = "Reading metadata...";
+  const myId = nextReqId(node);
   const result = await extractPrompt(filename);
+  // Bail if a newer request has been kicked off in the meantime - prevents
+  // out-of-order responses from stamping stale text on the readout.
+  if (node._pixPrReqId !== myId) return;
   applyResult(node, result);
 }
 
@@ -449,15 +465,30 @@ function setupNode(node) {
   // True` makes the framework fetch the selected file and assign it to
   // `node.imgs`, which LiteGraph then renders below the widgets. We don't
   // need that here - the readout is the whole point - so we lock `imgs` to
-  // an empty array. Any framework code that still reads `node.imgs[0]` just
-  // sees undefined and skips the draw.
-  try {
-    Object.defineProperty(node, "imgs", {
-      configurable: true,
-      get() { return []; },
-      set(_v) { /* swallow */ },
-    });
-  } catch (_e) { /* property already non-configurable - ignore */ }
+  // an empty array. Side effect: right-click menu items that read
+  // `node.imgs[0]` (Save Image, Copy Clipspace, Open Image) become no-ops.
+  // That's an acceptable tradeoff since the file is reachable directly via
+  // ComfyUI's /view route from the input folder anyway.
+  //
+  // Probe the existing descriptor first: if a previous redefine made it
+  // non-configurable or some earlier framework code assigned a value the
+  // engine left non-configurable, defineProperty throws TypeError and the
+  // previous try/catch was swallowing that silently. Log it once so a
+  // future Vue-frontend change becomes visible in the console.
+  const imgsDesc = Object.getOwnPropertyDescriptor(node, "imgs");
+  if (imgsDesc && imgsDesc.configurable === false) {
+    console.warn("[PixaromaPromptReader] cannot suppress node.imgs - existing descriptor is non-configurable");
+  } else {
+    try {
+      Object.defineProperty(node, "imgs", {
+        configurable: true,
+        get() { return []; },
+        set(_v) { /* swallow */ },
+      });
+    } catch (e) {
+      console.warn("[PixaromaPromptReader] node.imgs suppression failed:", e.message);
+    }
+  }
 
   const root = buildRoot();
   node._pixPrRoot = root;
@@ -517,7 +548,9 @@ function setupNode(node) {
     };
   }
 
-  // Upload button
+  // Upload button. Errors surface inline via the status pill (Note Pattern
+  // #7: never use alert() inside our overlays / panels - it context-switches
+  // away and can be blocked by Vue's modal layer).
   root.querySelector('[data-role="upload"]')?.addEventListener("click", async (e) => {
     e.stopPropagation();
     try {
@@ -525,7 +558,7 @@ function setupNode(node) {
       if (saved) onImageChanged(node);
     } catch (err) {
       console.error("[PixaromaPromptReader] upload failed", err);
-      alert("Upload failed: " + err.message);
+      applyResult(node, { found: false, message: `Upload failed: ${err.message}` });
     }
   });
 
@@ -575,7 +608,7 @@ function setupNode(node) {
       onImageChanged(node);
     } catch (err) {
       console.error("[PixaromaPromptReader] drop upload failed", err);
-      alert("Upload failed: " + err.message);
+      applyResult(node, { found: false, message: `Upload failed: ${err.message}` });
     }
   });
 
@@ -616,6 +649,28 @@ app.registerExtension({
           restoreFromState(this);
         }
       });
+      return r;
+    };
+
+    // Cleanup on node removal. The file-dropdown popup attaches FOUR
+    // document-level capture-phase listeners on every open; without an
+    // explicit close on removal those leak forever (closure pins the
+    // popup + node alive). Bumping the per-node request id also
+    // invalidates any in-flight extract response so it can't apply
+    // results to a destroyed root.
+    const origRemoved = nodeType.prototype.onRemoved;
+    nodeType.prototype.onRemoved = function () {
+      const r = origRemoved?.apply(this, arguments);
+      try {
+        // Trigger every open popup's close() path (their mousedown handler
+        // closes when the click is outside, which fires here).
+        document.querySelectorAll(".pix-pr-popup").forEach((p) => p.remove());
+      } catch (_e) { /* ignore */ }
+      // Stale in-flight requests after this point will all fail the
+      // reqId match in onImageChanged.
+      this._pixPrReqId = (this._pixPrReqId | 0) + 1;
+      this._pixPrRoot = null;
+      this._pixPrImageWidget = null;
       return r;
     };
   },
