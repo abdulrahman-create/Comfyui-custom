@@ -167,6 +167,10 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
+### **May 13, 2026 (1.3.25)**
+- **Load Image Pixaroma - Max megapixels now keeps 1024 at 1024:** Picking **1 MP** on a 1024×1024 image now leaves it at 1024×1024 (matching how ComfyUI's built-in node works), so the output stays friendly for SD / SDXL / Flux and empty-latent nodes downstream. Previously you got 1000×1000 which doesn't divide cleanly and could cause issues in later steps. The MP presets now map to clean AI sizes: **0.25 MP = 512², 1 MP = 1024², 4 MP = 2048².**
+- **Load Image Pixaroma - resolution rounding is consistent:** The on-canvas Output number now matches exactly what the workflow produces, and the resolution snap chips (8 / 16 / 32 / 64) never push the result above your chosen max megapixels.
+
 ### **May 13, 2026 (1.3.24)**
 - **Preview Image Pixaroma - wired filename always works now:** Wiring any text into the filename field (for example a Text Pixaroma, or Load Image's filename output) now always produces a valid name, even when the text has spaces, dots, or unusual characters. Previously the save button failed with an error for anything but plain words.
 - **Preview Image Pixaroma - Run refreshes after deleting saved files:** If you delete the saved image from disk and click Run again, the file is re-saved and the preview refreshes. Previously the preview stayed dark and you had to change the filename to recover.
