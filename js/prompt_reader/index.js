@@ -498,6 +498,13 @@ function setupNode(node) {
     serialize: false,
   });
 
+  // Default node size for fresh-on-canvas placements. LiteGraph's configure
+  // (workflow restore) runs AFTER nodeCreated and overwrites node.size with
+  // the saved value, so existing workflows keep whatever size the user had.
+  // Only new drops get this size.
+  node.size[0] = 400;
+  node.size[1] = 300;
+
   // Wrap the image widget's callback so native drag-drop on the bottom of the
   // node, programmatic value sets, and our own picks all route through the
   // same extract refresh.
