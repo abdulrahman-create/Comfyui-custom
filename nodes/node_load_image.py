@@ -91,12 +91,24 @@ def _clamp_dims(w: int, h: int) -> Tuple[int, int]:
     return (max(8, min(int(w), 16384)), max(8, min(int(h), 16384)))
 
 
+def _round_half_up(x: float) -> int:
+    """JS-parity rounding (always rounds 0.5 UP). Python's built-in round()
+    uses banker's rounding (round half to even) so e.g. round(62.5) returns
+    62 not 63. JS Math.round always rounds 0.5 toward +infinity. Using this
+    helper for factor*dim math keeps the on-canvas preview (JS) and the
+    actual workflow output (Python) in sync at exact .5 boundaries."""
+    return int(math.floor(x + 0.5))
+
+
 def _apply_snap(w: int, h: int, snap: int) -> Tuple[int, int]:
-    """Round each dim to nearest multiple of snap (0 = off). Post-modifier
-    that runs after the mode's math."""
+    """Floor each dim to a multiple of snap (0 = off). FLOOR not round-to-
+    nearest, so the snap step can never push a dim above the cap of a cap-
+    bounded mode (max_mp, longest_side, fit_inside). Without floor, snap=64
+    on a 1024² source with max 1MP would round 1000 up to 1024, producing
+    1.05 MP output and violating the 'Max' promise."""
     if not snap or snap <= 0:
         return (w, h)
-    return (max(8, round(w / snap) * snap), max(8, round(h / snap) * snap))
+    return (max(8, (int(w) // snap) * snap), max(8, (int(h) // snap) * snap))
 
 
 # ── Per-mode resize functions ────────────────────────────────────────────────
@@ -155,8 +167,8 @@ def _apply_max_mp(pil_rgb, pil_mask, state, orig_w, orig_h):
         factor = min(factor, 1.0)
     factor = min(factor, 8.0)  # sanity ceiling
 
-    new_w = round(orig_w * factor)
-    new_h = round(orig_h * factor)
+    new_w = _round_half_up(orig_w * factor)
+    new_h = _round_half_up(orig_h * factor)
     new_w, new_h = _apply_snap(new_w, new_h, state.get("snap", 0))
     new_w, new_h = _clamp_dims(new_w, new_h)
 
@@ -179,8 +191,8 @@ def _apply_longest_side(pil_rgb, pil_mask, state, orig_w, orig_h):
         factor = min(factor, 1.0)
     factor = min(factor, 8.0)
 
-    new_w = round(orig_w * factor)
-    new_h = round(orig_h * factor)
+    new_w = _round_half_up(orig_w * factor)
+    new_h = _round_half_up(orig_h * factor)
     new_w, new_h = _apply_snap(new_w, new_h, state.get("snap", 0))
     new_w, new_h = _clamp_dims(new_w, new_h)
 
@@ -201,8 +213,8 @@ def _apply_scale_factor(pil_rgb, pil_mask, state, orig_w, orig_h):
         factor = min(factor, 1.0)
     factor = min(factor, 8.0)
 
-    new_w = round(orig_w * factor)
-    new_h = round(orig_h * factor)
+    new_w = _round_half_up(orig_w * factor)
+    new_h = _round_half_up(orig_h * factor)
     new_w, new_h = _apply_snap(new_w, new_h, state.get("snap", 0))
     new_w, new_h = _clamp_dims(new_w, new_h)
 
@@ -227,8 +239,8 @@ def _apply_fit_inside(pil_rgb, pil_mask, state, orig_w, orig_h):
         factor = min(factor, 1.0)
     factor = min(factor, 8.0)
 
-    new_w = round(orig_w * factor)
-    new_h = round(orig_h * factor)
+    new_w = _round_half_up(orig_w * factor)
+    new_h = _round_half_up(orig_h * factor)
     new_w, new_h = _apply_snap(new_w, new_h, state.get("snap", 0))
     new_w, new_h = _clamp_dims(new_w, new_h)
 
@@ -266,8 +278,8 @@ def _apply_cover(pil_rgb, pil_mask, state, orig_w, orig_h):
 
     # Step 1: resize the source up/down by `factor` so one dim matches the
     # target and the other overflows.
-    scaled_w = round(orig_w * factor)
-    scaled_h = round(orig_h * factor)
+    scaled_w = _round_half_up(orig_w * factor)
+    scaled_h = _round_half_up(orig_h * factor)
     resample = _pick_resample(state.get("resample", "auto"), factor)
     rgb_scaled = pil_rgb.resize((scaled_w, scaled_h), resample)
     mask_scaled = pil_mask.resize((scaled_w, scaled_h), Image.NEAREST)
@@ -301,12 +313,12 @@ def _apply_match_ratio(pil_rgb, pil_mask, state, orig_w, orig_h):
     if action == "crop":
         if current_aspect > target_aspect:
             # Wider than target — crop sides
-            new_w = round(orig_h * target_aspect)
+            new_w = _round_half_up(orig_h * target_aspect)
             new_h = orig_h
         else:
             # Taller than target — crop top/bottom
             new_w = orig_w
-            new_h = round(orig_w / target_aspect)
+            new_h = _round_half_up(orig_w / target_aspect)
         new_w = max(1, new_w)
         new_h = max(1, new_h)
         left = (orig_w - new_w) // 2
@@ -318,10 +330,10 @@ def _apply_match_ratio(pil_rgb, pil_mask, state, orig_w, orig_h):
         if current_aspect > target_aspect:
             # Wider than target — pad top/bottom
             new_w = orig_w
-            new_h = round(orig_w / target_aspect)
+            new_h = _round_half_up(orig_w / target_aspect)
         else:
             # Taller than target — pad sides
-            new_w = round(orig_h * target_aspect)
+            new_w = _round_half_up(orig_h * target_aspect)
             new_h = orig_h
         new_w = max(1, new_w)
         new_h = max(1, new_h)

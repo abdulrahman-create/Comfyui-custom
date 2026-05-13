@@ -232,11 +232,14 @@ export function previewResize(W, H, state) {
     }
   }
 
-  // Snap post-modifier
+  // Snap post-modifier — FLOOR to nearest multiple, not round-to-nearest.
+  // Floor guarantees the snap step never pushes a dim ABOVE the cap of a
+  // cap-bounded mode (max_mp, longest_side, fit_inside). Mirrors Python's
+  // _apply_snap in node_load_image.py.
   const snap = +state.snap || 0;
   if (snap > 0) {
-    nw = Math.max(8, Math.round(nw / snap) * snap);
-    nh = Math.max(8, Math.round(nh / snap) * snap);
+    nw = Math.max(8, Math.floor(nw / snap) * snap);
+    nh = Math.max(8, Math.floor(nh / snap) * snap);
   }
   nw = Math.max(8, Math.min(nw, 16384));
   nh = Math.max(8, Math.min(nh, 16384));
