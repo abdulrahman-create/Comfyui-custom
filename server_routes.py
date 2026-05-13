@@ -11,6 +11,7 @@ from PIL.PngImagePlugin import PngInfo
 import folder_paths
 
 from .nodes._save_helpers import _build_pnginfo, _safe_prefix
+from .nodes._prompt_reader_helpers import read_prompt_from_image
 
 # --- PORTABLE COMFYUI FIX ---
 # Force rembg to download and read AI models from ComfyUI/models/rembg
@@ -817,3 +818,82 @@ async def api_preview_prepare(request):
         "image_b64": image_data_uri,
         "suggested_filename": suggested_filename,
     })
+
+
+def _is_path_under(child: str, *parents: str) -> bool:
+    """Return True iff `child` is inside ANY of the given parent directories.
+
+    Uses os.path.commonpath so symlink games and ../../ tricks can't escape.
+    Both sides are realpath-ed so case / separator differences on Windows
+    don't slip through.
+    """
+    if not child:
+        return False
+    try:
+        child_real = os.path.realpath(child)
+    except OSError:
+        return False
+    for p in parents:
+        try:
+            parent_real = os.path.realpath(p)
+            if os.path.commonpath([child_real, parent_real]) == parent_real:
+                return True
+        except (OSError, ValueError):
+            continue
+    return False
+
+
+@PromptServer.instance.routes.get("/pixaroma/api/prompt_reader/extract")
+async def api_prompt_reader_extract(request):
+    """Live readout endpoint for Prompt Reader Pixaroma.
+
+    Query: ?filename=<image-name>   (supports ComfyUI's [input] suffix)
+    Resolves the path inside ComfyUI's input directory and returns the
+    extracted positive prompt, or a short message explaining why none
+    could be read. Always 200 OK so the frontend never has to branch on
+    HTTP status - it just renders `text` (or `message`) in the readout.
+
+    Path-traversal hardening: even though `folder_paths.get_annotated_filepath`
+    is the ComfyUI-standard resolver, we additionally realpath the result
+    and require it to live under one of ComfyUI's known input / output /
+    temp directories. Multi-user deployments and tunnelled instances make
+    this defensive check worthwhile (the rest of the route only reads PNG
+    chunks, but a path that looks like an image to PIL could still leak
+    file existence + readability info).
+    """
+    filename = request.query.get("filename", "")
+    if not filename:
+        return web.json_response({
+            "found": False,
+            "message": "No image selected.",
+        })
+    try:
+        image_path = folder_paths.get_annotated_filepath(filename)
+    except Exception:
+        return web.json_response({
+            "found": False,
+            "message": "Image file not found in the input folder.",
+        })
+    if not image_path or not os.path.isfile(image_path):
+        return web.json_response({
+            "found": False,
+            "message": "Image file not found in the input folder.",
+        })
+    allowed_roots = [
+        folder_paths.get_input_directory(),
+        folder_paths.get_output_directory(),
+        folder_paths.get_temp_directory(),
+    ]
+    if not _is_path_under(image_path, *allowed_roots):
+        return web.json_response({
+            "found": False,
+            "message": "Image path is outside the allowed directories.",
+        })
+    try:
+        result = read_prompt_from_image(image_path)
+    except Exception as e:
+        return web.json_response({
+            "found": False,
+            "message": f"Could not read metadata: {e}",
+        })
+    return web.json_response(result)
