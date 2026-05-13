@@ -87,7 +87,9 @@ def _expand_date_tokens(s):
 # just works instead of failing the save.
 _DISALLOWED_CHAR_RE = re.compile(r"[^A-Za-z0-9_\-%]")
 _MULTI_UNDERSCORE_RE = re.compile(r"_+")
-_PREFIX_MAX_LEN = 256
+_PREFIX_MAX_LEN = 256       # input cap (reject obvious garbage early)
+_PREFIX_OUTPUT_MAX = 100    # output cap so pasted paragraphs / multi-line
+                            # text don't blow past Windows MAX_PATH
 
 
 def _sanitize_segment(seg):
@@ -134,7 +136,12 @@ def _safe_prefix(s):
     cleaned_parts = [p for p in cleaned_parts if p]
     if not cleaned_parts:
         return None
-    return "/".join(cleaned_parts)
+    result = "/".join(cleaned_parts)
+    if len(result) > _PREFIX_OUTPUT_MAX:
+        result = result[:_PREFIX_OUTPUT_MAX].rstrip("/_-")
+        if not result:
+            return None
+    return result
 
 
 # ---- workflow metadata embedding ----
