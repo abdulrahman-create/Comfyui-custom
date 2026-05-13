@@ -78,24 +78,40 @@ def _expand_date_tokens(s):
     return _DATE_TOKEN_RE.sub(_sub, s)
 
 
-# ---- prefix validation ----
+# ---- prefix sanitization ----
 
-# Allow native ComfyUI tokens (%year%, %month%, etc.) to pass through
-# validation untouched; get_save_image_path expands them later.
-_SAFE_SEG_RE = re.compile(r"^[a-zA-Z0-9_\-%]+$")
+# Characters allowed verbatim in a segment. '%' is permitted so native
+# ComfyUI tokens like %year% survive and reach folder_paths.get_save_image_path
+# for final expansion. Anything else is replaced with '_' (sanitization,
+# not rejection), so wiring an upstream filename like "Bunny Cubes - Copy.png"
+# just works instead of failing the save.
+_DISALLOWED_CHAR_RE = re.compile(r"[^A-Za-z0-9_\-%]")
+_MULTI_UNDERSCORE_RE = re.compile(r"_+")
 _PREFIX_MAX_LEN = 256
 
 
+def _sanitize_segment(seg):
+    """Replace disallowed chars with '_', collapse repeats, strip edges.
+
+    Caller must reject '..' before calling. Returns "" if nothing usable
+    survives (e.g. segment was all dots / whitespace).
+    """
+    cleaned = _DISALLOWED_CHAR_RE.sub("_", seg)
+    cleaned = _MULTI_UNDERSCORE_RE.sub("_", cleaned)
+    return cleaned.strip("_")
+
+
 def _safe_prefix(s):
-    """Return cleaned prefix string, or None if invalid.
+    """Return sanitized prefix string, or None if input is unrecoverable.
 
-    Pipeline: expand %date:FMT% tokens first, then validate. Allows path
-    segments separated by '/', each matching [A-Za-z0-9_-%] (the '%' is
-    permitted so native ComfyUI tokens like %year% survive validation
-    and reach folder_paths.get_save_image_path for final expansion).
+    Pipeline: expand %date:FMT% tokens, then per segment replace any
+    char outside [A-Za-z0-9_\\-%] with '_', collapse repeated '_', strip
+    leading/trailing '_'. Path segments are separated by '/'.
 
-    Rejects '..', leading '/', empty segments, total length > 256.
-    Backslashes are normalized to forward slashes (Windows convenience).
+    Returns None only for: non-string, empty input, length > 256, leading
+    '/', any segment that's literally '..' (path traversal), any segment
+    that sanitizes to empty. Backslashes are normalized to forward slashes
+    (Windows convenience).
 
     Caller decides what to do with None:
       - Backend node:  `_safe_prefix(s) or "Preview"` (don't crash workflow)
@@ -110,9 +126,12 @@ def _safe_prefix(s):
     if s.startswith("/"):
         return None
     parts = s.split("/")
-    if any(not p or p == ".." or not _SAFE_SEG_RE.match(p) for p in parts):
+    if any(p == ".." for p in parts):
         return None
-    return s
+    cleaned_parts = [_sanitize_segment(p) for p in parts]
+    if any(not p for p in cleaned_parts):
+        return None
+    return "/".join(cleaned_parts)
 
 
 # ---- workflow metadata embedding ----

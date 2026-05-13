@@ -720,7 +720,7 @@ async def api_preview_save(request):
     prefix = _safe_prefix(prefix_raw)
     if not prefix:
         return web.json_response(
-            {"error": "invalid filename_prefix: use [A-Za-z0-9_-] segments separated by '/', no '..'"},
+            {"error": "invalid filename_prefix: must not be empty or contain '..'"},
             status=400,
         )
 
@@ -775,7 +775,7 @@ async def api_preview_prepare(request):
     prefix = _safe_prefix(prefix_raw)
     if not prefix:
         return web.json_response(
-            {"error": "invalid filename_prefix: use [A-Za-z0-9_-] segments separated by '/', no '..'"},
+            {"error": "invalid filename_prefix: must not be empty or contain '..'"},
             status=400,
         )
 
