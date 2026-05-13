@@ -2,12 +2,49 @@
 import { app } from "../../../../scripts/app.js";
 import { decodeAudio, computeAll, encodeWav, getAudioContext } from "./audio_analysis.mjs";
 import { getUpstreamImageUrl, getInlineSourceUrl, uploadSource, getSysInfo } from "./api.mjs";
-import { computeEngineWH } from "./ui.mjs";
 import { createEditorLayout, createButton } from "../framework/index.mjs";
 import { UI_ICON } from "../framework/theme.mjs";
 
 const BRAND_ORANGE = "#f66744";
 const BRAND_RED    = "#e74c3c";
+
+/**
+ * Mirror of `process_aspect()` in nodes/_audio_react_engine.py — given an
+ * aspect_ratio string and the user's stored custom W/H, return {w, h} the
+ * engine will render at (snapped to mult-of-8 the same way Python does).
+ * Returns null for "Original" because that size depends on the upstream
+ * image dimensions which aren't known at cfg-edit time.
+ *
+ * Lives here (NOT in ui.mjs) to keep ui.mjs's import graph one-way into
+ * core.mjs. Putting this helper in ui.mjs and importing it into core.mjs
+ * creates a cycle (core.mjs → ui.mjs → core.mjs) that breaks the mixin
+ * pattern: ui.mjs evaluates against a partially-loaded core.mjs and the
+ * `AudioStudioEditor.prototype.foo = ...` lines fail silently, leaving
+ * the editor class without its UI methods. ui.mjs imports this from
+ * core.mjs instead.
+ */
+export function computeEngineWH(ar, customW, customH) {
+  if (ar === "Original") return null;
+  let bw, bh;
+  if (ar === "Custom (Use Width & Height below)") {
+    bw = customW; bh = customH;
+  } else if (ar.startsWith("Custom Ratio")) {
+    bw = customW;
+    if      (ar.includes("16:9")) bh = Math.floor(bw * 9 / 16);
+    else if (ar.includes("9:16")) bh = Math.floor(bw * 16 / 9);
+    else if (ar.includes("4:3"))  bh = Math.floor(bw * 3 / 4);
+    else if (ar.includes("1:1"))  bh = bw;
+    else                          bh = customH;
+  } else {
+    const [wStr, hStr] = (ar.split(" ")[0] || "").split("x");
+    const w = parseInt(wStr, 10), h = parseInt(hStr, 10);
+    if (Number.isFinite(w) && Number.isFinite(h)) { bw = w; bh = h; }
+    else { bw = customW; bh = customH; }
+  }
+  bw = Math.floor(bw / 8) * 8;
+  bh = Math.floor(bh / 8) * 8;
+  return { w: bw, h: bh };
+}
 
 /**
  * AudioReact specific styles. The Pixaroma framework (createEditorLayout)
