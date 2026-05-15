@@ -36,7 +36,14 @@ app.registerExtension({
     const _origConfigure = nodeType.prototype.onConfigure;
     nodeType.prototype.onConfigure = function (info) {
       const r = _origConfigure?.apply(this, arguments);
-      queueMicrotask(() => restoreFromProperties(this));
+      // Run normalize synchronously - by the time _origConfigure returns,
+      // node.properties and node.inputs are already restored. Synchronous
+      // call means the cleanup happens BEFORE the next paint frame, so
+      // there's no visible flash of the 32 raw INPUT_TYPES slots that LG
+      // creates before configure() applies the saved state.
+      // (Vue Compat #8's queueMicrotask requirement is for onNodeCreated,
+      // not onConfigure - in onConfigure, configure has already finished.)
+      restoreFromProperties(this);
       return r;
     };
 
