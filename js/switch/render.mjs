@@ -11,6 +11,11 @@
 // same horizontal band as the slot dot.
 
 import { app } from "/scripts/app.js";
+// Cyclic with core.mjs (which imports ROW_H/TOP_PAD from here). Safe in ESM
+// because both sides only consume the binding inside functions, never at
+// module top level - if you ever move usage to top level, this will silently
+// resolve to undefined.
+import { getUpstreamType } from "./core.mjs";
 
 export const BRAND = "#f66744";
 export const ROW_H = 20;          // matches LiteGraph NODE_SLOT_HEIGHT
@@ -144,36 +149,22 @@ function drawToggle(ctx, nodeWidth, slotIdx0, on, disabled) {
 }
 
 // Draw the label text for a row. slotIdx0 = 0-based.
-function drawLabel(ctx, nodeWidth, slotIdx0, text, dim) {
+// placeholderType: the upstream type name (e.g. "MODEL") shown when the row
+// is connected but the user has not typed a custom label. Falls back to
+// "Label..." in placeholder grey if no upstream type can be resolved.
+function drawLabel(ctx, nodeWidth, slotIdx0, text, dim, placeholderType) {
   const cy = rowCenterY(slotIdx0);
   const lx = DOT_GUTTER + 4;
-  const r = labelRect(nodeWidth, slotIdx0);
   const maxW = nodeWidth - PAD_RIGHT - TOGGLE_W - 8 - lx;
 
   ctx.save();
 
-  // Connected-row affordance: paint a subtle rounded-rect outline so the
-  // label area looks like a clickable input field. Dimmed (empty trailing)
-  // rows skip this so they don't suggest a typeable affordance where
-  // there's no slot to label yet.
-  if (!dim) {
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.08)";
-    ctx.lineWidth = 1;
-    const radius = 3;
-    const x = r.x;
-    const y = r.y + 2;
-    const w = r.w;
-    const h = r.h - 4;
-    ctx.beginPath();
-    if (ctx.roundRect) ctx.roundRect(x, y, w, h, radius);
-    else ctx.rect(x, y, w, h);
-    ctx.stroke();
-  }
-
   if (dim) ctx.globalAlpha = 0.45;
-  // Empty-but-connected rows show "Label..." in placeholder grey;
-  // user-set text shows in the normal text color.
   const hasUserText = text && text.length > 0;
+  // "*" upstream is the LiteGraph wildcard - shows as "*" which means nothing
+  // to the user, so we fall through to the generic placeholder instead.
+  const usefulType =
+    placeholderType && placeholderType !== "*" ? placeholderType : null;
   let display, color;
   if (hasUserText) {
     display = text;
@@ -181,9 +172,12 @@ function drawLabel(ctx, nodeWidth, slotIdx0, text, dim) {
   } else if (dim) {
     display = "(empty)";
     color = "#666";
+  } else if (usefulType) {
+    display = usefulType;
+    color = "#d8d8d8"; // normal text color - reads like a real label
   } else {
     display = "Label...";
-    color = "#5a5a5a"; // dimmer than canvas grey - "placeholder" feel
+    color = "#5a5a5a"; // last-resort placeholder grey
   }
 
   ctx.fillStyle = color;
@@ -220,7 +214,8 @@ export function drawSwitchRows(node, ctx) {
     const on = connected && activeIndex === slotIdx1;
 
     const labelTxt = labels[slotIdx1] || "";
-    drawLabel(ctx, w, i, labelTxt, isTrailing);
+    const placeholderType = connected ? getUpstreamType(node, slotIdx1) : null;
+    drawLabel(ctx, w, i, labelTxt, isTrailing, placeholderType);
     drawToggle(ctx, w, i, on, isTrailing);
   }
 }

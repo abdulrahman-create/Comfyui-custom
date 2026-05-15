@@ -188,37 +188,34 @@ export function restoreFromProperties(node) {
   normalizeSlots(node);
 }
 
-// Update the output slot's type to match the active input's upstream.
-// Called from handleConnect, handleDisconnect, normalizeSlots, and the
-// toggle-click handler in index.js. Falls back to "*" when no row is
-// active or the upstream cannot be resolved.
+// Resolve the upstream output type wired to a given 1-based slot.
+// Returns the type string (e.g. "MODEL", "IMAGE") or null when the slot is
+// not connected or the link cannot be traced. Used by updateOutputType and
+// by drawSwitchRows for the default-label placeholder.
 // Vue Compat #3: graph.links may be a Map - both access patterns tried.
-export function updateOutputType(node) {
-  const state = readState(node);
-  const out = node.outputs?.[0];
-  if (!out) return;
-  const idx = state.activeIndex;
-  if (!idx) {
-    out.type = "*";
-    return;
-  }
-  const slot = node.inputs?.[idx - 1];
+export function getUpstreamType(node, slotIdx1) {
+  const slot = node.inputs?.[slotIdx1 - 1];
   const linkId = slot?.link;
-  if (linkId == null) {
-    out.type = "*";
-    return;
-  }
-  // Vue Compat #3: graph.links may be a Map.
+  if (linkId == null) return null;
   let link = node.graph?.links?.[linkId];
   if (!link && typeof node.graph?.links?.get === "function") {
     link = node.graph.links.get(linkId);
   }
-  if (!link) {
-    out.type = "*";
-    return;
-  }
+  if (!link) return null;
   const upstream = node.graph?.getNodeById?.(link.origin_id);
   const upType = upstream?.outputs?.[link.origin_slot]?.type;
+  return upType || null;
+}
+
+// Update the output slot's type to match the active input's upstream.
+// Called from handleConnect, handleDisconnect, normalizeSlots, and the
+// toggle-click handler in index.js. Falls back to "*" when no row is
+// active or the upstream cannot be resolved.
+export function updateOutputType(node) {
+  const state = readState(node);
+  const out = node.outputs?.[0];
+  if (!out) return;
+  const upType = state.activeIndex ? getUpstreamType(node, state.activeIndex) : null;
   out.type = upType || "*";
 }
 

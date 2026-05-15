@@ -15,6 +15,8 @@
 //   Esc          -> cancel: no change.
 //   Opening another editor auto-commits the previous one.
 
+import { app } from "/scripts/app.js";
+
 const STATE_PROP = "switchState";
 const BRAND = "#f66744";
 
@@ -57,6 +59,16 @@ export function openLabelEditor(node, slotIdx /* 1-based */, rect) {
 
   const initial = node.properties?.[STATE_PROP]?.labels?.[slotIdx] || "";
 
+  // Match the DOM input's typography to the canvas-painted label.
+  // The canvas paints at 12px in graph units, which becomes (12 * scale) px on
+  // screen because the canvas is zoom-scaled. rect.x/y/w/h are already in
+  // screen pixels (multiplied by scale in labelScreenRect), so without scaling
+  // the font we end up with a big box containing tiny text at zoom > 1.
+  const scale = app.canvas?.ds?.scale || 1;
+  const fontPx = 12 * scale;
+  const padX = 6 * scale;
+  const borderPx = Math.max(1, 2 * scale);
+
   const input = document.createElement("input");
   input.type = "text";
   input.value = initial;
@@ -70,10 +82,10 @@ export function openLabelEditor(node, slotIdx /* 1-based */, rect) {
     "z-index: 10000",
     "background: #1f1f1f",
     "color: #d8d8d8",
-    `border: 2px solid ${BRAND}`,
+    `border: ${borderPx}px solid ${BRAND}`,
     "border-radius: 3px",
-    "padding: 0 6px",
-    "font: 12px 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif",
+    `padding: 0 ${padX}px`,
+    `font: ${fontPx}px 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif`,
     "outline: none",
     "box-sizing: border-box",
     "line-height: 1",
