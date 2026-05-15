@@ -1,7 +1,7 @@
 import { app } from "/scripts/app.js";
 import {
   setupNode, restoreFromProperties, readState,
-  handleConnect, handleDisconnect,
+  handleConnect, handleDisconnect, updateOutputType,
   STATE_PROP,
 } from "./core.mjs";
 import { drawSwitchRows, hitToggle } from "./render.mjs";
@@ -116,6 +116,7 @@ app.registerExtension({
                 // only one row can be active, so there's nothing to switch to).
                 if (state.activeIndex !== slotIdx1) {
                   state.activeIndex = slotIdx1;
+                  updateOutputType(this);
                   app.graph?.setDirtyCanvas?.(true, true);
                 }
               }

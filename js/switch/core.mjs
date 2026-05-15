@@ -126,6 +126,7 @@ export function normalizeSlots(node) {
     state.activeIndex = firstConnected; // 0 if nothing connected
   }
 
+  updateOutputType(node);
   app.graph?.setDirtyCanvas?.(true, true);
 }
 
@@ -162,7 +163,40 @@ export function restoreFromProperties(node) {
   normalizeSlots(node);
 }
 
-// Called when a wire is connected (slotIdx1 = 1-based slot that just got connected).
+// Update the output slot's type to match the active input's upstream.
+// Called from handleConnect, handleDisconnect, normalizeSlots, and the
+// toggle-click handler in index.js. Falls back to "*" when no row is
+// active or the upstream cannot be resolved.
+// Vue Compat #3: graph.links may be a Map - both access patterns tried.
+export function updateOutputType(node) {
+  const state = readState(node);
+  const out = node.outputs?.[0];
+  if (!out) return;
+  const idx = state.activeIndex;
+  if (!idx) {
+    out.type = "*";
+    return;
+  }
+  const slot = node.inputs?.[idx - 1];
+  const linkId = slot?.link;
+  if (linkId == null) {
+    out.type = "*";
+    return;
+  }
+  // Vue Compat #3: graph.links may be a Map.
+  let link = node.graph?.links?.[linkId];
+  if (!link && typeof node.graph?.links?.get === "function") {
+    link = node.graph.links.get(linkId);
+  }
+  if (!link) {
+    out.type = "*";
+    return;
+  }
+  const upstream = node.graph?.getNodeById?.(link.origin_id);
+  const upType = upstream?.outputs?.[link.origin_slot]?.type;
+  out.type = upType || "*";
+}
+
 export function handleConnect(node, slotIdx1) {
   const state = readState(node);
   state.activeIndex = slotIdx1;
@@ -174,6 +208,7 @@ export function handleConnect(node, slotIdx1) {
     node.size[1] = computeNodeHeight(state.visibleCount);
   }
 
+  updateOutputType(node);
   app.graph?.setDirtyCanvas?.(true, true);
 }
 
@@ -240,6 +275,8 @@ export function handleDisconnect(node, slotIdx /* 1-based */) {
   // 6. Update visibleCount and resize.
   state.visibleCount = node.inputs?.length || 1;
   node.size[1] = computeNodeHeight(state.visibleCount);
+
+  updateOutputType(node);
 
   // 7. Redraw.
   node.graph?.setDirtyCanvas?.(true, true);
