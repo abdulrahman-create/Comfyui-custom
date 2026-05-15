@@ -86,12 +86,12 @@ export function labelScreenRect(node, slotIdx1) {
   const slotIdx0 = slotIdx1 - 1;
   const r = labelRect(node.size?.[0] || 260, slotIdx0);
 
-  // Inset the overlay vertically so it sits within the row with a small margin.
-  const inset = 4;
+  // Use the full row rect for the overlay so it visually matches the
+  // canvas-painted label row.
   const nodeX = r.x;
-  const nodeY = r.y + inset;
+  const nodeY = r.y;
   const nodeW = r.w;
-  const nodeH = r.h - inset * 2;
+  const nodeH = r.h;
 
   const ds = app.canvas?.ds;
   const scale = ds?.scale || 1;
