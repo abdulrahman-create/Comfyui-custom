@@ -24,8 +24,7 @@ const PAD_RIGHT = 70; // right-edge margin before toggle - wide enough to clear
                       // LG's output column on row 1 (output label + dot ~70 px)
 const DOT_GUTTER = 14; // left space reserved for the input dot
 
-// Exported so editor.mjs can position the DOM input overlay.
-export const TOGGLE_RIGHT_PAD = PAD_RIGHT;
+const TOGGLE_RIGHT_PAD = PAD_RIGHT; // reserved for future use; not exported
 
 // Row Y center in node-body-local coordinates (0-based slot index).
 export function rowCenterY(slotIdx0) {

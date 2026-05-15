@@ -5,7 +5,7 @@ import {
   STATE_PROP,
 } from "./core.mjs";
 import { drawSwitchRows, hitToggle, hitLabel, labelScreenRect } from "./render.mjs";
-import { openLabelEditor } from "./editor.mjs";
+import { openLabelEditor, cancelEditorForNode } from "./editor.mjs";
 
 // Switch Pixaroma - dynamic N-to-1 switch with per-row toggles.
 // Rendering follows the Image Compare Pixaroma pattern: onDrawForeground
@@ -31,6 +31,15 @@ app.registerExtension({
       // Defer restore so node.properties is populated from workflow JSON
       // before we read it (Vue Compat #8).
       queueMicrotask(() => restoreFromProperties(this));
+    };
+
+    // ── Removal ──────────────────────────────────────────────────────────
+    // Cancel any open label editor so the DOM <input> is not left orphaned
+    // in document.body after the node is deleted.
+    const _origRemoved = nodeType.prototype.onRemoved;
+    nodeType.prototype.onRemoved = function () {
+      cancelEditorForNode(this);
+      return _origRemoved?.apply(this, arguments);
     };
 
     // ── Configure (workflow load / tab switch) ────────────────────────────

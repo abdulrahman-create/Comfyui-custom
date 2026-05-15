@@ -26,16 +26,10 @@ function commit(state) {
   const { node, slotIdx, input } = state;
   if (!input.isConnected) { cleanup(state); return; }
   const value = input.value.trim();
-  if (!node.properties[STATE_PROP]) node.properties[STATE_PROP] = {};
-  const labels = node.properties[STATE_PROP].labels;
-  if (!labels) {
-    node.properties[STATE_PROP].labels = {};
-  }
-  if (value) {
-    node.properties[STATE_PROP].labels[slotIdx] = value;
-  } else {
-    delete node.properties[STATE_PROP].labels[slotIdx];
-  }
+  const sw = node.properties[STATE_PROP] || (node.properties[STATE_PROP] = {});
+  if (!sw.labels) sw.labels = {};
+  if (value) sw.labels[slotIdx] = value;
+  else delete sw.labels[slotIdx];
   cleanup(state);
   node.graph?.setDirtyCanvas?.(true, true);
 }
@@ -48,7 +42,9 @@ function cancel(state) {
 
 function cleanup(state) {
   if (!state) return;
-  if (state.keyHandler) state.input.removeEventListener("keydown", state.keyHandler);
+  if (state.windowKeyHandler) {
+    window.removeEventListener("keydown", state.windowKeyHandler, true);
+  }
   if (state.blurHandler) state.input.removeEventListener("blur", state.blurHandler);
   state.input.remove();
   if (activeEditor === state) activeEditor = null;
@@ -88,10 +84,14 @@ export function openLabelEditor(node, slotIdx /* 1-based */, rect) {
 
   const state = { node, slotIdx, input, _committed: false };
 
-  state.keyHandler = (e) => {
-    // stopPropagation so canvas shortcuts (pan, undo, etc.) don't fire while
-    // the user is typing.
-    e.stopPropagation();
+  // Window-capture keydown handler: fires BEFORE ComfyUI's canvas listeners
+  // so Ctrl+Z (undo), arrow keys, R/T (rotate/move shortcuts), etc. cannot
+  // escape to the canvas while the user is typing a label.
+  // Only intercepts events whose target is our input element.
+  // (CLAUDE.md Note Pixaroma Pattern #5 / Load Image Pixaroma Pattern #6)
+  state.windowKeyHandler = (e) => {
+    if (e.target !== input) return;
+    e.stopImmediatePropagation();
     if (e.key === "Enter") {
       e.preventDefault();
       commit(state);
@@ -104,8 +104,17 @@ export function openLabelEditor(node, slotIdx /* 1-based */, rect) {
   // blur fires when the user clicks away or tabs out - treat as a commit.
   state.blurHandler = () => commit(state);
 
-  input.addEventListener("keydown", state.keyHandler);
+  window.addEventListener("keydown", state.windowKeyHandler, true); // capture phase
   input.addEventListener("blur", state.blurHandler);
 
   activeEditor = state;
+}
+
+// Cancel the open label editor for a specific node, if any.
+// Called from onRemoved in index.js so that deleting a node while its
+// label editor is open removes the dangling DOM <input>.
+export function cancelEditorForNode(node) {
+  if (activeEditor && activeEditor.node === node) {
+    cancel(activeEditor);
+  }
 }
