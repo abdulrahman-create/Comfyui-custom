@@ -8,14 +8,7 @@ Sound only - no desktop notification banner. See docs spec for full design.
 """
 import os
 
-
-# AnyType: bypass ComfyUI's strict type matching so any wire type connects.
-class AnyType(str):
-    def __ne__(self, other):
-        return False
-
-
-ANY = AnyType("*")
+from ._type_helpers import ANY
 
 # Sound folder lives at <pkg-root>/assets/sounds/. node_notify.py is at
 # <pkg-root>/nodes/, so dirname(dirname(__file__)) walks up to <pkg-root>.
