@@ -173,6 +173,9 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
+### **May 15, 2026 (1.3.28)**
+- **NEW: Switch Pixaroma** - a universal multi-input switch for any data type. Connect models, images, prompts, masks, audio, latents, anything you want, and pick which one flows through with a single click on its toggle. The node starts with one input and grows on its own as you connect more cables (up to 32 rows). Each row gets a label that auto-fills with the type name (MODEL, IMAGE, CLIP...) so you can tell what is wired where at a glance; click the label to type your own name (for example "main checkpoint" or "alt prompt"), clear it and press Enter to revert to the type name. Only one input can be active at a time, lit up in Pixaroma orange. Disconnect the active row and the switch automatically moves to the next available one so your workflow doesn't break. All settings save with your workflow.
+
 ### **May 13, 2026 (1.3.27)**
 - **NEW: Prompt Reader Pixaroma** - drop a PNG that was generated with ComfyUI (or Automatic1111 / Forge) onto the node and instantly see the **positive prompt** that was saved inside its metadata. No image preview, just the text. One orange **Copy** button puts the prompt on your clipboard; the **STRING output** wires straight into CLIPTextEncode so you can re-use the prompt without retyping. The reader walks back through chained text nodes (ConditioningCombine, StringConcatenate, SDXL dual-text encoders) so workflows with complex prompt structures still work, **and** it also follows the trail through earlier Prompt Reader Pixaroma nodes when an image was generated from a prompt loaded out of another image. If the image has no prompt (JPG, screenshot, or a PNG whose metadata was stripped), you get a short clear message instead of a silent fail.
 
