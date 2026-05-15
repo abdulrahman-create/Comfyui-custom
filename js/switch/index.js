@@ -72,25 +72,22 @@ app.registerExtension({
 
     // ── Connection changes ────────────────────────────────────────────────
     // Skip handleConnect / handleDisconnect while _pixSwitchConfiguring is
-    // set. During configure(), LiteGraph replays every connected slot by
-    // calling onConnectionsChange(INPUT, idx, true, link, slot) — those are
-    // indistinguishable from live user connections (ioSlot.link is set for
-    // both). Without the flag guard, handleConnect fires for each replayed
-    // slot and the last one processed overwrites the saved activeIndex with
-    // whatever slot LG happened to restore last, destroying the user's saved
-    // choice on every workflow reload.
+    // set (workflow load and Ctrl+Z undo replay). Outside configure,
+    // isConnected is the canonical signal: true means a fresh user wire just
+    // landed, false means a user wire just left.
     //
-    // When the flag is false (live interaction after configure finishes),
-    // the behaviour is unchanged:
-    //   connect  (live) : ioSlot.link != null  -> handleConnect
-    //   disconnect(live): isConnected=false    -> handleDisconnect
+    // We no longer gate on ioSlot.link != null. That check was a stale
+    // defense from before _pixSwitchConfiguring existed. It now actively
+    // breaks the grow-on-connect behaviour: LiteGraph sets ioSlot.link just
+    // AFTER firing the event for a new wire, so the gate was silently
+    // skipping handleConnect and no new empty trailing row appeared.
     const _origOnConnectionsChange = nodeType.prototype.onConnectionsChange;
     nodeType.prototype.onConnectionsChange = function (
       type, slotIndex, isConnected, link, ioSlot
     ) {
       if (type === 1 /* INPUT */ && !this._pixSwitchConfiguring) {
-        if (ioSlot?.link != null) handleConnect(this, slotIndex + 1);
-        else if (!isConnected) handleDisconnect(this, slotIndex + 1);
+        if (isConnected) handleConnect(this, slotIndex + 1);
+        else handleDisconnect(this, slotIndex + 1);
       }
       return _origOnConnectionsChange?.apply(this, arguments);
     };
