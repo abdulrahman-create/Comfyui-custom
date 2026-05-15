@@ -48,6 +48,23 @@ _COND_LINK_KEYS = frozenset({
     "cond", "positive", "from", "input",
 })
 _SAMPLER_RE = re.compile(r"sampler", re.IGNORECASE)
+
+# Mux / switch nodes: at workflow-run time these route ONE of several inputs
+# to their output. The walker has to mirror the same selection logic, or it
+# stops at the switch and the prompt comes back empty even though the wired
+# upstream text node IS in the workflow JSON.
+#
+# Selection strategy per node class:
+#   PixaromaSwitch         - inputs.SwitchState is a string "1".."32" set by
+#                            the JS app.graphToPrompt hook; follow input_{N}.
+#   Any Switch (rgthree)   - no widget; rgthree picks the first non-None
+#                            any_NN at run-time. Mirror by scanning any_NN
+#                            in numeric order and following the first one
+#                            that has a wired link.
+_MUX_PIX_SWITCH = "PixaromaSwitch"
+_MUX_RGTHREE_ANY_SWITCH = "Any Switch (rgthree)"
+_RGTHREE_ANY_KEY_RE = re.compile(r"^any_(\d+)$")
+
 _MAX_WALK_DEPTH = 24
 # Chase depth caps how many PixaromaPromptReader hops we follow when an image
 # was generated from a workflow that itself contained a PromptReader pointing
@@ -109,6 +126,47 @@ def _chase_pixaroma_prompt_reader(node: dict, chase_depth: int) -> Optional[str]
     return None
 
 
+def _pix_switch_active_link(inputs: dict):
+    """Return the upstream node-id wired to the active row of a PixaromaSwitch.
+
+    SwitchState is injected by js/switch/index.js's app.graphToPrompt hook as
+    a string "1".."32". A wired input is stored as [origin_id, origin_slot].
+    Returns None when nothing is connected on the active row.
+    """
+    state = inputs.get("SwitchState")
+    try:
+        idx = int(str(state)) if state is not None else 0
+    except (TypeError, ValueError):
+        idx = 0
+    if idx < 1:
+        return None
+    wire = inputs.get(f"input_{idx}")
+    if isinstance(wire, list) and len(wire) >= 1:
+        return wire[0]
+    return None
+
+
+def _rgthree_any_switch_active_link(inputs: dict):
+    """Return the upstream node-id wired to rgthree Any Switch's active input.
+
+    rgthree's Any Switch has no widget: at run-time it picks the first non-
+    None any_NN value. The walker mirrors that by scanning any_NN keys in
+    numeric order and returning the first one that has a wired link.
+    Returns None when nothing is connected.
+    """
+    candidates = []
+    for key, v in inputs.items():
+        m = _RGTHREE_ANY_KEY_RE.match(key)
+        if not m:
+            continue
+        if isinstance(v, list) and len(v) >= 1:
+            candidates.append((int(m.group(1)), v[0]))
+    if not candidates:
+        return None
+    candidates.sort(key=lambda t: t[0])
+    return candidates[0][1]
+
+
 def _walk_for_text(
     node_id: str,
     nodes: dict,
@@ -146,6 +204,22 @@ def _walk_for_text(
 
     inputs = node.get("inputs") or {}
     if not isinstance(inputs, dict):
+        return
+
+    # Mux / switch nodes: pick the active input and recurse through it. If we
+    # fall through to the per-input loop instead, the switch's own input names
+    # (input_1, any_01, ...) don't match the text/cond heuristics and the
+    # walker stops cold at the switch.
+    cls = node.get("class_type")
+    if cls == _MUX_PIX_SWITCH:
+        link = _pix_switch_active_link(inputs)
+        if link is not None:
+            _walk_for_text(link, nodes, captured, visited, depth + 1, chase_depth)
+        return
+    if cls == _MUX_RGTHREE_ANY_SWITCH:
+        link = _rgthree_any_switch_active_link(inputs)
+        if link is not None:
+            _walk_for_text(link, nodes, captured, visited, depth + 1, chase_depth)
         return
 
     # Single pass over inputs. For each one, classify as text-carrying
