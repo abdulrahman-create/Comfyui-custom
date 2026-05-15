@@ -100,6 +100,29 @@ export function normalizeSlots(node) {
   node.size[0] = Math.max(node.size[0] || 0, DEFAULT_W);
   node.size[1] = computeNodeHeight(state.visibleCount);
 
+  // Auto-recover an active slot: if state.activeIndex doesn't point at a
+  // currently-connected slot, fall back to the first connected slot. This
+  // covers two cases:
+  //   1. Workflow loaded with all toggles off (saved state had activeIndex=0
+  //      or the save was made before the toggle was clicked).
+  //   2. The saved activeIndex points at a slot whose wire is now broken.
+  // If no slot is connected at all, leave activeIndex=0 (sentinel meaning
+  // "no input connected"; Python's pick() returns a clear error).
+  const currentActive = state.activeIndex;
+  const activePoints = currentActive >= 1
+    && currentActive <= node.inputs.length
+    && node.inputs[currentActive - 1]?.link != null;
+  if (!activePoints) {
+    let firstConnected = 0;
+    for (let i = 0; i < node.inputs.length; i++) {
+      if (node.inputs[i]?.link != null) {
+        firstConnected = i + 1;
+        break;
+      }
+    }
+    state.activeIndex = firstConnected; // 0 if nothing connected
+  }
+
   app.graph?.setDirtyCanvas?.(true, true);
 }
 
