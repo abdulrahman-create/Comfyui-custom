@@ -374,6 +374,35 @@ ComfyUI's new Vue 3 frontend introduces several behavioral differences from the 
 
     Bug class this prevents: spending 5+ commits trying to make custom widgets align with slot dots, only to discover the entire approach is wrong for this LG fork.
 
+17. **`LGraphNode.configure()` fires `onConnectionsChange` for every connected slot during workflow load and Ctrl+Z undo. Any patched `onConnectionsChange` handler that mutates node state WILL have that state overwritten on every load.** Verified empirically in `api-D9vMMk51.js` step 5 of configure: `this.onConnectionsChange?.(M.INPUT, idx, true, link, slot)` is called for EVERY input slot that has a saved link. Bug class this causes: a custom node that auto-activates the just-connected row inside `handleConnect` (`state.activeIndex = slotIdx`) will see its saved active selection silently overwritten to whichever slot LG happens to restore last during configure replay. Same risk for anything else stored on `node.properties` that `handleConnect` / `handleDisconnect` writes.
+
+    The fix is a configuring-flag gate. Set `node._<nodeId>Configuring = true` at the start of the patched `onConfigure` (before `_origConfigure.apply`), clear it in a `finally` block after the state-restore call returns, and in `onConnectionsChange` skip the user-intent state-mutation calls when the flag is true:
+
+    ```js
+    nodeType.prototype.onConfigure = function (info) {
+      this._pixSwitchConfiguring = true;
+      try {
+        const r = _origConfigure?.apply(this, arguments);
+        restoreFromProperties(this);  // synchronous; properties already merged in step 3
+        return r;
+      } finally {
+        this._pixSwitchConfiguring = false;
+      }
+    };
+
+    nodeType.prototype.onConnectionsChange = function (type, slotIndex, isConnected, link, ioSlot) {
+      if (type === INPUT && !this._pixSwitchConfiguring) {
+        if (isConnected && ioSlot?.link != null) handleConnect(this, slotIndex + 1);
+        else if (!isConnected) handleDisconnect(this, slotIndex + 1);
+      }
+      return _origOnConnectionsChange?.apply(this, arguments);
+    };
+    ```
+
+    The `try/finally` matters because `restoreFromProperties` (or anything that paints, dispatches sub-events, etc) might throw; without `finally` the flag would stick true forever and live user wires would silently no-op on the affected node. Reference: `js/switch/index.js` for the working implementation, plus Switch WH and Resolution which have NO `onConnectionsChange` handler at all (they have fixed slots, not dynamic) and are inherently immune to this bug. LiteGraph's configure does MERGE `data.properties` into `this.properties` key-by-key (step 3 in the bundle) so saved property values ARE restored correctly; the silent corruption comes purely from the post-restore connection-replay step.
+
+    Bug class this prevents: every save+reload of the affected node resets state.activeIndex (or whatever else `handleConnect` mutates) to a deterministic-but-wrong value (usually the last connected slot in iteration order, not the user's saved choice). User-visible: "save with row 2 active, reload, row 1 is active. Other workflows also got reset somehow." If you hear that, look at whether the node's `onConnectionsChange` handler mutates state without a configuring-flag gate.
+
 ### ComfyUI Settings Integration
 Pixaroma registers user-facing settings in ComfyUI's Settings panel using the `settings` array inside `app.registerExtension()`. Settings appear under the **👑 Pixaroma** category.
 
