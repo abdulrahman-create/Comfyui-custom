@@ -35,26 +35,54 @@ app.registerExtension({
     // ── Configure (workflow load / tab switch) ────────────────────────────
     const _origConfigure = nodeType.prototype.onConfigure;
     nodeType.prototype.onConfigure = function (info) {
-      const r = _origConfigure?.apply(this, arguments);
-      // Run normalize synchronously - by the time _origConfigure returns,
-      // node.properties and node.inputs are already restored. Synchronous
-      // call means the cleanup happens BEFORE the next paint frame, so
-      // there's no visible flash of the 32 raw INPUT_TYPES slots that LG
-      // creates before configure() applies the saved state.
-      // (Vue Compat #8's queueMicrotask requirement is for onNodeCreated,
-      // not onConfigure - in onConfigure, configure has already finished.)
-      restoreFromProperties(this);
-      return r;
+      // Gate onConnectionsChange during configure so that LiteGraph's
+      // connection-replay calls don't overwrite the saved activeIndex.
+      // LGraphNode.configure() fires onConnectionsChange(INPUT, idx, true,
+      // link, slot) for every restored connected slot - those calls would
+      // route through handleConnect and unconditionally set
+      // state.activeIndex = slotIdx, clobbering the value we're about to
+      // restore from node.properties. The flag is cleared in `finally` so it
+      // is always reset even if configure or restoreFromProperties throws.
+      this._pixSwitchConfiguring = true;
+      try {
+        const r = _origConfigure?.apply(this, arguments);
+        // Run normalize synchronously - by the time _origConfigure returns,
+        // node.properties and node.inputs are already restored. Synchronous
+        // call means the cleanup happens BEFORE the next paint frame, so
+        // there's no visible flash of the 32 raw INPUT_TYPES slots that LG
+        // creates before configure() applies the saved state.
+        // (Vue Compat #8's queueMicrotask requirement is for onNodeCreated,
+        // not onConfigure - in onConfigure, configure has already finished.)
+        restoreFromProperties(this);
+        return r;
+      } finally {
+        this._pixSwitchConfiguring = false;
+      }
     };
 
     // ── Connection changes ────────────────────────────────────────────────
+    // Skip handleConnect / handleDisconnect while _pixSwitchConfiguring is
+    // set. During configure(), LiteGraph replays every connected slot by
+    // calling onConnectionsChange(INPUT, idx, true, link, slot) — those are
+    // indistinguishable from live user connections (ioSlot.link is set for
+    // both). Without the flag guard, handleConnect fires for each replayed
+    // slot and the last one processed overwrites the saved activeIndex with
+    // whatever slot LG happened to restore last, destroying the user's saved
+    // choice on every workflow reload.
+    //
+    // When the flag is false (live interaction after configure finishes),
+    // the behaviour is unchanged:
+    //   connect  (live) : ioSlot.link != null  -> handleConnect
+    //   disconnect(live): isConnected=false    -> handleDisconnect
+    const _origOnConnectionsChange = nodeType.prototype.onConnectionsChange;
     nodeType.prototype.onConnectionsChange = function (
       type, slotIndex, isConnected, link, ioSlot
     ) {
-      if (type === 1 /* INPUT */) {
-        if (isConnected) handleConnect(this, slotIndex + 1);
-        else handleDisconnect(this, slotIndex + 1);
+      if (type === 1 /* INPUT */ && !this._pixSwitchConfiguring) {
+        if (ioSlot?.link != null) handleConnect(this, slotIndex + 1);
+        else if (!isConnected) handleDisconnect(this, slotIndex + 1);
       }
+      return _origOnConnectionsChange?.apply(this, arguments);
     };
 
     // ── Drawing (Image Compare pattern) ──────────────────────────────────
