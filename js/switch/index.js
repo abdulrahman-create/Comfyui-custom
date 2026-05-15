@@ -4,7 +4,8 @@ import {
   handleConnect, handleDisconnect, updateOutputType,
   STATE_PROP,
 } from "./core.mjs";
-import { drawSwitchRows, hitToggle } from "./render.mjs";
+import { drawSwitchRows, hitToggle, hitLabel, labelScreenRect } from "./render.mjs";
+import { openLabelEditor } from "./editor.mjs";
 
 // Switch Pixaroma - dynamic N-to-1 switch with per-row toggles.
 // Rendering follows the Image Compare Pixaroma pattern: onDrawForeground
@@ -104,6 +105,8 @@ app.registerExtension({
         const inputs = this.inputs;
         if (inputs) {
           const w = this.size[0];
+
+          // Toggle hit-test takes priority over label.
           for (let i = 0; i < inputs.length; i++) {
             if (hitToggle(pos, w, i)) {
               const slotIdx1 = i + 1;
@@ -121,6 +124,15 @@ app.registerExtension({
                 }
               }
               return true; // consume the click even if no-op
+            }
+          }
+
+          // Label hit-test: click anywhere on the label area opens the inline editor.
+          for (let i = 0; i < inputs.length; i++) {
+            if (hitLabel(pos, w, i)) {
+              const rect = labelScreenRect(this, i + 1); // 1-based
+              openLabelEditor(this, i + 1, rect);
+              return true;
             }
           }
         }

@@ -10,6 +10,8 @@
 // Our row paintings use the same formula so labels/toggles sit on the
 // same horizontal band as the slot dot.
 
+import { app } from "/scripts/app.js";
+
 export const BRAND = "#f66744";
 export const ROW_H = 20;          // matches LiteGraph NODE_SLOT_HEIGHT
 export const TOP_PAD = 4;         // matches LiteGraph body top-padding
@@ -18,9 +20,12 @@ const TOGGLE_W = 28;
 const TOGGLE_H = 14;
 const TOGGLE_R = 7;   // pill corner radius
 const KNOB_R = 4;     // inner knob radius
-const PAD_RIGHT = 70; // right-edge margin before toggle — wide enough to clear
+const PAD_RIGHT = 70; // right-edge margin before toggle - wide enough to clear
                       // LG's output column on row 1 (output label + dot ~70 px)
 const DOT_GUTTER = 14; // left space reserved for the input dot
+
+// Exported so editor.mjs can position the DOM input overlay.
+export const TOGGLE_RIGHT_PAD = PAD_RIGHT;
 
 // Row Y center in node-body-local coordinates (0-based slot index).
 export function rowCenterY(slotIdx0) {
@@ -49,6 +54,58 @@ function inside(pos, r) {
 // Exported for hit-testing in index.js.
 export function hitToggle(pos, nodeWidth, slotIdx0) {
   return inside(pos, toggleRect(nodeWidth, slotIdx0));
+}
+
+// The rect of the label area for a given slot (body-local coords).
+// slotIdx0 = 0-based. The label area spans from the dot gutter to the
+// left edge of the toggle pill.
+export function labelRect(nodeWidth, slotIdx0) {
+  const cy = rowCenterY(slotIdx0);
+  const left = DOT_GUTTER + 4;
+  const right = nodeWidth - PAD_RIGHT - TOGGLE_W - 6;
+  return {
+    x: left,
+    y: cy - ROW_H / 2,
+    w: Math.max(0, right - left),
+    h: ROW_H,
+  };
+}
+
+// Hit-test the label area for slot slotIdx0 (0-based).
+export function hitLabel(pos, nodeWidth, slotIdx0) {
+  return inside(pos, labelRect(nodeWidth, slotIdx0));
+}
+
+// Convert the label area for slot slotIdx1 (1-based) from node-body-local
+// coordinates to viewport pixel coordinates. Used by editor.mjs to position
+// the DOM <input> overlay at the correct screen location.
+// Mirrors the Note Pixaroma pencil-position math.
+export function labelScreenRect(node, slotIdx1) {
+  const slotIdx0 = slotIdx1 - 1;
+  const r = labelRect(node.size?.[0] || 260, slotIdx0);
+
+  // Inset the overlay vertically so it sits within the row with a small margin.
+  const inset = 4;
+  const nodeX = r.x;
+  const nodeY = r.y + inset;
+  const nodeW = r.w;
+  const nodeH = r.h - inset * 2;
+
+  const ds = app.canvas?.ds;
+  const scale = ds?.scale || 1;
+  const offsetX = ds?.offset?.[0] || 0;
+  const offsetY = ds?.offset?.[1] || 0;
+  const canvasEl = app.canvas?.canvas;
+  const canvasRect = canvasEl ? canvasEl.getBoundingClientRect() : { left: 0, top: 0 };
+  // LiteGraph node.pos is the body top-left (title bar sits above it).
+  const baseLeft = canvasRect.left + offsetX * scale;
+  const baseTop = canvasRect.top + offsetY * scale;
+  return {
+    x: baseLeft + (node.pos[0] + nodeX) * scale,
+    y: baseTop + (node.pos[1] + nodeY) * scale,
+    w: nodeW * scale,
+    h: nodeH * scale,
+  };
 }
 
 // Draw a single toggle pill at the correct body-local Y for slotIdx0.
