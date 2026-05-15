@@ -173,6 +173,9 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
+### **May 15, 2026 (1.3.30)**
+- **Show Text Pixaroma now has a one-click Copy button.** Hover the text box and a small orange Copy button fades in at the bottom-right corner; click it to put the text on your clipboard, briefly turns green to confirm. Native text selection and Ctrl+C still work for partial copies.
+
 ### **May 15, 2026 (1.3.29)**
 - **Prompt Reader Pixaroma reads through switches:** If your workflow had a Switch Pixaroma (or rgthree's Any Switch) between your text node and the prompt encoder, dropping the generated PNG on Prompt Reader used to say "no positive prompt found" even though the prompt was right there in the image's metadata. The reader now picks the active row of a Switch Pixaroma (and the first connected input of an Any Switch) and traces the text from there.
 
