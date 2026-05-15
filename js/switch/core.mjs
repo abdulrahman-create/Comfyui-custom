@@ -49,12 +49,20 @@ function clearNativeInputs(node) {
 // intact - it becomes the workflow JSON key that Python reads via kwargs.
 function addInputSlot(node, idx) {
   const slot = node.addInput(SLOT_NAME(idx), "*");
-  // Hide LiteGraph's native slot label rendering without touching
-  // slot.name. LiteGraph reads slot.label first for display and only
-  // falls back to slot.name when label is undefined; setting label to
-  // empty string suppresses the visible text while leaving the kwarg key
-  // (slot.name = "input_N") intact so Python routing works correctly.
-  slot.label = "";
+  // Suppress the visible slot label without touching slot.name.
+  //
+  // Both the canvas renderer (NodeSlot.renderingLabel getter) and the
+  // Vue InputSlot component use logical-OR chains:
+  //   slot.label || slot.localized_name || slot.name
+  // An empty string ("") is falsy, so "" falls through to slot.name
+  // ("input_1", "input_2", ...) and the name text is rendered.
+  //
+  // A zero-width space (​) is truthy, so the chain stops there and
+  // renders an invisible character -- no text visible, name stays intact
+  // for Python kwarg routing.  label is also NOT serialized into the
+  // workflow JSON (configure() only restores name/type/shape/localized_name)
+  // so restoreFromProperties re-applies this on every workflow load.
+  slot.label = "​";
   return slot;
 }
 
@@ -69,6 +77,7 @@ export function setupNode(node) {
   }
   state.visibleCount = target;
   attachRowWidgets(node);
+  installConnectionPosOverride(node);
   // Recompute node height from the actual slot/widget count now that we
   // have stripped the 32 auto-created inputs down to just `target`.
   // Without this the node body stays at the ~1100 px height LiteGraph
@@ -82,17 +91,48 @@ export function setupNode(node) {
 export function restoreFromProperties(node) {
   const state = readState(node);
   // The slots themselves are restored by LiteGraph from the saved JSON.
-  // Re-apply the label-hiding policy (slot.label = "") to every slot so
-  // the native LiteGraph label text stays suppressed. Do NOT touch
-  // slot.name - LiteGraph already restored it from the workflow JSON and
-  // Python depends on it as the kwarg key ("input_1", "input_2", ...).
+  // Re-apply the zero-width-space label to every slot so the visible name
+  // text stays suppressed (see addInputSlot comment for full rationale).
+  // slot.label is NOT in the serialized keys so it is not restored from
+  // JSON and must be patched here after every workflow load.
   if (node.inputs) {
-    for (const slot of node.inputs) slot.label = "";
+    for (const slot of node.inputs) slot.label = "​";
   }
   state.visibleCount = node.inputs?.length || 1;
   attachRowWidgets(node);
+  installConnectionPosOverride(node);
   node.setSize(node.computeSize());
   node.graph?.setDirtyCanvas?.(true, true);
+}
+
+// Move the input slot dots out of LiteGraph's default top-stacked
+// position into the centre-left of each row widget. The wire endpoint
+// follows because LG uses getConnectionPos for wire routing.
+//
+// Each input slot index N (0-based in LG's array) corresponds to row
+// widget _slotIdx = N + 1 (1-based). We look up the widget by _slotIdx
+// and use its last_y (set by LG during draw) as the row's top.
+function installConnectionPosOverride(node) {
+  if (node._switchGetConnectionPosInstalled) return;
+  node._switchGetConnectionPosInstalled = true;
+  const orig = node.getConnectionPos.bind(node);
+  const ROW_H_HALF = 14;  // matches ROW_H / 2 from render.mjs
+
+  node.getConnectionPos = function (isInput, slotIdx, out) {
+    out = out || [0, 0];
+    if (isInput) {
+      // Match input slot N (0-based) to its row widget (1-based _slotIdx).
+      const widget = this.widgets?.find(
+        (w) => w._slotIdx === slotIdx + 1
+      );
+      if (widget && widget.last_y != null) {
+        out[0] = this.pos[0];                           // left edge of the node
+        out[1] = this.pos[1] + widget.last_y + ROW_H_HALF;
+        return out;
+      }
+    }
+    return orig(isInput, slotIdx, out);
+  };
 }
 
 export { STATE_PROP, MAX_INPUTS };
