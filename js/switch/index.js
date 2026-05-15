@@ -36,9 +36,18 @@ app.registerExtension({
     // ── Removal ──────────────────────────────────────────────────────────
     // Cancel any open label editor so the DOM <input> is not left orphaned
     // in document.body after the node is deleted.
+    // Also clear any pending disconnect timers - actuallyDisconnect already
+    // guards on !node.graph, but cancelling the timers is cleaner and avoids
+    // the deferred calls firing at all.
     const _origRemoved = nodeType.prototype.onRemoved;
     nodeType.prototype.onRemoved = function () {
       cancelEditorForNode(this);
+      if (this._pendingDisconnects?.size) {
+        for (const timerId of this._pendingDisconnects.values()) {
+          clearTimeout(timerId);
+        }
+        this._pendingDisconnects.clear();
+      }
       return _origRemoved?.apply(this, arguments);
     };
 

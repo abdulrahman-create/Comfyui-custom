@@ -22,6 +22,11 @@ const SLOT_NAME = (i) => `input_${i}`; // 1-based
 // We keep BOT_PAD=8 so the node doesn't feel cramped at the bottom.
 const BOT_PAD = 8;
 const DEFAULT_W = 260;
+// Minimum body height for fresh-on-canvas nodes. LiteGraph's configure()
+// overwrites node.size from saved workflow JSON, so existing workflows
+// keep their saved dimensions. This only applies when normalizeSlots runs
+// during setupNode (fresh drop), not during restoreFromProperties (load).
+const MIN_BODY_H = 60;
 
 function defaultState() {
   return { activeIndex: 0, labels: {}, visibleCount: 1 };
@@ -164,6 +169,12 @@ function computeNodeHeight(slotCount) {
 export function setupNode(node) {
   clearNativeInputs(node);
   normalizeSlots(node);
+  // Apply a comfortable minimum body height for fresh-on-canvas drops.
+  // normalizeSlots sets height from computeNodeHeight (body-only), which
+  // is 32px for a 1-row node - visually cramped on some displays.
+  // LiteGraph's configure() overwrites node.size from saved JSON on
+  // workflow load, so this only affects fresh drops, not restored nodes.
+  node.size[1] = Math.max(node.size[1], MIN_BODY_H);
 }
 
 // Called from onConfigure (via queueMicrotask) after workflow JSON restores
