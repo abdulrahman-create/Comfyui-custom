@@ -199,13 +199,28 @@ export function updateOutputType(node) {
 
 export function handleConnect(node, slotIdx1) {
   const state = readState(node);
+
+  // Wire-replace detection: if a disconnect was scheduled for THIS slot,
+  // cancel it. The user dragged a new wire onto an already-connected slot;
+  // the slot should stay in place with the new link.
+  let wasReplace = false;
+  if (node._pendingDisconnects?.has(slotIdx1)) {
+    clearTimeout(node._pendingDisconnects.get(slotIdx1));
+    node._pendingDisconnects.delete(slotIdx1);
+    wasReplace = true;
+  }
+
   state.activeIndex = slotIdx1;
 
-  const isLast = slotIdx1 === (node.inputs?.length || 0);
-  if (isLast && (node.inputs?.length || 0) < MAX_INPUTS) {
-    addInputSlot(node, (node.inputs?.length || 0) + 1);
-    state.visibleCount = node.inputs.length;
-    node.size[1] = computeNodeHeight(state.visibleCount);
+  // Only grow the slot list when this is a fresh connect to the trailing
+  // empty slot, NOT a wire-replace (which keeps the existing slot count).
+  if (!wasReplace) {
+    const isLast = slotIdx1 === (node.inputs?.length || 0);
+    if (isLast && (node.inputs?.length || 0) < MAX_INPUTS) {
+      addInputSlot(node, (node.inputs?.length || 0) + 1);
+      state.visibleCount = node.inputs.length;
+      node.size[1] = computeNodeHeight(state.visibleCount);
+    }
   }
 
   updateOutputType(node);
@@ -213,6 +228,22 @@ export function handleConnect(node, slotIdx1) {
 }
 
 export function handleDisconnect(node, slotIdx /* 1-based */) {
+  if (!node._pendingDisconnects) node._pendingDisconnects = new Map();
+  // Cancel any prior pending disconnect for the same slot (defensive).
+  if (node._pendingDisconnects.has(slotIdx)) {
+    clearTimeout(node._pendingDisconnects.get(slotIdx));
+  }
+  const timer = setTimeout(() => {
+    node._pendingDisconnects.delete(slotIdx);
+    actuallyDisconnect(node, slotIdx);
+  }, 0);
+  node._pendingDisconnects.set(slotIdx, timer);
+}
+
+function actuallyDisconnect(node, slotIdx /* 1-based */) {
+  // Guard: if the node was removed before this deferred call fired, bail.
+  if (!node.graph) return;
+
   const state = readState(node);
   const wasActive = state.activeIndex === slotIdx;
   const slotCount = node.inputs?.length || 0;
