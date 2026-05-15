@@ -246,6 +246,47 @@ js/
 ├── reference/          # Reference node (single file, 140 lines)
 │   └── index.js
 │
+├── switch/             # Switch Pixaroma - dynamic N-to-1 typed router
+│   ├── index.js        # Entry: app.registerExtension; patches onNodeCreated,
+│   │                   #  onRemoved, onConfigure, onConnectionsChange,
+│   │                   #  onDrawForeground, onMouseDown. Configure replay gate
+│   │                   #  via _pixSwitchConfiguring try/finally (Vue Compat #17).
+│   │                   #  app.graphToPrompt hook injects state.activeIndex into
+│   │                   #  the hidden SwitchState input at submission (Pattern #9).
+│   ├── core.mjs        # Slot management. State: node.properties.switchState =
+│   │                   #  { activeIndex, labels, visibleCount }. normalizeSlots
+│   │                   #  is idempotent: trims to (connected + 1 trailing),
+│   │                   #  renames input_1..N, maintains the trailing-empty
+│   │                   #  invariant. handleDisconnect defers via setTimeout(0)
+│   │                   #  so a wire-replace (drop a new wire onto a wired slot,
+│   │                   #  LG fires disconnect-then-connect) can be cancelled
+│   │                   #  by handleConnect via the _pendingDisconnects Map.
+│   │                   #  getUpstreamType traces a slot's link to the upstream
+│   │                   #  output type for both updateOutputType and the row's
+│   │                   #  default-label placeholder. Auto-recovery of
+│   │                   #  activeIndex only fires when out of range, NEVER on
+│   │                   #  link presence (links not yet set during
+│   │                   #  restoreFromProperties on workflow load).
+│   ├── render.mjs      # onDrawForeground paint. rowCenterY math matches LG
+│   │                   #  NODE_SLOT_HEIGHT so labels and toggles sit at the
+│   │                   #  same Y as native input dots (Vue Compat #16, mirrors
+│   │                   #  Image Compare). drawToggle pill is BRAND #f66744 when
+│   │                   #  active, dim grey when off. drawLabel falls through
+│   │                   #  hasUserText > "(empty)" for trailing > upstream type
+│   │                   #  name (filtered against the "*" wildcard) > "Label..."
+│   │                   #  grey. labelScreenRect converts body-local to viewport
+│   │                   #  pixels for editor.mjs.
+│   └── editor.mjs      # Inline DOM <input> overlay for label edit-in-place.
+│                       #  Module singleton activeEditor. Font / padding / border
+│                       #  scale by app.canvas.ds.scale at open time so the input
+│                       #  matches canvas-painted text at any zoom. setTimeout(0)
+│                       #  defers focus + blur listener install so the opening
+│                       #  mousedown propagation doesn't ghost-blur the input.
+│                       #  Window-capture keydown with stopImmediatePropagation
+│                       #  blocks Ctrl+Z escape. Commit deletes labels[slotIdx]
+│                       #  on empty value so a cleared label reverts to the
+│                       #  type-name placeholder.
+│
 ├── load_image/         # Load Image Pixaroma (4 files, ~1500 lines)
     ├── index.js        # Entry: extension registration, lifecycle,
     │                   #  app.graphToPrompt hook (subgraph-safe injection of
@@ -799,6 +840,7 @@ Files are named by concern. Match the task to the file:
 | Add / manage inline note icons (SVG library) | Drop SVGs into `assets/icons/note/`. Label derivation + list endpoint live in `server_routes.py`'s `/pixaroma/api/note/icons/list` route, mirrored in `js/note/icons.mjs::deriveLabel`. Both must stay in sync if you change the rules. To add a new SIZE preset, edit ALL of: `js/note/css.mjs` (new `.pix-note-ic[data-size="<id>"]` rule), `js/note/sanitize.mjs` (extend `IC_SIZE_RE`), `js/note/icons.mjs::openIconPop` (new pill in `sizes` array). Picker color + size are session-sticky on `editor._iconPickerColor` / `editor._iconPickerSize`, set in `core.mjs::open()` and reset in `_cleanup()`. Atomic Backspace/Delete handler also lives in `core.mjs::open()` (`_iconKeyHandler` listener on `_editArea`). |
 | Change inline-icon rendering (size / alignment / color model) | `js/note/css.mjs` base `.pix-note-ic` rule + per-icon rules dynamically injected by `js/note/icons.mjs::injectIconCSS`. Picker popup styles: `.pix-note-iconpop` family in `css.mjs`. |
 | Toggle / change Align Pixaroma snap behavior | `js/align/index.js` (single file). Settings: `Pixaroma.Align.Enabled` (boolean, mirrors the toolbar button) + `Pixaroma.Align.SnapDistance` (slider 4-16). Hooks: window pointermove for snap (NOT `LGraphCanvas.processMouseMove`, which Vue does not invoke); `LGraphCanvas.drawFrontCanvas` wrap for guide rendering (NOT `onDrawForeground`, unreliable in Vue per Compat #1). WRAP-don't-replace pattern coexists with rgthree-comfy and the "NodeAlign" extension. Shift bypasses snap (Alt is taken by ComfyUI for duplicate-during-drag). Active guides drawn in BRAND #f66744 with `lineWidth = 1` in screen space (manual graph -> screen transform) so the stroke is exactly 1 screen pixel at any zoom. Snap distance is `state.snapDistPx / canvas.ds.scale` graph units, computed every tick (so zoom changes mid-drag are honored). |
+| Change Switch Pixaroma slot management / mutex behavior / state schema / row cap | `js/switch/core.mjs` (`MAX_INPUTS = 32`, `STATE_PROP = "switchState"`, `normalizeSlots` / `handleConnect` / `actuallyDisconnect` / `getUpstreamType` / `updateOutputType`). Drawing in `js/switch/render.mjs` (rowCenterY math aligned with LG `NODE_SLOT_HEIGHT` so labels and toggles sit on input-dot rows, Vue Compat #16). Inline label DOM `<input>` editor in `js/switch/editor.mjs` (font/padding/border scaled by canvas zoom at open time). Configure-replay gate `_pixSwitchConfiguring` in `js/switch/index.js` (Vue Compat #17 - any state-mutating `onConnectionsChange` handler MUST be gated on the flag or saved `activeIndex` silently dies on every workflow load and Ctrl+Z undo). Hidden `SwitchState` injection via `app.graphToPrompt` hook at the bottom of `index.js` (Pattern #9). Slot count grows via `handleConnect` appending a trailing empty when the last empty is connected (caps at `MAX_INPUTS`). Disconnect deferred via `setTimeout(0)` so wire-replace (LG fires disconnect-then-connect on the same slot when the user drags a new wire onto an already-wired input) is cancelled by `handleConnect` via the `_pendingDisconnects` Map. Per-row default label shows the upstream output type (MODEL, IMAGE, CLIP...) when no user label is set; clearing the label reverts to the type placeholder via the commit-empty-deletes-key path in `editor.mjs`. Python side in `nodes/node_switch.py` pre-declares 32 optional `input_N` slots typed `ANY` (from `nodes/_type_helpers.py`) + a hidden `SwitchState` STRING input; `pick(SwitchState, **kwargs)` returns `kwargs.get(f"input_{idx}")` with a clear ValueError when the active row is unconnected. |
 | Add backend route | `server_routes.py` |
 | Add a new Python node | `nodes/node_<name>.py` |
 | AudioReact Pixaroma — change motion mode or overlay effect | `nodes/_audio_react_engine.py` (engine — all motion functions, overlays, audio helpers `bandpass_fft` / `audio_envelope` / `onset_track`, `process_aspect`, `Params` dataclass, `MOTION_MODES` / `OVERLAYS` registries, `generate_video()`). NEVER inline math into `node_audio_studio.py`; divergence breaks parity. Update `docs/audio-react-math.md` first, then engine, then `js/audio_studio/shaders.mjs` (GLSL mirror), then re-run `scripts/audio_parity_check.py --regenerate` and the browser parity harness. |
