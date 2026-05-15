@@ -79,8 +79,6 @@ export function openLabelEditor(node, slotIdx /* 1-based */, rect) {
   ].join("; ");
 
   document.body.appendChild(input);
-  input.focus();
-  input.select();
 
   const state = { node, slotIdx, input, _committed: false };
 
@@ -104,10 +102,29 @@ export function openLabelEditor(node, slotIdx /* 1-based */, rect) {
   // blur fires when the user clicks away or tabs out - treat as a commit.
   state.blurHandler = () => commit(state);
 
+  // The window-level capture handler attaches immediately so Ctrl+Z and other
+  // canvas shortcuts are blocked from the very first keystroke.
   window.addEventListener("keydown", state.windowKeyHandler, true); // capture phase
-  input.addEventListener("blur", state.blurHandler);
 
   activeEditor = state;
+
+  // Defer focus AND blur listener install. The mouseDown event that opened us
+  // is still propagating through LiteGraph / ComfyUI / Vue when this function
+  // returns. If we call input.focus() synchronously, that propagation path
+  // shifts focus back to the canvas, which fires blur on our input, which
+  // calls commit() and removes the input - all within the same tick, so the
+  // user never sees anything.
+  //
+  // setTimeout(0) lets the current event loop tick finish (the mouseDown chain
+  // fully resolves) before we grab focus. The blur listener is also deferred
+  // so it only catches genuine user-clicks-elsewhere events, not the ghost
+  // blur caused by the propagating click.
+  setTimeout(() => {
+    if (!input.isConnected) return; // commit/cancel already removed us
+    input.focus();
+    input.select();
+    input.addEventListener("blur", state.blurHandler);
+  }, 0);
 }
 
 // Cancel the open label editor for a specific node, if any.
