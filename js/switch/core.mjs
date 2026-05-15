@@ -115,7 +115,70 @@ export function handleConnect(node, slotIdx1) {
   app.graph?.setDirtyCanvas?.(true, true);
 }
 
-// Task 8 stub: full cascade + slot rename logic lands later.
-export function handleDisconnect(node, _slotIdx1) {
-  app.graph?.setDirtyCanvas?.(true, true);
+export function handleDisconnect(node, slotIdx /* 1-based */) {
+  const state = readState(node);
+  const wasActive = state.activeIndex === slotIdx;
+  const slotCount = node.inputs?.length || 0;
+
+  // 1. Remove the slot. LiteGraph shifts later entries down by one.
+  if (slotIdx >= 1 && slotIdx <= slotCount) {
+    node.removeInput(slotIdx - 1);
+  }
+
+  // 2. Rename every remaining slot so suffixes stay contiguous.
+  if (node.inputs) {
+    for (let i = 0; i < node.inputs.length; i++) {
+      node.inputs[i].name = `input_${i + 1}`;
+      node.inputs[i].label = "​"; // zero-width space
+    }
+  }
+
+  // 3. Shift labels in state.labels down.
+  const oldLabels = state.labels || {};
+  const newLabels = {};
+  for (const key in oldLabels) {
+    const k = parseInt(key, 10);
+    if (!Number.isFinite(k)) continue;
+    if (k < slotIdx) newLabels[k] = oldLabels[key];
+    else if (k > slotIdx) newLabels[k - 1] = oldLabels[key];
+    // k === slotIdx: dropped (label of the removed slot is gone)
+  }
+  state.labels = newLabels;
+
+  // 4. Active cascade.
+  const inputs = node.inputs || [];
+  if (wasActive) {
+    // Try the row directly above (new index = slotIdx - 1).
+    const above = slotIdx - 1;
+    // Try the row directly below the removed one (shifted up to slotIdx).
+    const below = slotIdx;
+    if (above >= 1 && inputs[above - 1]?.link != null) {
+      state.activeIndex = above;
+    } else if (below >= 1 && below <= inputs.length && inputs[below - 1]?.link != null) {
+      state.activeIndex = below;
+    } else {
+      state.activeIndex = 0; // no connected row - Python will error on next run
+    }
+  } else if (state.activeIndex > slotIdx) {
+    // The active row shifted up by one.
+    state.activeIndex -= 1;
+  }
+
+  // 5. Maintain the empty-trailing invariant.
+  const last = inputs[inputs.length - 1];
+  if (inputs.length === 0) {
+    // No rows left at all - add one empty trailing slot.
+    addInputSlot(node, 1);
+  } else if (last && last.link != null && inputs.length < MAX_INPUTS) {
+    // Last slot is connected and we have room - add an empty trailing slot.
+    addInputSlot(node, inputs.length + 1);
+  }
+  // Otherwise last slot is already empty (or at 32 cap) - leave as is.
+
+  // 6. Update visibleCount and resize.
+  state.visibleCount = node.inputs?.length || 1;
+  node.size[1] = computeNodeHeight(state.visibleCount);
+
+  // 7. Redraw.
+  node.graph?.setDirtyCanvas?.(true, true);
 }
