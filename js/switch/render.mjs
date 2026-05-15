@@ -22,7 +22,10 @@ const TOGGLE_R = 7;   // pill corner radius
 const KNOB_R = 4;     // inner knob radius
 const PAD_RIGHT = 70; // right-edge margin before toggle - wide enough to clear
                       // LG's output column on row 1 (output label + dot ~70 px)
-const DOT_GUTTER = 14; // left space reserved for the input dot
+const DOT_GUTTER = 28; // left space reserved for the input dot AND
+                        // clearance past LiteGraph's slot-drag hit zone
+                        // (clicks within ~20-25 px of the dot are intercepted
+                        // by LG before reaching node.onMouseDown).
 
 const TOGGLE_RIGHT_PAD = PAD_RIGHT; // reserved for future use; not exported
 
