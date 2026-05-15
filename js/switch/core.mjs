@@ -100,6 +100,20 @@ export function normalizeSlots(node) {
   node.size[0] = Math.max(node.size[0] || 0, DEFAULT_W);
   node.size[1] = computeNodeHeight(state.visibleCount);
 
+  // Prune label keys that fall outside the current slot range.
+  // Stale keys can arise from hand-edited workflow JSON or (theoretically)
+  // from a future migration that shortens the slot list without going through
+  // actuallyDisconnect. They are never accessed by drawSwitchRows (which
+  // iterates inputs, not labels), so this is purely defensive hygiene.
+  if (state.labels) {
+    for (const key in state.labels) {
+      const k = parseInt(key, 10);
+      if (!Number.isFinite(k) || k < 1 || k > node.inputs.length) {
+        delete state.labels[key];
+      }
+    }
+  }
+
   // Auto-recover an active slot only when activeIndex is genuinely unset
   // (0, undefined, or out of range relative to current slot count).
   //
