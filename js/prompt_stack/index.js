@@ -42,7 +42,9 @@ function growNodeToContent(node) {
 // Uses the actual rendered position via getBoundingClientRect (more reliable
 // across ComfyUI versions than reading widget.last_y, which is undefined in
 // the Vue frontend). Converts screen-space row Y to graph-space, then to
-// node-local body-relative Y by subtracting node.pos[1].
+// node-local body-relative Y. node.pos is the top of the title bar, but
+// slot.pos is measured from the body top (below the title), so we subtract
+// NODE_TITLE_HEIGHT (default 30) after the node.pos[1] adjustment.
 function makeRowYResolver(node) {
   return (rowId) => {
     const root = node._pixPsRoot;
@@ -56,9 +58,10 @@ function makeRowYResolver(node) {
     const rowRect = rowEl.getBoundingClientRect();
     if (rowRect.height === 0) return null; // not laid out yet
     const rowMidScreen = rowRect.top + rowRect.height / 2;
+    const titleH = (window.LiteGraph && window.LiteGraph.NODE_TITLE_HEIGHT) || 30;
     // Screen Y -> graph Y -> node-local body Y
     const graphY = (rowMidScreen - canvasRect.top - ds.offset[1]) / ds.scale;
-    return graphY - node.pos[1];
+    return graphY - node.pos[1] - titleH;
   };
 }
 

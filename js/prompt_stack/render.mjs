@@ -83,7 +83,7 @@ const CSS = `
   justify-content: center;
   flex-shrink: 0;
 }
-.pix-ps-wire:hover { color: #ccc; background: rgba(255,255,255,0.05); }
+.pix-ps-wire:hover { color: #f66744; background: rgba(246,103,68,0.12); }
 .pix-ps-wire.on { color: #f66744; background: rgba(246,103,68,0.12); }
 .pix-ps-wire-icon {
   display: inline-block;
