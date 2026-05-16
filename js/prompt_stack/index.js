@@ -39,6 +39,17 @@ function growNodeToContent(node) {
   if (desired > node.size[1]) node.size[1] = desired;
 }
 
+// fitNodeToContent: shrink-and-grow. Used after explicit user actions (e.g.
+// row delete) where the user is signalling "compact the node". Never shrinks
+// below DEFAULT_H so a 1-row state still looks intentional.
+function fitNodeToContent(node) {
+  const root = node._pixPsRoot;
+  if (!root) return;
+  const contentH = measureContentHeight(root);
+  const desired = Math.max(DEFAULT_H, contentH + 50);
+  node.size[1] = desired;
+}
+
 function makeHandlers(node, root) {
   const rerender = () => {
     renderRows(node, root, handlers);
@@ -67,6 +78,13 @@ function makeHandlers(node, root) {
       }
       deleteRow(node, id);
       rerender();
+      // After delete, also fit the node down so the freed-up space doesn't
+      // leave a gap. Defer past the rAF inside rerender so the DOM is
+      // already updated when we measure.
+      requestAnimationFrame(() => {
+        fitNodeToContent(node);
+        node.setDirtyCanvas(true, true);
+      });
     },
     onAdd: () => { addRow(node); rerender(); },
     onDragStart: (_id, _ev) => { /* Task 9 */ },
