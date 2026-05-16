@@ -1,4 +1,5 @@
 import { app } from "/scripts/app.js";
+import { restoreFromProperties } from "./core.mjs";
 
 const DEFAULT_W = 400;
 const DEFAULT_H = 280;
@@ -15,8 +16,16 @@ app.registerExtension({
       queueMicrotask(() => {
         if (this.size[0] < DEFAULT_W) this.size[0] = DEFAULT_W;
         if (this.size[1] < DEFAULT_H) this.size[1] = DEFAULT_H;
+        restoreFromProperties(this);
         this.setDirtyCanvas(true, true);
       });
+    };
+
+    const origConfigure = nodeType.prototype.onConfigure;
+    nodeType.prototype.onConfigure = function (info) {
+      const r = origConfigure ? origConfigure.apply(this, arguments) : undefined;
+      restoreFromProperties(this);
+      return r;
     };
   },
 });
