@@ -156,25 +156,3 @@ export function pixConfirm({ title, message, okText = "OK", cancelText = "Cancel
   });
 }
 
-// First-time confirm for typed -> wire flip on a non-empty textarea.
-// Uses the themed pixConfirm dialog. The "don't ask again" preference is a
-// hidden setting (Pixaroma.PromptStack.SuppressWireConfirm) the user can toggle
-// from the Settings panel under "Prompt Stack (advanced)".
-//
-// Reads `app` from window to avoid a circular import at module-load time
-// (interaction.mjs is imported by render.mjs and by index.js; index.js imports
-// app from /scripts/app.js, but we should not duplicate that import here).
-//
-// Returns Promise<boolean>: true if the flip should proceed.
-export async function confirmWireFlip(rowHasText) {
-  if (!rowHasText) return true;
-  const app = window.app;
-  const suppress = app?.ui?.settings?.getSettingValue?.("Pixaroma.PromptStack.SuppressWireConfirm");
-  if (suppress) return true;
-  return await pixConfirm({
-    title: "Switch to wire mode?",
-    message: "Your typed text will be hidden but kept safe - switching back to typed mode restores it. (You can disable this prompt in Settings > Prompt Stack (advanced).)",
-    okText: "Switch",
-    cancelText: "Cancel",
-  });
-}

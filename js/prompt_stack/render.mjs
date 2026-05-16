@@ -71,36 +71,6 @@ const CSS = `
   box-shadow: 0 0 0 2px rgba(246, 103, 68, 0.18);
 }
 
-.pix-ps-wire {
-  width: 20px;
-  height: 20px;
-  border-radius: 3px;
-  background: transparent;
-  color: #888;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-.pix-ps-wire:hover { color: #f66744; background: rgba(246,103,68,0.12); }
-.pix-ps-wire.on { color: #f66744; background: rgba(246,103,68,0.12); }
-.pix-ps-wire-icon {
-  display: inline-block;
-  width: 14px;
-  height: 14px;
-  background-color: currentColor;
-  mask-image: url(/pixaroma/assets/icons/ui/link.svg);
-  -webkit-mask-image: url(/pixaroma/assets/icons/ui/link.svg);
-  mask-size: contain;
-  -webkit-mask-size: contain;
-  mask-repeat: no-repeat;
-  -webkit-mask-repeat: no-repeat;
-  mask-position: center;
-  -webkit-mask-position: center;
-  pointer-events: none;
-}
-
 .pix-ps-label {
   flex: 1;
   background: #1a1a1a;
@@ -148,20 +118,6 @@ const CSS = `
   overflow-y: auto;
 }
 .pix-ps-textarea:focus { border-color: #f66744; }
-
-.pix-ps-wirebadge {
-  width: 100%;
-  min-height: 38px;
-  background: #1a1a1a;
-  border: 1px dashed #444;
-  border-radius: 3px;
-  color: #888;
-  font-style: italic;
-  font-size: 12px;
-  padding: 8px 6px;
-  text-align: center;
-  user-select: none;
-}
 
 .pix-ps-add {
   align-self: flex-start;
@@ -272,10 +228,9 @@ export function measureContentHeight(root) {
 // renderRows clears root.innerHTML and rebuilds every row.
 // Returns nothing; mutates root.
 // rowHandlers is an object with callbacks the interaction module wires up:
-//   { onToggleEnabled(id), onToggleWire(id), onLabelChange(id, val),
-//     onTextChange(id, val), onDelete(id), onAdd(),
+//   { onToggleEnabled(id), onLabelChange(id, val), onTextChange(id, val),
+//     onDelete(id), onAdd(),
 //     onDragStart(id, ev), onDragOver(id, ev), onDrop(id, ev), onDragEnd(ev) }
-// In Task 4 only the typed-mode pieces are functional; wire and drag are stubs.
 export function renderRows(node, root, rowHandlers) {
   const state = readState(node);
   root.innerHTML = "";
@@ -301,15 +256,6 @@ export function renderRows(node, root, rowHandlers) {
     toggle.addEventListener("click", () => rowHandlers.onToggleEnabled(row.id));
     head.appendChild(toggle);
 
-    const wire = document.createElement("div");
-    wire.className = "pix-ps-wire" + (row.wireMode ? " on" : "");
-    wire.title = row.wireMode ? "Click to switch to typed mode" : "Click to switch to wire-input mode";
-    wire.addEventListener("click", () => rowHandlers.onToggleWire(row.id));
-    const wireIcon = document.createElement("span");
-    wireIcon.className = "pix-ps-wire-icon";
-    wire.appendChild(wireIcon);
-    head.appendChild(wire);
-
     const label = document.createElement("input");
     label.type = "text";
     label.className = "pix-ps-label";
@@ -329,20 +275,13 @@ export function renderRows(node, root, rowHandlers) {
 
     rowEl.appendChild(head);
 
-    if (row.wireMode) {
-      const badge = document.createElement("div");
-      badge.className = "pix-ps-wirebadge";
-      badge.textContent = "← wired from input";
-      rowEl.appendChild(badge);
-    } else {
-      const ta = document.createElement("textarea");
-      ta.className = "pix-ps-textarea";
-      ta.value = row.text || "";
-      ta.rows = 2;
-      ta.placeholder = "Type your prompt chunk here...";
-      rowEl.appendChild(ta);
-      attachTextareaEditor(node, ta, row.id);
-    }
+    const ta = document.createElement("textarea");
+    ta.className = "pix-ps-textarea";
+    ta.value = row.text || "";
+    ta.rows = 2;
+    ta.placeholder = "Type your prompt chunk here...";
+    rowEl.appendChild(ta);
+    attachTextareaEditor(node, ta, row.id);
 
     root.appendChild(rowEl);
   }
