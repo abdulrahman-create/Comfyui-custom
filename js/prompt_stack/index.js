@@ -81,11 +81,11 @@ app.registerExtension({
 
   settings: [
     {
-      id: "Pixaroma.PromptStack.Separator",
+      id: "Pixaroma.PromptStack.SeparatorText",
       name: "Separator",
       type: "text",
       defaultValue: ", ",
-      tooltip: "What goes between enabled rows in the joined output. Examples: ', ' (default comma+space), '\\n' for newline (type backslash + n), ' ' for a single space, ' | ' for pipe. Empty falls back to ', '.",
+      tooltip: "What goes between enabled rows in the joined output. Edit this field directly. Examples: ', ' (default comma+space), '\\n' for newline (type backslash + n), ' ' for a single space, ' | ' for pipe. Empty falls back to ', '.",
       category: ["👑 Pixaroma", "Prompt Stack"],
     },
   ],
@@ -178,7 +178,7 @@ app.graphToPrompt = async function (...args) {
 };
 
 function resolveSeparator() {
-  const raw = app.ui?.settings?.getSettingValue?.("Pixaroma.PromptStack.Separator");
+  const raw = app.ui?.settings?.getSettingValue?.("Pixaroma.PromptStack.SeparatorText");
   if (typeof raw !== "string" || raw.length === 0) return ", ";
   // Interpret \n (backslash + n) as a newline and \t as a tab so users can
   // express those in a single-line text input. Anything else stays literal.
