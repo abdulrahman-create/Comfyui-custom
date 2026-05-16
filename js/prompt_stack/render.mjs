@@ -5,6 +5,7 @@
 // Click handlers and drag handlers are wired in interaction.mjs (Task 5+).
 
 import { readState } from "./core.mjs";
+import { attachLabelEditor, attachTextareaEditor } from "./interaction.mjs";
 
 const CSS_ID = "pix-prompt-stack-css";
 
@@ -243,6 +244,7 @@ export function renderRows(node, root, rowHandlers) {
     label.value = row.label || "";
     label.placeholder = `Row ${state.rows.indexOf(row) + 1}`;
     head.appendChild(label);
+    attachLabelEditor(node, label, row.id);
 
     const del = document.createElement("button");
     del.className = "pix-ps-delete";
@@ -267,6 +269,7 @@ export function renderRows(node, root, rowHandlers) {
       ta.rows = 2;
       ta.placeholder = "Type your prompt chunk here...";
       rowEl.appendChild(ta);
+      attachTextareaEditor(node, ta, row.id);
     }
 
     root.appendChild(rowEl);

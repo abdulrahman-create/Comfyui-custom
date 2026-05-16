@@ -40,7 +40,17 @@ function makeHandlers(node, root) {
     onToggleWire: (_id) => { /* Task 8 */ },
     onLabelChange: (_id, _v) => { /* Task 5 */ },
     onTextChange: (_id, _v) => { /* Task 5 */ },
-    onDelete: (id) => { deleteRow(node, id); rerender(); },
+    onDelete: (id) => {
+      const state = readState(node);
+      const row = state.rows.find((r) => r.id === id);
+      const hasContent = row && ((row.text && row.text.trim()) || (row.label && row.label.trim()));
+      if (hasContent) {
+        const labelOrIdx = (row.label && row.label.trim()) || `Row ${state.rows.indexOf(row) + 1}`;
+        if (!confirm(`Delete row "${labelOrIdx}"?`)) return;
+      }
+      deleteRow(node, id);
+      rerender();
+    },
     onAdd: () => { addRow(node); rerender(); },
     onDragStart: (_id, _ev) => { /* Task 9 */ },
     onDragOver: (_id, _ev) => { /* Task 9 */ },
