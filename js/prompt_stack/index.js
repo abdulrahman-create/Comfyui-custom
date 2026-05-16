@@ -10,7 +10,7 @@ import { injectCSS, buildRoot, renderRows, measureContentHeight } from "./render
 import { pixConfirm } from "./interaction.mjs";
 
 const DEFAULT_W = 400;
-const DEFAULT_H = 160;
+const DEFAULT_H = 180;
 
 // Defensive cleanup for nodes carried over from the older wire-mode version
 // of this node (or from any future ComfyUI build that decides to auto-create
@@ -34,7 +34,8 @@ function growNodeToContent(node) {
   const root = node._pixPsRoot;
   if (!root) return;
   const contentH = measureContentHeight(root);
-  const desired = contentH + 32; // ~30 for title bar + 2px slack
+  // ~30 title + ~10 body top padding + ~10 body bottom padding (breathing room)
+  const desired = contentH + 50;
   if (desired > node.size[1]) node.size[1] = desired;
 }
 
