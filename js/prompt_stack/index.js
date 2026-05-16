@@ -85,8 +85,17 @@ app.registerExtension({
       name: "Separator",
       type: "text",
       defaultValue: ", ",
-      tooltip: "What goes between enabled rows in the joined output. Edit this field directly. Examples: ', ' (default comma+space), '\\n' for newline (type backslash + n), ' ' for a single space, ' | ' for pipe. Empty falls back to ', '.",
+      tooltip: "What goes between enabled rows in the joined output. Edit directly. Examples: ', ' (default comma+space), '\\n' for newline (type backslash + n), ' ' for a single space, ' | ' for pipe. Clear the field to reset to the default ', '.",
       category: ["👑 Pixaroma", "Prompt Stack"],
+      onChange: (v) => {
+        // Empty field acts as "reset to default" - refill with ", " so the
+        // user can see and edit the actual current value next time.
+        if (typeof v === "string" && v.length === 0) {
+          try {
+            app.ui?.settings?.setSettingValue?.("Pixaroma.PromptStack.SeparatorText", ", ");
+          } catch (_e) {}
+        }
+      },
     },
   ],
 
