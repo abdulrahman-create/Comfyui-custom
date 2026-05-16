@@ -1,7 +1,16 @@
 import { app } from "/scripts/app.js";
-import { readState, restoreFromProperties, addRow, deleteRow, toggleEnabled } from "./core.mjs";
+import {
+  readState,
+  restoreFromProperties,
+  addRow,
+  deleteRow,
+  toggleEnabled,
+  toggleWireMode,
+  applyWireSlotPositions,
+  MAX_WIRES,
+} from "./core.mjs";
 import { injectCSS, buildRoot, renderRows, measureContentHeight } from "./render.mjs";
-import { pixConfirm } from "./interaction.mjs";
+import { pixConfirm, confirmWireFlip } from "./interaction.mjs";
 
 const DEFAULT_W = 400;
 const DEFAULT_H = 280;
@@ -28,17 +37,60 @@ function growNodeToContent(node) {
   }
 }
 
+// makeRowYResolver returns a function rowId -> y-in-node-local-body-coords.
+// Reads each row element's offsetTop relative to the DOM widget root, plus the
+// DOM widget's last_y (where ComfyUI placed the widget within the node body).
+function makeRowYResolver(node) {
+  return (rowId) => {
+    const root = node._pixPsRoot;
+    if (!root) return null;
+    const rowEl = root.querySelector(`.pix-ps-row[data-id="${rowId}"]`);
+    if (!rowEl) return null;
+    const widget = (node.widgets || []).find(
+      (w) => w.element === root || w.options?.element === root,
+    );
+    const widgetY = widget?.last_y ?? widget?.y ?? 0;
+    const rowTopWithinRoot = rowEl.offsetTop;
+    const rowMid = rowTopWithinRoot + rowEl.offsetHeight / 2;
+    return widgetY + rowMid;
+  };
+}
+
 function makeHandlers(node, root) {
   const rerender = () => {
     renderRows(node, root, handlers);
     requestAnimationFrame(() => {
       growNodeToContent(node);
+      applyWireSlotPositions(node, makeRowYResolver(node));
       node.setDirtyCanvas(true, true);
     });
   };
   const handlers = {
     onToggleEnabled: (id) => { toggleEnabled(node, id); rerender(); },
-    onToggleWire: (_id) => { /* Task 8 */ },
+    onToggleWire: async (id) => {
+      const state = readState(node);
+      const row = state.rows.find((r) => r.id === id);
+      if (!row) return;
+      const flippingToWire = !row.wireMode;
+      const hasText = flippingToWire && row.text && row.text.trim().length > 0;
+      if (hasText) {
+        const ok = await confirmWireFlip(true);
+        if (!ok) return;
+      }
+      const result = toggleWireMode(node, id);
+      if (!result.ok) {
+        if (result.reason === "max_wires") {
+          await pixConfirm({
+            title: "Wire-mode limit reached",
+            message: `Maximum ${MAX_WIRES} wired rows reached. Switch a wired row back to typed mode first.`,
+            okText: "OK",
+            cancelText: "OK",
+          });
+        }
+        return;
+      }
+      rerender();
+    },
     onLabelChange: (_id, _v) => { /* Task 5 */ },
     onTextChange: (_id, _v) => { /* Task 5 */ },
     onDelete: async (id) => {
@@ -93,6 +145,14 @@ app.registerExtension({
       tooltip: "Used only when Separator is set to 'Custom...'. Empty falls back to ', '.",
       category: ["👑 Pixaroma", "Prompt Stack (advanced)"],
     },
+    {
+      id: "Pixaroma.PromptStack.SuppressWireConfirm",
+      name: "Don't show the wire-mode flip confirm",
+      type: "boolean",
+      defaultValue: false,
+      tooltip: "When on, switching a non-empty row to wire mode does not prompt for confirmation.",
+      category: ["👑 Pixaroma", "Prompt Stack (advanced)"],
+    },
   ],
 
   beforeRegisterNodeDef(nodeType, nodeData) {
@@ -120,6 +180,14 @@ app.registerExtension({
 
         rerender();
 
+        if (typeof ResizeObserver !== "undefined") {
+          const ro = new ResizeObserver(() => {
+            applyWireSlotPositions(node, makeRowYResolver(node));
+          });
+          ro.observe(root);
+          node._pixPsResizeObserver = ro;
+        }
+
         if (node.size[0] < DEFAULT_W) node.size[0] = DEFAULT_W;
         if (node.size[1] < DEFAULT_H) node.size[1] = DEFAULT_H;
         node.setDirtyCanvas(true, true);
@@ -132,6 +200,17 @@ app.registerExtension({
       restoreFromProperties(this);
       if (this._pixPsRerender) this._pixPsRerender();
       return r;
+    };
+
+    const origRemoved = nodeType.prototype.onRemoved;
+    nodeType.prototype.onRemoved = function () {
+      if (this._pixPsResizeObserver) {
+        try { this._pixPsResizeObserver.disconnect(); } catch (_e) {}
+        this._pixPsResizeObserver = null;
+      }
+      this._pixPsRoot = null;
+      this._pixPsRerender = null;
+      if (origRemoved) return origRemoved.apply(this, arguments);
     };
   },
 });
