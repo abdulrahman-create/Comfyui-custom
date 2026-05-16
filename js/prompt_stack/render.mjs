@@ -72,8 +72,8 @@ const CSS = `
 }
 
 .pix-ps-wire {
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   border-radius: 3px;
   background: transparent;
   color: #888;
@@ -81,11 +81,25 @@ const CSS = `
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
   flex-shrink: 0;
 }
 .pix-ps-wire:hover { color: #ccc; background: rgba(255,255,255,0.05); }
 .pix-ps-wire.on { color: #f66744; background: rgba(246,103,68,0.12); }
+.pix-ps-wire-icon {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  background-color: currentColor;
+  mask-image: url(/pixaroma/assets/icons/ui/link.svg);
+  -webkit-mask-image: url(/pixaroma/assets/icons/ui/link.svg);
+  mask-size: contain;
+  -webkit-mask-size: contain;
+  mask-repeat: no-repeat;
+  -webkit-mask-repeat: no-repeat;
+  mask-position: center;
+  -webkit-mask-position: center;
+  pointer-events: none;
+}
 
 .pix-ps-label {
   flex: 1;
@@ -289,9 +303,11 @@ export function renderRows(node, root, rowHandlers) {
 
     const wire = document.createElement("div");
     wire.className = "pix-ps-wire" + (row.wireMode ? " on" : "");
-    wire.textContent = "\u{1F517}"; // link icon
     wire.title = row.wireMode ? "Click to switch to typed mode" : "Click to switch to wire-input mode";
     wire.addEventListener("click", () => rowHandlers.onToggleWire(row.id));
+    const wireIcon = document.createElement("span");
+    wireIcon.className = "pix-ps-wire-icon";
+    wire.appendChild(wireIcon);
     head.appendChild(wire);
 
     const label = document.createElement("input");

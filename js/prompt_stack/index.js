@@ -25,34 +25,40 @@ function removeAllWireSlots(node) {
   }
 }
 
-// growNodeToContent: after a rerender that added rows, ask ComfyUI to recompute
-// the node's natural size. If the content's required height grew past the
-// current node.size[1], lift the node taller. Never shrinks the node (so a
-// user-resized-bigger node stays the size they chose).
+// growNodeToContent: ensure node.size[1] is tall enough for the actual rendered
+// DOM widget content. Uses measureContentHeight (sum of children) rather than
+// node.computeSize (which can over-report when ComfyUI reserves extra space
+// for auto-created input slots, causing the node to grow unboundedly each
+// wire-mode flip). Adds an allowance for title + top padding. Never shrinks.
 function growNodeToContent(node) {
-  if (!node || typeof node.computeSize !== "function") return;
-  const computed = node.computeSize();
-  if (Array.isArray(computed) && computed[1] > node.size[1]) {
-    node.size[1] = computed[1];
-  }
+  const root = node._pixPsRoot;
+  if (!root) return;
+  const contentH = measureContentHeight(root);
+  const desired = contentH + 46; // ~46px: title (~30) + body top padding (~16)
+  if (desired > node.size[1]) node.size[1] = desired;
 }
 
 // makeRowYResolver returns a function rowId -> y-in-node-local-body-coords.
-// Reads each row element's offsetTop relative to the DOM widget root, plus the
-// DOM widget's last_y (where ComfyUI placed the widget within the node body).
+// Uses the actual rendered position via getBoundingClientRect (more reliable
+// across ComfyUI versions than reading widget.last_y, which is undefined in
+// the Vue frontend). Converts screen-space row Y to graph-space, then to
+// node-local body-relative Y by subtracting node.pos[1].
 function makeRowYResolver(node) {
   return (rowId) => {
     const root = node._pixPsRoot;
     if (!root) return null;
     const rowEl = root.querySelector(`.pix-ps-row[data-id="${rowId}"]`);
     if (!rowEl) return null;
-    const widget = (node.widgets || []).find(
-      (w) => w.element === root || w.options?.element === root,
-    );
-    const widgetY = widget?.last_y ?? widget?.y ?? 0;
-    const rowTopWithinRoot = rowEl.offsetTop;
-    const rowMid = rowTopWithinRoot + rowEl.offsetHeight / 2;
-    return widgetY + rowMid;
+    const canvas = app.canvas?.canvas;
+    const ds = app.canvas?.ds;
+    if (!canvas || !ds) return null;
+    const canvasRect = canvas.getBoundingClientRect();
+    const rowRect = rowEl.getBoundingClientRect();
+    if (rowRect.height === 0) return null; // not laid out yet
+    const rowMidScreen = rowRect.top + rowRect.height / 2;
+    // Screen Y -> graph Y -> node-local body Y
+    const graphY = (rowMidScreen - canvasRect.top - ds.offset[1]) / ds.scale;
+    return graphY - node.pos[1];
   };
 }
 
