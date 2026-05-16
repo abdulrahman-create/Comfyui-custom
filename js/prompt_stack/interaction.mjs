@@ -60,6 +60,9 @@ export function attachTextareaEditor(node, taEl, rowId) {
   taEl.addEventListener("input", (e) => {
     e.stopImmediatePropagation();
     autoGrow(taEl);
+    // Ask the host node to grow its own height so the rest of the body
+    // (Add row button + other rows below) stays inside the node frame.
+    if (typeof node._pixPsGrow === "function") node._pixPsGrow();
     if (!pending) {
       pending = true;
       // Commit on idle (next frame). Cheap and keeps state in sync without

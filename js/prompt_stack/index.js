@@ -122,6 +122,13 @@ app.registerExtension({
           getMinHeight: () => measureContentHeight(root),
         });
 
+        // Expose a tiny grow helper so interaction handlers (textarea
+        // autogrow) can ask the node to expand without doing a full rerender.
+        node._pixPsGrow = () => {
+          growNodeToContent(node);
+          node.setDirtyCanvas(true, true);
+        };
+
         rerender();
 
         if (node.size[0] < DEFAULT_W) node.size[0] = DEFAULT_W;
@@ -143,6 +150,7 @@ app.registerExtension({
     nodeType.prototype.onRemoved = function () {
       this._pixPsRoot = null;
       this._pixPsRerender = null;
+      this._pixPsGrow = null;
       if (origRemoved) return origRemoved.apply(this, arguments);
     };
   },
