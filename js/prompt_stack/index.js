@@ -103,3 +103,48 @@ app.registerExtension({
     };
   },
 });
+
+// app.graphToPrompt hook - injects state + resolved separator into the hidden
+// PromptStackState input at workflow-submit time. Pattern #9 (Vue Frontend
+// Compatibility). Subgraph-safe via tail-id matching.
+const _origGraphToPrompt = app.graphToPrompt;
+app.graphToPrompt = async function (...args) {
+  const result = await _origGraphToPrompt.apply(this, args);
+  try {
+    const sep = resolveSeparator();
+    const prompt = result?.output;
+    if (prompt && typeof prompt === "object") {
+      for (const key of Object.keys(prompt)) {
+        const entry = prompt[key];
+        if (!entry || entry.class_type !== "PixaromaPromptStack") continue;
+        // Tail-id matching: find the node by id suffix (subgraphs prefix the id with "x:y:")
+        const nodeId = parseInt(String(key).split(":").pop(), 10);
+        const node = app.graph?.getNodeById?.(nodeId);
+        if (!node) continue;
+        const state = node.properties?.promptStackState;
+        if (!state || !Array.isArray(state.rows)) continue;
+        const payload = JSON.stringify({
+          version: 1,
+          rows: state.rows.map((r) => ({
+            enabled: !!r.enabled,
+            wireMode: !!r.wireMode,
+            wireIndex: r.wireIndex ?? null,
+            label: r.label || "",
+            text: r.text || "",
+          })),
+          separator: sep,
+        });
+        entry.inputs = entry.inputs || {};
+        entry.inputs.PromptStackState = payload;
+      }
+    }
+  } catch (err) {
+    console.error("Pixaroma.PromptStack: graphToPrompt hook failed", err);
+  }
+  return result;
+};
+
+function resolveSeparator() {
+  // Task 7 replaces this with a real settings lookup. For now: default.
+  return ", ";
+}
