@@ -1,11 +1,14 @@
 // Pixaroma toolbar button - one-click access to the 👑 Pixaroma settings.
 //
 // Mounts a small button with the Pixaroma logo in the floating top toolbar,
-// next to Align Pixaroma's button. Click → open the Settings dialog AND
-// auto-select the 👑 Pixaroma category in the sidebar.
+// next to Align Pixaroma's button. Click → opens ComfyUI's native Settings
+// dialog and auto-selects the 👑 Pixaroma category.
 //
-// Mount pattern: app.menu.settingsGroup.element.before(group) - same as
-// Align Pixaroma uses, same as the rgthree pattern.
+// Mount pattern: app.menu.settingsGroup.element.before(group) - the same
+// approach Align Pixaroma uses (and the same rgthree pattern). The native
+// cog button lives INSIDE that same settingsGroup element, so we click it
+// directly rather than guessing selectors that could accidentally match
+// other extensions' "Settings" buttons (like rgthree's).
 
 import { app } from "/scripts/app.js";
 
@@ -28,61 +31,45 @@ function injectCSS() {
       background-color: #2a2c2e !important;
       color: #ddd !important;
       border-color: #444 !important;
-      padding: 0 !important;
-      width: 28px !important;
-      height: 28px !important;
-      display: inline-flex !important;
-      align-items: center !important;
-      justify-content: center !important;
-      box-sizing: border-box !important;
     }
     .pixaroma-toolbar-btn:hover {
       background-color: #3a3d40 !important;
       filter: brightness(1.08);
     }
     .pixaroma-toolbar-btn .pixaroma-toolbar-icon {
+      display: inline-block;
       width: 18px;
       height: 18px;
-      display: block;
-      pointer-events: none;
       object-fit: contain;
+      pointer-events: none;
+      vertical-align: middle;
     }
   `;
   document.head.appendChild(style);
 }
 
-// Click the native settings cog. Works across every ComfyUI version because it
-// just simulates a user click on the existing button.
+// Click the native settings cog. It lives inside app.menu.settingsGroup -
+// the exact same element we mounted our button next to. Walk the children
+// for an actual <button>, which is what gets click-handled by the Vue menu.
 function clickNativeSettingsCog() {
-  const candidates = [
-    '[data-testid="settings-button"]',
-    'button[aria-label*="Setting" i]',
-    'button[title*="Setting" i]',
-    '.comfy-settings-btn',
-    // P-Menu (Vue / PrimeVue) settings cog inside the menu group
-    '.comfyui-menu .pi-cog',
-  ];
-  for (const sel of candidates) {
-    const el = document.querySelector(sel);
-    if (!el) continue;
-    // If it's the icon itself, click its closest button parent.
-    const btn = el.closest("button") || el;
-    btn.click();
-    return true;
-  }
-  return false;
+  const settingsGroupEl = app.menu?.settingsGroup?.element;
+  if (!settingsGroupEl) return false;
+  const cog = settingsGroupEl.querySelector("button");
+  if (!cog) return false;
+  cog.click();
+  return true;
 }
 
 // After the dialog opens, find the 👑 Pixaroma row in the sidebar and click it.
-// Vue uses PrimeVue components - the sidebar items are usually .p-listbox-option
-// or similar. We match by exact text content so the lookup is layout-agnostic.
+// Vue uses PrimeVue components; sidebar rows can show up as several different
+// element types. Match by exact text content so the lookup is layout-agnostic.
 // Polls for ~1.5 s in case the dialog mounts asynchronously.
 function selectPixaromaCategory() {
   const tryOnce = () => {
-    const items = document.querySelectorAll(
-      ".p-listbox-option, .p-tree-node-content, .p-menu-list .p-menuitem, [role='option'], [role='treeitem']",
+    const candidates = document.querySelectorAll(
+      ".p-listbox-option, .p-tree-node-content, .p-menu-list .p-menuitem, [role='option'], [role='treeitem'], li[data-pc-name='listboxoption']",
     );
-    for (const el of items) {
+    for (const el of candidates) {
       const txt = (el.textContent || "").trim();
       if (txt === PIXAROMA_CATEGORY_LABEL || txt.startsWith(PIXAROMA_CATEGORY_LABEL)) {
         el.click();
@@ -103,11 +90,10 @@ function selectPixaromaCategory() {
 
 function openPixaromaSettings() {
   if (!clickNativeSettingsCog()) {
-    console.warn("[Pixaroma.ToolbarButton] could not locate the native Settings cog");
+    console.warn("[Pixaroma.ToolbarButton] could not find the native Settings cog inside app.menu.settingsGroup");
     return;
   }
-  // Give the dialog a tick to mount, then drill into 👑 Pixaroma.
-  setTimeout(selectPixaromaCategory, 80);
+  setTimeout(selectPixaromaCategory, 120);
 }
 
 function mount() {
@@ -126,6 +112,8 @@ function mount() {
   injectCSS();
 
   const btn = document.createElement("button");
+  // .comfyui-button supplies the natural button size + padding (matches
+  // other toolbar buttons exactly). We only add color theming on top.
   btn.className = "comfyui-button pixaroma-toolbar-btn";
   btn.title = "Open Pixaroma Settings";
   btn.type = "button";
