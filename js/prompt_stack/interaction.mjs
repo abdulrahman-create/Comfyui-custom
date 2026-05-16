@@ -80,7 +80,14 @@ export function attachTextareaEditor(node, taEl, rowId) {
   taEl.addEventListener("pointerdown", (e) => e.stopImmediatePropagation());
   taEl.addEventListener("mousedown", (e) => e.stopImmediatePropagation());
 
-  autoGrow(taEl);
+  // Defer the initial auto-grow to next frame so the textarea is actually in
+  // the DOM (scrollHeight returns 0 for unattached elements). Without this,
+  // re-renders (after Add row, etc.) collapse previously-grown textareas back
+  // to their CSS min-height because we measured them before layout ran.
+  requestAnimationFrame(() => {
+    autoGrow(taEl);
+    if (typeof node._pixPsGrow === "function") node._pixPsGrow();
+  });
 }
 
 function autoGrow(ta) {
