@@ -5,7 +5,7 @@
 // Click handlers and drag handlers are wired in interaction.mjs (Task 5+).
 
 import { readState } from "./core.mjs";
-import { attachLabelEditor, attachTextareaEditor } from "./interaction.mjs";
+import { attachLabelEditor, attachTextareaEditor, attachDragHandlers } from "./interaction.mjs";
 
 const CSS_ID = "pix-prompt-stack-css";
 
@@ -300,6 +300,8 @@ export function renderRows(node, root, rowHandlers) {
     ta.placeholder = "Type your prompt chunk here...";
     rowEl.appendChild(ta);
     attachTextareaEditor(node, ta, row.id);
+
+    attachDragHandlers(node, rowEl, row.id, rowHandlers.onDrop);
 
     root.appendChild(rowEl);
   }

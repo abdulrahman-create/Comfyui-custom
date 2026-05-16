@@ -166,3 +166,69 @@ export function pixConfirm({ title, message, okText = "OK", cancelText = "Cancel
   });
 }
 
+
+// Drag-to-reorder rows.
+//
+// Uses the HTML5 drag-and-drop API. The drag image is the row itself (default).
+// On dragover we compute whether the cursor is in the top or bottom half of
+// the target row and add a visual indicator (orange line via CSS class).
+// On drop we move the dragged row to the new index and re-render.
+//
+// dragState is module-scoped so handlers attached to multiple rows share state.
+
+const _drag = { id: null };
+
+export function attachDragHandlers(node, rowEl, rowId, onDrop) {
+  rowEl.addEventListener("dragstart", (e) => {
+    // Don't initiate drag if the event target is an input/textarea/button.
+    // This protects native text-selection and click behavior in the row's
+    // controls (label input, textarea, ON pill, X delete).
+    const tag = (e.target.tagName || "").toLowerCase();
+    if (tag === "input" || tag === "textarea" || tag === "button") {
+      e.preventDefault();
+      return;
+    }
+    _drag.id = rowId;
+    rowEl.classList.add("is-dragging");
+    try { e.dataTransfer.effectAllowed = "move"; } catch (_) {}
+    try { e.dataTransfer.setData("text/plain", rowId); } catch (_) {}
+  });
+
+  rowEl.addEventListener("dragover", (e) => {
+    if (!_drag.id || _drag.id === rowId) return;
+    e.preventDefault();
+    try { e.dataTransfer.dropEffect = "move"; } catch (_) {}
+    const rect = rowEl.getBoundingClientRect();
+    const isAbove = (e.clientY - rect.top) < rect.height / 2;
+    rowEl.classList.toggle("is-drop-target-above", isAbove);
+    rowEl.classList.toggle("is-drop-target-below", !isAbove);
+  });
+
+  rowEl.addEventListener("dragleave", () => {
+    rowEl.classList.remove("is-drop-target-above");
+    rowEl.classList.remove("is-drop-target-below");
+  });
+
+  rowEl.addEventListener("drop", (e) => {
+    if (!_drag.id || _drag.id === rowId) return;
+    e.preventDefault();
+    const above = rowEl.classList.contains("is-drop-target-above");
+    rowEl.classList.remove("is-drop-target-above");
+    rowEl.classList.remove("is-drop-target-below");
+    onDrop(_drag.id, rowId, above);
+    _drag.id = null;
+  });
+
+  rowEl.addEventListener("dragend", () => {
+    rowEl.classList.remove("is-dragging");
+    _drag.id = null;
+    // Defensive: clear any leftover indicators on siblings.
+    const siblings = rowEl.parentElement?.querySelectorAll(".pix-ps-row") || [];
+    siblings.forEach((s) => {
+      s.classList.remove("is-drop-target-above");
+      s.classList.remove("is-drop-target-below");
+      s.classList.remove("is-dragging");
+    });
+  });
+}
+

@@ -5,6 +5,7 @@ import {
   addRow,
   deleteRow,
   toggleEnabled,
+  reorderRows,
 } from "./core.mjs";
 import { injectCSS, buildRoot, renderRows, measureContentHeight } from "./render.mjs";
 import { pixConfirm } from "./interaction.mjs";
@@ -89,7 +90,21 @@ function makeHandlers(node, root) {
     onAdd: () => { addRow(node); rerender(); },
     onDragStart: (_id, _ev) => { /* Task 9 */ },
     onDragOver: (_id, _ev) => { /* Task 9 */ },
-    onDrop: (_id, _ev) => { /* Task 9 */ },
+    onDrop: (fromId, toId, above) => {
+      const state = readState(node);
+      const fromIdx = state.rows.findIndex((r) => r.id === fromId);
+      const toIdxRaw = state.rows.findIndex((r) => r.id === toId);
+      if (fromIdx < 0 || toIdxRaw < 0) return;
+      // Compute final destination index: if dropping ABOVE the target, the new
+      // index is the target's index (target shifts down). If dropping BELOW,
+      // the new index is target + 1. Account for the removed source slot when
+      // it was before destination (splice logic shifts).
+      let destIdx = above ? toIdxRaw : toIdxRaw + 1;
+      if (fromIdx < destIdx) destIdx -= 1;
+      if (destIdx === fromIdx) return;
+      reorderRows(node, fromIdx, destIdx);
+      rerender();
+    },
     onDragEnd: (_ev) => { /* Task 9 */ },
   };
   return { handlers, rerender };
