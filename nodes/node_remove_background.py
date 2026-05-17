@@ -132,6 +132,26 @@ def _load_bg_model(ckpt_path, image_size):
     return bg_model
 
 
+# LRU cache, cap 2. Typical compare-flow is standard vs HR (or HR vs
+# matting), so keeping two warm avoids reloads while staying small in
+# memory. Keyed on (path, image_size) so a rename / resolution change
+# is correctly cache-busted.
+_MODEL_CACHE = OrderedDict()
+_CACHE_CAP = 2
+
+
+def _get_cached_model(ckpt_path, image_size):
+    key = (os.path.abspath(ckpt_path), image_size)
+    if key in _MODEL_CACHE:
+        _MODEL_CACHE.move_to_end(key)
+        return _MODEL_CACHE[key]
+    model = _load_bg_model(ckpt_path, image_size)
+    _MODEL_CACHE[key] = model
+    while len(_MODEL_CACHE) > _CACHE_CAP:
+        _MODEL_CACHE.popitem(last=False)
+    return model
+
+
 # Stub class so the file imports; will be filled in Task 4.
 class PixaromaRemoveBackground:
     pass
