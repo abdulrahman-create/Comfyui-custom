@@ -171,7 +171,13 @@ Download one of these three `.safetensors` files and drop it into `ComfyUI/model
 | **High Resolution** | `birefnet-hr.safetensors` (444 MB) | 8 GB+ | Large images with fine outline detail (jewelry, intricate hardware). [Download](https://huggingface.co/ZhengPeng7/BiRefNet_HR) |
 | **Matting (Soft Edges)** | `birefnet-matting.safetensors` (444 MB) | 8 GB+ | Hair, fur, lace, soft fabric. Also worth trying for glass / smoke. [Download](https://huggingface.co/ZhengPeng7/BiRefNet_HR-matting) |
 
-**Rename steps on Windows**: download from HuggingFace (you'll get a file called `model.safetensors`), right-click the file, **Rename**, type the recommended name above (keeping `.safetensors`), press Enter. If Windows hides extensions: View tab → check "File name extensions" first, otherwise the rename can accidentally drop the extension.
+**Important: HR and Matting need renaming after download.** The Standard model from Comfy-Org is already named `birefnet.safetensors` and works as-is. But the HR and Matting variants come from ZhengPeng7's HuggingFace repos as `model.safetensors`, and Pixaroma needs them named correctly to know which preprocessing resolution to use.
+
+- Standard (`birefnet.safetensors`) - **no rename needed**, drop the file in as-is
+- HR (downloaded as `model.safetensors`) - **rename to `birefnet-hr.safetensors`**
+- Matting (downloaded as `model.safetensors`) - **rename to `birefnet-matting.safetensors`**
+
+**Rename steps on Windows**: right-click the file, **Rename**, type the new name (keeping `.safetensors` at the end), press Enter. If Windows hides extensions: View tab → check "File name extensions" first, otherwise the rename can accidentally drop the extension. Why the names matter: filenames containing `matt` or `hr` (case-insensitive) tell Pixaroma to preprocess at 2048×2048; anything else preprocesses at 1024×1024. If you name HR as plain `birefnet.safetensors`, it will load but run at 1024 and you'll lose the whole point of HR.
 
 #### Option B: rembg (alternative)
 
