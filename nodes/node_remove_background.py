@@ -109,6 +109,23 @@ def _load_bg_model(ckpt_path, image_size):
             "  https://huggingface.co/Comfy-Org/BiRefNet/tree/main/background_removal"
         )
 
+    # ComfyUI's BiRefNet hardcodes a Swin-L backbone (embed_dim=192). The
+    # lite variant uses Swin-T (embed_dim=96) - same architecture name but
+    # totally different tensor shapes. Catch it here with a clear error
+    # before load_sd explodes with a wall of size mismatches.
+    patch_weight = sd.get("bb.patch_embed.proj.weight")
+    if patch_weight is not None and patch_weight.shape[0] != 192:
+        raise ValueError(
+            f"Remove Background Pixaroma: {os.path.basename(ckpt_path)} looks "
+            f"like a different BiRefNet variant (embed_dim={patch_weight.shape[0]}, "
+            "probably the 'lite' Swin-T version). This node only supports the "
+            "Swin-L backbone variants (standard, HR, HR-matting). Pick a "
+            "different file from the dropdown, or download one of:\n"
+            "  https://huggingface.co/Comfy-Org/BiRefNet/tree/main/background_removal\n"
+            "  https://huggingface.co/ZhengPeng7/BiRefNet_HR\n"
+            "  https://huggingface.co/ZhengPeng7/BiRefNet_HR-matting"
+        )
+
     config = {
         "model_type": "birefnet",
         "image_size": image_size,
