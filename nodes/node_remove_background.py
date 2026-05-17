@@ -152,9 +152,103 @@ def _get_cached_model(ckpt_path, image_size):
     return model
 
 
-# Stub class so the file imports; will be filled in Task 4.
+_INSTALL_MESSAGE = (
+    "No background-removal models found.\n"
+    "\n"
+    "Drop a BiRefNet .safetensors into ComfyUI/models/background_removal/ and "
+    "refresh the workflow.\n"
+    "\n"
+    "Recommended files:\n"
+    "  birefnet.safetensors           standard, 1024, hard edges\n"
+    "  birefnet-hr.safetensors        HR, 2048, hard edges, more detail\n"
+    "  birefnet-matting.safetensors   HR, 2048, soft edges (hair / fur)\n"
+    "\n"
+    "Filenames containing 'matt' or 'hr' (case-insensitive) preprocess at 2048; "
+    "everything else at 1024. 2048 is slower and uses more VRAM.\n"
+    "\n"
+    "Download:\n"
+    "  Standard:   https://huggingface.co/Comfy-Org/BiRefNet/tree/main/background_removal\n"
+    "  HR:         https://huggingface.co/ZhengPeng7/BiRefNet_HR\n"
+    "  HR-matting: https://huggingface.co/ZhengPeng7/BiRefNet_HR-matting"
+)
+
+
+def _list_models():
+    """Return the sorted list of model filenames the dropdown should show.
+    Sentinel item when the folder is empty so the dropdown is never blank."""
+    try:
+        names = folder_paths.get_filename_list("background_removal")
+    except Exception:
+        names = []
+    if not names:
+        return [SENTINEL_NO_MODELS]
+    return sorted(names)
+
+
 class PixaromaRemoveBackground:
-    pass
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "image": ("IMAGE",),
+                "model": (_list_models(),),
+            }
+        }
+
+    RETURN_TYPES = ("IMAGE", "MASK", "MASK")
+    RETURN_NAMES = ("image", "mask", "inverted_mask")
+    FUNCTION = "execute"
+    CATEGORY = "👑 Pixaroma"
+    DESCRIPTION = (
+        "Remove an image background with a BiRefNet model and return the "
+        "cutout (RGBA), the foreground mask, and the inverted mask in one "
+        "node.\n\n"
+        "Models load from ComfyUI/models/background_removal/. Filename "
+        "controls preprocessing resolution: 'matt' or 'hr' in the name "
+        "(case-insensitive) preprocesses at 2048; all others at 1024. "
+        "Recommended names: birefnet.safetensors (standard), "
+        "birefnet-hr.safetensors (HR), birefnet-matting.safetensors "
+        "(HR matting for hair / fur).\n\n"
+        "Downloads:\n"
+        "  https://huggingface.co/Comfy-Org/BiRefNet/tree/main/background_removal\n"
+        "  https://huggingface.co/ZhengPeng7/BiRefNet_HR\n"
+        "  https://huggingface.co/ZhengPeng7/BiRefNet_HR-matting"
+    )
+
+    def execute(self, image, model):
+        if model == SENTINEL_NO_MODELS:
+            raise ValueError(_INSTALL_MESSAGE)
+
+        ckpt_path = folder_paths.get_full_path("background_removal", model)
+        if not ckpt_path or not os.path.isfile(ckpt_path):
+            raise ValueError(
+                f"Remove Background Pixaroma: model file {model!r} not found "
+                "in ComfyUI/models/background_removal/. The dropdown may be "
+                "stale - reload the page to refresh it."
+            )
+
+        image_size = _resolution_for_filename(model)
+        bg_model = _get_cached_model(ckpt_path, image_size)
+
+        # encode_image returns (B, 1, H, W). Squeeze to canonical MASK
+        # shape (B, H, W) so downstream mask-math nodes don't have to
+        # branch on it.
+        mask = bg_model.encode_image(image)
+        if mask.ndim == 4 and mask.shape[1] == 1:
+            mask = mask.squeeze(1)
+        elif mask.ndim == 4 and mask.shape[-1] == 1:
+            mask = mask.squeeze(-1)
+
+        # Match image device + dtype before concat so RGBA stays on one
+        # device and we don't get a float64 promotion on CPU.
+        mask = mask.to(device=image.device, dtype=image.dtype)
+
+        # Build RGBA: keep RGB (drop any pre-existing alpha), stack fg
+        # mask as alpha. fg=1 -> opaque, bg=0 -> transparent.
+        image_rgba = torch.cat([image[..., :3], mask.unsqueeze(-1)], dim=-1)
+
+        inverted = 1.0 - mask
+        return (image_rgba, mask, inverted)
 
 
 NODE_CLASS_MAPPINGS = {
