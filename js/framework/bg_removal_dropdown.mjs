@@ -75,24 +75,46 @@ export function buildBgRemovalDropdown({ container, info, value, onChange }) {
   }
   if (variants.length) select.appendChild(grpBiRef);
 
-  // rembg group
+  // rembg group. Labels include the actual rembg model name in parens so
+  // the user can tell what "Fast" vs "Best" actually mean. Entries stay
+  // SELECTABLE even when not installed - the helpRow below explains what
+  // to do, instead of a silent disabled click that gives no feedback.
+  // Friendly names for the underlying rembg model ids (server returns the
+  // raw ids; we surface the human-friendly bit in the dropdown label).
+  const REMBG_MODEL_NAMES = {
+    "u2net": "u2net",
+    "isnet-general-use": "isnet",
+    "birefnet-general": "BiRefNet via rembg",
+  };
   if (rembgModels.length) {
     const grpRembg = document.createElement("optgroup");
     grpRembg.label = rembgOk ? "rembg" : "rembg (not installed)";
     for (const m of rembgModels) {
       const opt = document.createElement("option");
       opt.value = m.id;
-      let label = m.label;
-      if (m.id !== "auto") {
+      // Prefix every entry with "rembg" so the user sees which library is
+      // running. "rembg Fast (u2net)" reads better than just "Fast".
+      let label;
+      if (m.id === "auto") {
+        label = `rembg Auto (tries best installed)`;
+      } else {
+        const modelName = REMBG_MODEL_NAMES[m.id] || m.id;
+        label = `rembg ${m.label} (${modelName})`;
         const parts = [];
         if (m.sizeMB) parts.push(`${m.sizeMB} MB`);
-        if (m.downloaded) parts.push("✓ downloaded");
+        if (!rembgOk) parts.push("rembg not installed");
+        else if (m.downloaded) parts.push("✓ downloaded");
         else if (m.available) parts.push("will download");
+        else parts.push(`needs rembg ${m.minRembg}+`);
         if (parts.length) label += ` - ${parts.join(", ")}`;
       }
       opt.textContent = label;
-      opt.disabled = !m.available;
-      if (!m.available) opt.title = `Needs rembg ${m.minRembg}+ (you have ${info.rembgVersion || "unknown"})`;
+      // Greyed style for any rembg entry the user can't actually run yet
+      // (rembg missing OR specific model needs newer rembg version).
+      const usable = rembgOk && m.available;
+      if (!usable) opt.style.color = "#888";
+      // NOTE: deliberately NOT setting opt.disabled. The user needs to be
+      // able to click and see the help text in the row below.
       grpRembg.appendChild(opt);
     }
     select.appendChild(grpRembg);
@@ -104,42 +126,88 @@ export function buildBgRemovalDropdown({ container, info, value, onChange }) {
   const initial = allOptionValues.includes(value) ? value : pickDefaultModel(info);
   select.value = initial;
 
-  // Inline download row - shows the HuggingFace link for the currently
-  // selected BiRefNet variant if it's NOT installed. Hidden otherwise.
-  const dlRow = document.createElement("div");
-  dlRow.style.cssText =
+  // Inline help row - shows EITHER:
+  //   - For an un-installed BiRefNet variant: HuggingFace download link
+  //   - For a rembg entry when rembg is missing: pip install instructions
+  //   - For a rembg entry that needs a newer rembg version: upgrade hint
+  //   - For a rembg entry whose model isn't downloaded yet: size + first-use note
+  //   - Hidden otherwise
+  const helpRow = document.createElement("div");
+  helpRow.style.cssText =
     "font-size:10px;color:#888;line-height:1.4;display:none;";
 
-  function refreshDownloadRow() {
-    const v = variants.find((x) => x.id === select.value);
+  const rembgById = (id) => rembgModels.find((x) => x.id === id);
+  const REMBG_DOCS_URL = "https://github.com/danielgatis/rembg#installation";
+
+  function refreshHelpRow() {
+    const id = select.value;
+    const v = variants.find((x) => x.id === id);
+    const m = rembgById(id);
+
+    // BiRefNet variant, not installed -> show download link.
     if (v && !v.installed) {
-      dlRow.style.display = "";
-      dlRow.innerHTML =
+      helpRow.style.display = "";
+      helpRow.innerHTML =
         `<a href="${v.downloadUrl}" target="_blank" rel="noopener" ` +
         `style="color:#f66744;text-decoration:underline;cursor:pointer;">Download ${v.filename}</a>` +
         ` and place in <code style="background:#1c1c1c;padding:1px 4px;border-radius:2px;">${info.birefnet?.modelDir || "ComfyUI/models/background_removal"}</code>`;
-    } else {
-      dlRow.style.display = "none";
-      dlRow.innerHTML = "";
+      return;
     }
+
+    // rembg entry, rembg missing entirely -> pip install help + Read more.
+    if (m && !rembgOk) {
+      helpRow.style.display = "";
+      helpRow.innerHTML =
+        `<span style="color:#e57">rembg not installed.</span> ` +
+        `Open <code style="background:#1c1c1c;padding:1px 4px;border-radius:2px;">ComfyUI/python_embeded</code> in File Explorer, ` +
+        `type <code style="background:#1c1c1c;padding:1px 4px;border-radius:2px;">cmd</code> in the address bar, then run ` +
+        `<code style="background:#1c1c1c;padding:1px 4px;border-radius:2px;">python.exe -m pip install rembg</code>. ` +
+        `Restart ComfyUI. ` +
+        `<a href="${REMBG_DOCS_URL}" target="_blank" rel="noopener" ` +
+        `style="color:#f66744;text-decoration:underline;cursor:pointer;">Read more</a>`;
+      return;
+    }
+
+    // rembg entry, rembg installed but THIS specific model needs newer rembg.
+    if (m && rembgOk && !m.available) {
+      helpRow.style.display = "";
+      helpRow.innerHTML =
+        `<span style="color:#e57">Needs rembg ${m.minRembg}+ (you have ${info.rembgVersion || "unknown"}).</span> ` +
+        `Update with <code style="background:#1c1c1c;padding:1px 4px;border-radius:2px;">python.exe -m pip install --upgrade rembg</code> ` +
+        `in ComfyUI/python_embeded, then restart.`;
+      return;
+    }
+
+    // rembg entry, model file not downloaded yet -> first-use note.
+    if (m && rembgOk && m.available && !m.downloaded && m.id !== "auto") {
+      helpRow.style.display = "";
+      helpRow.innerHTML =
+        `First use downloads ~${m.sizeMB} MB to ` +
+        `<code style="background:#1c1c1c;padding:1px 4px;border-radius:2px;">${info.modelDir || "ComfyUI/models/rembg"}</code>.`;
+      return;
+    }
+
+    // Everything fine - hide the help row.
+    helpRow.style.display = "none";
+    helpRow.innerHTML = "";
   }
 
   select.addEventListener("change", () => {
-    refreshDownloadRow();
+    refreshHelpRow();
     if (typeof onChange === "function") onChange(select.value);
   });
 
-  refreshDownloadRow();
+  refreshHelpRow();
 
   wrap.appendChild(select);
-  wrap.appendChild(dlRow);
+  wrap.appendChild(helpRow);
   container.appendChild(wrap);
 
   return {
     select,
     refreshLabel(id) {
       if (id !== undefined) select.value = id;
-      refreshDownloadRow();
+      refreshHelpRow();
     },
   };
 }
