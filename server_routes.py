@@ -12,6 +12,11 @@ import folder_paths
 
 from .nodes._save_helpers import _build_pnginfo, _safe_prefix
 from .nodes._prompt_reader_helpers import read_prompt_from_image
+from .nodes._bg_removal_helpers import (
+    get_birefnet_inventory,
+    is_birefnet_model_id,
+    run_birefnet_on_pil,
+)
 
 # --- PORTABLE COMFYUI FIX ---
 # Force rembg to download and read AI models from ComfyUI/models/rembg
@@ -624,6 +629,7 @@ async def remove_bg_info(request):
         # Still return the model catalog so the UI can show greyed
         # entries with the "install rembg" hint.
         info["models"] = [dict(m, available=False, downloaded=False) for m in REMBG_MODELS]
+        info["birefnet"] = get_birefnet_inventory()
         return web.json_response(info)
 
     # Which model files already exist on disk — saves the download wait
@@ -645,6 +651,7 @@ async def remove_bg_info(request):
         available = installed_ver >= req
         out_models.append(dict(m, available=available, downloaded=m["id"] in downloaded_ids))
     info["models"] = out_models
+    info["birefnet"] = get_birefnet_inventory()
     return web.json_response(info)
 
 

@@ -240,7 +240,13 @@ def is_birefnet_model_id(model_id):
 def get_birefnet_inventory():
     """Return the canonical variant list annotated with `installed`.
     Used by /pixaroma/remove_bg_info so the frontend dropdown can show
-    download links for missing variants."""
+    download links for missing variants.
+
+    Uses `folder_paths.get_full_path` to honour ComfyUI's extra_model_paths
+    config (lots of users store models in a shared external dir, NOT the
+    default ComfyUI/models/background_removal/)."""
+    # Display path: prefer the first configured folder (where new downloads
+    # should land), fall back to None if none configured.
     try:
         model_dir = folder_paths.get_folder_paths("background_removal")[0]
     except Exception:
@@ -249,10 +255,13 @@ def get_birefnet_inventory():
     out = []
     for v in BIREFNET_VARIANTS:
         entry = dict(v)
-        entry["installed"] = bool(
-            model_dir
-            and os.path.isfile(os.path.join(model_dir, v["filename"]))
-        )
+        # get_full_path searches ALL configured roots (default + extras).
+        # Returns the full path if found, None otherwise.
+        try:
+            found = folder_paths.get_full_path("background_removal", v["filename"])
+        except Exception:
+            found = None
+        entry["installed"] = bool(found and os.path.isfile(found))
         out.append(entry)
     return {"modelDir": model_dir, "variants": out}
 
@@ -269,19 +278,21 @@ def run_birefnet_on_pil(pil_image, model_id):
             f"run_birefnet_on_pil: unknown BiRefNet model id {model_id!r}."
         )
     variant = next(v for v in BIREFNET_VARIANTS if v["id"] == model_id)
+    # Use get_full_path so extra_model_paths.yaml is honoured (Easy Install
+    # users often keep models in a shared external dir).
     try:
-        model_dir = folder_paths.get_folder_paths("background_removal")[0]
+        ckpt_path = folder_paths.get_full_path("background_removal", variant["filename"])
     except Exception:
+        ckpt_path = None
+    if not ckpt_path or not os.path.isfile(ckpt_path):
+        try:
+            display_dir = folder_paths.get_folder_paths("background_removal")[0]
+        except Exception:
+            display_dir = "ComfyUI/models/background_removal"
         raise ValueError(
-            "Pixaroma BiRefNet: ComfyUI's 'background_removal' folder is "
-            "not configured. Restart ComfyUI."
-        )
-    ckpt_path = os.path.join(model_dir, variant["filename"])
-    if not os.path.isfile(ckpt_path):
-        raise ValueError(
-            f"Pixaroma BiRefNet: {variant['filename']} not found in "
-            f"{model_dir}. Download it from {variant['downloadUrl']} and "
-            "drop the .safetensors there, then try again."
+            f"Pixaroma BiRefNet: {variant['filename']} not found. "
+            f"Download it from {variant['downloadUrl']} and drop the "
+            f".safetensors into {display_dir}, then try again."
         )
 
     image_size = _resolution_for_filename(variant["filename"])
