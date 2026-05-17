@@ -657,14 +657,6 @@ async def remove_bg_info(request):
 
 @PromptServer.instance.routes.post("/pixaroma/remove_bg")
 async def remove_bg(request):
-    try:
-        from rembg import remove, new_session
-    except ImportError:
-        return web.json_response(
-            {"error": "rembg is not installed.", "code": "REMBG_MISSING"},
-            status=500,
-        )
-
     data = await request.json()
     b64_data = data.get("image", "")
     # Accept the new explicit `model` field; fall back to legacy `quality`
@@ -678,6 +670,47 @@ async def remove_bg(request):
 
     if len(b64_data) > _MAX_B64_BYTES:
         return web.json_response({"error": "Image too large"}, status=413)
+
+    # ----------- BiRefNet branch (new in 1.3.34) -----------
+    # If the client picked one of our BiRefNet variants, route through
+    # the Pixaroma loader instead of rembg. No rembg dep required.
+    if is_birefnet_model_id(model):
+        try:
+            input_data = base64.b64decode(b64_data)
+            input_image = Image.open(io.BytesIO(input_data))
+            print(f"[Pixaroma] AI Remove Background: BiRefNet {model!r} on {input_image.size[0]}x{input_image.size[1]}...")
+            output_image = run_birefnet_on_pil(input_image, model)
+            buffered = io.BytesIO()
+            output_image.save(buffered, format="PNG")
+            output_b64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
+            print(f"[Pixaroma] AI Remove Background: done ({model})")
+            return web.json_response({
+                "status": "success",
+                "image": f"data:image/png;base64,{output_b64}",
+                "modelUsed": model,
+            })
+        except ValueError as e:
+            # File-not-found, lite-variant rejection, missing folder, etc.
+            # ValueError carries our user-friendly install message.
+            return web.json_response(
+                {"error": str(e), "code": "BIREFNET_MISSING"},
+                status=400,
+            )
+        except Exception as e:
+            print(f"[Pixaroma] BiRefNet inference failed: {e}")
+            return web.json_response(
+                {"error": f"BiRefNet inference failed: {e}"},
+                status=500,
+            )
+
+    # ----------- rembg branch (existing) -----------
+    try:
+        from rembg import remove, new_session
+    except ImportError:
+        return web.json_response(
+            {"error": "rembg is not installed.", "code": "REMBG_MISSING"},
+            status=500,
+        )
 
     # _open_session tries the requested model, then falls back through
     # the auto chain if it isn't available. Returns (session, model_used)
