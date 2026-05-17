@@ -53,6 +53,21 @@ BIREFNET_VARIANTS = [
         "bestFor": "clean objects, products, logos - fast everyday cutouts",
     },
     {
+        # Same model file as Standard, just pinned to 512 internal resolution.
+        # Lets users on 4-6 GB cards pick a guaranteed-fits option directly
+        # instead of waiting for the auto OOM-retry chain in run_birefnet_on_pil.
+        # Edges are softer (no fine detail from 1024 patches) but the silhouette
+        # is still very good - usable for most product / character cutouts.
+        "id": "birefnet-lowvram",
+        "label": "BiRefNet Low VRAM",
+        "filename": "birefnet.safetensors",
+        "sizeMB": 424,
+        "resolution": 512,
+        "downloadUrl": "https://huggingface.co/Comfy-Org/BiRefNet/tree/main/background_removal",
+        "vram": "2-3 GB",
+        "bestFor": "low-VRAM cards (4-6 GB) - softer edges, always fits, faster",
+    },
+    {
         "id": "birefnet-hr",
         "label": "BiRefNet HR",
         "filename": "birefnet-hr.safetensors",
@@ -347,7 +362,10 @@ def run_birefnet_on_pil(pil_image, model_id):
             f".safetensors into {display_dir}, then try again."
         )
 
-    native_size = _resolution_for_filename(variant["filename"])
+    # Prefer the variant's explicit resolution (so birefnet-lowvram can pin
+    # itself to 512 even though it shares birefnet.safetensors with Standard).
+    # Fall back to filename-based detection for variants without it.
+    native_size = variant.get("resolution") or _resolution_for_filename(variant["filename"])
 
     # GPU retry chain: native res first, then progressively smaller. Skip
     # any size that exceeds the native res (would just waste memory).
