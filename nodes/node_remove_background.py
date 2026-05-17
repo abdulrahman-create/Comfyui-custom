@@ -173,16 +173,25 @@ _INSTALL_MESSAGE = (
 )
 
 
+_DEFAULT_MODEL_NAME = "birefnet.safetensors"
+
+
 def _list_models():
-    """Return the sorted list of model filenames the dropdown should show.
-    Sentinel item when the folder is empty so the dropdown is never blank."""
+    """Return the list of model filenames the dropdown should show.
+    Sentinel item when the folder is empty so the dropdown is never blank.
+    `birefnet.safetensors` (the standard model) is pinned to position 0 so
+    it becomes the default selection. The rest are alphabetical."""
     try:
         names = folder_paths.get_filename_list("background_removal")
     except Exception:
         names = []
     if not names:
         return [SENTINEL_NO_MODELS]
-    return sorted(names)
+    names = sorted(names)
+    if _DEFAULT_MODEL_NAME in names:
+        names.remove(_DEFAULT_MODEL_NAME)
+        names.insert(0, _DEFAULT_MODEL_NAME)
+    return names
 
 
 class PixaromaRemoveBackground:
