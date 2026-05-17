@@ -185,6 +185,12 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
+### **May 17, 2026 (1.3.34)**
+- **Image Composer + Paint Pixaroma: AI Remove Background dropdown now shows the same BiRefNet models as Remove Background Pixaroma.** No more separate downloads or different model files for the in-editor button vs the node. Drop your BiRefNet `.safetensors` once into `ComfyUI/models/background_removal/` and both the editors AND the node pick them up. The dropdown groups BiRefNet variants on top (defaulting to Standard if installed), then the existing rembg options below.
+- For each BiRefNet entry that isn't installed, the dropdown shows an inline orange Download link that opens the HuggingFace page in a new tab and tells you exactly which folder to drop the file in. No guessing.
+- Existing rembg installations keep working unchanged - if you have rembg and like its u2net (small/fast) or isnet (balanced), those options are still there in the same dropdown.
+- The behaviour change: if you have BiRefNet Standard installed, Auto now picks it instead of rembg's auto. That gives you sharper edges consistent with the Remove Background node, at roughly the same speed for the Standard variant.
+
 ### **May 17, 2026 (1.3.33)**
 - **Remove Background Pixaroma: model dropdown built into the node, with HR and matting support.** No more separate Load Background Removal Model node to wire in. Pick your model from a dropdown right on the node. Three variants supported, each tuned for a different use case:
     - **Standard** (424 MB, 4-6 GB VRAM, processes at 1024×1024): clean objects, products, logos, fast everyday cutouts.
