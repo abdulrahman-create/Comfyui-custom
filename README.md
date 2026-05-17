@@ -154,9 +154,12 @@ git clone https://github.com/pixaroma/ComfyUI-Pixaroma.git
 ```
 
 ### 2. Optional: AI Background Removal
-AI Remove Background is used in three places in Pixaroma: the **Remove Background Pixaroma** node, the **Image Composer** button, and the **Paint Pixaroma** button. All three pick from the same model dropdown so a model you install once works everywhere.
+AI Remove Background is used in three places in Pixaroma: the **Remove Background Pixaroma** node, the **Image Composer** editor's AI Background Removal button, and the **Paint Pixaroma** editor's AI Background Removal button.
 
-There are two ways to get AI background removal working: **Pixaroma BiRefNet** (recommended, no extra Python deps, three model variants) and **rembg** (a separate Python library with four model options). They can be used side-by-side - install whichever you want from the dropdown.
+- The **node** uses **Pixaroma BiRefNet only** (`ComfyUI/models/background_removal/*.safetensors`).
+- The two **editors** can use **Pixaroma BiRefNet OR rembg** - their dropdown shows BiRefNet variants on top and rembg options below. Any BiRefNet model you install once works in all three places.
+
+There are two ways to get AI background removal working: **Pixaroma BiRefNet** (recommended, no extra Python deps, three model variants, works in the node AND the editors) and **rembg** (a separate Python library with four model options, works in the editors only). They can be used side-by-side - install whichever you want from the dropdown.
 
 #### Option A: Pixaroma BiRefNet (recommended)
 
