@@ -87,16 +87,38 @@ function setupTextOverlayNode(node) {
   node._textOverlayBodyPanel = bodyPanel;
   node._textOverlayBodyRoot = root;
 
+  // Intrinsic content-height measurement, mirrors Load Image's
+  // measureContentHeight pattern: sum children's offsetHeight + the panel's
+  // padding (8px top + 8px bottom = 16px) + flex gaps (5px between visible
+  // children). Do NOT use root.scrollHeight: LiteGraph stretches root when
+  // the node is taller than minimum and that creates a feedback loop where
+  // every paint reports a larger height. Children offsetHeight is intrinsic
+  // and stable.
+  function measureContentHeight() {
+    let totalH = 0;
+    let visible = 0;
+    for (const child of root.children) {
+      const style = window.getComputedStyle(child);
+      if (style.position === "absolute" || style.position === "fixed") continue;
+      if (style.display === "none") continue;
+      totalH += child.offsetHeight;
+      visible += 1;
+    }
+    const padding = 16;            // 8px top + 8px bottom (matches CSS)
+    const gaps    = Math.max(0, visible - 1) * 5; // flex gap: 5px in CSS
+    return Math.max(320, totalH + padding + gaps);
+  }
+
   node.addDOMWidget("pix_text_overlay_ui", "div", root, {
     canvasOnly: true,
     serialize: false,
-    getMinHeight: () => {
-      // Sum children offsetHeight + 4 padding gutter so the node hugs its
-      // content (the compact v2 layout fits in well under 480 px).
-      let h = 4;
-      for (const c of root.children) h += c.offsetHeight || 0;
-      return Math.max(320, h);
-    },
+    getMinHeight: measureContentHeight,
+    // Cap height at content size so manual node resize gives the slack to
+    // ComfyUI's input slot area / blank space, not stretches this panel.
+    // Without getMaxHeight the layout engine treats this widget as
+    // stretchable and the bottom of the panel sits below where the
+    // background ends, leaving the Reset button visually outside the node.
+    getMaxHeight: measureContentHeight,
   });
 
   // Default size for new nodes; LiteGraph restores saved sizes via configure.

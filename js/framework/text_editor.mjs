@@ -51,12 +51,16 @@ export function createTextEditorPanel({ mount, onChange, onReset }) {
   ui.textArea.addEventListener("input", () => { const l = layerNow(); if (l) l.text = ui.textArea.value; fireChange(); });
   ui.textArea.addEventListener("keydown", (e) => e.stopImmediatePropagation());
 
-  // Font picker. No label; the dropdown shows the current font name
-  // rendered in its own typeface, which is self-explanatory.
-  ui.fontDropdown = el("div", "pix-to-dropdown");
+  // Font picker + Bold/Italic toggles in one row. The font dropdown grows
+  // to fill, B and I sit on the right as compact square toggle buttons.
+  // Drop the "Regular" button: B off == regular, so a separate Regular chip
+  // would be redundant. B and I are independent toggles, both can be on.
+  const fontRow = el("div", "pix-to-font-row");
+  root.appendChild(fontRow);
+
+  ui.fontDropdown = el("div", "pix-to-dropdown pix-to-dropdown-grow");
   ui.fontDropdown.innerHTML = `<span class="name">Roboto</span><span class="arrow">${chevronDown()}</span>`;
   ui.fontDropdownName = ui.fontDropdown.querySelector(".name");
-  root.appendChild(ui.fontDropdown);
   ui.fontDropdown.addEventListener("click", (e) => {
     e.stopPropagation();
     openFontPopup(ui.fontDropdown, fontCatalog || [], layerNow()?.font || "Roboto", (id) => {
@@ -67,29 +71,25 @@ export function createTextEditorPanel({ mount, onChange, onReset }) {
       fireChange();
     });
   });
+  fontRow.appendChild(ui.fontDropdown);
 
-  // Style: Regular / Bold / Italic. Reg/Bold mutex, Italic independent.
-  const styleRow = el("div", "pix-to-row3");
-  root.appendChild(styleRow);
-  ui.regBtn = chipBtn("Regular", "pix-to-chip", () => {
+  ui.boldBtn = chipBtn("B", "pix-to-style-btn pix-to-bold-btn", () => {
     const l = layerNow(); if (!l) return;
-    l.weight = 400;
-    ui.regBtn.classList.add("active"); ui.boldBtn.classList.remove("active");
+    l.weight = l.weight === 700 ? 400 : 700;
+    ui.boldBtn.classList.toggle("active", l.weight === 700);
     fireChange();
   });
-  ui.boldBtn = chipBtn("Bold", "pix-to-chip pix-to-bold", () => {
-    const l = layerNow(); if (!l) return;
-    l.weight = 700;
-    ui.boldBtn.classList.add("active"); ui.regBtn.classList.remove("active");
-    fireChange();
-  });
-  ui.italicBtn = chipBtn("Italic", "pix-to-chip pix-to-italic-chip", () => {
+  ui.boldBtn.title = "Bold";
+  fontRow.appendChild(ui.boldBtn);
+
+  ui.italicBtn = chipBtn("I", "pix-to-style-btn pix-to-italic-btn", () => {
     const l = layerNow(); if (!l) return;
     l.italic = !l.italic;
     ui.italicBtn.classList.toggle("active", l.italic);
     fireChange();
   });
-  styleRow.append(ui.regBtn, ui.boldBtn, ui.italicBtn);
+  ui.italicBtn.title = "Italic";
+  fontRow.appendChild(ui.italicBtn);
 
   // Align: 3 icon buttons
   const alignRow = el("div", "pix-to-row3");
@@ -194,9 +194,7 @@ export function createTextEditorPanel({ mount, onChange, onReset }) {
       const fontId = layer.font ?? "Roboto";
       ui.fontDropdownName.textContent = labelForFont(fontCatalog, fontId);
       ui.fontDropdownName.style.fontFamily = `"Pix-${fontId}", system-ui`;
-      const w = layer.weight ?? 400;
-      ui.regBtn.classList.toggle("active",  w === 400);
-      ui.boldBtn.classList.toggle("active", w === 700);
+      ui.boldBtn.classList.toggle("active", (layer.weight ?? 400) === 700);
       ui.italicBtn.classList.toggle("active", !!layer.italic);
       ui.alignChips.forEach((c) => c.classList.toggle("active", c.dataset.align === (layer.align ?? "center")));
       ui.sizeInput.setValue(layer.fontSize ?? 96);
@@ -252,14 +250,36 @@ function labelForFont(catalog, id) {
 }
 
 // One cell in the 2-column number-input grid. Returns { el, input, setValue, setRange }.
-// Layout: [LABEL  value] in a single bordered box.
+// Layout: [LABEL  value  ▲/▼] inside a single bordered box. The +/- spinner
+// buttons mirror Load Image's pix-li-spin pattern (CSS chevrons, no SVG;
+// Shift held = 10x step).
 function inputCell(parent, label, min, max, value, step, onChange) {
   const cell = el("div", "pix-to-input-cell");
   const lbl = el("span", "pix-to-input-label"); lbl.textContent = label;
   const input = document.createElement("input");
   input.type = "number"; input.className = "pix-to-input-val";
   input.min = min; input.max = max; input.value = value; input.step = step;
-  cell.append(lbl, input);
+  const spin = el("div", "pix-to-spin");
+  const upBtn = el("button", "pix-to-spin-up");   upBtn.type = "button";   upBtn.tabIndex = -1;
+  const downBtn = el("button", "pix-to-spin-down"); downBtn.type = "button"; downBtn.tabIndex = -1;
+  spin.append(upBtn, downBtn);
+  cell.append(lbl, input, spin);
+
+  function step1(dir, mult) {
+    const mn = parseFloat(input.min); const mx = parseFloat(input.max);
+    const cur = parseFloat(input.value) || 0;
+    const stp = parseFloat(input.step) || 1;
+    let next = cur + dir * stp * mult;
+    if (!isNaN(mn)) next = Math.max(mn, next);
+    if (!isNaN(mx)) next = Math.min(mx, next);
+    // Round to step precision so we don't accumulate float drift.
+    const decimals = (String(stp).split(".")[1] || "").length;
+    input.value = decimals ? next.toFixed(decimals) : Math.round(next);
+    onChange(parseFloat(input.value));
+  }
+  upBtn.addEventListener("mousedown",   (e) => { e.preventDefault(); e.stopPropagation(); step1(+1, e.shiftKey ? 10 : 1); });
+  downBtn.addEventListener("mousedown", (e) => { e.preventDefault(); e.stopPropagation(); step1(-1, e.shiftKey ? 10 : 1); });
+
   input.addEventListener("input", () => onChange(parseFloat(input.value)));
   input.addEventListener("keydown", (e) => e.stopImmediatePropagation());
   parent.appendChild(cell);
@@ -417,7 +437,34 @@ function injectCSS() {
     .pix-to-dropdown .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .pix-to-dropdown .arrow { color: ${BRAND}; font-size: 11px; margin-left: 6px; }
 
-    /* Style + Align rows: 3 equal chips */
+    /* Font row: dropdown grows, B + I toggle buttons on the right */
+    .pix-to-font-row {
+      display: flex;
+      gap: 4px;
+      align-items: stretch;
+    }
+    .pix-to-dropdown-grow { flex: 1; min-width: 0; }
+
+    /* Bold / Italic toggle buttons. Square chips, single letter, orange
+       background when active, grey when off. */
+    .pix-to-style-btn {
+      background: #1d1d1d;
+      border: 1px solid #444;
+      border-radius: 4px;
+      color: #888;
+      cursor: pointer;
+      width: 36px;
+      flex-shrink: 0;
+      font: 700 14px ui-sans-serif, system-ui, sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .pix-to-style-btn:hover { border-color: #666; color: #ddd; }
+    .pix-to-style-btn.active { background: ${BRAND}; color: #fff; border-color: ${BRAND}; }
+    .pix-to-italic-btn { font-style: italic; font-family: serif; }
+
+    /* Align row: 3 icon chips, full width */
     .pix-to-row3 {
       display: grid;
       grid-template-columns: 1fr 1fr 1fr;
@@ -439,8 +486,6 @@ function injectCSS() {
     }
     .pix-to-chip:hover { border-color: #666; color: #ddd; }
     .pix-to-chip.active { background: ${BRAND}; color: #fff; border-color: ${BRAND}; }
-    .pix-to-bold { font-weight: 700; }
-    .pix-to-italic-chip { font-style: italic; }
     .pix-to-align-chip img {
       width: 14px; height: 14px;
       pointer-events: none;
@@ -489,6 +534,40 @@ function injectCSS() {
     }
     .pix-to-input-val::-webkit-outer-spin-button,
     .pix-to-input-val::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+    /* Custom +/- spinner buttons (mirrors Load Image .pix-li-spin pattern,
+       CSS chevrons so no extra SVG needed). */
+    .pix-to-spin {
+      display: flex;
+      flex-direction: column;
+      width: 14px;
+      flex-shrink: 0;
+      border-left: 1px solid #444;
+      margin: -4px -8px -4px 6px; /* extend to the cell edge */
+    }
+    .pix-to-spin > button {
+      flex: 1;
+      background: transparent;
+      border: none;
+      padding: 0;
+      cursor: pointer;
+      color: #777;
+      position: relative;
+      outline: none;
+    }
+    .pix-to-spin > button:hover { background: #2a2a2a; color: ${BRAND}; }
+    .pix-to-spin-up { border-bottom: 1px solid #444; }
+    .pix-to-spin-up::before,
+    .pix-to-spin-down::before {
+      content: "";
+      position: absolute;
+      left: 50%; top: 50%;
+      width: 5px; height: 5px;
+      border-top: 1px solid currentColor;
+      border-right: 1px solid currentColor;
+    }
+    .pix-to-spin-up::before   { transform: translate(-50%, -20%) rotate(-45deg); }
+    .pix-to-spin-down::before { transform: translate(-50%, -80%) rotate(135deg); }
 
     /* Color cell: [swatch LABEL hex] */
     .pix-to-color-cell {
