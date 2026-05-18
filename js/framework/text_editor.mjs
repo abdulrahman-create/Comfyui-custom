@@ -15,7 +15,7 @@
 // ╚═══════════════════════════════════════════════════════════════╝
 
 import { getFontCatalog, loadFontForLayer } from "./fonts.mjs";
-import { openPixaromaCompactColorPickerPopup } from "../shared/color_picker.mjs";
+import { openPixaromaColorPickerModal } from "../shared/color_picker.mjs";
 
 const BRAND = "#f66744";
 
@@ -120,11 +120,11 @@ export function createTextEditorPanel({ mount, onChange, onReset }) {
   // and the value larger/orange on the right, inside a bordered cell.
   const typoGrid = el("div", "pix-to-grid2");
   root.appendChild(typoGrid);
-  ui.sizeInput    = inputCell(typoGrid, "Size",      8,  512,   96, 1,   (v) => { const l = layerNow(); if (l) { l.fontSize = v;       fireChange(); }});
-  ui.lineInput    = inputCell(typoGrid, "Leading", 0.5,    4,  1.2, 0.1, (v) => { const l = layerNow(); if (l) { l.lineHeight = v;     fireChange(); }});
-  ui.letterInput  = inputCell(typoGrid, "Tracking", -10, 50,    0, 0.5, (v) => { const l = layerNow(); if (l) { l.letterSpacing = v;  fireChange(); }});
-  ui.opacityInput = inputCell(typoGrid, "Opacity",   0, 100,  100, 1,   (v) => { const l = layerNow(); if (l) { l.opacity = v / 100;  fireChange(); }});
-  ui.rotateInput  = inputCell(typoGrid, "Rotate", -180, 180,   0, 1,   (v) => { const l = layerNow(); if (l) { l.rotation = v;       fireChange(); }});
+  ui.sizeInput    = inputCell(typoGrid, "Size",          8,  512,   96, 1,   (v) => { const l = layerNow(); if (l) { l.fontSize = v;       fireChange(); }});
+  ui.lineInput    = inputCell(typoGrid, "Line height", 0.5,    4,  1.2, 0.1, (v) => { const l = layerNow(); if (l) { l.lineHeight = v;     fireChange(); }});
+  ui.letterInput  = inputCell(typoGrid, "Letter sp",   -10,   50,    0, 0.5, (v) => { const l = layerNow(); if (l) { l.letterSpacing = v;  fireChange(); }});
+  ui.opacityInput = inputCell(typoGrid, "Opacity",       0,  100,  100, 1,   (v) => { const l = layerNow(); if (l) { l.opacity = v / 100;  fireChange(); }});
+  ui.rotateInput  = inputCell(typoGrid, "Rotate",     -180,  180,    0, 1,   (v) => { const l = layerNow(); if (l) { l.rotation = v;       fireChange(); }});
 
   const posGrid = el("div", "pix-to-grid2");
   root.appendChild(posGrid);
@@ -389,11 +389,14 @@ function colorCell(parent, label, initialHex, getInitial, onPick, withClear) {
 
   cell.addEventListener("click", (e) => {
     e.stopPropagation();
-    openPixaromaCompactColorPickerPopup(cell, {
+    // Open the full Photoshop-style picker MODAL (swatches + SV plane +
+    // hue strip + hex input + Apply / Cancel). Modal backdrop locks the
+    // page so the popup can't be moved out from under you by clicking on
+    // the node body or canvas (the issue with the compact popup).
+    openPixaromaColorPickerModal({
+      title: label === "Behind" ? "Behind (background) color" : `${label} color`,
       initialColor: getInitial(),
-      showClear:    withClear,
-      clearPosition: "last",
-      resetColor:    withClear ? null : "#FFFFFF",
+      showClear: withClear,
       onPick: (c) => onPick(c),
     });
   });
