@@ -208,7 +208,7 @@ function refreshOpenButton(node) {
   } else {
     btn.classList.add("disabled");
     btn.style.background = "#2a2a2a";
-    btn.style.color = "#888";
+    btn.style.color = "#f66744";   // orange text so the hint is legible
     btn.style.cursor = "not-allowed";
     const link = node.inputs?.find((i) => i.name === "image")?.link;
     if (link == null) {
