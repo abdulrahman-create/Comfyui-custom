@@ -212,28 +212,26 @@ def render_text_layer(base_img, layer):
     pad_x = (_BG_PAD_X * ss) if bg_color else 0
     pad_y = (_BG_PAD_Y * ss) if bg_color else 0
 
-    # Use the ACTUAL ink bounding box of "Mg" rather than the font's
-    # design metrics. getmetrics() returns the font's recommended
-    # ascender/descender, which include a safety zone for diacritics
-    # (typically ~30 px larger than the visible glyph extent at 74 px
-    # font size). The JS renderer uses canvas measureText("Mg")
-    # .actualBoundingBoxAscent/Descent which is tight to the rendered
-    # glyphs; matching that here keeps the bg pill and text baseline
-    # in the same place in both surfaces. Without this, the output
-    # bar was ~30 px taller than the editor preview and the text
-    # baseline ended up below the canvas bottom for text positioned
-    # near the bottom edge.
-    left, top, right, bottom = pil_font.getbbox("Mg")
-    ascender  = max(0, -top)     # top is negative for glyphs above baseline
-    descender = max(0, bottom)   # bottom is positive for glyphs below baseline
+    # Use the ACTUAL ink bounding box of "Mg" RELATIVE TO THE BASELINE
+    # so the values match canvas measureText("Mg").actualBoundingBox*
+    # used by the JS renderer. CRITICAL: pass anchor="ls" (left
+    # baseline). Without it, getbbox defaults to anchor="la" (left
+    # ascender top) and the returned `top` is a POSITIVE offset from
+    # the font's ascender line down to the visible glyph top — not the
+    # negative ascender-from-baseline we want. Misreading that as a
+    # negative ascender caused ascender=0 and text was drawn mostly
+    # ABOVE the layer_img (clipped) instead of inside it. Fall back to
+    # getmetrics() for very old PIL builds that don't support the
+    # anchor parameter on getbbox.
+    try:
+        left, top, right, bottom = pil_font.getbbox("Mg", anchor="ls")
+        ascender  = max(0, -top)     # top is negative for glyphs above baseline
+        descender = max(0, bottom)   # bottom is positive for glyphs below baseline
+    except TypeError:
+        ascender, descender = pil_font.getmetrics()
     glyph_h = ascender + descender
     bbox_w = max(1, int(round(max_line_w + 2 * pad_x)))
     bbox_h = max(1, int(round(glyph_h + max(0, len(lines) - 1) * line_height_px + 2 * pad_y)))
-    print(f"[Text Overlay Pixaroma] DEBUG metrics: font_id={font_id} weight={weight} "
-          f"font_size_eff={font_size_eff} ss={ss} | getbbox('Mg')=({left}, {top}, {right}, {bottom}) "
-          f"ascender={ascender} descender={descender} glyph_h={glyph_h} "
-          f"max_line_w={max_line_w} bbox_w={bbox_w} bbox_h={bbox_h} "
-          f"pad_x={pad_x} pad_y={pad_y}")
 
     layer_img = Image.new("RGBA", (bbox_w, bbox_h), (0, 0, 0, 0))
     draw = ImageDraw.Draw(layer_img)
