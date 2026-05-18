@@ -175,3 +175,92 @@ app.graphToPrompt = async function (...args) {
   }
   return result;
 };
+
+// app.queuePrompt patch - the N-runs loop. For every queuePrompt call, finds
+// the first PixaromaPromptMulti node in the graph (recursively walks subgraphs
+// after the top-level pass), reads its enabled rows, and submits one workflow
+// per enabled row. Each iteration mutates node.properties.promptMultiState
+// .activeIndex BEFORE calling the original queuePrompt, so the graphToPrompt
+// hook above captures the right row text on each pass.
+//
+// Edge cases:
+// - 0 enabled rows -> toast warning, bail (no queue activity).
+// - 1 enabled row -> 1 queue item (behaves like a normal prompt node).
+// - Multiple Prompt Multi nodes -> only the first drives the count; others
+//   each use their own currently-selected activeIndex (no cartesian product).
+//
+// If no Prompt Multi node exists in the graph, this patch falls through to
+// the original immediately — zero overhead for unrelated workflows.
+
+function findFirstPromptMultiNode() {
+  const graph = app.graph;
+  if (!graph) return null;
+  // Top-level pass first (matches the design doc: first by insertion order).
+  const top = graph._nodes || graph.nodes || [];
+  for (const n of top) {
+    if (n?.comfyClass === "PixaromaPromptMulti" || n?.type === "PixaromaPromptMulti") return n;
+  }
+  // Recursive pass into subgraphs.
+  function walk(nodes) {
+    for (const n of nodes || []) {
+      if (n?.comfyClass === "PixaromaPromptMulti" || n?.type === "PixaromaPromptMulti") return n;
+      const sub = n?.subgraph?._nodes || n?.subgraph?.nodes;
+      if (sub) {
+        const hit = walk(sub);
+        if (hit) return hit;
+      }
+    }
+    return null;
+  }
+  return walk(top);
+}
+
+function showNoEnabledToast() {
+  const msg = "Enable at least one prompt to run.";
+  const tm = app.extensionManager?.toast;
+  if (tm && typeof tm.add === "function") {
+    try {
+      tm.add({ severity: "warn", summary: "Prompt Multi", detail: msg, life: 4000 });
+      return;
+    } catch (_e) { /* fall through to console */ }
+  }
+  // Fallback: console + brief in-page banner.
+  console.warn("[Pixaroma.PromptMulti] " + msg);
+  try {
+    const banner = document.createElement("div");
+    banner.textContent = msg;
+    banner.style.cssText = "position:fixed;top:60px;right:20px;background:#1d1d1d;color:#fff;font:14px sans-serif;padding:10px 14px;border-radius:6px;border:2px solid #f66744;z-index:99999;";
+    document.body.appendChild(banner);
+    setTimeout(() => banner.remove(), 4000);
+  } catch (_e) {}
+}
+
+const _origQueuePrompt = app.queuePrompt.bind(app);
+app.queuePrompt = async function (num, batchCount) {
+  const pmNode = findFirstPromptMultiNode();
+  if (!pmNode) return _origQueuePrompt(num, batchCount);
+
+  const enabled = enabledRowsWithIndex(pmNode);
+  if (enabled.length === 0) {
+    showNoEnabledToast();
+    return;  // do NOT call original — user has 0 enabled rows.
+  }
+
+  // Loop: for each enabled row's absolute index, set activeIndex on the
+  // pmNode, then submit. Each call internally invokes app.graphToPrompt which
+  // captures the row's text into the workflow JSON.
+  const results = [];
+  for (const { index } of enabled) {
+    pmNode.properties = pmNode.properties || {};
+    if (!pmNode.properties[STATE_PROP]) pmNode.properties[STATE_PROP] = { rows: [], activeIndex: 0 };
+    pmNode.properties[STATE_PROP].activeIndex = index;
+    try {
+      const r = await _origQueuePrompt(num, 1);
+      results.push(r);
+    } catch (err) {
+      console.error("Pixaroma.PromptMulti: per-row enqueue failed", err);
+      // Continue with the remaining rows rather than aborting the whole batch.
+    }
+  }
+  return results[results.length - 1];
+};
