@@ -18,13 +18,15 @@ import { injectCSS, buildRoot, renderRows, measureContentHeight } from "./render
 import { pixConfirm } from "./interaction.mjs";
 
 const DEFAULT_W = 420;
-const DEFAULT_H = 220;
+const DEFAULT_H = 290;
+// Title bar + body padding + the two output dots on the right side.
+const CHROME_ALLOWANCE = 70;
 
 function growNodeToContent(node) {
   const root = node._pixPmRoot;
   if (!root) return;
   const contentH = measureContentHeight(root);
-  const desired = contentH + 50;
+  const desired = contentH + CHROME_ALLOWANCE;
   if (desired > node.size[1]) node.size[1] = desired;
 }
 
@@ -32,7 +34,7 @@ function fitNodeToContent(node) {
   const root = node._pixPmRoot;
   if (!root) return;
   const contentH = measureContentHeight(root);
-  const desired = Math.max(DEFAULT_H, contentH + 50);
+  const desired = Math.max(DEFAULT_H, contentH + CHROME_ALLOWANCE);
   node.size[1] = desired;
 }
 

@@ -301,7 +301,7 @@ export function renderRows(node, root, rowHandlers) {
 
   const queuePill = document.createElement("div");
   queuePill.className = "pix-pm-modepill" + (state.mode === MODE_QUEUE ? " is-active" : "");
-  queuePill.textContent = "Queue";
+  queuePill.textContent = "Queue Text";
   queuePill.title = "Queue mode - click Run, the workflow runs once per enabled prompt (N images). Wire the `text` output to a CLIP Text Encode.";
   queuePill.addEventListener("click", () => {
     if (state.mode !== MODE_QUEUE) rowHandlers.onSetMode(MODE_QUEUE);
@@ -310,7 +310,7 @@ export function renderRows(node, root, rowHandlers) {
 
   const listPill = document.createElement("div");
   listPill.className = "pix-pm-modepill" + (state.mode === MODE_LIST ? " is-active" : "");
-  listPill.textContent = "List";
+  listPill.textContent = "List Prompts";
   listPill.title = "List mode - click Run, the workflow runs ONCE. Wire the `prompts` output into Prompt From List Pixaroma nodes downstream to grab specific rows.";
   listPill.addEventListener("click", () => {
     if (state.mode !== MODE_LIST) rowHandlers.onSetMode(MODE_LIST);
@@ -322,8 +322,8 @@ export function renderRows(node, root, rowHandlers) {
   const hint = document.createElement("div");
   hint.className = "pix-pm-modehint";
   hint.textContent = state.mode === MODE_QUEUE
-    ? "Wire `text` output - one image per enabled prompt"
-    : "Wire `prompts` output into Prompt From List - one run total";
+    ? "One image per enabled prompt - wire the `text` output"
+    : "All enabled prompts go out as a list - wire `prompts` into Prompt From List";
   root.appendChild(hint);
 
   for (const row of state.rows) {
