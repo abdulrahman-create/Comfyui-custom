@@ -140,6 +140,11 @@ TextOverlayEditor.prototype._hitTestHandle = function (px, py) {
 
 TextOverlayEditor.prototype._onCanvasMouseDown = function (e) {
   if (e.button !== 0) return;
+  // Move focus to overlay so keyboard shortcuts work immediately after
+  // interacting with the canvas (otherwise Delete deletes a character in
+  // whichever input had focus before).
+  if (typeof this._focusOverlay === "function") this._focusOverlay();
+
   const p = this._canvasCoords(e);
   const handle = this._hitTestHandle(p.x, p.y);
   if (handle) {
@@ -153,11 +158,19 @@ TextOverlayEditor.prototype._onCanvasMouseDown = function (e) {
   const idx = this._hitTestLayer(p.x, p.y);
   if (idx >= 0) {
     this.selectedIndex = idx;
-    this._syncLayerSelection();
-    this._rebuildLayersPanel();
+    // Alt+drag duplicates the layer first, then drags the COPY. Matches
+    // Photoshop / Figma / Composer convention.
+    if (e.altKey) {
+      this.duplicateSelected();
+      // Selection is now on the new copy; reset drag origin from it.
+      this._dragOrigin = { x: p.x, y: p.y, layer: { ...this.layers[this.selectedIndex] } };
+    } else {
+      this._syncLayerSelection();
+      this._rebuildLayersPanel();
+      this._dragOrigin = { x: p.x, y: p.y, layer: { ...this.layers[idx] } };
+      this._snapshotMaybe();
+    }
     this._dragMode = "move";
-    this._dragOrigin = { x: p.x, y: p.y, layer: { ...this.layers[idx] } };
-    this._snapshotMaybe();
     this.requestRender();
     e.preventDefault();
   } else {
@@ -180,6 +193,9 @@ TextOverlayEditor.prototype._onCanvasMouseMove = function (e) {
   if (this._dragMode === "move") {
     layer.x = origLayer.x + (p.x - this._dragOrigin.x);
     layer.y = origLayer.y + (p.y - this._dragOrigin.y);
+    // Snap to canvas alignment points (center, edges, thirds). Shift bypasses.
+    if (!e.shiftKey) this._applySnap(layer);
+    else this._snapGuides = null;
   } else if (this._dragMode === "scale") {
     const origBox = this._layerBbox(origLayer);
     const cx = origBox.x + origBox.w / 2;
@@ -222,6 +238,56 @@ TextOverlayEditor.prototype._onCanvasMouseMove = function (e) {
 
 TextOverlayEditor.prototype._onCanvasMouseUp = function () {
   this._dragMode = null;
+  this._snapGuides = null;
+  this.requestRender();
+};
+
+// Snap the layer's x/y so its left, right, center-h aligns with canvas-x snap
+// points (0, canvasWidth/2, canvasWidth, canvasWidth/3, 2/3); same for Y.
+// Records which guides are active so _drawSelectionOverlay can draw the lines.
+TextOverlayEditor.prototype._applySnap = function (layer) {
+  const SNAP_PX = 8 / Math.max(0.0001, this._zoom);  // pixel-snap tolerance in canvas-px
+  const bbox = this._layerBbox(layer);
+  const cw = this.canvasWidth, ch = this.canvasHeight;
+
+  const xTargets = [
+    { axis: "x", at: 0,              ref: "L" },          // layer left to canvas left
+    { axis: "x", at: cw,             ref: "R" },          // layer right to canvas right
+    { axis: "x", at: cw / 2,         ref: "C" },          // layer center to canvas center
+    { axis: "x", at: cw / 3,         ref: "T3a" },        // canvas thirds
+    { axis: "x", at: cw * 2 / 3,     ref: "T3b" },
+  ];
+  const yTargets = [
+    { axis: "y", at: 0,              ref: "T" },
+    { axis: "y", at: ch,             ref: "B" },
+    { axis: "y", at: ch / 2,         ref: "M" },
+    { axis: "y", at: ch / 3,         ref: "T3a" },
+    { axis: "y", at: ch * 2 / 3,     ref: "T3b" },
+  ];
+
+  const guides = [];
+  // For each X target, compute candidate edges of the layer (L, R, C) and find best snap
+  let bestX = null;
+  for (const t of xTargets) {
+    for (const [edge, val] of [["L", layer.x], ["R", layer.x + bbox.w], ["C", layer.x + bbox.w / 2]]) {
+      const d = Math.abs(val - t.at);
+      if (d <= SNAP_PX && (!bestX || d < bestX.dist)) {
+        bestX = { dist: d, delta: t.at - val, at: t.at };
+      }
+    }
+  }
+  let bestY = null;
+  for (const t of yTargets) {
+    for (const [edge, val] of [["T", layer.y], ["B", layer.y + bbox.h], ["M", layer.y + bbox.h / 2]]) {
+      const d = Math.abs(val - t.at);
+      if (d <= SNAP_PX && (!bestY || d < bestY.dist)) {
+        bestY = { dist: d, delta: t.at - val, at: t.at };
+      }
+    }
+  }
+  if (bestX) { layer.x += bestX.delta; guides.push({ axis: "v", at: bestX.at }); }
+  if (bestY) { layer.y += bestY.delta; guides.push({ axis: "h", at: bestY.at }); }
+  this._snapGuides = guides.length ? guides : null;
 };
 
 TextOverlayEditor.prototype._onCanvasDblClick = function (e) {
@@ -236,12 +302,24 @@ TextOverlayEditor.prototype._onKeyDown = function (e) {
   const t = e.target;
   if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT")) return;
 
-  // Ctrl/Cmd Z / Y
+  // Ctrl/Cmd Z / Y — undo / redo
   if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key === "z") {
     this.undo(); e.preventDefault(); e.stopImmediatePropagation(); return;
   }
-  if ((e.ctrlKey || e.metaKey) && (e.key === "y" || (e.shiftKey && e.key === "z" || e.key === "Z"))) {
+  if ((e.ctrlKey || e.metaKey) && (e.key === "y" || (e.shiftKey && (e.key === "z" || e.key === "Z")))) {
     this.redo(); e.preventDefault(); e.stopImmediatePropagation(); return;
+  }
+  // Ctrl/Cmd D — duplicate selected
+  if ((e.ctrlKey || e.metaKey) && (e.key === "d" || e.key === "D")) {
+    if (this.selectedIndex >= 0) { this.duplicateSelected(); e.preventDefault(); e.stopImmediatePropagation(); }
+    return;
+  }
+  // Ctrl/Cmd ] / [ — bring forward / send backward in z-order (Photoshop convention)
+  if ((e.ctrlKey || e.metaKey) && e.key === "]") {
+    this.moveSelected(1); e.preventDefault(); e.stopImmediatePropagation(); return;
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key === "[") {
+    this.moveSelected(-1); e.preventDefault(); e.stopImmediatePropagation(); return;
   }
 
   const layer = this.layers[this.selectedIndex];
@@ -255,16 +333,36 @@ TextOverlayEditor.prototype._onKeyDown = function (e) {
 };
 
 TextOverlayEditor.prototype._drawSelectionOverlay = function (ctx) {
+  const pad = TextOverlayEditor.SEL_PAD;
+
+  // Snap guides (drawn first so selection overlays on top). Only visible
+  // while dragging; cleared on mouseup.
+  if (this._snapGuides && this._snapGuides.length) {
+    ctx.save();
+    ctx.translate(pad, pad);
+    ctx.strokeStyle = "#f66744";
+    ctx.lineWidth = 1 / this._zoom;
+    ctx.setLineDash([4 / this._zoom, 4 / this._zoom]);
+    for (const g of this._snapGuides) {
+      ctx.beginPath();
+      if (g.axis === "v") {
+        ctx.moveTo(g.at, -pad);
+        ctx.lineTo(g.at, this.canvasHeight + pad);
+      } else {
+        ctx.moveTo(-pad, g.at);
+        ctx.lineTo(this.canvasWidth + pad, g.at);
+      }
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
+
   const idx = this.selectedIndex;
   if (idx < 0) return;
   const layer = this.layers[idx];
   if (!layer || layer.visible === false) return;
   const b = this._layerBbox(layer);
-  // The overlay canvas is larger than the main canvas by SEL_PAD on each side
-  // so handles aren't clipped at canvas edges. Translate the whole drawing
-  // by SEL_PAD so image-coords (b.x, b.y) map to the right place on the
-  // overlay canvas.
-  const pad = TextOverlayEditor.SEL_PAD;
   ctx.save();
   ctx.translate(pad, pad);
   const cx = b.x + b.w / 2;

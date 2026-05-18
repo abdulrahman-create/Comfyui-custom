@@ -15,14 +15,22 @@ const UI_ICON = "/pixaroma/assets/icons/ui/";
 
 const HELP_HTML = `
   <div><strong>Editing</strong><br/>
-  Click a text layer to select it. Drag the bbox to move, drag corners to resize, drag the round handle above to rotate.<br/><br/>
-  <strong>Shortcuts</strong><br/>
+  Click a text layer to select it. Drag the bbox to move, drag corners to resize, drag the round handle above to rotate.<br/>
+  Snap guides appear when dragging near canvas center / edges / thirds.<br/><br/>
+  <strong>Mouse</strong><br/>
   Double-click empty canvas - add new text layer<br/>
+  Mouse wheel - zoom in / out<br/>
+  Shift + wheel - resize selected layer's font size<br/>
+  Alt + drag a layer - duplicate it<br/>
+  Hold Shift while dragging - bypass snap<br/>
+  Hold Shift during rotation - snap to 15 degree increments<br/>
+  Hold Alt during corner drag - scale from center<br/><br/>
+  <strong>Keyboard</strong><br/>
   Arrow keys - nudge selected layer by 1 px (Shift = 10 px)<br/>
   Delete / Backspace - remove selected layer<br/>
-  Hold Shift during rotation - snap to 15 degree increments<br/>
-  Hold Alt during corner drag - scale from center<br/>
-  Ctrl+Z / Ctrl+Shift+Z - undo / redo
+  Ctrl+Z / Ctrl+Shift+Z - undo / redo<br/>
+  Ctrl+D - duplicate selected layer<br/>
+  Ctrl+] / Ctrl+[ - bring forward / send backward
   </div>
 `;
 
@@ -100,8 +108,9 @@ export class TextOverlayEditor {
     this.layout.rightSidebar.style.display = "flex";
     this.layout.rightSidebar.style.flexDirection = "column";
 
-    this._buildTransformPanel(); // left sidebar
-    this._buildLayersPanel();    // right sidebar, inserts before footer → top of stack
+    this._buildTransformPanel();    // left sidebar (added first)
+    this._buildCanvasSettingsPanel(); // left sidebar — prepended above transform
+    this._buildLayersPanel();        // right sidebar, inserts before footer → top of stack
 
     this.textEditorMount = document.createElement("div");
     this.textEditorMount.style.cssText = "padding:12px; overflow-y:auto; flex:1 1 auto; min-height:0;";
@@ -458,6 +467,9 @@ export class TextOverlayEditor {
           this._syncLayerSelection();
           this._rebuildLayersPanel();
           this.requestRender();
+          // Move focus away from any input so Delete/Backspace keyboard
+          // shortcut works after clicking the layer row.
+          this._focusOverlay();
         },
         onRename: (newName) => {
           layer.name = newName;
@@ -473,7 +485,7 @@ export class TextOverlayEditor {
   _buildAlignmentBar() {
     if (!this.layout.topOptionsBar) return;
     const bar = this.layout.topOptionsBar;
-    bar.style.cssText = "display:flex; align-items:center; gap:8px; padding:6px 12px; background:#1d1d1d; border-bottom:1px solid #2a2a2a;";
+    bar.style.cssText = "display:flex; align-items:center; justify-content:center; gap:8px; padding:6px 12px; background:#1d1d1d; border-bottom:1px solid #2a2a2a;";
 
     const label = document.createElement("span");
     label.textContent = "Align to canvas:";
@@ -589,7 +601,7 @@ export class TextOverlayEditor {
       font: "Inter",
       weight: 400,
       italic: false,
-      fontSize: 36,
+      fontSize: opts.starter ? 96 : 36,
       lineHeight: 1.2,
       letterSpacing: 0,
       align: "left",
@@ -700,5 +712,67 @@ export class TextOverlayEditor {
   widgetValue(name, fallback) {
     const w = this.node.widgets?.find((x) => x.name === name);
     return (w?.value ?? fallback);
+  }
+
+  /** Blur any focused text input + return focus to the overlay element so
+   *  keyboard shortcuts (Delete, Ctrl+D, arrow nudge) work. */
+  _focusOverlay() {
+    if (document.activeElement && typeof document.activeElement.blur === "function") {
+      const tag = document.activeElement.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") {
+        document.activeElement.blur();
+      }
+    }
+    if (this.layout?.overlay) this.layout.overlay.focus();
+  }
+
+  // ── Canvas Settings panel (left sidebar, above Transform Properties) ──
+  // Lets the user pick a background color when no upstream image is wired.
+  // When an image IS wired the panel reads "Background: <upstream image>"
+  // and the color picker is hidden — same convention as Image Composer.
+  _buildCanvasSettingsPanel() {
+    const panel = document.createElement("div");
+    panel.className = "pxf-panel";
+    panel.style.cssText = "margin-bottom:8px;";
+
+    const header = document.createElement("div");
+    header.className = "pxf-panel-header";
+    header.textContent = "CANVAS";
+    panel.appendChild(header);
+
+    const body = document.createElement("div");
+    body.style.cssText = "padding:8px 10px; display:flex; flex-direction:column; gap:8px; font:12px system-ui; color:#aaa;";
+
+    if (this.baseImage) {
+      body.innerHTML = `<div>Source: <span style="color:#fff;">upstream image</span></div>
+        <div>${this.canvasWidth} × ${this.canvasHeight}</div>`;
+    } else {
+      body.innerHTML = `<div>${this.canvasWidth} × ${this.canvasHeight}</div>`;
+      const row = document.createElement("div");
+      row.style.cssText = "display:flex; gap:6px; align-items:center; margin-top:4px;";
+      const lbl = document.createElement("span");
+      lbl.textContent = "Background";
+      lbl.style.cssText = "color:#aaa; font:11px system-ui; flex:1;";
+      const swatch = document.createElement("div");
+      swatch.style.cssText = `width:32px; height:24px; border-radius:4px; border:1px solid #444; cursor:pointer; background:${this.bgColor};`;
+      swatch.title = "Background color (when no upstream image is wired)";
+      swatch.addEventListener("click", () => {
+        import("../shared/color_picker.mjs").then((m) => {
+          m.openPixaromaColorPickerPopup(swatch, {
+            initialColor: this.bgColor,
+            onPick: (c) => {
+              if (!c) return;
+              this.bgColor = c;
+              swatch.style.background = c;
+              this.requestRender();
+            },
+          });
+        });
+      });
+      row.append(lbl, swatch);
+      body.appendChild(row);
+    }
+    panel.appendChild(body);
+    this.layout.leftSidebar.insertBefore(panel, this.layout.leftSidebar.firstChild);
   }
 }

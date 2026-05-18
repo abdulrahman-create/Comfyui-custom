@@ -8,7 +8,7 @@
 // ║  Pixaroma editors (3D Builder, Audio Studio, etc).           ║
 // ╚═══════════════════════════════════════════════════════════════╝
 
-import { getFontCatalog } from "./fonts.mjs";
+import { getFontCatalog, loadFontForLayer } from "./fonts.mjs";
 import { createSliderRow } from "./components.mjs";
 import { openPixaromaColorPickerPopup } from "../shared/color_picker.mjs";
 
@@ -140,9 +140,8 @@ export function createTextEditorPanel({ mount, onChange }) {
   ui.colorHex.addEventListener("keydown", (e) => e.stopImmediatePropagation());
   colorRow.appendChild(ui.colorHex);
 
-  // ── POSITION & ROTATION ──
-  // Position slider ranges set per-layer in setLayer based on canvas size; init
-  // with a generic [0..4096] range so values are valid before any layer loads.
+  // ── POSITION (X / Y only — opacity + rotation live in the left transform
+  // panel and at the top of the right sidebar, no duplicates) ──
   section("POSITION");
   ui.posXSlider = createSliderRow("X", 0, 4096, 0, (v) => {
     const l = layerNow(); if (l) { l.x = v; fireChange(); }
@@ -152,16 +151,6 @@ export function createTextEditorPanel({ mount, onChange }) {
     const l = layerNow(); if (l) { l.y = v; fireChange(); }
   }, { step: 1 });
   root.appendChild(ui.posYSlider.el);
-
-  ui.opacitySlider = createSliderRow("Opacity", 0, 100, 100, (v) => {
-    const l = layerNow(); if (l) { l.opacity = v / 100; fireChange(); }
-  }, { step: 1 });
-  root.appendChild(ui.opacitySlider.el);
-
-  ui.rotationSlider = createSliderRow("Rotation", -180, 180, 0, (v) => {
-    const l = layerNow(); if (l) { l.rotation = v; fireChange(); }
-  }, { step: 1 });
-  root.appendChild(ui.rotationSlider.el);
 
   // ── EFFECTS ──
   section("EFFECTS");
@@ -246,8 +235,12 @@ export function createTextEditorPanel({ mount, onChange }) {
   }, { step: 1 });
   ui.bgPanel.appendChild(ui.bgOpacitySlider.el);
 
-  // Load font catalog
-  getFontCatalog().then((cat) => {
+  // Load font catalog + show each option in its own font (preview).
+  // Browsers render <option> elements with the system font for the select box,
+  // but each option's `style="font-family:..."` is honored in the dropdown list.
+  // For the preview to actually render the font, we must also have loaded the
+  // FontFace into document.fonts — kick off a load for each in parallel.
+  getFontCatalog().then(async (cat) => {
     ui.fontSelect.innerHTML = "";
     let lastCat = null;
     for (const f of cat) {
@@ -259,9 +252,20 @@ export function createTextEditorPanel({ mount, onChange }) {
       lastCat = f.category;
       const opt = document.createElement("option");
       opt.value = f.id; opt.textContent = f.label;
+      // Use the same family naming convention as canvasFontString:
+      // "Pix-<fontId>" (the italic suffix is for italic variants we don't preview).
+      opt.style.fontFamily = `"Pix-${f.id}", system-ui`;
+      opt.style.fontSize = "14px";
       ui.fontSelect.appendChild(opt);
     }
     if (currentLayer) ui.fontSelect.value = currentLayer.font;
+    // Pre-load each font (Regular weight, no italic) so the dropdown preview
+    // actually renders in the right typeface. Errors are non-fatal.
+    for (const f of cat) {
+      const firstWeight = f.weights?.[0];
+      if (!firstWeight) continue;
+      loadFontForLayer(f.id, firstWeight.weight, firstWeight.italic).catch(() => {});
+    }
   }).catch((e) => console.warn("[text_editor] font catalog load failed", e));
 
   function toggleEffect(key, btn, panel, defaults) {
@@ -297,8 +301,6 @@ export function createTextEditorPanel({ mount, onChange }) {
       ui.colorHex.value = layer.color ?? "#FFFFFF";
       ui.posXSlider.setValue(layer.x ?? 0);
       ui.posYSlider.setValue(layer.y ?? 0);
-      ui.opacitySlider.setValue(Math.round((layer.opacity ?? 1) * 100));
-      ui.rotationSlider.setValue(layer.rotation ?? 0);
       ui.strokeToggle.classList.toggle("active", !!layer.stroke);
       ui.shadowToggle.classList.toggle("active", !!layer.shadow);
       ui.bgToggle.classList.toggle("active", !!layer.background);
@@ -392,7 +394,7 @@ function injectCSS() {
     .pix-te-btn.active { background:#2a1f1a; color:${BRAND}; border-color:${BRAND}; }
     .pix-te-italic { font:italic 600 14px serif; }
     .pix-te-align { font:600 12px system-ui; }
-    .pix-te-align-icon { display:flex; align-items:center; justify-content:center; padding:6px 4px; }
+    .pix-te-align-icon { display:flex; align-items:center; justify-content:center; padding:6px 0; height:28px; box-sizing:border-box; }
     .pix-te-color-row { display:flex; gap:6px; align-items:center; }
     .pix-te-color-swatch { width:32px; height:32px; border-radius:4px; border:1px solid #444; cursor:pointer; flex:0 0 32px; background:#fff; }
     .pix-te-toggle { flex:1; background:#0d0d0d; color:#aaa; border:1px solid #333; padding:6px; font:11px system-ui; border-radius:4px; cursor:pointer; }
