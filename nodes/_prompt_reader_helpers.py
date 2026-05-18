@@ -83,6 +83,13 @@ _PROMPT_STACK_CLASS = "PixaromaPromptStack"
 # workflow (since the JS dynamically reconciles the visible output).
 _PROMPT_MULTI_CLASS = "PixaromaPromptMulti"
 
+# Prompt Pack Pixaroma: holds prompts pasted as a text block. The hidden
+# PromptPackState STRING input is {"version":1, "activePrompt":"..."} where
+# activePrompt is the specific prompt that drove THIS image (baked at
+# workflow-submit time by the JS app.graphToPrompt hook in
+# js/prompt_pack/index.js). Recovery is a direct read.
+_PROMPT_PACK_CLASS = "PixaromaPromptPack"
+
 # Prompt From List Pixaroma: tiny picker that grabs one row from a Prompt
 # Multi's list output via an "index" widget. The walker chases its
 # `prompts` input back to the upstream Multi and indexes rowTexts.
@@ -314,6 +321,34 @@ def _pix_prompt_multi_extract(inputs: dict) -> Optional[str]:
     return txt or None
 
 
+def _pix_prompt_pack_extract(inputs: dict) -> Optional[str]:
+    """Read the active prompt from a PixaromaPromptPack's saved state.
+
+    The hidden PromptPackState input is a JSON string of shape:
+        { "version": 1, "activePrompt": str }
+
+    Each queue iteration bakes that prompt's text into activePrompt at
+    submit time, so the PNG embedded workflow captures exactly the prompt
+    that produced that image. Recovery is a direct read.
+
+    Returns the active prompt, or None when missing / malformed / empty.
+    """
+    raw = inputs.get("PromptPackState")
+    if not isinstance(raw, str) or not raw:
+        return None
+    try:
+        state = json.loads(raw)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(state, dict):
+        return None
+    txt = state.get("activePrompt", "")
+    if not isinstance(txt, str):
+        return None
+    txt = txt.strip()
+    return txt or None
+
+
 def _rgthree_any_switch_active_link(inputs: dict):
     """Return the upstream node-id wired to rgthree Any Switch's active input.
 
@@ -404,6 +439,15 @@ def _walk_for_text(
     # hidden PromptMultiState as {"activePrompt": "..."}. Read it directly.
     if cls == _PROMPT_MULTI_CLASS:
         text = _pix_prompt_multi_extract(inputs)
+        if text:
+            captured.append(text)
+        return
+
+    # Prompt Pack Pixaroma: same shape as Prompt Multi - each generated
+    # image carries only the prompt that produced THIS image, baked into
+    # the hidden PromptPackState. Read it directly.
+    if cls == _PROMPT_PACK_CLASS:
+        text = _pix_prompt_pack_extract(inputs)
         if text:
             captured.append(text)
         return
