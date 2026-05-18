@@ -8,6 +8,7 @@ import { createEditorLayout } from "../framework/layout.mjs";
 import { createTextEditorPanel } from "../framework/text_editor.mjs";
 import { renderTextLayer } from "../framework/text_render.mjs";
 import { createLayerPanel, createLayerItem } from "../framework/layers.mjs";
+import { createTransformPanel } from "../framework/components.mjs";
 import { saveThumbnail, buildPreviewURL } from "./api.mjs";
 
 const UI_ICON = "/pixaroma/assets/icons/ui/";
@@ -99,7 +100,8 @@ export class TextOverlayEditor {
     this.layout.rightSidebar.style.display = "flex";
     this.layout.rightSidebar.style.flexDirection = "column";
 
-    this._buildLayersPanel(); // inserts before footer → top of stack
+    this._buildTransformPanel(); // left sidebar
+    this._buildLayersPanel();    // right sidebar, inserts before footer → top of stack
 
     this.textEditorMount = document.createElement("div");
     this.textEditorMount.style.cssText = "padding:12px; overflow-y:auto; flex:1 1 auto; min-height:0;";
@@ -276,11 +278,29 @@ export class TextOverlayEditor {
   }
 
   // ── Layers panel (uses framework createLayerPanel) ──
+  // showBlendMode + showOpacity put a "Normal" dropdown and an Opacity slider
+  // at the TOP of the right sidebar, above the layers list — same as Image
+  // Composer. Both edit the currently selected layer.
   _buildLayersPanel() {
     this._layerPanel = createLayerPanel({
       title: "Layers",
-      showBlendMode: false,
-      showOpacity: false,
+      showBlendMode: true,
+      showOpacity: true,
+      onBlendChange: (mode) => {
+        const l = this.layers[this.selectedIndex]; if (!l) return;
+        l.blendMode = mode;
+        this._snapshotMaybe();
+        this.requestRender();
+      },
+      onOpacityChange: (val) => {
+        const l = this.layers[this.selectedIndex]; if (!l) return;
+        l.opacity = val / 100;
+        this._snapshotMaybe();
+        // Keep right-panel slider in sync (text editor opacity & transform opacity both reflect)
+        this.textPanel?.setLayer?.(l);
+        if (this._transformPanel?.setOpacity) this._transformPanel.setOpacity(val);
+        this.requestRender();
+      },
       onAdd: () => this.addLayer(),
       addTitle: "Add text layer",
       onDuplicate: () => this.duplicateSelected(),
@@ -289,14 +309,129 @@ export class TextOverlayEditor {
       onMoveDown: () => this.moveSelected(-1),
       onReorder: (from, to) => this.reorderLayer(from, to),
     });
-    // Constrain layers panel height so the text properties panel below it
-    // always has room. Composer uses a draggable resize handle but for
-    // simplicity we cap it at a sensible default.
     this._layerPanel.el.style.flex = "0 0 auto";
     this._layerPanel.el.style.maxHeight = "40vh";
-    // Insert before sidebar footer → ends up at top of the right sidebar stack
     this.layout.rightSidebar.insertBefore(this._layerPanel.el, this.layout.sidebarFooter);
     this._rebuildLayersPanel();
+  }
+
+  // ── Transform Properties panel (left sidebar, matches Image Composer) ──
+  _buildTransformPanel() {
+    this._transformPanel = createTransformPanel({
+      startCollapsed: false,
+      showRotateSlider: true,
+      showScaleSlider: true,
+      showStretchSliders: true,
+      showOpacitySlider: true,
+      showBlurSlider: true,
+      onFitWidth: () => this._transformFitWidth(),
+      onFitHeight: () => this._transformFitHeight(),
+      onFlipH: () => this._transformFlip("X"),
+      onFlipV: () => this._transformFlip("Y"),
+      onRotateCCW: () => this._transformRotateBy(-90),
+      onRotateCW: () => this._transformRotateBy(90),
+      onReset: () => this._transformReset(),
+      onRotateChange: (v) => this._transformSet({ rotation: this._normRot180(v) }),
+      onScaleChange: (v) => this._transformSet({ scaleX: v / 100, scaleY: v / 100 }),
+      onStretchHChange: (v) => this._transformSet({ scaleX: v / 100 }),
+      onStretchVChange: (v) => this._transformSet({ scaleY: v / 100 }),
+      onOpacityChange: (v) => this._transformSet({ opacity: v / 100 }),
+      onBlurChange: (v) => this._transformSet({ blur: v }),
+    });
+    this.layout.leftSidebar.appendChild(this._transformPanel.el);
+  }
+
+  _transformSet(partial) {
+    const l = this.layers[this.selectedIndex]; if (!l) return;
+    Object.assign(l, partial);
+    this._snapshotMaybe();
+    this.textPanel?.setLayer?.(l);
+    this._syncTransformPanelTo(l);
+    this.requestRender();
+  }
+
+  _transformRotateBy(deg) {
+    const l = this.layers[this.selectedIndex]; if (!l) return;
+    l.rotation = this._normRot180((l.rotation || 0) + deg);
+    this._snapshotMaybe();
+    this.textPanel?.setLayer?.(l);
+    this._syncTransformPanelTo(l);
+    this.requestRender();
+  }
+
+  _transformFlip(axis) {
+    const l = this.layers[this.selectedIndex]; if (!l) return;
+    if (axis === "X") l.flippedX = !l.flippedX;
+    else              l.flippedY = !l.flippedY;
+    this._snapshotMaybe();
+    this.requestRender();
+  }
+
+  // Fit-to-width / height: set fontSize so the largest line of the layer's
+  // text spans the canvas. Approximation using the same measureText estimate
+  // _layerBbox uses.
+  _transformFitWidth() {
+    const l = this.layers[this.selectedIndex]; if (!l) return;
+    const bbox = this._layerBbox(l);
+    if (bbox.w <= 0) return;
+    const factor = (this.canvasWidth * 0.95) / bbox.w;
+    l.fontSize = Math.max(8, Math.round(l.fontSize * factor));
+    l.x = Math.round((this.canvasWidth - bbox.w * factor) / 2);
+    this._snapshotMaybe();
+    this.textPanel?.setLayer?.(l);
+    this._syncTransformPanelTo(l);
+    this.requestRender();
+  }
+
+  _transformFitHeight() {
+    const l = this.layers[this.selectedIndex]; if (!l) return;
+    const bbox = this._layerBbox(l);
+    if (bbox.h <= 0) return;
+    const factor = (this.canvasHeight * 0.95) / bbox.h;
+    l.fontSize = Math.max(8, Math.round(l.fontSize * factor));
+    l.y = Math.round((this.canvasHeight - bbox.h * factor) / 2);
+    this._snapshotMaybe();
+    this.textPanel?.setLayer?.(l);
+    this._syncTransformPanelTo(l);
+    this.requestRender();
+  }
+
+  _transformReset() {
+    const l = this.layers[this.selectedIndex]; if (!l) return;
+    l.rotation = 0;
+    l.scaleX = 1;
+    l.scaleY = 1;
+    l.flippedX = false;
+    l.flippedY = false;
+    l.blur = 0;
+    this._snapshotMaybe();
+    this.textPanel?.setLayer?.(l);
+    this._syncTransformPanelTo(l);
+    this.requestRender();
+  }
+
+  // Normalize rotation to (-180, 180] which matches the text-panel slider range.
+  _normRot180(deg) {
+    let r = deg % 360;
+    if (r > 180) r -= 360;
+    if (r <= -180) r += 360;
+    return r;
+  }
+
+  _syncTransformPanelTo(layer) {
+    const p = this._transformPanel; if (!p || !layer) return;
+    // Transform panel's rotate slider is 0..360 but layer rotation is -180..180.
+    // Translate: -180..180 → 0..360 by adding 360 when negative.
+    let r = layer.rotation || 0;
+    if (r < 0) r += 360;
+    p.setRotate?.(r);
+    // Scale slider is uniform; show the average if X/Y differ
+    const sx = layer.scaleX ?? 1, sy = layer.scaleY ?? 1;
+    p.setScale?.(Math.round(((sx + sy) / 2) * 100));
+    p.setStretchH?.(Math.round(sx * 100));
+    p.setStretchV?.(Math.round(sy * 100));
+    p.setOpacity?.(Math.round((layer.opacity ?? 1) * 100));
+    p.setBlur?.(layer.blur || 0);
   }
 
   _rebuildLayersPanel() {
@@ -437,6 +572,13 @@ export class TextOverlayEditor {
   _syncLayerSelection() {
     const layer = this.layers[this.selectedIndex];
     this.textPanel?.setLayer(layer || null);
+    // Sync the layer panel's blend mode + opacity controls (at top of right sidebar)
+    if (this._layerPanel) {
+      this._layerPanel.setBlend?.(layer?.blendMode || "Normal");
+      this._layerPanel.setOpacity?.(Math.round(((layer?.opacity) ?? 1) * 100));
+    }
+    // Sync the transform panel (left sidebar)
+    if (layer) this._syncTransformPanelTo(layer);
   }
 
   addLayer(opts = {}) {
@@ -456,6 +598,13 @@ export class TextOverlayEditor {
       x: 0,  // overwritten below
       y: 0,
       rotation: 0,
+      // New transform fields (Composer parity)
+      scaleX: 1.0,
+      scaleY: 1.0,
+      flippedX: false,
+      flippedY: false,
+      blur: 0,
+      blendMode: "Normal",
     };
 
     // Position: if explicit coords given (e.g. from double-click), use them.

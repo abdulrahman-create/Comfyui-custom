@@ -109,14 +109,56 @@ export async function renderTextLayer(ctx, layer) {
   }
   sctx.restore();
 
-  // Final composite onto target ctx with rotation + opacity
+  // Final composite onto target ctx with scale + flip + blur + rotation + opacity + blend
+  const scaleX = (layer.scaleX ?? 1) * (layer.flippedX ? -1 : 1);
+  const scaleY = (layer.scaleY ?? 1) * (layer.flippedY ? -1 : 1);
+  const scaledW = bboxW * Math.abs(scaleX);
+  const scaledH = bboxH * Math.abs(scaleY);
+
   ctx.save();
-  ctx.translate(layer.x + bboxW / 2, layer.y + bboxH / 2);
+  // Blend mode (per math doc §12)
+  if (layer.blendMode && layer.blendMode !== "Normal") {
+    const op = blendModeToComposite(layer.blendMode);
+    if (op) ctx.globalCompositeOperation = op;
+  }
+  // Blur via canvas filter (matches PIL GaussianBlur, same as shadow blur path)
+  if (layer.blur && layer.blur > 0) {
+    ctx.filter = `blur(${layer.blur}px)`;
+  }
+  // Translate to center of the FINAL scaled bbox
+  ctx.translate(layer.x + scaledW / 2, layer.y + scaledH / 2);
   if (layer.rotation) ctx.rotate((layer.rotation * Math.PI) / 180);
+  // Apply scale + flip
+  ctx.scale(scaleX, scaleY);
+  // Now origin is the center of the UN-scaled scratch. Shift to its top-left.
   ctx.translate(-bboxW / 2, -bboxH / 2);
   ctx.globalAlpha = layer.opacity ?? 1;
   ctx.drawImage(scratch, 0, 0);
   ctx.restore();
+}
+
+// Map CSS-named blend modes (matches the framework's createLayerPanel list)
+// to canvas globalCompositeOperation strings.
+function blendModeToComposite(mode) {
+  const map = {
+    "Normal": "source-over",
+    "Multiply": "multiply",
+    "Screen": "screen",
+    "Overlay": "overlay",
+    "Darken": "darken",
+    "Lighten": "lighten",
+    "Color Dodge": "color-dodge",
+    "Color Burn": "color-burn",
+    "Hard Light": "hard-light",
+    "Soft Light": "soft-light",
+    "Difference": "difference",
+    "Exclusion": "exclusion",
+    "Hue": "hue",
+    "Saturation": "saturation",
+    "Color": "color",
+    "Luminosity": "luminosity",
+  };
+  return map[mode];
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────

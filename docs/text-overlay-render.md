@@ -105,6 +105,25 @@ The parity script (`scripts/text_overlay_parity_check.py`) renders ~10 reference
 
 Bit-exact match between the JS canvas and PIL renderers is impossible (different rasterizers). The goldens lock the Python output only; the JS side is checked visually by the human at editor save-time (the in-node thumbnail and the workflow output should match).
 
+## 11. Transform Stack (composite step)
+
+After the per-layer bbox is rendered (background + shadow + stroke + fill + opacity), apply transforms in this order:
+
+1. **Scale** (`scaleX`, `scaleY` — independent floats, default 1.0). Resize the layer image by `(scaleX, scaleY)`. Browser: `ctx.scale(scaleX, scaleY)` before drawImage. PIL: `Image.resize((bbox_w * scaleX, bbox_h * scaleY), BICUBIC)`.
+2. **Flip** (`flippedX`, `flippedY` — booleans). When true, multiply the corresponding scale by -1. Browser: include the sign in `ctx.scale(...)`. PIL: `Image.transpose(FLIP_LEFT_RIGHT)` and/or `FLIP_TOP_BOTTOM`.
+3. **Blur** (`blur` — float, pixels, default 0). Apply Gaussian blur of radius `blur`. Browser: `ctx.filter = "blur(Npx)"` before drawImage. PIL: `Image.filter(ImageFilter.GaussianBlur(N))`.
+4. **Rotation** (`rotation` — degrees, see §4). After scale + flip + blur is baked into the layer image, rotate around the SCALED bbox center.
+5. **Position** (`x`, `y`). Top-left of the FINAL (scaled + rotated) bbox in canvas coordinates.
+
+## 12. Blend Modes (`blendMode`)
+
+Per-layer blend mode applied when compositing onto the base canvas. String values match CSS / canvas spec names: `"Normal"` (default), `"Multiply"`, `"Screen"`, `"Overlay"`, `"Darken"`, `"Lighten"`, `"Color Dodge"`, `"Color Burn"`, `"Hard Light"`, `"Soft Light"`, `"Difference"`, `"Exclusion"`, `"Hue"`, `"Saturation"`, `"Color"`, `"Luminosity"`.
+
+- **Browser**: maps to `ctx.globalCompositeOperation` (lowercase-hyphenated forms like `"source-over"`, `"hard-light"`).
+- **Python (v1)**: PIL has no built-in W3C blend modes. Only `"Normal"` is honored; any other mode falls back to `alpha_composite` (Normal). This is a documented divergence. Future v2 could add manual blend implementations per mode.
+
+The editor preview will show the correct blend mode (browser path), but the workflow output (Python path) uses Normal. Users wanting accurate output blends should keep `blendMode = "Normal"` until v2.
+
 ## 10. Known Approximations
 
 - Synthesized italic skew differs slightly between canvas (transform matrix) and PIL (Image transform). Both produce ~12° lean but the kerning between characters can differ by a few pixels. Acceptable.

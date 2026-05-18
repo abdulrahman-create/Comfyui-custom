@@ -255,6 +255,25 @@ def render_text_layer(base_img, layer):
         alpha = alpha.point(lambda a: int(a * opacity))
         layer_img.putalpha(alpha)
 
+    # Scale (independent X/Y stretch)
+    scale_x = float(layer.get("scaleX", 1.0))
+    scale_y = float(layer.get("scaleY", 1.0))
+    if scale_x != 1.0 or scale_y != 1.0:
+        new_w = max(1, int(round(layer_img.size[0] * scale_x)))
+        new_h = max(1, int(round(layer_img.size[1] * scale_y)))
+        layer_img = layer_img.resize((new_w, new_h), resample=Image.BICUBIC)
+
+    # Flip
+    if layer.get("flippedX"):
+        layer_img = layer_img.transpose(Image.FLIP_LEFT_RIGHT)
+    if layer.get("flippedY"):
+        layer_img = layer_img.transpose(Image.FLIP_TOP_BOTTOM)
+
+    # Blur (final pass before rotation so the blur is in layer-local space)
+    blur_amt = float(layer.get("blur", 0))
+    if blur_amt > 0:
+        layer_img = layer_img.filter(ImageFilter.GaussianBlur(radius=blur_amt))
+
     # Rotation
     paste_x = int(round(layer.get("x", 0)))
     paste_y = int(round(layer.get("y", 0)))
@@ -262,11 +281,12 @@ def render_text_layer(base_img, layer):
         before_w, before_h = layer_img.size
         layer_img = layer_img.rotate(-rotation, expand=True, resample=Image.BICUBIC)
         after_w, after_h = layer_img.size
-        # expand=True grows symmetrically; compensate paste origin
         paste_x -= (after_w - before_w) // 2
         paste_y -= (after_h - before_h) // 2
 
-    # Composite onto base
+    # Composite onto base. Python uses Normal blend only for v1 (PIL has no
+    # built-in blend modes; the JS preview supports the full Composer set,
+    # documented as known divergence in docs/text-overlay-render.md).
     if base_img.mode != "RGBA":
         base_img = base_img.convert("RGBA")
     base_img.alpha_composite(layer_img, dest=(paste_x, paste_y))
