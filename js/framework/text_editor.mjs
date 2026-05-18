@@ -1,15 +1,16 @@
 // ╔═══════════════════════════════════════════════════════════════╗
-// ║  Pixaroma Text Editor Panel (simplified v2)                  ║
+// ║  Pixaroma Text Editor Panel (Load Image visual language)     ║
 // ║  Properties UI for ONE text overlay.                         ║
 // ║  Mounted twice: on the node body AND in the editor sidebar.  ║
 // ║                                                              ║
-// ║  All numeric controls use the framework's createSliderRow    ║
-// ║  (slider + number input combo) for parity with other         ║
-// ║  Pixaroma editors (3D Builder, Audio Studio, etc).           ║
+// ║  Self-contained CSS (no dependency on .pxf-overlay scope)    ║
+// ║  so the body panel looks the same as inside the editor.      ║
+// ║  Mirrors js/load_image/ui.mjs styling for consistency        ║
+// ║  with other Pixaroma nodes (custom dropdowns, orange         ║
+// ║  accents, dark #1d1d1d panels, orange-text number inputs).   ║
 // ╚═══════════════════════════════════════════════════════════════╝
 
 import { getFontCatalog, loadFontForLayer } from "./fonts.mjs";
-import { createSliderRow } from "./components.mjs";
 import { openPixaromaColorPickerPopup } from "../shared/color_picker.mjs";
 
 const BRAND = "#f66744";
@@ -24,9 +25,10 @@ export function createTextEditorPanel({ mount, onChange }) {
   injectCSS();
   let currentLayer = null;
   let suspendChange = false;
+  let fontCatalog = null;
 
   const root = document.createElement("div");
-  root.className = "pix-te-root";
+  root.className = "pix-to-root";
   mount.appendChild(root);
 
   function fireChange() {
@@ -39,188 +41,201 @@ export function createTextEditorPanel({ mount, onChange }) {
 
   // ── TEXT ──
   section("TEXT");
-  ui.textArea = el("textarea", "pix-te-textarea");
+  ui.textArea = el("textarea", "pix-to-textarea");
   ui.textArea.placeholder = "Type your text here...";
   root.appendChild(ui.textArea);
   ui.textArea.addEventListener("input", () => { const l = layerNow(); if (l) l.text = ui.textArea.value; fireChange(); });
   ui.textArea.addEventListener("keydown", (e) => e.stopImmediatePropagation());
 
-  // ── FONT ──
+  // ── FONT ── (custom Pixaroma dropdown, mirrors openImageDropdown)
   section("FONT");
-  ui.fontSelect = el("select", "pix-te-select");
-  root.appendChild(ui.fontSelect);
-  ui.fontSelect.addEventListener("change", () => { const l = layerNow(); if (l) l.font = ui.fontSelect.value; fireChange(); });
-
-  // Weight + Italic row (select + button)
-  const weightRow = el("div", "pix-te-row3"); root.appendChild(weightRow);
-  const wCell = el("div", "pix-te-cell");
-  wCell.appendChild(label("WEIGHT"));
-  ui.weightSelect = el("select", "pix-te-select pix-te-select-sm");
-  ["400", "700"].forEach((w) => {
-    const o = document.createElement("option"); o.value = w;
-    o.textContent = w === "400" ? "Regular" : "Bold";
-    ui.weightSelect.appendChild(o);
+  ui.fontDropdown = el("div", "pix-to-dropdown");
+  ui.fontDropdown.innerHTML = `<span class="name">Inter</span><span class="arrow">▾</span>`;
+  ui.fontDropdownName = ui.fontDropdown.querySelector(".name");
+  root.appendChild(ui.fontDropdown);
+  ui.fontDropdown.addEventListener("click", (e) => {
+    e.stopPropagation();
+    openFontPopup(ui.fontDropdown, fontCatalog || [], layerNow()?.font || "Inter", (id) => {
+      const l = layerNow(); if (!l) return;
+      l.font = id;
+      ui.fontDropdownName.textContent = labelForFont(fontCatalog, id);
+      ui.fontDropdownName.style.fontFamily = `"Pix-${id}", system-ui`;
+      fireChange();
+    });
   });
-  ui.weightSelect.addEventListener("change", () => { const l = layerNow(); if (l) l.weight = parseInt(ui.weightSelect.value, 10); fireChange(); });
-  wCell.appendChild(ui.weightSelect); weightRow.appendChild(wCell);
 
-  ui.italicBtn = el("button", "pix-te-btn pix-te-italic");
-  ui.italicBtn.textContent = "I"; ui.italicBtn.title = "Italic";
-  ui.italicBtn.style.alignSelf = "end";
+  // ── WEIGHT + ITALIC row ──
+  const weightWrap = el("div", "pix-to-weight-row");
+  root.appendChild(weightWrap);
+  const wCol = el("div", "pix-to-col");
+  wCol.appendChild(sectionLabel("WEIGHT"));
+  ui.weightDropdown = el("div", "pix-to-dropdown");
+  ui.weightDropdown.innerHTML = `<span class="name">Regular</span><span class="arrow">▾</span>`;
+  ui.weightDropdownName = ui.weightDropdown.querySelector(".name");
+  ui.weightDropdown.addEventListener("click", (e) => {
+    e.stopPropagation();
+    openSimplePopup(ui.weightDropdown, [
+      { id: "400", label: "Regular" },
+      { id: "700", label: "Bold" },
+    ], String(layerNow()?.weight || 400), (id) => {
+      const l = layerNow(); if (!l) return;
+      l.weight = parseInt(id, 10);
+      ui.weightDropdownName.textContent = id === "400" ? "Regular" : "Bold";
+      fireChange();
+    });
+  });
+  wCol.appendChild(ui.weightDropdown);
+  weightWrap.appendChild(wCol);
+
+  const iCol = el("div", "pix-to-col");
+  iCol.appendChild(sectionLabel(" ")); // align with WEIGHT label
+  ui.italicBtn = el("button", "pix-to-chip pix-to-italic");
+  ui.italicBtn.type = "button";
+  ui.italicBtn.textContent = "I";
+  ui.italicBtn.title = "Italic";
   ui.italicBtn.addEventListener("click", () => {
     const l = layerNow(); if (!l) return;
     l.italic = !l.italic;
     ui.italicBtn.classList.toggle("active", l.italic);
     fireChange();
   });
-  weightRow.appendChild(ui.italicBtn);
+  iCol.appendChild(ui.italicBtn);
+  weightWrap.appendChild(iCol);
 
-  // Align chips — icon buttons (uses shared assets/icons/ui/align-*.svg)
-  label("ALIGN", root);
-  const alignRow = el("div", "pix-te-row3"); root.appendChild(alignRow);
-  alignRow.style.gridTemplateColumns = "1fr 1fr 1fr";
+  // ── ALIGN ──
+  sectionLabel("ALIGN", root);
+  const alignRow = el("div", "pix-to-align-row");
+  root.appendChild(alignRow);
   const ALIGN_ICONS = {
     left:   "/pixaroma/assets/icons/ui/align-left.svg",
     center: "/pixaroma/assets/icons/ui/align-center-h.svg",
     right:  "/pixaroma/assets/icons/ui/align-right.svg",
   };
   ui.alignChips = ["left", "center", "right"].map((a) => {
-    const b = el("button", "pix-te-btn pix-te-align-icon"); b.dataset.align = a;
+    const b = el("button", "pix-to-chip pix-to-align-chip");
+    b.type = "button";
+    b.dataset.align = a;
     b.title = `Align ${a}`;
     const img = document.createElement("img");
     img.src = ALIGN_ICONS[a];
-    img.style.cssText = "width:14px; height:14px; filter:invert(0.8); pointer-events:none;";
+    img.alt = a;
+    img.draggable = false;
     b.appendChild(img);
     b.addEventListener("click", () => {
       const l = layerNow(); if (!l) return;
       l.align = a;
-      ui.alignChips.forEach((c) => {
-        const active = c.dataset.align === a;
-        c.classList.toggle("active", active);
-        const i = c.querySelector("img");
-        if (i) i.style.filter = active ? "invert(1)" : "invert(0.8)";
-      });
+      ui.alignChips.forEach((c) => c.classList.toggle("active", c.dataset.align === a));
       fireChange();
     });
-    alignRow.appendChild(b); return b;
+    alignRow.appendChild(b);
+    return b;
   });
 
-  // ── TYPOGRAPHY (Size, Line height, Letter spacing, Opacity, Rotation) ──
+  // ── TYPOGRAPHY ──
   section("TYPOGRAPHY");
-  ui.sizeSlider = createSliderRow("Size", 8, 512, 96, (v) => {
+  ui.sizeSlider = createSlider("Size", 8, 512, 96, 1, (v) => {
     const l = layerNow(); if (l) { l.fontSize = v; fireChange(); }
-  }, { step: 1 });
+  });
   root.appendChild(ui.sizeSlider.el);
 
-  ui.lineHeightSlider = createSliderRow("Line h", 0.5, 4, 1.2, (v) => {
+  ui.lineHeightSlider = createSlider("Line h", 0.5, 4, 1.2, 0.1, (v) => {
     const l = layerNow(); if (l) { l.lineHeight = v; fireChange(); }
-  }, { step: 0.1 });
+  });
   root.appendChild(ui.lineHeightSlider.el);
 
-  ui.letterSpacingSlider = createSliderRow("Letter sp", -10, 50, 0, (v) => {
+  ui.letterSpacingSlider = createSlider("Letter sp", -10, 50, 0, 0.5, (v) => {
     const l = layerNow(); if (l) { l.letterSpacing = v; fireChange(); }
-  }, { step: 0.5 });
+  });
   root.appendChild(ui.letterSpacingSlider.el);
 
-  ui.opacitySlider = createSliderRow("Opacity", 0, 100, 100, (v) => {
+  ui.opacitySlider = createSlider("Opacity", 0, 100, 100, 1, (v) => {
     const l = layerNow(); if (l) { l.opacity = v / 100; fireChange(); }
-  }, { step: 1 });
+  });
   root.appendChild(ui.opacitySlider.el);
 
-  ui.rotationSlider = createSliderRow("Rotation", -180, 180, 0, (v) => {
+  ui.rotationSlider = createSlider("Rotation", -180, 180, 0, 1, (v) => {
     const l = layerNow(); if (l) { l.rotation = v; fireChange(); }
-  }, { step: 1 });
+  });
   root.appendChild(ui.rotationSlider.el);
 
-  // ── COLORS (text + bg pill) ──
+  // ── COLORS ──
   section("COLORS");
   // Text color row
-  const colorRow = el("div", "pix-te-color-row"); root.appendChild(colorRow);
-  const textLabel = el("span", "pix-te-color-label"); textLabel.textContent = "Text"; colorRow.appendChild(textLabel);
-  ui.colorSwatch = el("div", "pix-te-color-swatch");
+  const colorRow = el("div", "pix-to-color-row");
+  root.appendChild(colorRow);
+  const textLbl = el("span", "pix-to-color-label"); textLbl.textContent = "Text"; colorRow.appendChild(textLbl);
+  ui.colorSwatch = el("div", "pix-to-color-swatch");
   ui.colorSwatch.addEventListener("click", () => openPicker(ui.colorSwatch, layerNow()?.color || "#FFFFFF", (c) => {
     const l = layerNow(); if (!l || !c) return;
-    l.color = c; ui.colorSwatch.style.background = c; ui.colorHex.value = c; fireChange();
+    l.color = c;
+    ui.colorSwatch.style.background = c;
+    ui.colorHex.value = c;
+    fireChange();
   }));
   colorRow.appendChild(ui.colorSwatch);
-  ui.colorHex = el("input", "pix-te-input-mono"); ui.colorHex.type = "text"; ui.colorHex.value = "#FFFFFF";
-  ui.colorHex.addEventListener("change", () => {
-    const v = ui.colorHex.value.trim();
+  ui.colorHex = numericInputWrap(); colorRow.appendChild(ui.colorHex.wrap);
+  ui.colorHex.input.value = "#FFFFFF";
+  ui.colorHex.input.addEventListener("change", () => {
+    const v = ui.colorHex.input.value.trim();
     if (/^#[0-9a-fA-F]{6}$/.test(v)) {
       const l = layerNow(); if (!l) return;
       l.color = v; ui.colorSwatch.style.background = v; fireChange();
-    } else { ui.colorHex.value = layerNow()?.color || "#FFFFFF"; }
+    } else { ui.colorHex.input.value = layerNow()?.color || "#FFFFFF"; }
   });
-  ui.colorHex.addEventListener("keydown", (e) => e.stopImmediatePropagation());
-  colorRow.appendChild(ui.colorHex);
+  ui.colorHex.input.addEventListener("keydown", (e) => e.stopImmediatePropagation());
 
-  // Bg pill color row (null = no pill, hex = pill enabled)
-  const bgRow = el("div", "pix-te-color-row"); bgRow.style.marginTop = "6px"; root.appendChild(bgRow);
-  const bgLabel = el("span", "pix-te-color-label"); bgLabel.textContent = "Behind"; bgRow.appendChild(bgLabel);
-  ui.bgSwatch = el("div", "pix-te-color-swatch pix-te-swatch-checker");
+  // Behind (bg pill) color row
+  const bgRow = el("div", "pix-to-color-row");
+  root.appendChild(bgRow);
+  const bgLbl = el("span", "pix-to-color-label"); bgLbl.textContent = "Behind"; bgRow.appendChild(bgLbl);
+  ui.bgSwatch = el("div", "pix-to-color-swatch pix-to-swatch-checker");
   ui.bgSwatch.addEventListener("click", () => openPicker(ui.bgSwatch, layerNow()?.bgColor || "#000000", (c) => {
     const l = layerNow(); if (!l) return;
-    l.bgColor = c; // c is hex from picker, or null/undefined from clear
-    if (c) { ui.bgSwatch.style.background = c; ui.bgSwatch.classList.remove("pix-te-swatch-checker"); ui.bgHex.value = c; }
-    else   { ui.bgSwatch.style.background = ""; ui.bgSwatch.classList.add("pix-te-swatch-checker"); ui.bgHex.value = "(none)"; }
+    l.bgColor = c;
+    if (c) { ui.bgSwatch.style.background = c; ui.bgSwatch.classList.remove("pix-to-swatch-checker"); ui.bgHex.input.value = c; }
+    else   { ui.bgSwatch.style.background = ""; ui.bgSwatch.classList.add("pix-to-swatch-checker"); ui.bgHex.input.value = "(none)"; }
     fireChange();
   }));
   bgRow.appendChild(ui.bgSwatch);
-  ui.bgHex = el("input", "pix-te-input-mono"); ui.bgHex.type = "text"; ui.bgHex.value = "(none)"; ui.bgHex.placeholder = "(none)";
-  ui.bgHex.addEventListener("change", () => {
-    const v = ui.bgHex.value.trim();
+  ui.bgHex = numericInputWrap(); bgRow.appendChild(ui.bgHex.wrap);
+  ui.bgHex.input.value = "(none)";
+  ui.bgHex.input.placeholder = "(none)";
+  ui.bgHex.input.addEventListener("change", () => {
+    const v = ui.bgHex.input.value.trim();
     const l = layerNow(); if (!l) return;
     if (v === "" || v === "(none)") {
       l.bgColor = null;
-      ui.bgSwatch.style.background = ""; ui.bgSwatch.classList.add("pix-te-swatch-checker");
-      ui.bgHex.value = "(none)";
+      ui.bgSwatch.style.background = ""; ui.bgSwatch.classList.add("pix-to-swatch-checker");
+      ui.bgHex.input.value = "(none)";
       fireChange();
     } else if (/^#[0-9a-fA-F]{6}$/.test(v)) {
       l.bgColor = v;
-      ui.bgSwatch.style.background = v; ui.bgSwatch.classList.remove("pix-te-swatch-checker");
+      ui.bgSwatch.style.background = v; ui.bgSwatch.classList.remove("pix-to-swatch-checker");
       fireChange();
-    } else { ui.bgHex.value = layerNow()?.bgColor || "(none)"; }
+    } else { ui.bgHex.input.value = layerNow()?.bgColor || "(none)"; }
   });
-  ui.bgHex.addEventListener("keydown", (e) => e.stopImmediatePropagation());
-  bgRow.appendChild(ui.bgHex);
+  ui.bgHex.input.addEventListener("keydown", (e) => e.stopImmediatePropagation());
 
-  // ── POSITION (X / Y) ──
+  // ── POSITION ──
   section("POSITION");
-  ui.posXSlider = createSliderRow("X", 0, 4096, 0, (v) => {
+  ui.posXSlider = createSlider("X", 0, 4096, 0, 1, (v) => {
     const l = layerNow(); if (l) { l.x = v; fireChange(); }
-  }, { step: 1 });
+  });
   root.appendChild(ui.posXSlider.el);
-  ui.posYSlider = createSliderRow("Y", 0, 4096, 0, (v) => {
+  ui.posYSlider = createSlider("Y", 0, 4096, 0, 1, (v) => {
     const l = layerNow(); if (l) { l.y = v; fireChange(); }
-  }, { step: 1 });
+  });
   root.appendChild(ui.posYSlider.el);
 
-  // Load font catalog + show each option in its own font (preview).
-  // Browsers render <option> elements with the system font for the select box,
-  // but each option's `style="font-family:..."` is honored in the dropdown list.
-  // For the preview to actually render the font, we must also have loaded the
-  // FontFace into document.fonts — kick off a load for each in parallel.
+  // Load font catalog. Used by the custom font popup. Also pre-load each
+  // font's primary weight so the popup items render in their own typeface
+  // (the popup uses style.fontFamily = "Pix-<id>").
   getFontCatalog().then(async (cat) => {
-    ui.fontSelect.innerHTML = "";
-    let lastCat = null;
-    for (const f of cat) {
-      if (lastCat && lastCat !== f.category) {
-        const sep = document.createElement("option");
-        sep.disabled = true; sep.textContent = "──────";
-        ui.fontSelect.appendChild(sep);
-      }
-      lastCat = f.category;
-      const opt = document.createElement("option");
-      opt.value = f.id; opt.textContent = f.label;
-      // Use the same family naming convention as canvasFontString:
-      // "Pix-<fontId>" (the italic suffix is for italic variants we don't preview).
-      opt.style.fontFamily = `"Pix-${f.id}", system-ui`;
-      opt.style.fontSize = "14px";
-      ui.fontSelect.appendChild(opt);
+    fontCatalog = cat;
+    if (currentLayer) {
+      ui.fontDropdownName.textContent = labelForFont(cat, currentLayer.font);
+      ui.fontDropdownName.style.fontFamily = `"Pix-${currentLayer.font}", system-ui`;
     }
-    if (currentLayer) ui.fontSelect.value = currentLayer.font;
-    // Pre-load each font (Regular weight, no italic) so the dropdown preview
-    // actually renders in the right typeface. Errors are non-fatal.
     for (const f of cat) {
       const firstWeight = f.weights?.[0];
       if (!firstWeight) continue;
@@ -233,20 +248,17 @@ export function createTextEditorPanel({ mount, onChange }) {
     suspendChange = true;
     try {
       if (!layer) {
-        root.classList.add("pix-te-empty");
+        root.classList.add("pix-to-empty");
         return;
       }
-      root.classList.remove("pix-te-empty");
+      root.classList.remove("pix-to-empty");
       ui.textArea.value = layer.text ?? "";
-      ui.fontSelect.value = layer.font ?? "Inter";
-      ui.weightSelect.value = String(layer.weight ?? 400);
+      const fontId = layer.font ?? "Inter";
+      ui.fontDropdownName.textContent = labelForFont(fontCatalog, fontId);
+      ui.fontDropdownName.style.fontFamily = `"Pix-${fontId}", system-ui`;
+      ui.weightDropdownName.textContent = (layer.weight ?? 400) === 400 ? "Regular" : "Bold";
       ui.italicBtn.classList.toggle("active", !!layer.italic);
-      ui.alignChips.forEach((c) => {
-        const active = c.dataset.align === (layer.align ?? "center");
-        c.classList.toggle("active", active);
-        const i = c.querySelector("img");
-        if (i) i.style.filter = active ? "invert(1)" : "invert(0.8)";
-      });
+      ui.alignChips.forEach((c) => c.classList.toggle("active", c.dataset.align === (layer.align ?? "center")));
       ui.sizeSlider.setValue(layer.fontSize ?? 96);
       ui.lineHeightSlider.setValue(layer.lineHeight ?? 1.2);
       ui.letterSpacingSlider.setValue(layer.letterSpacing ?? 0);
@@ -255,24 +267,22 @@ export function createTextEditorPanel({ mount, onChange }) {
       ui.posXSlider.setValue(layer.x ?? 0);
       ui.posYSlider.setValue(layer.y ?? 0);
       ui.colorSwatch.style.background = layer.color ?? "#FFFFFF";
-      ui.colorHex.value = layer.color ?? "#FFFFFF";
+      ui.colorHex.input.value = layer.color ?? "#FFFFFF";
       if (layer.bgColor) {
         ui.bgSwatch.style.background = layer.bgColor;
-        ui.bgSwatch.classList.remove("pix-te-swatch-checker");
-        ui.bgHex.value = layer.bgColor;
+        ui.bgSwatch.classList.remove("pix-to-swatch-checker");
+        ui.bgHex.input.value = layer.bgColor;
       } else {
         ui.bgSwatch.style.background = "";
-        ui.bgSwatch.classList.add("pix-te-swatch-checker");
-        ui.bgHex.value = "(none)";
+        ui.bgSwatch.classList.add("pix-to-swatch-checker");
+        ui.bgHex.input.value = "(none)";
       }
     } finally {
       suspendChange = false;
     }
   }
 
-  /** Set position slider ranges based on the canvas dimensions. Call once
-   *  after editor opens. Without this the position sliders default to 0..4096
-   *  which is wrong for smaller canvases (e.g. 1024×1024). */
+  /** Set position slider ranges based on the canvas dimensions. */
   function setCanvasBounds(canvasWidth, canvasHeight) {
     ui.posXSlider.setRange(-canvasWidth, canvasWidth * 2);
     ui.posYSlider.setRange(-canvasHeight, canvasHeight * 2);
@@ -282,7 +292,7 @@ export function createTextEditorPanel({ mount, onChange }) {
 
   function section(text) {
     const h = document.createElement("div");
-    h.className = "pix-te-section";
+    h.className = "pix-to-section";
     h.textContent = text;
     root.appendChild(h);
   }
@@ -297,14 +307,139 @@ function el(tag, className) {
   if (className) e.className = className;
   return e;
 }
-function label(text, parent) {
-  const l = el("div", "pix-te-label");
+
+function sectionLabel(text, parent) {
+  const l = el("div", "pix-to-sublabel");
   l.textContent = text;
   if (parent) parent.appendChild(l);
   return l;
 }
+
 function openPicker(swatchEl, initialColor, onPick) {
   openPixaromaColorPickerPopup(swatchEl, { initialColor, onPick });
+}
+
+function labelForFont(catalog, id) {
+  if (!catalog) return id || "Inter";
+  const f = catalog.find((x) => x.id === id);
+  return f?.label || id || "Inter";
+}
+
+// Pixaroma-style slider row: label, range, numeric box on the right.
+// Matches the Load Image numeric-input visual language (orange text,
+// dark bg, no native browser chrome).
+function createSlider(label, min, max, value, step, onChange) {
+  const row = el("div", "pix-to-slider-row");
+  const lbl = el("div", "pix-to-slider-label"); lbl.textContent = label; row.appendChild(lbl);
+  const slider = document.createElement("input");
+  slider.type = "range"; slider.className = "pix-to-slider";
+  slider.min = min; slider.max = max; slider.value = value; slider.step = step;
+  row.appendChild(slider);
+  const num = document.createElement("input");
+  num.type = "number"; num.className = "pix-to-num";
+  num.min = min; num.max = max; num.value = value; num.step = step;
+  row.appendChild(num);
+  slider.addEventListener("input", () => { num.value = slider.value; onChange(parseFloat(slider.value)); });
+  num.addEventListener("input", () => { slider.value = num.value; onChange(parseFloat(num.value)); });
+  num.addEventListener("keydown", (e) => e.stopImmediatePropagation());
+  return {
+    el: row, slider, num,
+    setValue(v) { slider.value = v; num.value = v; },
+    setRange(mn, mx) { slider.min = mn; slider.max = mx; num.min = mn; num.max = mx; },
+  };
+}
+
+// Numeric/text input wrapped in a Pixaroma-style bordered box (matches
+// .pix-li-numinput). Returns { wrap, input }.
+function numericInputWrap() {
+  const wrap = el("div", "pix-to-numinput");
+  const input = document.createElement("input");
+  input.type = "text";
+  wrap.appendChild(input);
+  return { wrap, input };
+}
+
+// ── Custom dropdown popups (mirror openImageDropdown / openResamplePopup) ──
+
+function openFontPopup(anchorEl, catalog, currentId, onPick) {
+  // Close any existing popup
+  document.querySelector(".pix-to-popup")?.remove();
+  const popup = document.createElement("div");
+  popup.className = "pix-to-popup";
+  const rect = anchorEl.getBoundingClientRect();
+  popup.style.left = `${rect.left}px`;
+  popup.style.top  = `${rect.bottom + 2}px`;
+  popup.style.width = `${rect.width}px`;
+
+  let lastCat = null;
+  for (const f of catalog) {
+    if (lastCat && lastCat !== f.category) {
+      const sep = document.createElement("div");
+      sep.className = "pix-to-popup-sep";
+      popup.appendChild(sep);
+    }
+    lastCat = f.category;
+    const item = document.createElement("div");
+    item.className = "pix-to-popup-item" + (f.id === currentId ? " active" : "");
+    item.textContent = f.label;
+    item.style.fontFamily = `"Pix-${f.id}", system-ui`;
+    item.addEventListener("click", (e) => {
+      e.stopPropagation();
+      onPick(f.id);
+      close();
+    });
+    popup.appendChild(item);
+  }
+  document.body.appendChild(popup);
+  attachPopupCloseListeners(popup, close);
+  function close() { popup.remove(); }
+}
+
+function openSimplePopup(anchorEl, options, currentId, onPick) {
+  document.querySelector(".pix-to-popup")?.remove();
+  const popup = document.createElement("div");
+  popup.className = "pix-to-popup";
+  const rect = anchorEl.getBoundingClientRect();
+  popup.style.left = `${rect.left}px`;
+  popup.style.top  = `${rect.bottom + 2}px`;
+  popup.style.width = `${rect.width}px`;
+  for (const opt of options) {
+    const item = document.createElement("div");
+    item.className = "pix-to-popup-item" + (opt.id === currentId ? " active" : "");
+    item.textContent = opt.label;
+    item.addEventListener("click", (e) => {
+      e.stopPropagation();
+      onPick(opt.id);
+      close();
+    });
+    popup.appendChild(item);
+  }
+  document.body.appendChild(popup);
+  attachPopupCloseListeners(popup, close);
+  function close() { popup.remove(); }
+}
+
+// Shared close-listener wiring for our custom popups. Mirrors Load Image
+// pattern #14: mousedown/pointerdown/wheel/Esc all capture-phase, and the
+// wheel listener MUST gate on !popup.contains so users can scroll the
+// list without it closing.
+function attachPopupCloseListeners(popup, closeFn) {
+  const onDocDown = (e) => { if (!popup.contains(e.target)) doClose(); };
+  const onWheel   = (e) => { if (!popup.contains(e.target)) doClose(); };
+  const onKey     = (e) => { if (e.key === "Escape") doClose(); };
+  function doClose() {
+    document.removeEventListener("mousedown", onDocDown, true);
+    document.removeEventListener("pointerdown", onDocDown, true);
+    document.removeEventListener("wheel", onWheel, true);
+    document.removeEventListener("keydown", onKey, true);
+    closeFn();
+  }
+  setTimeout(() => {
+    document.addEventListener("mousedown", onDocDown, true);
+    document.addEventListener("pointerdown", onDocDown, true);
+    document.addEventListener("wheel", onWheel, true);
+    document.addEventListener("keydown", onKey, true);
+  }, 0);
 }
 
 // ── CSS injection (once per page) ─────────────────────────────────────────────
@@ -312,41 +447,206 @@ function openPicker(swatchEl, initialColor, onPick) {
 let _cssInjected = false;
 function injectCSS() {
   if (_cssInjected) return; _cssInjected = true;
-  const s = document.createElement("style"); s.id = "pix-te-css";
+  const s = document.createElement("style"); s.id = "pix-to-css";
   s.textContent = `
-    .pix-te-root { display:flex; flex-direction:column; gap:6px; color:#fff; font:13px system-ui; }
-    .pix-te-empty::after { content:"Select a layer to edit"; color:#666; font-style:italic; }
-    .pix-te-section { font:600 11px system-ui; color:#888; letter-spacing:1px; margin-top:10px; margin-bottom:4px; }
-    .pix-te-label { font:10px system-ui; color:#888; letter-spacing:1px; margin-bottom:3px; }
-    .pix-te-textarea { width:100%; background:#0d0d0d; color:#fff; border:1px solid #333; border-radius:4px; padding:8px; font:13px system-ui; resize:vertical; min-height:48px; box-sizing:border-box; }
-    .pix-te-select { width:100%; background:#0d0d0d; color:#fff; border:1px solid #333; border-radius:4px; padding:6px 10px; font:13px system-ui; }
-    .pix-te-select-sm { padding:5px 8px; font:12px system-ui; }
-    /* Orange highlight on dropdown options (overrides browser default blue).
-       The native <select> popup is partly OS-rendered: :checked + :hover work
-       in modern Chrome/Edge, the keyboard-focus highlight may still leak OS
-       blue on some platforms (cannot be fully styled via CSS). */
-    .pix-te-select option { background-color:#0d0d0d; color:#fff; }
-    .pix-te-select option:checked,
-    .pix-te-select option:hover,
-    .pix-te-select option:focus,
-    .pix-te-select option:active {
-      background:#f66744 !important;
-      background-color:#f66744 !important;
-      color:#fff !important;
-      box-shadow:inset 0 0 0 999px #f66744 !important;
+    .pix-to-root {
+      box-sizing: border-box;
+      padding: 8px;
+      background: #2a2a2a;
+      border-radius: 4px;
+      color: #ddd;
+      font: 11px ui-sans-serif, system-ui, sans-serif;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
     }
-    .pix-te-input-mono { flex:1; background:#0d0d0d; color:#fff; border:1px solid #333; border-radius:4px; padding:6px 10px; font:12px monospace; box-sizing:border-box; }
-    .pix-te-row3 { display:grid; grid-template-columns:1fr 1fr auto; gap:6px; align-items:end; }
-    .pix-te-cell { display:flex; flex-direction:column; gap:3px; }
-    .pix-te-btn { background:#0d0d0d; color:#aaa; border:1px solid #333; padding:6px; font:600 12px system-ui; cursor:pointer; border-radius:4px; min-width:32px; }
-    .pix-te-btn.active { background:#2a1f1a; color:${BRAND}; border-color:${BRAND}; }
-    .pix-te-italic { font:italic 600 14px serif; }
-    .pix-te-align { font:600 12px system-ui; }
-    .pix-te-align-icon { display:flex; align-items:center; justify-content:center; padding:6px 0; height:28px; box-sizing:border-box; }
-    .pix-te-color-row { display:flex; gap:6px; align-items:center; }
-    .pix-te-color-label { font:10px system-ui; color:#888; width:42px; flex-shrink:0; }
-    .pix-te-color-swatch { width:32px; height:32px; border-radius:4px; border:1px solid #444; cursor:pointer; flex:0 0 32px; background:#fff; }
-    .pix-te-swatch-checker { background:repeating-conic-gradient(#333 0% 25%, #444 0% 50%) 0 0 / 8px 8px !important; }
+    .pix-to-root * { box-sizing: border-box; }
+    .pix-to-empty::after { content:"Select a layer to edit"; color:#666; font-style:italic; }
+
+    .pix-to-section {
+      font: 600 9px ui-sans-serif, system-ui, sans-serif;
+      color: ${BRAND};
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-top: 6px;
+      margin-bottom: 2px;
+    }
+    .pix-to-sublabel {
+      font: 9px ui-sans-serif, system-ui, sans-serif;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 3px;
+    }
+
+    .pix-to-textarea {
+      width: 100%;
+      background: #1d1d1d;
+      color: #fff;
+      border: 1px solid #444;
+      border-radius: 4px;
+      padding: 6px 8px;
+      font: 12px ui-sans-serif, system-ui, sans-serif;
+      resize: vertical;
+      min-height: 48px;
+    }
+    .pix-to-textarea:focus { outline: none; border-color: ${BRAND}; }
+
+    .pix-to-dropdown {
+      background: #1d1d1d;
+      border: 1px solid #444;
+      border-radius: 4px;
+      padding: 6px 8px;
+      font: 11px ui-sans-serif, system-ui, sans-serif;
+      color: #ccc;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      user-select: none;
+    }
+    .pix-to-dropdown:hover { border-color: #666; }
+    .pix-to-dropdown .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .pix-to-dropdown .arrow { color: ${BRAND}; font-size: 10px; margin-left: 6px; }
+
+    .pix-to-weight-row {
+      display: grid;
+      grid-template-columns: 1fr 36px;
+      gap: 6px;
+      align-items: end;
+    }
+    .pix-to-col { display: flex; flex-direction: column; }
+
+    .pix-to-align-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 3px;
+    }
+
+    .pix-to-chip {
+      background: #1d1d1d;
+      border: 1px solid #444;
+      border-radius: 4px;
+      color: #aaa;
+      cursor: pointer;
+      padding: 6px 0;
+      font: 600 11px ui-sans-serif, system-ui, sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 28px;
+    }
+    .pix-to-chip:hover { border-color: #666; color: #ddd; }
+    .pix-to-chip.active { background: ${BRAND}; color: #fff; border-color: ${BRAND}; }
+    .pix-to-italic { font: italic 600 14px serif; }
+
+    .pix-to-align-chip img {
+      width: 14px; height: 14px;
+      pointer-events: none;
+      filter: brightness(0) saturate(100%) invert(75%);
+    }
+    .pix-to-align-chip.active img { filter: brightness(0) invert(1); }
+
+    /* Slider row: label | range | numeric box */
+    .pix-to-slider-row {
+      display: grid;
+      grid-template-columns: 56px 1fr 56px;
+      gap: 6px;
+      align-items: center;
+    }
+    .pix-to-slider-label {
+      font: 10px ui-sans-serif, system-ui, sans-serif;
+      color: #888;
+    }
+    .pix-to-slider {
+      width: 100%;
+      accent-color: ${BRAND};
+      height: 4px;
+    }
+    .pix-to-num {
+      background: #1d1d1d;
+      border: 1px solid #444;
+      border-radius: 4px;
+      padding: 3px 4px;
+      color: ${BRAND};
+      font: 600 11px ui-sans-serif, system-ui, sans-serif;
+      text-align: center;
+      width: 100%;
+      -moz-appearance: textfield;
+    }
+    .pix-to-num::-webkit-outer-spin-button,
+    .pix-to-num::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    .pix-to-num:focus { outline: none; border-color: ${BRAND}; }
+
+    /* COLORS rows */
+    .pix-to-color-row { display: flex; gap: 6px; align-items: center; }
+    .pix-to-color-label {
+      font: 10px ui-sans-serif, system-ui, sans-serif;
+      color: #888;
+      width: 42px;
+      flex-shrink: 0;
+    }
+    .pix-to-color-swatch {
+      width: 28px; height: 28px;
+      border-radius: 4px;
+      border: 1px solid #444;
+      cursor: pointer;
+      flex: 0 0 28px;
+      background: #fff;
+    }
+    .pix-to-color-swatch:hover { border-color: ${BRAND}; }
+    .pix-to-swatch-checker {
+      background: repeating-conic-gradient(#333 0% 25%, #444 0% 50%) 0 0 / 8px 8px !important;
+    }
+
+    .pix-to-numinput {
+      display: flex;
+      flex: 1;
+      background: #1d1d1d;
+      border: 1px solid #444;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .pix-to-numinput:focus-within { border-color: ${BRAND}; }
+    .pix-to-numinput input {
+      flex: 1;
+      background: transparent;
+      border: none;
+      outline: none;
+      padding: 4px 6px;
+      color: ${BRAND};
+      font: 600 11px ui-sans-serif, system-ui, sans-serif;
+      text-align: center;
+      width: 100%;
+    }
+
+    /* Custom dropdown popup (positioned via body) */
+    .pix-to-popup {
+      position: fixed;
+      z-index: 99999;
+      background: #1d1d1d;
+      border: 1px solid #444;
+      border-radius: 4px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+      font: 12px ui-sans-serif, system-ui, sans-serif;
+      color: #ccc;
+      max-height: 320px;
+      overflow-y: auto;
+      min-width: 160px;
+    }
+    .pix-to-popup-item {
+      padding: 6px 10px;
+      cursor: pointer;
+      border-bottom: 1px solid #2a2a2a;
+    }
+    .pix-to-popup-item:last-child { border-bottom: none; }
+    .pix-to-popup-item:hover { background: #2a2a2a; }
+    .pix-to-popup-item.active { color: ${BRAND}; font-weight: 600; }
+    .pix-to-popup-sep {
+      height: 1px;
+      background: #333;
+      margin: 4px 0;
+    }
   `;
   document.head.appendChild(s);
 }

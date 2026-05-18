@@ -7,6 +7,7 @@
 import { app } from "/scripts/app.js";
 import { TextOverlayEditor } from "./core.mjs";
 import { createTextEditorPanel } from "../framework/text_editor.mjs";
+import { loadFontForLayer, canvasFontString } from "../framework/fonts.mjs";
 import "./interaction.mjs"; // side-effect: registers prototype methods
 
 const NODE_CLASS = "PixaromaTextOverlay";
@@ -176,9 +177,79 @@ app.graphToPrompt = async function (...args) {
       if (!index) index = buildPixNodeIndex();
       const node = findPixNode(index, id);
       const state = node?.properties?.[STATE_PROP] || DEFAULT_STATE;
+
+      // First-run auto-center: if the node has never been centered (fresh
+      // node, _autoCenterPending flag still set) and the upstream image is
+      // available, compute centered x/y now so the first workflow render
+      // shows the text in the middle of the image instead of top-left.
+      // Mirrors the same logic the editor's _autoCenter() runs on open.
+      if (state._autoCenterPending && state.text && node) {
+        try {
+          const img = getUpstreamImage(node);
+          if (img && img.naturalWidth && img.naturalHeight) {
+            const bbox = await measureTextBbox(state);
+            state.x = Math.max(0, Math.round((img.naturalWidth - bbox.w) / 2));
+            state.y = Math.max(0, Math.round((img.naturalHeight - bbox.h) / 2));
+            delete state._autoCenterPending;
+            // Sync body panel + repaint so user sees the new position
+            if (node._textOverlayBodyPanel) node._textOverlayBodyPanel.setLayer(state);
+            node.setDirtyCanvas?.(true, true);
+          }
+        } catch (e) {
+          console.warn("[Text Overlay] auto-center on submit failed", e);
+        }
+      }
+
       entry.inputs = entry.inputs || {};
       entry.inputs[HIDDEN_INPUT_NAME] = JSON.stringify(state);
     }
   }
   return result;
 };
+
+// Resolve the upstream image wired to this node's `image` input, returning
+// the HTMLImageElement on the upstream node (e.g. Load Image's preview) or
+// null. Same shape as core.mjs::_tryLoadUpstreamImage.
+function getUpstreamImage(node) {
+  const link = node.inputs?.find((i) => i.name === "image")?.link;
+  if (!link) return null;
+  const graph = window.app.graph;
+  let linkObj = graph.links?.[link];
+  if (!linkObj && typeof graph.links?.get === "function") linkObj = graph.links.get(link);
+  if (!linkObj) return null;
+  const upstream = graph.getNodeById(linkObj.origin_id);
+  return upstream?.imgs?.[0] || null;
+}
+
+// Measure the rendered bbox of the state's text using the same canvas-text
+// math as the live editor (and the Python renderer). Returns { w, h }.
+let _measureCanvas = null;
+async function measureTextBbox(state) {
+  const variant = await loadFontForLayer(state.font || "Inter", state.weight || 400, !!state.italic);
+  const fontStr = canvasFontString(variant, state.fontSize || 96);
+  if (!_measureCanvas) {
+    _measureCanvas = document.createElement("canvas");
+    _measureCanvas.width = 1;
+    _measureCanvas.height = 1;
+  }
+  const ctx = _measureCanvas.getContext("2d");
+  ctx.font = fontStr;
+  const lines = String(state.text ?? "").split("\n");
+  const letterSpacing = state.letterSpacing || 0;
+  const lineWidths = lines.map((ln) => {
+    if (letterSpacing === 0) return ctx.measureText(ln).width;
+    let w = 0; for (const c of ln) w += ctx.measureText(c).width;
+    return w + Math.max(0, ln.length - 1) * letterSpacing;
+  });
+  const maxLineW = Math.max(0, ...lineWidths);
+  const m = ctx.measureText("Mg");
+  const ascender = m.actualBoundingBoxAscent || (state.fontSize || 96) * 0.78;
+  const descender = m.actualBoundingBoxDescent || (state.fontSize || 96) * 0.22;
+  const lineHeightPx = Math.round((state.fontSize || 96) * (state.lineHeight || 1.2));
+  const padX = state.bgColor ? 16 : 0;
+  const padY = state.bgColor ? 10 : 0;
+  return {
+    w: Math.ceil(maxLineW + 2 * padX),
+    h: Math.ceil(ascender + descender + Math.max(0, lines.length - 1) * lineHeightPx + 2 * padY),
+  };
+}
