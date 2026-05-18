@@ -229,6 +229,11 @@ def render_text_layer(base_img, layer):
     glyph_h = ascender + descender
     bbox_w = max(1, int(round(max_line_w + 2 * pad_x)))
     bbox_h = max(1, int(round(glyph_h + max(0, len(lines) - 1) * line_height_px + 2 * pad_y)))
+    print(f"[Text Overlay Pixaroma] DEBUG metrics: font_id={font_id} weight={weight} "
+          f"font_size_eff={font_size_eff} ss={ss} | getbbox('Mg')=({left}, {top}, {right}, {bottom}) "
+          f"ascender={ascender} descender={descender} glyph_h={glyph_h} "
+          f"max_line_w={max_line_w} bbox_w={bbox_w} bbox_h={bbox_h} "
+          f"pad_x={pad_x} pad_y={pad_y}")
 
     layer_img = Image.new("RGBA", (bbox_w, bbox_h), (0, 0, 0, 0))
     draw = ImageDraw.Draw(layer_img)
