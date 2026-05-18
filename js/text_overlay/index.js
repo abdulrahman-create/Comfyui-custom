@@ -1,28 +1,36 @@
 // ╔═══════════════════════════════════════════════════════════════╗
-// ║  Text Overlay Pixaroma — extension entry                     ║
-// ║  - In-node button + preview thumbnail                        ║
-// ║  - Opens fullscreen editor                                   ║
-// ║  - Pattern #9 graphToPrompt hook                             ║
+// ║  Text Overlay Pixaroma — extension entry (simplified v2)     ║
+// ║  Node body hosts the full text_editor.mjs panel + Open btn.  ║
+// ║  Same panel re-mounted in editor right sidebar on open.      ║
 // ╚═══════════════════════════════════════════════════════════════╝
 
 import { app } from "/scripts/app.js";
 import { TextOverlayEditor } from "./core.mjs";
-import "./interaction.mjs"; // side-effect import to register prototype methods
+import { createTextEditorPanel } from "../framework/text_editor.mjs";
+import "./interaction.mjs"; // side-effect: registers prototype methods
 
 const NODE_CLASS = "PixaromaTextOverlay";
 const STATE_PROP = "textOverlayState";
 const HIDDEN_INPUT_NAME = "TextOverlayState";
-const DEFAULT_STATE = {
-  version: 1,
-  canvasWidth: 1024,
-  canvasHeight: 1024,
-  bgColor: "#000000",
-  layers: [],
-  previewUrl: "",
-};
 
-const BTN_HEIGHT = 32;
-const PREVIEW_MAX_H = 200;
+// Default state when adding a fresh node OR migrating from v1 multi-layer
+const DEFAULT_STATE = {
+  version: 2,
+  text: "Your text here",
+  font: "Inter",
+  weight: 400,
+  italic: false,
+  align: "center",
+  fontSize: 96,
+  lineHeight: 1.2,
+  letterSpacing: 0,
+  x: 240,
+  y: 455,
+  rotation: 0,
+  opacity: 1.0,
+  color: "#FFFFFF",
+  bgColor: null,
+};
 
 app.registerExtension({
   name: "Pixaroma.TextOverlay",
@@ -40,64 +48,82 @@ app.registerExtension({
     const origConfigure = nodeType.prototype.onConfigure;
     nodeType.prototype.onConfigure = function () {
       const r = origConfigure?.apply(this, arguments);
-      restoreFromProperties(this);
+      ensureValidState(this);
+      // After configure, push current state into the body panel UI
+      if (this._textOverlayBodyPanel) {
+        this._textOverlayBodyPanel.setLayer(this.properties[STATE_PROP]);
+      }
       return r;
     };
   },
 });
 
-function setupTextOverlayNode(node) {
+function ensureValidState(node) {
   if (!node.properties) node.properties = {};
-  if (!node.properties[STATE_PROP]) {
+  const cur = node.properties[STATE_PROP];
+  // Migrate / fresh: v1 multi-layer state (or missing) → reset to v2 defaults.
+  // Spec §3: "if loaded state has no version field OR version: 1 (multi-layer),
+  // replace with defaults. No attempt to migrate layer 0's properties."
+  if (!cur || cur.version !== 2) {
     node.properties[STATE_PROP] = { ...DEFAULT_STATE };
   }
+}
+
+function setupTextOverlayNode(node) {
+  ensureValidState(node);
 
   const root = document.createElement("div");
   root.style.cssText = "display:flex; flex-direction:column; gap:6px; padding:4px 0;";
 
+  // Open Text Editor button at the top
   const btn = document.createElement("button");
-  btn.textContent = "Open Text Overlay";
-  btn.style.cssText = `background:#f66744; color:#fff; border:none; padding:8px; border-radius:4px; font:600 13px system-ui; cursor:pointer; height:${BTN_HEIGHT}px;`;
+  btn.textContent = "Open Text Editor";
+  btn.style.cssText = "background:#f66744; color:#fff; border:none; padding:8px; border-radius:4px; font:600 13px system-ui; cursor:pointer;";
   btn.addEventListener("click", () => openEditor(node));
   root.appendChild(btn);
 
-  const previewImg = document.createElement("img");
-  previewImg.alt = "Text Overlay preview";
-  previewImg.style.cssText = `width:100%; max-height:${PREVIEW_MAX_H}px; object-fit:contain; background:#0d0d0d; border:1px solid #333; border-radius:4px; display:none;`;
-  root.appendChild(previewImg);
+  // The shared text_editor.mjs panel mounted on the node body
+  const panelMount = document.createElement("div");
+  panelMount.style.cssText = "padding:0 4px;";
+  root.appendChild(panelMount);
+
+  const bodyPanel = createTextEditorPanel({
+    mount: panelMount,
+    onChange: () => {
+      // Sync the editor's panel (if editor is open) + re-render its canvas
+      if (node._textOverlayEditor && node._textOverlayEditor.layout?.overlay?.isConnected) {
+        node._textOverlayEditor.editorPanel?.setLayer?.(node.properties[STATE_PROP]);
+        node._textOverlayEditor.requestRender?.();
+      }
+      node.setDirtyCanvas?.(true, true);
+    },
+  });
+  node._textOverlayBodyPanel = bodyPanel;
+  node._textOverlayBodyRoot = root;
 
   node.addDOMWidget("pix_text_overlay_ui", "div", root, {
     canvasOnly: true,
     serialize: false,
-    getMinHeight: () => BTN_HEIGHT + (previewImg.style.display === "none" ? 8 : PREVIEW_MAX_H + 12),
+    getMinHeight: () => {
+      // Sum children offsetHeight + 16 padding so the node hugs its content
+      let h = 16;
+      for (const c of root.children) h += c.offsetHeight || 0;
+      return Math.max(380, h);
+    },
   });
 
-  node._textOverlayPreviewImg = previewImg;
-  node._textOverlayRoot = root;
-
-  // Default width for new nodes. Let LiteGraph auto-size HEIGHT to the widgets
-  // (so the node hugs its content - just the button when no preview, button +
-  // preview after Save). LiteGraph configure() restores saved sizes for
-  // workflows that already had a size.
-  if (!node.size || node.size[0] < 280) {
-    node.size = node.computeSize ? node.computeSize() : [320, 120];
-    if (node.size[0] < 280) node.size[0] = 320;
+  // Default size for new nodes; LiteGraph restores saved sizes via configure
+  if (!node.size || node.size[0] < 320) {
+    node.size = [360, 700];
   }
 
-  // Vue Compat #8 + Preview Image Pattern #4: defer restore past configure
-  queueMicrotask(() => restoreFromProperties(node));
-}
-
-function restoreFromProperties(node) {
-  const url = node.properties?.[STATE_PROP]?.previewUrl;
-  if (!url || !node._textOverlayPreviewImg) return;
-  if (node._textOverlayPreviewImg.src === url) return; // idempotent
-  node._textOverlayPreviewImg.src = url;
-  node._textOverlayPreviewImg.style.display = "block";
+  // Defer panel population past configure() so saved state is restored first
+  queueMicrotask(() => {
+    bodyPanel.setLayer(node.properties[STATE_PROP]);
+  });
 }
 
 function openEditor(node) {
-  // If editor already open and connected, focus it
   if (node._textOverlayEditor && node._textOverlayEditor.layout?.overlay?.isConnected) return;
   const editor = new TextOverlayEditor(node);
   node._textOverlayEditor = editor;
@@ -107,7 +133,7 @@ function openEditor(node) {
   });
 }
 
-// ── Pattern #9: graphToPrompt hook ────────────────────────────────────────────
+// ── Pattern #9: graphToPrompt hook (mostly unchanged, simpler payload) ───
 
 function buildPixNodeIndex() {
   const index = new Map();
@@ -116,9 +142,7 @@ function buildPixNodeIndex() {
     const nodes = graph._nodes || graph.nodes || [];
     for (const n of nodes) {
       if (!n) continue;
-      if (n.comfyClass === NODE_CLASS || n.type === NODE_CLASS) {
-        index.set(String(n.id), n);
-      }
+      if (n.comfyClass === NODE_CLASS || n.type === NODE_CLASS) index.set(String(n.id), n);
       const inner = n.subgraph || n.graph || n._graph;
       if (inner && inner !== graph) visit(inner);
     }
