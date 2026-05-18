@@ -22,7 +22,7 @@ const HELP_HTML = `
   Shift + wheel - resize the text (font size)<br/>
   Hold Shift while dragging - bypass snap<br/>
   Hold Shift during rotation - snap to 15 degree increments<br/>
-  Hold Alt during corner drag - scale from center<br/><br/>
+  Hold Alt during corner drag - scale from opposite corner (default is from center)<br/><br/>
   <strong>Keyboard</strong><br/>
   Arrow keys - nudge by 1 px (Shift = 10 px)<br/>
   Delete / Backspace - clear text<br/>

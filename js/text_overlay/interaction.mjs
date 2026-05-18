@@ -146,7 +146,10 @@ TextOverlayEditor.prototype._onCanvasMouseMove = function (e) {
     const newDist = Math.hypot(p.x - cx, p.y - cy);
     const factor = Math.max(0.1, newDist / Math.max(1, origDist));
     s.fontSize = Math.max(8, Math.round(orig.fontSize * factor));
-    if (!e.altKey) {
+    if (e.altKey) {
+      // Alt held: anchor the OPPOSITE corner — Photoshop-style stretch
+      // from one corner toward / away from another. Useful when you
+      // want one edge of the text to stay put.
       const newBox = this._textBbox(s);
       const opp = { nw: "se", ne: "sw", sw: "ne", se: "nw" }[this._dragHandle];
       const anchors = {
@@ -165,6 +168,12 @@ TextOverlayEditor.prototype._onCanvasMouseMove = function (e) {
       const o = newOffsets[opp];
       s.x = a.x - o.dx;
       s.y = a.y - o.dy;
+    } else {
+      // Default: anchor the bbox CENTER. Text grows / shrinks in place
+      // around the same visual point. Matches the shift+wheel resize.
+      const newBox = this._textBbox(s);
+      s.x = Math.round(cx - newBox.w / 2);
+      s.y = Math.round(cy - newBox.h / 2);
     }
   } else if (this._dragMode === "rotate") {
     const origBox = this._textBbox(orig);
