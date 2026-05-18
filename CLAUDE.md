@@ -904,6 +904,8 @@ These patterns came from the v2 simplification (single text, no effects, mirrore
 
 11. **Render parity tolerance unchanged from v1.** Goldens lock the Python output. The JS side is checked visually by the user at editor save time. The renderer is now simpler (~80 lines instead of ~200) so fewer code paths to test.
 
+12. **Modal click-outside-to-cancel MUST gate on mousedown source, not the click target alone** — applies to `openPixaromaColorPickerModal` in `js/shared/color_picker.mjs` and to any future modal that has draggable controls inside (SV plane, sliders, scrubbers, etc.). A naive `backdrop.addEventListener("click", e => { if (e.target === backdrop) close() })` handler will FIRE on the end of a drag that started inside the modal box and released outside the box. Mouseup-on-backdrop counts as click-on-backdrop, even though the press started inside. Symptom: user drags inside the color picker's SV plane, accidentally releases the mouse off the modal, the modal cancels and throws away the in-progress pick. Fix: track a `mouseDownOnBackdrop` boolean on backdrop `mousedown`, then only call `close()` in the `click` handler when BOTH the mousedown AND the click target were the backdrop. Reset the flag after every click. Drag-out releases are then ignored and only deliberate backdrop clicks dismiss. Add the same guard to any new modal with internal drag behavior, or this exact regression will recur.
+
 ### Offline-first: Vendored Three.js
 The 3D Builder used to `import("https://esm.sh/three@0.170.0/…")` at runtime, which
 broke with `ERR_CONNECTION_RESET` for any user running ComfyUI offline or behind a
