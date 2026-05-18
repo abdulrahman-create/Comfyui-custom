@@ -139,4 +139,39 @@ app.registerExtension({
   },
 });
 
-// graphToPrompt hook and queuePrompt patch land in Task 7 and Task 8.
+// app.graphToPrompt hook - injects the active row's text into the hidden
+// PromptMultiState input at workflow-submit time. Pattern #9 (Vue Frontend
+// Compatibility). Subgraph-safe via tail-id matching. Called once per
+// queuePrompt() — the queuePrompt patch below is what changes activeIndex
+// between calls so each enqueue sees a different active prompt.
+const _origGraphToPrompt = app.graphToPrompt;
+app.graphToPrompt = async function (...args) {
+  const result = await _origGraphToPrompt.apply(this, args);
+  try {
+    const prompt = result?.output;
+    if (prompt && typeof prompt === "object") {
+      for (const key of Object.keys(prompt)) {
+        const entry = prompt[key];
+        if (!entry || entry.class_type !== "PixaromaPromptMulti") continue;
+        const nodeId = parseInt(String(key).split(":").pop(), 10);
+        const node = app.graph?.getNodeById?.(nodeId);
+        if (!node) continue;
+        const state = node.properties?.[STATE_PROP];
+        if (!state || !Array.isArray(state.rows) || state.rows.length === 0) continue;
+        const idx = (typeof state.activeIndex === "number" && state.activeIndex >= 0 && state.activeIndex < state.rows.length)
+          ? state.activeIndex
+          : 0;
+        const activePrompt = (state.rows[idx]?.text || "").trim();
+        const payload = JSON.stringify({
+          version: 1,
+          activePrompt,
+        });
+        entry.inputs = entry.inputs || {};
+        entry.inputs.PromptMultiState = payload;
+      }
+    }
+  } catch (err) {
+    console.error("Pixaroma.PromptMulti: graphToPrompt hook failed", err);
+  }
+  return result;
+};
