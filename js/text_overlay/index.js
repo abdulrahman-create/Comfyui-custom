@@ -221,22 +221,19 @@ function refreshTextLock(node) {
   const link = node.inputs?.find((i) => i.name === "text")?.link;
   const wired = link != null;
   panel.setTextReadOnly(wired, wired ? "Text input is wired - upstream value is used" : "");
-  // Defer to next frame so the hint's DOM layout settles before we
-  // measure; then snap the node body height to the new content height
-  // (both grow + shrink — without this the node stays at whatever
-  // larger size it had when the hint was visible).
+  // Defer to next frame so the hint's DOM layout settles before
+  // computeSize re-measures. LiteGraph's computeSize returns the
+  // total node height (chrome + slots + widgets) so we don't need
+  // to guess the chrome offset.
   requestAnimationFrame(() => {
-    const measure = node._textOverlayMeasureHeight;
-    if (typeof measure === "function" && node.size) {
-      const newH = measure();
-      // Add ~80 px for the node title bar + input/output slots above
-      // the DOM widget. LiteGraph node.size is the TOTAL node height
-      // including chrome; measure() returns just the widget content.
-      const targetH = newH + 80;
-      if (Math.abs(node.size[1] - targetH) > 4) {
-        node.size[1] = targetH;
-        node.setDirtyCanvas?.(true, true);
-        node.graph?.setDirtyCanvas?.(true, true);
+    if (typeof node.computeSize === "function" && node.size) {
+      const min = node.computeSize();
+      if (Array.isArray(min) && min.length === 2 && typeof min[1] === "number") {
+        if (Math.abs(node.size[1] - min[1]) > 1) {
+          node.size[1] = min[1];
+          node.setDirtyCanvas?.(true, true);
+          node.graph?.setDirtyCanvas?.(true, true);
+        }
       }
     }
   });
