@@ -1,7 +1,7 @@
 // ╔═══════════════════════════════════════════════════════════════╗
-// ║  Pixaroma Text Editor Panel                                  ║
-// ║  Right-sidebar properties UI for ONE text layer.             ║
-// ║  Used by Text Overlay node + future Composer text layers.   ║
+// ║  Pixaroma Text Editor Panel (simplified v2)                  ║
+// ║  Properties UI for ONE text overlay.                         ║
+// ║  Mounted twice: on the node body AND in the editor sidebar.  ║
 // ║                                                              ║
 // ║  All numeric controls use the framework's createSliderRow    ║
 // ║  (slider + number input combo) for parity with other         ║
@@ -18,7 +18,7 @@ const BRAND = "#f66744";
  *  @param {Object} opts
  *  @param {HTMLElement} opts.mount  - container to render into
  *  @param {Function} opts.onChange  - called with (layer) on any property change
- *  @returns {{ setLayer(layer), destroy() }}
+ *  @returns {{ setLayer(layer), setCanvasBounds(w,h), destroy() }}
  */
 export function createTextEditorPanel({ mount, onChange }) {
   injectCSS();
@@ -77,8 +77,6 @@ export function createTextEditorPanel({ mount, onChange }) {
 
   // Align chips — icon buttons (uses shared assets/icons/ui/align-*.svg)
   label("ALIGN", root);
-  // pix-te-row3 uses `1fr 1fr auto` for the size/weight/italic combo. Align
-  // needs three equal columns instead.
   const alignRow = el("div", "pix-te-row3"); root.appendChild(alignRow);
   alignRow.style.gridTemplateColumns = "1fr 1fr 1fr";
   const ALIGN_ICONS = {
@@ -107,8 +105,9 @@ export function createTextEditorPanel({ mount, onChange }) {
     alignRow.appendChild(b); return b;
   });
 
-  // ── SIZE / LINE / SPACING — sliders ──
-  ui.sizeSlider = createSliderRow("Size", 8, 256, 36, (v) => {
+  // ── TYPOGRAPHY (Size, Line height, Letter spacing, Opacity, Rotation) ──
+  section("TYPOGRAPHY");
+  ui.sizeSlider = createSliderRow("Size", 8, 512, 96, (v) => {
     const l = layerNow(); if (l) { l.fontSize = v; fireChange(); }
   }, { step: 1 });
   root.appendChild(ui.sizeSlider.el);
@@ -123,9 +122,21 @@ export function createTextEditorPanel({ mount, onChange }) {
   }, { step: 0.5 });
   root.appendChild(ui.letterSpacingSlider.el);
 
-  // ── COLOR ──
-  section("COLOR");
+  ui.opacitySlider = createSliderRow("Opacity", 0, 100, 100, (v) => {
+    const l = layerNow(); if (l) { l.opacity = v / 100; fireChange(); }
+  }, { step: 1 });
+  root.appendChild(ui.opacitySlider.el);
+
+  ui.rotationSlider = createSliderRow("Rotation", -180, 180, 0, (v) => {
+    const l = layerNow(); if (l) { l.rotation = v; fireChange(); }
+  }, { step: 1 });
+  root.appendChild(ui.rotationSlider.el);
+
+  // ── COLORS (text + bg pill) ──
+  section("COLORS");
+  // Text color row
   const colorRow = el("div", "pix-te-color-row"); root.appendChild(colorRow);
+  const textLabel = el("span", "pix-te-color-label"); textLabel.textContent = "Text"; colorRow.appendChild(textLabel);
   ui.colorSwatch = el("div", "pix-te-color-swatch");
   ui.colorSwatch.addEventListener("click", () => openPicker(ui.colorSwatch, layerNow()?.color || "#FFFFFF", (c) => {
     const l = layerNow(); if (!l || !c) return;
@@ -143,8 +154,37 @@ export function createTextEditorPanel({ mount, onChange }) {
   ui.colorHex.addEventListener("keydown", (e) => e.stopImmediatePropagation());
   colorRow.appendChild(ui.colorHex);
 
-  // ── POSITION (X / Y only — opacity + rotation live in the left transform
-  // panel and at the top of the right sidebar, no duplicates) ──
+  // Bg pill color row (null = no pill, hex = pill enabled)
+  const bgRow = el("div", "pix-te-color-row"); bgRow.style.marginTop = "6px"; root.appendChild(bgRow);
+  const bgLabel = el("span", "pix-te-color-label"); bgLabel.textContent = "Behind"; bgRow.appendChild(bgLabel);
+  ui.bgSwatch = el("div", "pix-te-color-swatch pix-te-swatch-checker");
+  ui.bgSwatch.addEventListener("click", () => openPicker(ui.bgSwatch, layerNow()?.bgColor || "#000000", (c) => {
+    const l = layerNow(); if (!l) return;
+    l.bgColor = c; // c is hex from picker, or null/undefined from clear
+    if (c) { ui.bgSwatch.style.background = c; ui.bgSwatch.classList.remove("pix-te-swatch-checker"); ui.bgHex.value = c; }
+    else   { ui.bgSwatch.style.background = ""; ui.bgSwatch.classList.add("pix-te-swatch-checker"); ui.bgHex.value = "(none)"; }
+    fireChange();
+  }));
+  bgRow.appendChild(ui.bgSwatch);
+  ui.bgHex = el("input", "pix-te-input-mono"); ui.bgHex.type = "text"; ui.bgHex.value = "(none)"; ui.bgHex.placeholder = "(none)";
+  ui.bgHex.addEventListener("change", () => {
+    const v = ui.bgHex.value.trim();
+    const l = layerNow(); if (!l) return;
+    if (v === "" || v === "(none)") {
+      l.bgColor = null;
+      ui.bgSwatch.style.background = ""; ui.bgSwatch.classList.add("pix-te-swatch-checker");
+      ui.bgHex.value = "(none)";
+      fireChange();
+    } else if (/^#[0-9a-fA-F]{6}$/.test(v)) {
+      l.bgColor = v;
+      ui.bgSwatch.style.background = v; ui.bgSwatch.classList.remove("pix-te-swatch-checker");
+      fireChange();
+    } else { ui.bgHex.value = layerNow()?.bgColor || "(none)"; }
+  });
+  ui.bgHex.addEventListener("keydown", (e) => e.stopImmediatePropagation());
+  bgRow.appendChild(ui.bgHex);
+
+  // ── POSITION (X / Y) ──
   section("POSITION");
   ui.posXSlider = createSliderRow("X", 0, 4096, 0, (v) => {
     const l = layerNow(); if (l) { l.x = v; fireChange(); }
@@ -154,89 +194,6 @@ export function createTextEditorPanel({ mount, onChange }) {
     const l = layerNow(); if (l) { l.y = v; fireChange(); }
   }, { step: 1 });
   root.appendChild(ui.posYSlider.el);
-
-  // ── EFFECTS ──
-  section("EFFECTS");
-  const effectsRow = el("div", "pix-te-row3"); root.appendChild(effectsRow);
-  ui.strokeToggle = toggleBtn("Stroke", () => toggleEffect("stroke", ui.strokeToggle, ui.strokePanel,
-    { color: "#000000", width: 2 }));
-  ui.shadowToggle = toggleBtn("Shadow", () => toggleEffect("shadow", ui.shadowToggle, ui.shadowPanel,
-    { color: "#000000", blur: 8, offsetX: 0, offsetY: 2, opacity: 0.7 }));
-  ui.bgToggle = toggleBtn("Bg pill", () => toggleEffect("background", ui.bgToggle, ui.bgPanel,
-    { color: "#000000", paddingX: 12, paddingY: 8, radius: 6, opacity: 1.0 }));
-  effectsRow.append(ui.strokeToggle, ui.shadowToggle, ui.bgToggle);
-
-  // Stroke panel
-  ui.strokePanel = el("div", "pix-te-effect-panel"); ui.strokePanel.style.display = "none";
-  root.appendChild(ui.strokePanel);
-  ui.strokePanel.appendChild(label("STROKE COLOR"));
-  ui.strokeColorSwatch = el("div", "pix-te-color-swatch");
-  ui.strokeColorSwatch.addEventListener("click", () => openPicker(ui.strokeColorSwatch,
-    layerNow()?.stroke?.color || "#000000", (c) => {
-      const l = layerNow(); if (!l || !l.stroke || !c) return;
-      l.stroke.color = c; ui.strokeColorSwatch.style.background = c; fireChange();
-    }));
-  ui.strokePanel.appendChild(ui.strokeColorSwatch);
-  ui.strokeWidthSlider = createSliderRow("Width", 0, 50, 2, (v) => {
-    const l = layerNow(); if (l?.stroke) { l.stroke.width = v; fireChange(); }
-  }, { step: 0.5 });
-  ui.strokePanel.appendChild(ui.strokeWidthSlider.el);
-
-  // Shadow panel
-  ui.shadowPanel = el("div", "pix-te-effect-panel"); ui.shadowPanel.style.display = "none";
-  root.appendChild(ui.shadowPanel);
-  ui.shadowPanel.appendChild(label("SHADOW COLOR"));
-  ui.shadowColorSwatch = el("div", "pix-te-color-swatch");
-  ui.shadowColorSwatch.addEventListener("click", () => openPicker(ui.shadowColorSwatch,
-    layerNow()?.shadow?.color || "#000000", (c) => {
-      const l = layerNow(); if (!l || !l.shadow || !c) return;
-      l.shadow.color = c; ui.shadowColorSwatch.style.background = c; fireChange();
-    }));
-  ui.shadowPanel.appendChild(ui.shadowColorSwatch);
-  ui.shadowBlurSlider = createSliderRow("Blur", 0, 100, 8, (v) => {
-    const l = layerNow(); if (l?.shadow) { l.shadow.blur = v; fireChange(); }
-  }, { step: 1 });
-  ui.shadowPanel.appendChild(ui.shadowBlurSlider.el);
-  ui.shadowOffsetXSlider = createSliderRow("Offset X", -100, 100, 0, (v) => {
-    const l = layerNow(); if (l?.shadow) { l.shadow.offsetX = v; fireChange(); }
-  }, { step: 1 });
-  ui.shadowPanel.appendChild(ui.shadowOffsetXSlider.el);
-  ui.shadowOffsetYSlider = createSliderRow("Offset Y", -100, 100, 2, (v) => {
-    const l = layerNow(); if (l?.shadow) { l.shadow.offsetY = v; fireChange(); }
-  }, { step: 1 });
-  ui.shadowPanel.appendChild(ui.shadowOffsetYSlider.el);
-  ui.shadowOpacitySlider = createSliderRow("Opacity", 0, 100, 70, (v) => {
-    const l = layerNow(); if (l?.shadow) { l.shadow.opacity = v / 100; fireChange(); }
-  }, { step: 1 });
-  ui.shadowPanel.appendChild(ui.shadowOpacitySlider.el);
-
-  // Background panel
-  ui.bgPanel = el("div", "pix-te-effect-panel"); ui.bgPanel.style.display = "none";
-  root.appendChild(ui.bgPanel);
-  ui.bgPanel.appendChild(label("PILL COLOR"));
-  ui.bgColorSwatch = el("div", "pix-te-color-swatch");
-  ui.bgColorSwatch.addEventListener("click", () => openPicker(ui.bgColorSwatch,
-    layerNow()?.background?.color || "#000000", (c) => {
-      const l = layerNow(); if (!l || !l.background || !c) return;
-      l.background.color = c; ui.bgColorSwatch.style.background = c; fireChange();
-    }));
-  ui.bgPanel.appendChild(ui.bgColorSwatch);
-  ui.bgPaddingXSlider = createSliderRow("Pad X", 0, 100, 12, (v) => {
-    const l = layerNow(); if (l?.background) { l.background.paddingX = v; fireChange(); }
-  }, { step: 1 });
-  ui.bgPanel.appendChild(ui.bgPaddingXSlider.el);
-  ui.bgPaddingYSlider = createSliderRow("Pad Y", 0, 100, 8, (v) => {
-    const l = layerNow(); if (l?.background) { l.background.paddingY = v; fireChange(); }
-  }, { step: 1 });
-  ui.bgPanel.appendChild(ui.bgPaddingYSlider.el);
-  ui.bgRadiusSlider = createSliderRow("Radius", 0, 200, 6, (v) => {
-    const l = layerNow(); if (l?.background) { l.background.radius = v; fireChange(); }
-  }, { step: 1 });
-  ui.bgPanel.appendChild(ui.bgRadiusSlider.el);
-  ui.bgOpacitySlider = createSliderRow("Opacity", 0, 100, 100, (v) => {
-    const l = layerNow(); if (l?.background) { l.background.opacity = v / 100; fireChange(); }
-  }, { step: 1 });
-  ui.bgPanel.appendChild(ui.bgOpacitySlider.el);
 
   // Load font catalog + show each option in its own font (preview).
   // Browsers render <option> elements with the system font for the select box,
@@ -271,13 +228,6 @@ export function createTextEditorPanel({ mount, onChange }) {
     }
   }).catch((e) => console.warn("[text_editor] font catalog load failed", e));
 
-  function toggleEffect(key, btn, panel, defaults) {
-    const l = currentLayer; if (!l) return;
-    if (l[key]) { l[key] = null; btn.classList.remove("active"); panel.style.display = "none"; }
-    else        { l[key] = { ...defaults }; btn.classList.add("active"); panel.style.display = "block"; setLayer(l); }
-    fireChange();
-  }
-
   function setLayer(layer) {
     currentLayer = layer;
     suspendChange = true;
@@ -292,41 +242,28 @@ export function createTextEditorPanel({ mount, onChange }) {
       ui.weightSelect.value = String(layer.weight ?? 400);
       ui.italicBtn.classList.toggle("active", !!layer.italic);
       ui.alignChips.forEach((c) => {
-        const active = c.dataset.align === (layer.align ?? "left");
+        const active = c.dataset.align === (layer.align ?? "center");
         c.classList.toggle("active", active);
         const i = c.querySelector("img");
         if (i) i.style.filter = active ? "invert(1)" : "invert(0.8)";
       });
-      ui.sizeSlider.setValue(layer.fontSize ?? 36);
+      ui.sizeSlider.setValue(layer.fontSize ?? 96);
       ui.lineHeightSlider.setValue(layer.lineHeight ?? 1.2);
       ui.letterSpacingSlider.setValue(layer.letterSpacing ?? 0);
-      ui.colorSwatch.style.background = layer.color ?? "#FFFFFF";
-      ui.colorHex.value = layer.color ?? "#FFFFFF";
+      ui.opacitySlider.setValue(Math.round((layer.opacity ?? 1) * 100));
+      ui.rotationSlider.setValue(layer.rotation ?? 0);
       ui.posXSlider.setValue(layer.x ?? 0);
       ui.posYSlider.setValue(layer.y ?? 0);
-      ui.strokeToggle.classList.toggle("active", !!layer.stroke);
-      ui.shadowToggle.classList.toggle("active", !!layer.shadow);
-      ui.bgToggle.classList.toggle("active", !!layer.background);
-      ui.strokePanel.style.display = layer.stroke ? "block" : "none";
-      ui.shadowPanel.style.display = layer.shadow ? "block" : "none";
-      ui.bgPanel.style.display = layer.background ? "block" : "none";
-      if (layer.stroke) {
-        ui.strokeColorSwatch.style.background = layer.stroke.color;
-        ui.strokeWidthSlider.setValue(layer.stroke.width);
-      }
-      if (layer.shadow) {
-        ui.shadowColorSwatch.style.background = layer.shadow.color;
-        ui.shadowBlurSlider.setValue(layer.shadow.blur);
-        ui.shadowOffsetXSlider.setValue(layer.shadow.offsetX);
-        ui.shadowOffsetYSlider.setValue(layer.shadow.offsetY);
-        ui.shadowOpacitySlider.setValue(Math.round((layer.shadow.opacity ?? 1) * 100));
-      }
-      if (layer.background) {
-        ui.bgColorSwatch.style.background = layer.background.color;
-        ui.bgPaddingXSlider.setValue(layer.background.paddingX);
-        ui.bgPaddingYSlider.setValue(layer.background.paddingY);
-        ui.bgRadiusSlider.setValue(layer.background.radius);
-        ui.bgOpacitySlider.setValue(Math.round((layer.background.opacity ?? 1) * 100));
+      ui.colorSwatch.style.background = layer.color ?? "#FFFFFF";
+      ui.colorHex.value = layer.color ?? "#FFFFFF";
+      if (layer.bgColor) {
+        ui.bgSwatch.style.background = layer.bgColor;
+        ui.bgSwatch.classList.remove("pix-te-swatch-checker");
+        ui.bgHex.value = layer.bgColor;
+      } else {
+        ui.bgSwatch.style.background = "";
+        ui.bgSwatch.classList.add("pix-te-swatch-checker");
+        ui.bgHex.value = "(none)";
       }
     } finally {
       suspendChange = false;
@@ -366,12 +303,6 @@ function label(text, parent) {
   if (parent) parent.appendChild(l);
   return l;
 }
-function toggleBtn(text, onClick) {
-  const b = el("button", "pix-te-toggle");
-  b.textContent = text;
-  b.addEventListener("click", onClick);
-  return b;
-}
 function openPicker(swatchEl, initialColor, onPick) {
   openPixaromaColorPickerPopup(swatchEl, { initialColor, onPick });
 }
@@ -405,10 +336,9 @@ function injectCSS() {
     .pix-te-align { font:600 12px system-ui; }
     .pix-te-align-icon { display:flex; align-items:center; justify-content:center; padding:6px 0; height:28px; box-sizing:border-box; }
     .pix-te-color-row { display:flex; gap:6px; align-items:center; }
+    .pix-te-color-label { font:10px system-ui; color:#888; width:42px; flex-shrink:0; }
     .pix-te-color-swatch { width:32px; height:32px; border-radius:4px; border:1px solid #444; cursor:pointer; flex:0 0 32px; background:#fff; }
-    .pix-te-toggle { flex:1; background:#0d0d0d; color:#aaa; border:1px solid #333; padding:6px; font:11px system-ui; border-radius:4px; cursor:pointer; }
-    .pix-te-toggle.active { background:#2a1f1a; color:${BRAND}; border-color:${BRAND}; }
-    .pix-te-effect-panel { padding:10px; background:#0d0d0d; border:1px solid #2a2a2a; border-radius:4px; display:flex; flex-direction:column; gap:6px; margin-top:4px; }
+    .pix-te-swatch-checker { background:repeating-conic-gradient(#333 0% 25%, #444 0% 50%) 0 0 / 8px 8px !important; }
   `;
   document.head.appendChild(s);
 }
