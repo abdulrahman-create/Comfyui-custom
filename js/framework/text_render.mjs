@@ -16,7 +16,7 @@ const BG_RADIUS = 0;
  *  Async because font must be loaded first.
  *
  *  @param {CanvasRenderingContext2D} ctx
- *  @param {Object} layer  see docs/superpowers/specs/2026-05-18-text-overlay-pixaroma-simplified-design.md
+ *  @param {Object} layer  text + font + position state — see DEFAULT_STATE in js/text_overlay/defaults.mjs for the shape
  */
 export async function renderTextLayer(ctx, layer) {
   if (!layer) return;

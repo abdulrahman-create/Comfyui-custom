@@ -558,7 +558,7 @@ These patterns were hard-won during 3D Builder v2 development. Regressing any of
 
 ### AudioReact Engine Patterns (do not regress)
 
-1. **`slit_scan` is a per-row time-evolving sine wave, NOT a frame-buffer pull** — the spec at `docs/superpowers/specs/2026-04-27-audio-react-pixaroma-design.md` originally described slit_scan as pulling rows from past frames in a buffer (`num_frames × H × W × 3` memory). The implementation simplifies this to per-row vertical sine displacement at row-shifted phase, audio-modulated amplitude — visually the same kind of "time-displaced rows" effect at zero extra memory cost. If you ever switch to a real frame buffer, clamp lookback to ≤ 0.5s of frames or memory blows up at high fps / 4K.
+1. **`slit_scan` is a per-row time-evolving sine wave, NOT a frame-buffer pull** — an earlier design called for pulling rows from past frames in a buffer (`num_frames × H × W × 3` memory). The implementation simplifies this to per-row vertical sine displacement at row-shifted phase, audio-modulated amplitude — visually the same kind of "time-displaced rows" effect at zero extra memory cost. If you ever switch to a real frame buffer, clamp lookback to ≤ 0.5s of frames or memory blows up at high fps / 4K.
 
 2. **`shake` motion mode caches dx/dy on `self`, must be cleared at the top of `generate()`** — the cache size depends on `total_frames`, which differs per audio length. `generate()` does `if hasattr(self, "_shake_dx_cache"): del ...` before computing the envelope. Without that, switching audio (different total_frames) reuses stale jitter and crashes on index OOB.
 
