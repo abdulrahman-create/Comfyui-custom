@@ -5,6 +5,7 @@
 // ╚═══════════════════════════════════════════════════════════════╝
 
 import { app } from "/scripts/app.js";
+import { api } from "/scripts/api.js";
 import { TextOverlayEditor } from "./core.mjs";
 import { createTextEditorPanel } from "../framework/text_editor.mjs";
 import { loadFontForLayer, canvasFontString } from "../framework/fonts.mjs";
@@ -36,6 +37,16 @@ app.registerExtension({
       if (this._textOverlayBodyPanel) {
         this._textOverlayBodyPanel.setLayer(this.properties[STATE_PROP]);
       }
+      refreshOpenButton(this);
+      return r;
+    };
+
+    // Update the Open button when the image wire is connected /
+    // disconnected so the user sees the right hint immediately.
+    const origOnConnectionsChange = nodeType.prototype.onConnectionsChange;
+    nodeType.prototype.onConnectionsChange = function () {
+      const r = origOnConnectionsChange?.apply(this, arguments);
+      refreshOpenButton(this);
       return r;
     };
   },
@@ -57,12 +68,19 @@ function setupTextOverlayNode(node) {
   const root = document.createElement("div");
   root.style.cssText = "display:flex; flex-direction:column; gap:6px; padding:4px 0;";
 
-  // Open Text Editor button at the top
+  // Open Text Editor button at the top. When the upstream image is not
+  // available (no wire, or wire connected but workflow hasn't run yet),
+  // the button shows a hint label instead and refuses to open the
+  // editor — so the user doesn't waste two clicks (open + close).
   const btn = document.createElement("button");
-  btn.textContent = "Open Text Editor";
-  btn.style.cssText = "background:#f66744; color:#fff; border:none; padding:8px; border-radius:4px; font:600 13px system-ui; cursor:pointer;";
-  btn.addEventListener("click", () => openEditor(node));
+  btn.style.cssText = "color:#fff; border:none; padding:8px; border-radius:4px; font:600 13px system-ui;";
+  btn.addEventListener("click", () => {
+    if (btn.classList.contains("disabled")) return;
+    openEditor(node);
+  });
   root.appendChild(btn);
+  node._textOverlayOpenBtn = btn;
+  refreshOpenButton(node);
 
   // The shared text_editor.mjs panel mounted on the node body
   const panelMount = document.createElement("div");
@@ -160,6 +178,56 @@ function openEditor(node) {
     try { editor.close(); } catch {}
   });
 }
+
+// Open-button state management. The button is only "ready" when the
+// upstream image input is wired AND the upstream node has produced an
+// image (workflow has run at least once). Other states show a hint
+// label and refuse to open the editor.
+function isUpstreamImageReady(node) {
+  const link = node.inputs?.find((i) => i.name === "image")?.link;
+  if (link == null) return false;
+  const graph = window.app.graph;
+  let linkObj = graph.links?.[link];
+  if (!linkObj && typeof graph.links?.get === "function") linkObj = graph.links.get(link);
+  if (!linkObj) return false;
+  const upstream = graph.getNodeById(linkObj.origin_id);
+  const img = upstream?.imgs?.[0];
+  return !!(img && img.complete && img.naturalWidth > 0);
+}
+
+function refreshOpenButton(node) {
+  const btn = node._textOverlayOpenBtn;
+  if (!btn) return;
+  if (isUpstreamImageReady(node)) {
+    btn.classList.remove("disabled");
+    btn.style.background = "#f66744";
+    btn.style.color = "#fff";
+    btn.style.cursor = "pointer";
+    btn.textContent = "Open Text Editor";
+    btn.title = "Open the fullscreen text editor";
+  } else {
+    btn.classList.add("disabled");
+    btn.style.background = "#2a2a2a";
+    btn.style.color = "#888";
+    btn.style.cursor = "not-allowed";
+    const link = node.inputs?.find((i) => i.name === "image")?.link;
+    if (link == null) {
+      btn.textContent = "Connect an image first";
+      btn.title = "Wire an image source into the 'image' input";
+    } else {
+      btn.textContent = "Run workflow first";
+      btn.title = "Run the workflow so the upstream image is available";
+    }
+  }
+}
+
+// Refresh the button label whenever a workflow finishes (upstream may
+// have just produced its image) and whenever wires change on this node.
+api.addEventListener("executed", () => {
+  for (const n of (app.graph?._nodes || app.graph?.nodes || [])) {
+    if (n?.comfyClass === NODE_CLASS) refreshOpenButton(n);
+  }
+});
 
 // ── Pattern #9: graphToPrompt hook (mostly unchanged, simpler payload) ───
 
