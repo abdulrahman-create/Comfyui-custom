@@ -881,8 +881,17 @@ export function openPixaromaColorPickerModal(opts = {}) {
     onCancel();
     close();
   });
+  // Click-outside-to-cancel — but ONLY if both mousedown AND mouseup
+  // happened on the backdrop. Otherwise a drag that starts inside the
+  // SV plane and releases outside (off the modal box) would cancel,
+  // throwing away the user's color pick.
+  let mouseDownOnBackdrop = false;
+  backdrop.addEventListener("mousedown", (e) => {
+    mouseDownOnBackdrop = (e.target === backdrop);
+  });
   backdrop.addEventListener("click", (e) => {
-    if (e.target === backdrop) { onCancel(); close(); }
+    if (e.target === backdrop && mouseDownOnBackdrop) { onCancel(); close(); }
+    mouseDownOnBackdrop = false;
   });
   function onKey(e) {
     if (e.key === "Escape") {
