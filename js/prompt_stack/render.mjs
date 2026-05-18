@@ -136,8 +136,13 @@ const CSS = `
 }
 .pix-ps-textarea:focus { border-color: #f66744; }
 
-.pix-ps-add {
+.pix-ps-actions {
+  display: flex;
+  gap: 6px;
   align-self: flex-start;
+  margin-top: 4px;
+}
+.pix-ps-add, .pix-ps-clear, .pix-ps-reset {
   background: #2a2a2a;
   border: 1px solid #3a3a3a;
   border-radius: 3px;
@@ -145,9 +150,11 @@ const CSS = `
   cursor: pointer;
   font-size: 12px;
   padding: 4px 10px;
-  margin-top: 4px;
+  font-family: inherit;
 }
-.pix-ps-add:hover { background: #333; border-color: #f66744; color: #f66744; }
+.pix-ps-add:hover, .pix-ps-clear:hover, .pix-ps-reset:hover { background: #333; border-color: #f66744; color: #f66744; }
+.pix-ps-clear:disabled, .pix-ps-reset:disabled { color: #555; border-color: #2e2e2e; background: #232323; cursor: not-allowed; }
+.pix-ps-clear:disabled:hover, .pix-ps-reset:disabled:hover { background: #232323; border-color: #2e2e2e; color: #555; }
 
 .pix-ps-confirm-backdrop {
   position: fixed;
@@ -306,10 +313,55 @@ export function renderRows(node, root, rowHandlers) {
     root.appendChild(rowEl);
   }
 
+  const actions = document.createElement("div");
+  actions.className = "pix-ps-actions";
+
   const add = document.createElement("button");
   add.className = "pix-ps-add";
   add.type = "button";
   add.textContent = "+ Add row";
   add.addEventListener("click", () => rowHandlers.onAdd());
-  root.appendChild(add);
+  actions.appendChild(add);
+
+  const clear = document.createElement("button");
+  clear.className = "pix-ps-clear";
+  clear.type = "button";
+  clear.textContent = "Clear text";
+  clear.title = "Empty the text in every row (keeps rows, labels and toggles)";
+  clear.addEventListener("click", () => rowHandlers.onClearAll());
+  actions.appendChild(clear);
+
+  const reset = document.createElement("button");
+  reset.className = "pix-ps-reset";
+  reset.type = "button";
+  reset.textContent = "Reset";
+  reset.title = "Reset to default (one empty row, ON, no label)";
+  reset.addEventListener("click", () => rowHandlers.onReset());
+  actions.appendChild(reset);
+
+  // Reactive enable/disable: walk live DOM inputs so buttons update on every
+  // keystroke without waiting for state commit or a re-render. Exposed on the
+  // node so attachTextareaEditor and attachLabelEditor can poke it.
+  const refreshActionButtons = () => {
+    const tas = root.querySelectorAll(".pix-ps-textarea");
+    let anyText = false;
+    for (const ta of tas) {
+      if (ta.value && ta.value.trim()) { anyText = true; break; }
+    }
+    clear.disabled = !anyText;
+
+    const labels = root.querySelectorAll(".pix-ps-label");
+    let anyLabel = false;
+    for (const lab of labels) {
+      if (lab.value && lab.value.trim()) { anyLabel = true; break; }
+    }
+    const s = readState(node);
+    const anyDisabled = s.rows.some((r) => !r.enabled);
+    const notDefaultCount = s.rows.length !== 1;
+    reset.disabled = !(anyText || anyLabel || anyDisabled || notDefaultCount);
+  };
+  refreshActionButtons();
+  node._pixPsRefreshClear = refreshActionButtons;
+
+  root.appendChild(actions);
 }

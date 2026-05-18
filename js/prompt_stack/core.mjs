@@ -90,6 +90,16 @@ export function setText(node, id, text) {
   writeState(node, state);
 }
 
+export function clearAllText(node) {
+  const state = readState(node);
+  for (const row of state.rows) row.text = "";
+  writeState(node, state);
+}
+
+export function resetToDefault(node) {
+  writeState(node, defaultState());
+}
+
 export function reorderRows(node, fromIdx, toIdx) {
   const state = readState(node);
   if (fromIdx === toIdx) return;
