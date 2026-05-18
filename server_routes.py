@@ -806,50 +806,6 @@ async def remove_bg(request):
         return web.json_response({"error": f"Background removal failed: {e}"}, status=500)
 
 
-@PromptServer.instance.routes.post("/pixaroma/api/text_overlay/save")
-async def api_text_overlay_save(request):
-    """Save a small thumbnail PNG for the Text Overlay in-node preview.
-
-    Body: { image_b64: "data:image/png;base64,...", filename_prefix: "text_overlay" }
-    Returns: { filename, subfolder, type: "temp" }
-    Writes to ComfyUI's temp/ folder (auto-cleared on restart, no clutter).
-    """
-    try:
-        body = await request.json()
-    except Exception:
-        return web.json_response({"error": "invalid JSON"}, status=400)
-    data_url = body.get("image_b64", "")
-    if not data_url.startswith("data:image/png;base64,"):
-        return web.json_response({"error": "image_b64 must be a PNG data URL"}, status=400)
-    raw_b64 = data_url.split(",", 1)[1]
-    try:
-        png_bytes = base64.b64decode(raw_b64, validate=True)
-    except Exception:
-        return web.json_response({"error": "invalid base64"}, status=400)
-    if len(png_bytes) > _MAX_B64_BYTES:
-        return web.json_response({"error": "image too large"}, status=400)
-
-    prefix = _safe_prefix(body.get("filename_prefix", "text_overlay")) or "text_overlay"
-    temp_dir = folder_paths.get_temp_directory()
-    subdir, name = os.path.split(prefix)
-    base = name or "text_overlay"
-    target_dir = os.path.join(temp_dir, subdir) if subdir else temp_dir
-    os.makedirs(target_dir, exist_ok=True)
-    counter = 1
-    while True:
-        filename = f"{base}_{counter:05d}_.png"
-        out_path = os.path.join(target_dir, filename)
-        if not os.path.exists(out_path):
-            break
-        counter += 1
-    try:
-        with open(out_path, "wb") as f:
-            f.write(png_bytes)
-    except Exception as e:
-        return web.json_response({"error": f"save failed: {e}"}, status=500)
-    return web.json_response({"filename": filename, "subfolder": subdir, "type": "temp"})
-
-
 @PromptServer.instance.routes.post("/pixaroma/api/preview/save")
 async def api_preview_save(request):
     """Save a base64 PNG to ComfyUI's output/ folder with workflow metadata.
