@@ -347,23 +347,19 @@ export class TextOverlayEditor {
 
   fitWidth() {
     const s = this.state; if (!s || !s.text) return;
-    // Bidirectional iterative fit. Scale UP if too small, scale DOWN
-    // if too big. Previous shrink-only check exited early when text was
-    // smaller than target — so clicking Fit W on small text did nothing.
-    // Account for the fixed bg pad explicitly: font scaling only affects
-    // the text width; the pad stays at 16 px regardless of fontSize.
+    // Direct calculation: font scales the text width linearly, the bg
+    // pad is fixed. Solve for the font size that lands bbox.w at 95% of
+    // canvas width. Iteration was hitting early-exits (rounding +
+    // tolerance) so a single direct calculation is more reliable.
     const padX = s.bgColor ? 16 : 0;
     const target = this.canvasWidth * 0.95;
     const targetTextW = Math.max(1, target - 2 * padX);
-    for (let i = 0; i < 6; i++) {
-      const bbox = this._textBbox(s);
-      const textW = Math.max(1, bbox.w - 2 * padX);
-      const factor = targetTextW / textW;
-      if (Math.abs(factor - 1) < 0.005) break; // converged
-      const newSize = Math.max(8, Math.min(512, Math.round(s.fontSize * factor)));
-      if (newSize === s.fontSize) break;
-      s.fontSize = newSize;
-    }
+    const bbox = this._textBbox(s);
+    const currentTextW = Math.max(1, bbox.w - 2 * padX);
+    const newSize = Math.max(8, Math.min(512, Math.round(s.fontSize * targetTextW / currentTextW)));
+    s.fontSize = newSize;
+    // Center horizontally with the NEW measured bbox (after the font
+    // size change, the text width is different).
     const finalBbox = this._textBbox(s);
     s.x = Math.round((this.canvasWidth - finalBbox.w) / 2);
     this._snapshotMaybe();
@@ -377,15 +373,10 @@ export class TextOverlayEditor {
     const padY = s.bgColor ? 10 : 0;
     const target = this.canvasHeight * 0.95;
     const targetTextH = Math.max(1, target - 2 * padY);
-    for (let i = 0; i < 6; i++) {
-      const bbox = this._textBbox(s);
-      const textH = Math.max(1, bbox.h - 2 * padY);
-      const factor = targetTextH / textH;
-      if (Math.abs(factor - 1) < 0.005) break;
-      const newSize = Math.max(8, Math.min(512, Math.round(s.fontSize * factor)));
-      if (newSize === s.fontSize) break;
-      s.fontSize = newSize;
-    }
+    const bbox = this._textBbox(s);
+    const currentTextH = Math.max(1, bbox.h - 2 * padY);
+    const newSize = Math.max(8, Math.min(512, Math.round(s.fontSize * targetTextH / currentTextH)));
+    s.fontSize = newSize;
     const finalBbox = this._textBbox(s);
     s.y = Math.round((this.canvasHeight - finalBbox.h) / 2);
     this._snapshotMaybe();

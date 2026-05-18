@@ -235,32 +235,53 @@ function refreshOpenButton(node) {
 // node is a Text Overlay itself, mark it _textOverlayHasRun so the
 // readiness check passes even when upstream is an intermediate node that
 // doesn't populate `imgs[0]` (e.g. VAE Decode in a SD generation chain).
+// Match any of comfyClass / type / nodeData.name. Different ComfyUI
+// versions and Vue frontend builds use different fields for the class
+// identifier; checking all of them is the only way to be reliable.
+function isTextOverlayNode(node) {
+  if (!node) return false;
+  if (node.comfyClass === NODE_CLASS) return true;
+  if (node.type === NODE_CLASS) return true;
+  if (node.constructor?.comfyClass === NODE_CLASS) return true;
+  if (node.nodeData?.name === NODE_CLASS) return true;
+  return false;
+}
+
 api.addEventListener("executed", (e) => {
   const detail = e?.detail || {};
   const ridRaw = detail.node;
+  let executedNode = null;
   if (ridRaw != null) {
-    let executedNode = app.graph?.getNodeById?.(ridRaw);
-    if (!executedNode && typeof ridRaw === "string") {
-      executedNode = app.graph?.getNodeById?.(parseInt(ridRaw, 10));
-    }
-    if (executedNode?.comfyClass === NODE_CLASS) {
-      executedNode._textOverlayHasRun = true;
-      // Cache the input image URL the Python node stashed to temp/ so
-      // the editor canvas has something to draw on when upstream is an
-      // intermediate node (VAE Decode etc) that doesn't populate
-      // imgs[0]. Pulls the entry from detail.output, same shape as
-      // Save Mp4 / Preview Image Pixaroma.
-      const base = detail.output?.pixaroma_text_overlay_base?.[0];
-      if (base?.filename) {
-        const subfolder = base.subfolder ? `&subfolder=${encodeURIComponent(base.subfolder)}` : "";
-        const type = base.type || "temp";
-        executedNode._textOverlayBaseImageURL =
-          `/view?filename=${encodeURIComponent(base.filename)}${subfolder}&type=${encodeURIComponent(type)}&t=${Date.now()}`;
-      }
+    executedNode = app.graph?.getNodeById?.(ridRaw)
+                || app.graph?.getNodeById?.(parseInt(ridRaw, 10))
+                || app.graph?.getNodeById?.(String(ridRaw));
+  }
+  if (isTextOverlayNode(executedNode)) {
+    executedNode._textOverlayHasRun = true;
+    const base = detail.output?.pixaroma_text_overlay_base?.[0];
+    if (base?.filename) {
+      const subfolder = base.subfolder ? `&subfolder=${encodeURIComponent(base.subfolder)}` : "";
+      const type = base.type || "temp";
+      executedNode._textOverlayBaseImageURL =
+        `/view?filename=${encodeURIComponent(base.filename)}${subfolder}&type=${encodeURIComponent(type)}&t=${Date.now()}`;
     }
   }
   for (const n of (app.graph?._nodes || app.graph?.nodes || [])) {
-    if (n?.comfyClass === NODE_CLASS) refreshOpenButton(n);
+    if (isTextOverlayNode(n)) refreshOpenButton(n);
+  }
+});
+
+// Belt-and-braces: workflow-level success event. When ANY workflow run
+// completes, mark every Text Overlay node as "has run". Less precise
+// than the per-node executed event (which can miss us if comfyClass
+// isn't set on this Vue build) but guarantees the button enables once
+// the user has run any workflow that included this node.
+api.addEventListener("execution_success", () => {
+  for (const n of (app.graph?._nodes || app.graph?.nodes || [])) {
+    if (isTextOverlayNode(n)) {
+      n._textOverlayHasRun = true;
+      refreshOpenButton(n);
+    }
   }
 });
 
