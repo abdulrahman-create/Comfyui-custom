@@ -112,6 +112,9 @@ export class TextOverlayEditor {
         this.requestRender();
       },
     });
+    // Tell the panel the canvas dimensions so the Position X/Y sliders use
+    // sensible ranges (defaults to a generic 0..4096 range otherwise).
+    this.textPanel.setCanvasBounds?.(this.canvasWidth, this.canvasHeight);
     this._syncLayerSelection();
 
     // Wire Save to Disk button (framework footer)
@@ -122,6 +125,13 @@ export class TextOverlayEditor {
 
     // Mix-in installs interaction handlers (mouse + keyboard)
     if (typeof this._installInteractions === "function") this._installInteractions();
+
+    // First-open UX: if the layers list is empty, drop a starter layer in the
+    // middle of the canvas so the user has something to interact with and
+    // immediately sees how the editor responds. Empty editors are confusing.
+    if (this.layers.length === 0) {
+      this.addLayer({ starter: true });
+    }
 
     this.requestRender();
     this.zoomFit();
@@ -433,7 +443,7 @@ export class TextOverlayEditor {
     const layer = {
       id: (crypto.randomUUID && crypto.randomUUID()) || String(Math.random()).slice(2),
       visible: true,
-      text: "Text",
+      text: opts.starter ? "Your text here" : "Text",
       font: "Inter",
       weight: 400,
       italic: false,
