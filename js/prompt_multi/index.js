@@ -36,43 +36,12 @@ function fitNodeToContent(node) {
   node.size[1] = desired;
 }
 
-// Multi declares two outputs at the Python level (text, list). The frontend
-// dynamically hides whichever output is INACTIVE for the current mode so the
-// user only sees the relevant dot on the right side of the node.
-//
-// In queue mode: only the `text` output is shown (slot 0).
-// In list mode:  only the `list` output is shown.
-function syncOutputSlotsToMode(node) {
-  const state = readState(node);
-  if (!Array.isArray(node.outputs)) return;
-  if (state.mode === MODE_QUEUE) {
-    // Want exactly [text]. Strip list if present.
-    if (node.outputs.length > 1) {
-      try { node.disconnectOutput(1); } catch (_) {}
-      try { node.removeOutput(1); } catch (_) {}
-    }
-    if (node.outputs.length === 0) {
-      try { node.addOutput("text", "STRING"); } catch (_) {}
-    } else if (node.outputs[0]) {
-      node.outputs[0].name = "text";
-      node.outputs[0].type = "STRING";
-      if (node.outputs[0].label) node.outputs[0].label = "text";
-    }
-  } else {
-    // Want exactly [list]. Strip text if present.
-    if (node.outputs.length > 1) {
-      try { node.disconnectOutput(1); } catch (_) {}
-      try { node.removeOutput(1); } catch (_) {}
-    }
-    if (node.outputs.length === 0) {
-      try { node.addOutput("list", "PIXAROMA_PROMPT_LIST"); } catch (_) {}
-    } else if (node.outputs[0]) {
-      node.outputs[0].name = "list";
-      node.outputs[0].type = "PIXAROMA_PROMPT_LIST";
-      if (node.outputs[0].label) node.outputs[0].label = "list";
-    }
-  }
-}
+// Multi always exposes BOTH outputs (text + list). The mode toggle only
+// controls the queue loop behavior, not which output exists. This avoids
+// the buggy dynamic-slot-renaming approach where Python's fixed slot order
+// (text=0, list=1) would conflict with frontend slot juggling. User wires
+// whichever output they need; the mode pill clarifies intent (N runs vs
+// one run).
 
 function makeHandlers(node, root) {
   const rerender = () => {
@@ -86,25 +55,10 @@ function makeHandlers(node, root) {
     onToggleEnabled: (id) => { toggleEnabled(node, id); rerender(); },
     onLabelChange: (_id, _v) => { /* inline */ },
     onTextChange: (_id, _v) => { /* inline */ },
-    onSetMode: async (newMode) => {
+    onSetMode: (newMode) => {
       const state = readState(node);
       if (state.mode === newMode) return;
-      // If the currently-visible output is wired downstream, switching mode
-      // will disconnect it. Ask for confirmation first.
-      const wired = (node.outputs?.[0]?.links || []).length > 0;
-      if (wired) {
-        const fromName = state.mode === MODE_QUEUE ? "text" : "list";
-        const toName = newMode === MODE_QUEUE ? "text" : "list";
-        const ok = await pixConfirm({
-          title: `Switch to ${newMode === MODE_QUEUE ? "Queue" : "List"} mode?`,
-          message: `The current ${fromName} output is wired to something. Switching to ${newMode === MODE_QUEUE ? "Queue" : "List"} mode will disconnect that wire and replace it with the ${toName} output.`,
-          okText: "Switch",
-          cancelText: "Cancel",
-        });
-        if (!ok) return;
-      }
       setMode(node, newMode);
-      syncOutputSlotsToMode(node);
       rerender();
     },
     onDelete: async (id) => {
@@ -152,7 +106,6 @@ function makeHandlers(node, root) {
       });
       if (!ok) return;
       resetToDefault(node);
-      syncOutputSlotsToMode(node);
       rerender();
       requestAnimationFrame(() => {
         fitNodeToContent(node);
@@ -190,7 +143,6 @@ app.registerExtension({
       queueMicrotask(() => {
         injectCSS();
         restoreFromProperties(node);
-        syncOutputSlotsToMode(node);
 
         const root = buildRoot();
         const { handlers, rerender } = makeHandlers(node, root);
@@ -220,7 +172,6 @@ app.registerExtension({
     nodeType.prototype.onConfigure = function (info) {
       const r = origConfigure ? origConfigure.apply(this, arguments) : undefined;
       restoreFromProperties(this);
-      syncOutputSlotsToMode(this);
       if (this._pixPmRerender) this._pixPmRerender();
       return r;
     };
