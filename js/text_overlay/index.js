@@ -75,8 +75,14 @@ function setupTextOverlayNode(node) {
   node._textOverlayPreviewImg = previewImg;
   node._textOverlayRoot = root;
 
-  // Default size for new nodes; LiteGraph configure() restores saved sizes
-  if (!node.size || node.size[0] < 280) { node.size = [320, 280]; }
+  // Default width for new nodes. Let LiteGraph auto-size HEIGHT to the widgets
+  // (so the node hugs its content - just the button when no preview, button +
+  // preview after Save). LiteGraph configure() restores saved sizes for
+  // workflows that already had a size.
+  if (!node.size || node.size[0] < 280) {
+    node.size = node.computeSize ? node.computeSize() : [320, 120];
+    if (node.size[0] < 280) node.size[0] = 320;
+  }
 
   // Vue Compat #8 + Preview Image Pattern #4: defer restore past configure
   queueMicrotask(() => restoreFromProperties(node));

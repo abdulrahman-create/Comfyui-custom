@@ -7,7 +7,10 @@
 import { createEditorLayout } from "../framework/layout.mjs";
 import { createTextEditorPanel } from "../framework/text_editor.mjs";
 import { renderTextLayer } from "../framework/text_render.mjs";
+import { createLayerPanel, createLayerItem } from "../framework/layers.mjs";
 import { saveThumbnail, buildPreviewURL } from "./api.mjs";
+
+const UI_ICON = "/pixaroma/assets/icons/ui/";
 
 const HELP_HTML = `
   <div><strong>Editing</strong><br/>
@@ -60,6 +63,7 @@ export class TextOverlayEditor {
       rightWidth: 300,
       showUndoRedo: true,
       showZoomBar: true,
+      showTopOptionsBar: true,
       helpContent: HELP_HTML,
       onSave: () => this.save().catch((e) => this.layout.setSaveError(e.message)),
       onClose: () => this.close(),
@@ -70,6 +74,7 @@ export class TextOverlayEditor {
       onZoomFit: () => this.zoomFit(),
     });
     this.layout.mount();
+    this._buildAlignmentBar();
 
     // Load saved state
     const state = this.node.properties?.textOverlayState || {};
@@ -189,62 +194,157 @@ export class TextOverlayEditor {
     return upstream?.imgs?.[0] || null;
   }
 
-  // ── Layers panel ──
+  // ── Layers panel (uses framework createLayerPanel) ──
   _buildLayersPanel() {
-    const root = document.createElement("div");
-    root.style.cssText = "padding:12px; color:#fff; font:13px system-ui;";
-    this.layersPanelRoot = root;
-
-    const header = document.createElement("div");
-    header.style.cssText = "font:600 11px system-ui; color:#888; letter-spacing:1px; margin-bottom:10px;";
-    header.textContent = "LAYERS";
-    root.appendChild(header);
-
-    this.layersList = document.createElement("div");
-    root.appendChild(this.layersList);
-
-    const addBtn = document.createElement("button");
-    addBtn.textContent = "+ Add text layer";
-    addBtn.style.cssText = "width:100%; background:#2a2a2a; color:#f66744; border:1px dashed #f66744; padding:8px; border-radius:4px; font:600 11px system-ui; cursor:pointer; margin-top:8px;";
-    addBtn.addEventListener("click", () => this.addLayer({ x: this.canvasWidth / 2 - 100, y: this.canvasHeight / 2 - 20 }));
-    root.appendChild(addBtn);
-
-    this.layout.leftSidebar.appendChild(root);
+    this._layerPanel = createLayerPanel({
+      title: "Layers",
+      showBlendMode: false,
+      showOpacity: false,
+      onAdd: () => this.addLayer(),
+      addTitle: "Add text layer",
+      onDuplicate: () => this.duplicateSelected(),
+      onDelete: () => this.deleteSelected(),
+      onMoveUp: () => this.moveSelected(1),
+      onMoveDown: () => this.moveSelected(-1),
+      onReorder: (from, to) => this.reorderLayer(from, to),
+    });
+    this.layout.leftSidebar.appendChild(this._layerPanel.el);
     this._rebuildLayersPanel();
   }
 
   _rebuildLayersPanel() {
-    this.layersList.innerHTML = "";
-    this.layers.forEach((layer, i) => {
-      const row = document.createElement("div");
-      const isSel = i === this.selectedIndex;
-      row.style.cssText = `background:${isSel ? "#2a1f1a" : "#1d1d1d"}; border:1px solid ${isSel ? "#f66744" : "transparent"}; border-radius:4px; padding:8px; margin-bottom:6px; display:flex; align-items:center; gap:8px; cursor:pointer; ${layer.visible === false ? "opacity:0.5;" : ""}`;
-
-      const eye = document.createElement("div");
-      eye.textContent = layer.visible === false ? "⊘" : "👁";
-      eye.style.cssText = "cursor:pointer; user-select:none;";
-      eye.addEventListener("click", (e) => {
-        e.stopPropagation();
-        layer.visible = layer.visible === false ? true : false;
-        this._snapshotMaybe();
-        this._rebuildLayersPanel();
-        this.requestRender();
+    if (!this._layerPanel) return;
+    // Display in REVERSE order so topmost layer (last in array, drawn on top) appears at the top of the list
+    // (matches Composer + Photoshop convention)
+    const items = [];
+    for (let i = this.layers.length - 1; i >= 0; i--) {
+      const layer = this.layers[i];
+      const item = createLayerItem({
+        name: layer.name || (layer.text || "(empty)").split("\n")[0].slice(0, 24) || "(empty)",
+        visible: layer.visible !== false,
+        locked: false,
+        active: i === this.selectedIndex,
+        onVisibilityToggle: () => {
+          layer.visible = layer.visible === false ? true : false;
+          this._snapshotMaybe();
+          this._rebuildLayersPanel();
+          this.requestRender();
+        },
+        onLockToggle: () => {}, // not used for text layers in v1
+        onClick: () => {
+          this.selectedIndex = i;
+          this._syncLayerSelection();
+          this._rebuildLayersPanel();
+          this.requestRender();
+        },
+        onRename: (newName) => {
+          layer.name = newName;
+          this._snapshotMaybe();
+        },
       });
-      row.appendChild(eye);
+      items.push(item.el);
+    }
+    this._layerPanel.refresh(items);
+  }
 
-      const name = document.createElement("div");
-      name.style.cssText = "flex:1; color:#fff; font:12px system-ui; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;";
-      name.textContent = (layer.text || "(empty)").split("\n")[0].slice(0, 24) || "(empty)";
-      row.appendChild(name);
+  // ── Alignment toolbar (top options bar) ──
+  _buildAlignmentBar() {
+    if (!this.layout.topOptionsBar) return;
+    const bar = this.layout.topOptionsBar;
+    bar.style.cssText = "display:flex; align-items:center; gap:8px; padding:6px 12px; background:#1d1d1d; border-bottom:1px solid #2a2a2a;";
 
-      row.addEventListener("click", () => {
-        this.selectedIndex = i;
-        this._syncLayerSelection();
-        this._rebuildLayersPanel();
-        this.requestRender();
-      });
-      this.layersList.appendChild(row);
-    });
+    const label = document.createElement("span");
+    label.textContent = "Align to canvas:";
+    label.style.cssText = "font:600 11px system-ui; color:#888; letter-spacing:1px; margin-right:6px;";
+    bar.appendChild(label);
+
+    const aligns = [
+      { id: "left",     icon: "align-left.svg",      title: "Align left" },
+      { id: "centerH",  icon: "align-center-h.svg",  title: "Align horizontal center" },
+      { id: "right",    icon: "align-right.svg",     title: "Align right" },
+      { id: "sep",      icon: null },
+      { id: "top",      icon: "align-top.svg",       title: "Align top" },
+      { id: "centerV",  icon: "align-center-v.svg",  title: "Align vertical center" },
+      { id: "bottom",   icon: "align-bottom.svg",    title: "Align bottom" },
+    ];
+    for (const a of aligns) {
+      if (a.icon === null) {
+        const sep = document.createElement("div");
+        sep.style.cssText = "width:1px; height:18px; background:#333; margin:0 4px;";
+        bar.appendChild(sep);
+        continue;
+      }
+      const btn = document.createElement("button");
+      btn.title = a.title;
+      btn.style.cssText = "background:#2a2a2a; border:1px solid #333; border-radius:4px; padding:5px 8px; cursor:pointer; display:flex; align-items:center; justify-content:center;";
+      const img = document.createElement("img");
+      img.src = UI_ICON + a.icon;
+      img.style.cssText = "width:14px; height:14px; filter:invert(0.8);";
+      btn.appendChild(img);
+      btn.addEventListener("mouseenter", () => { btn.style.borderColor = "#f66744"; img.style.filter = "invert(1)"; });
+      btn.addEventListener("mouseleave", () => { btn.style.borderColor = "#333"; img.style.filter = "invert(0.8)"; });
+      btn.addEventListener("click", () => this.alignSelected(a.id));
+      bar.appendChild(btn);
+    }
+  }
+
+  alignSelected(mode) {
+    const layer = this.layers[this.selectedIndex];
+    if (!layer) return;
+    const bbox = (typeof this._layerBbox === "function") ? this._layerBbox(layer) : { w: layer.fontSize * 4, h: layer.fontSize * 1.4 };
+    switch (mode) {
+      case "left":    layer.x = 0; break;
+      case "centerH": layer.x = Math.round((this.canvasWidth - bbox.w) / 2); break;
+      case "right":   layer.x = Math.round(this.canvasWidth - bbox.w); break;
+      case "top":     layer.y = 0; break;
+      case "centerV": layer.y = Math.round((this.canvasHeight - bbox.h) / 2); break;
+      case "bottom":  layer.y = Math.round(this.canvasHeight - bbox.h); break;
+    }
+    this._snapshotMaybe();
+    this.textPanel.setLayer(layer);
+    this.requestRender();
+  }
+
+  duplicateSelected() {
+    if (this.selectedIndex < 0) return;
+    const src = this.layers[this.selectedIndex];
+    const copy = JSON.parse(JSON.stringify(src));
+    copy.id = (crypto.randomUUID && crypto.randomUUID()) || String(Math.random()).slice(2);
+    copy.x = (src.x || 0) + 20;
+    copy.y = (src.y || 0) + 20;
+    this.layers.push(copy);
+    this.selectedIndex = this.layers.length - 1;
+    this._snapshotMaybe();
+    this._rebuildLayersPanel();
+    this._syncLayerSelection();
+    this.requestRender();
+  }
+
+  moveSelected(direction) {
+    if (this.selectedIndex < 0) return;
+    const i = this.selectedIndex;
+    const j = i + direction;
+    if (j < 0 || j >= this.layers.length) return;
+    [this.layers[i], this.layers[j]] = [this.layers[j], this.layers[i]];
+    this.selectedIndex = j;
+    this._snapshotMaybe();
+    this._rebuildLayersPanel();
+    this.requestRender();
+  }
+
+  reorderLayer(fromDisplay, toDisplay) {
+    // The list is displayed in reverse (top of list = topmost / last in array)
+    // Convert display indices back to array indices
+    const n = this.layers.length;
+    const fromIdx = n - 1 - fromDisplay;
+    const toIdx = n - 1 - toDisplay;
+    if (fromIdx < 0 || fromIdx >= n || toIdx < 0 || toIdx >= n || fromIdx === toIdx) return;
+    const [moved] = this.layers.splice(fromIdx, 1);
+    this.layers.splice(toIdx, 0, moved);
+    this.selectedIndex = toIdx;
+    this._snapshotMaybe();
+    this._rebuildLayersPanel();
+    this.requestRender();
   }
 
   _syncLayerSelection() {
@@ -266,10 +366,24 @@ export class TextOverlayEditor {
       align: "left",
       color: "#FFFFFF",
       opacity: 1.0,
-      x: opts.x ?? 100,
-      y: opts.y ?? 100,
+      x: 0,  // overwritten below
+      y: 0,
       rotation: 0,
     };
+
+    // Position: if explicit coords given (e.g. from double-click), use them.
+    // Otherwise center the BBOX on canvas, with a small stagger so successive
+    // adds don't sit exactly on top of each other.
+    if (opts.x != null && opts.y != null) {
+      layer.x = opts.x;
+      layer.y = opts.y;
+    } else {
+      const bbox = (typeof this._layerBbox === "function") ? this._layerBbox(layer) : { w: 80, h: layer.fontSize * 1.4 };
+      const stagger = (this.layers.length % 10) * 20;  // wraps every 10 layers
+      layer.x = Math.round((this.canvasWidth - bbox.w) / 2 + stagger);
+      layer.y = Math.round((this.canvasHeight - bbox.h) / 2 + stagger);
+    }
+
     this.layers.push(layer);
     this.selectedIndex = this.layers.length - 1;
     this._snapshotMaybe();
