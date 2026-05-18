@@ -103,6 +103,20 @@ export class TextOverlayEditor {
       console.warn("[Text Overlay] font catalog load failed", e);
     }
 
+    // If the `text` input slot is wired (e.g. Text Pixaroma), the
+    // workflow uses that text at render time instead of state.text.
+    // The editor preview must show the SAME text the workflow will
+    // render, otherwise editor and Save Image disagree. Temporarily
+    // override state.text with the wired value for this editor
+    // session; restore on save/close so the underlying state.text
+    // (the user's panel-set text, used as fallback when wire is
+    // detached) stays clean.
+    this._wiredTextOverride = this._tryReadWiredText();
+    if (this._wiredTextOverride != null) {
+      this._origTextBeforeWire = this.state.text;
+      this.state.text = this._wiredTextOverride;
+    }
+
     // Try upstream image
     this.baseImage = await this._tryLoadUpstreamImage();
     if (this.baseImage) {
@@ -180,6 +194,13 @@ export class TextOverlayEditor {
   close() {
     if (this._closed) return;
     this._closed = true;
+    // Restore the user's panel-set text if we temporarily overrode it
+    // with the wired-input value at open. The state stays clean so
+    // the next editor session (with the wire detached) shows the
+    // user's original text.
+    if (this._wiredTextOverride != null && this._origTextBeforeWire !== undefined) {
+      this.state.text = this._origTextBeforeWire;
+    }
     if (typeof this._uninstallInteractions === "function") this._uninstallInteractions();
     if (this._savedLoadGraphData) window.app.loadGraphData = this._savedLoadGraphData;
     if (this._savedGraphConfigure) window.app.graph.configure = this._savedGraphConfigure;
@@ -426,6 +447,26 @@ export class TextOverlayEditor {
     msg.style.cssText = "position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#888; font:13px system-ui; padding:20px; text-align:center;";
     msg.textContent = "Run the workflow once so the upstream image is available, then re-open this editor.";
     this.layout.workspace.appendChild(msg);
+  }
+
+  // Read the text value from whatever node is wired into the `text`
+  // input slot. Returns null if not wired, or if the upstream doesn't
+  // expose a readable text widget. Covers Text Pixaroma (widget name
+  // "text") and any node with a single STRING widget on the standard
+  // names (text / string / prompt / value).
+  _tryReadWiredText() {
+    const link = this.node.inputs?.find((i) => i.name === "text")?.link;
+    if (link == null) return null;
+    const graph = window.app.graph;
+    let linkObj = graph.links?.[link];
+    if (!linkObj && typeof graph.links?.get === "function") linkObj = graph.links.get(link);
+    if (!linkObj) return null;
+    const upstream = graph.getNodeById(linkObj.origin_id);
+    if (!upstream) return null;
+    const w = upstream.widgets?.find((x) =>
+      x && (x.name === "text" || x.name === "string" || x.name === "prompt" || x.name === "value")
+    );
+    return typeof w?.value === "string" ? w.value : null;
   }
 
   async _tryLoadUpstreamImage() {
