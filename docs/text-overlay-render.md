@@ -39,7 +39,7 @@ Native canvas does NOT honor CSS letter-spacing. We add it manually by drawing e
 `bbox_width = max(line_width_i) + 2 * padX`  (padX = 16 if bgColor else 0)
 `bbox_height = ascender + descender + (lineCount - 1) * lineHeight_px + 2 * padY`  (padY = 10 if bgColor else 0)
 
-`ascender + descender` is the visible glyph extent (font metrics via `measureText("Mg")` / `font.getmetrics()`). lineHeight multiplier adds spacing BETWEEN lines only.
+`ascender + descender` is the visible glyph extent measured from the ACTUAL ink bounding box of `"Mg"`. Browser: `ctx.measureText("Mg").actualBoundingBoxAscent/Descent`. Python: `pil_font.getbbox("Mg")` returns `(left, top, right, bottom)` where `top` is negative for glyphs above baseline; `ascender = max(0, -top)`, `descender = max(0, bottom)`. NOT `font.getmetrics()` (which returns the font's design ascender/descender including a safety zone for diacritics — typically ~30 px larger than the visible ink at 74 px font size and causes Python output to look taller than the editor preview). lineHeight multiplier adds spacing BETWEEN lines only.
 
 ## 3. Background Pill
 

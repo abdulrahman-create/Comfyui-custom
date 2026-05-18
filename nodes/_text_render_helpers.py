@@ -212,7 +212,20 @@ def render_text_layer(base_img, layer):
     pad_x = (_BG_PAD_X * ss) if bg_color else 0
     pad_y = (_BG_PAD_Y * ss) if bg_color else 0
 
-    ascender, descender = pil_font.getmetrics()
+    # Use the ACTUAL ink bounding box of "Mg" rather than the font's
+    # design metrics. getmetrics() returns the font's recommended
+    # ascender/descender, which include a safety zone for diacritics
+    # (typically ~30 px larger than the visible glyph extent at 74 px
+    # font size). The JS renderer uses canvas measureText("Mg")
+    # .actualBoundingBoxAscent/Descent which is tight to the rendered
+    # glyphs; matching that here keeps the bg pill and text baseline
+    # in the same place in both surfaces. Without this, the output
+    # bar was ~30 px taller than the editor preview and the text
+    # baseline ended up below the canvas bottom for text positioned
+    # near the bottom edge.
+    left, top, right, bottom = pil_font.getbbox("Mg")
+    ascender  = max(0, -top)     # top is negative for glyphs above baseline
+    descender = max(0, bottom)   # bottom is positive for glyphs below baseline
     glyph_h = ascender + descender
     bbox_w = max(1, int(round(max_line_w + 2 * pad_x)))
     bbox_h = max(1, int(round(glyph_h + max(0, len(lines) - 1) * line_height_px + 2 * pad_y)))
