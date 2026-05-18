@@ -9,6 +9,7 @@ import { createEditorLayout } from "../framework/layout.mjs";
 import { createTextEditorPanel } from "../framework/text_editor.mjs";
 import { resetStateInPlace } from "./defaults.mjs";
 import { renderTextLayer } from "../framework/text_render.mjs";
+import { getFontCatalog, resolveFontVariant, loadFontForLayer } from "../framework/fonts.mjs";
 
 const UI_ICON = "/pixaroma/assets/icons/ui/";
 
@@ -86,6 +87,21 @@ export class TextOverlayEditor {
     this._buildAlignmentBar();
     this._buildCanvasSettings(); // left sidebar
     this._buildCanvas();          // middle
+
+    // Pre-load the font catalog so _textBbox can resolve the actual
+    // variant weight (e.g. Oswald is a static 600-only font; measureText
+    // with weight 400 silently falls back to a system font and returns
+    // narrower widths than the real renderer). Pre-load the active
+    // variant too so measureText finds it the first time _textBbox runs.
+    try {
+      this._fontCatalog = await getFontCatalog();
+      const s = this.state;
+      if (s?.font) {
+        await loadFontForLayer(s.font, s.weight || 400, !!s.italic);
+      }
+    } catch (e) {
+      console.warn("[Text Overlay] font catalog load failed", e);
+    }
 
     // Try upstream image
     this.baseImage = await this._tryLoadUpstreamImage();
@@ -331,20 +347,20 @@ export class TextOverlayEditor {
 
   fitWidth() {
     const s = this.state; if (!s || !s.text) return;
-    // Iterative shrink-to-fit. A single-shot factor = target/bbox.w is
-    // off because (a) the bg pad is fixed and doesn't scale with font
-    // size, so the new bbox is smaller than (old bbox * factor), and
-    // (b) canvas measureText with a custom @font-face can be slightly
-    // narrower than the actual render width when the font isn't fully
-    // settled for the measure canvas. Iterate a few times re-measuring
-    // each pass; converges in 1-3 iterations.
+    // Bidirectional iterative fit. Scale UP if too small, scale DOWN
+    // if too big. Previous shrink-only check exited early when text was
+    // smaller than target — so clicking Fit W on small text did nothing.
+    // Account for the fixed bg pad explicitly: font scaling only affects
+    // the text width; the pad stays at 16 px regardless of fontSize.
+    const padX = s.bgColor ? 16 : 0;
     const target = this.canvasWidth * 0.95;
+    const targetTextW = Math.max(1, target - 2 * padX);
     for (let i = 0; i < 6; i++) {
       const bbox = this._textBbox(s);
-      if (bbox.w <= 0) break;
-      if (bbox.w <= target + 1) break; // close enough, slight under is ok
-      const factor = target / bbox.w;
-      const newSize = Math.max(8, Math.round(s.fontSize * factor));
+      const textW = Math.max(1, bbox.w - 2 * padX);
+      const factor = targetTextW / textW;
+      if (Math.abs(factor - 1) < 0.005) break; // converged
+      const newSize = Math.max(8, Math.min(512, Math.round(s.fontSize * factor)));
       if (newSize === s.fontSize) break;
       s.fontSize = newSize;
     }
@@ -358,13 +374,15 @@ export class TextOverlayEditor {
 
   fitHeight() {
     const s = this.state; if (!s || !s.text) return;
+    const padY = s.bgColor ? 10 : 0;
     const target = this.canvasHeight * 0.95;
+    const targetTextH = Math.max(1, target - 2 * padY);
     for (let i = 0; i < 6; i++) {
       const bbox = this._textBbox(s);
-      if (bbox.h <= 0) break;
-      if (bbox.h <= target + 1) break;
-      const factor = target / bbox.h;
-      const newSize = Math.max(8, Math.round(s.fontSize * factor));
+      const textH = Math.max(1, bbox.h - 2 * padY);
+      const factor = targetTextH / textH;
+      if (Math.abs(factor - 1) < 0.005) break;
+      const newSize = Math.max(8, Math.min(512, Math.round(s.fontSize * factor)));
       if (newSize === s.fontSize) break;
       s.fontSize = newSize;
     }
@@ -426,7 +444,29 @@ export class TextOverlayEditor {
     if (!linkObj && typeof graph.links?.get === "function") linkObj = graph.links.get(link);
     if (!linkObj) return null;
     const upstream = graph.getNodeById(linkObj.origin_id);
-    return upstream?.imgs?.[0] || null;
+    // Path 1: upstream is a node that populates imgs (Load Image, etc).
+    const direct = upstream?.imgs?.[0];
+    if (direct && direct.complete && direct.naturalWidth > 0) return direct;
+    // Path 2: upstream is intermediate (VAE Decode etc) with no imgs.
+    // The Python node stashes the input frame to temp/ on every run and
+    // index.js caches the URL on this node as _textOverlayBaseImageURL.
+    // Load that as an HTMLImageElement.
+    const url = this.node._textOverlayBaseImageURL;
+    if (url) {
+      try {
+        const img = await new Promise((resolve, reject) => {
+          const el = new Image();
+          el.crossOrigin = "anonymous";
+          el.onload = () => resolve(el);
+          el.onerror = reject;
+          el.src = url;
+        });
+        if (img.naturalWidth > 0) return img;
+      } catch (e) {
+        console.warn("[Text Overlay] failed to load cached base image", e);
+      }
+    }
+    return null;
   }
 
   // ── Render loop ──
@@ -473,8 +513,28 @@ export class TextOverlayEditor {
       this._measureCtx = c.getContext("2d");
     }
     const ctx = this._measureCtx;
-    const fam = `Pix-${state.font}${state.italic ? "-Italic" : ""}`;
-    ctx.font = `${state.italic ? "italic " : ""}${state.weight || 400} ${state.fontSize}px "${fam}"`;
+    // Resolve the actual loaded variant so measureText uses the SAME font
+    // string the renderer uses. Static fonts (Oswald 600 only, Anton 400
+    // only, Bebas Neue 400 only) register their FontFace with one specific
+    // weight. measureText with a different weight in the font string
+    // silently falls back to a default system font, returning narrower
+    // widths than the real render — that breaks Fit W / Fit H and any
+    // hit-test math. Falls back to state values if catalog isn't loaded yet.
+    let weight = state.weight || 400;
+    let italic = !!state.italic;
+    let fontId = state.font || "Roboto";
+    if (this._fontCatalog) {
+      try {
+        const v = resolveFontVariant(this._fontCatalog, fontId, weight, italic);
+        weight = v.weight;
+        italic = v.italic;
+        fontId = v.fontId;
+        // Pre-load the variant for next time _textBbox runs (no-op if cached)
+        loadFontForLayer(fontId, weight, italic).catch(() => {});
+      } catch {}
+    }
+    const fam = `Pix-${fontId}${italic ? "-Italic" : ""}`;
+    ctx.font = `${italic ? "italic " : ""}${weight} ${state.fontSize}px "${fam}"`;
     const lines = String(state.text ?? "").split("\n");
     const widths = lines.map((ln) => ctx.measureText(ln).width + Math.max(0, ln.length - 1) * (state.letterSpacing || 0));
     const lineHeightPx = Math.round(state.fontSize * (state.lineHeight || 1.2));

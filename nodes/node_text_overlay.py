@@ -6,9 +6,13 @@ text via nodes/_text_render_helpers.py::render_text_layer on top of the
 required upstream image.
 """
 import json
+import os
+import uuid
 import numpy as np
 import torch
 from PIL import Image
+
+import folder_paths
 
 from ._text_render_helpers import render_text_layer
 
@@ -63,7 +67,32 @@ class PixaromaTextOverlay:
             if state and state.get("text"):
                 render_text_layer(pil, state)
             outputs.append(self._pil_to_tensor_array(pil))
-        return (torch.stack(outputs, dim=0),)
+
+        # Stash the FIRST input frame (the base image BEFORE overlay) to
+        # ComfyUI's temp/ folder so the editor canvas can use it as the
+        # background. Without this, when upstream is an intermediate
+        # generative node (VAE Decode, ImageScale, etc) that does not
+        # populate node.imgs[0] on the frontend, the editor has no base
+        # image to draw on and shows the 'Run the workflow once' message
+        # even though the workflow HAS run.
+        ui_payload = {}
+        try:
+            input_frame = image[0].clamp(0, 1).cpu().numpy()
+            input_frame = (input_frame * 255).astype(np.uint8)
+            input_pil = Image.fromarray(input_frame, "RGB")
+            temp_dir = folder_paths.get_temp_directory()
+            os.makedirs(temp_dir, exist_ok=True)
+            fname = f"pixaroma_text_overlay_base_{uuid.uuid4().hex[:12]}.png"
+            input_pil.save(os.path.join(temp_dir, fname), "PNG", optimize=False)
+            ui_payload = {
+                "pixaroma_text_overlay_base": [
+                    {"filename": fname, "subfolder": "", "type": "temp"}
+                ]
+            }
+        except Exception as e:
+            print(f"[Text Overlay Pixaroma] WARN: failed to stash base image preview: {e}")
+
+        return {"ui": ui_payload, "result": (torch.stack(outputs, dim=0),)}
 
     @staticmethod
     def _pil_to_tensor_array(pil):

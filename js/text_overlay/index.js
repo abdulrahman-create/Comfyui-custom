@@ -186,13 +186,23 @@ function openEditor(node) {
 function isUpstreamImageReady(node) {
   const link = node.inputs?.find((i) => i.name === "image")?.link;
   if (link == null) return false;
+  // Two paths the upstream image can be available:
+  // 1. Upstream node populates `imgs[0]` (Load Image, Preview Image, etc).
+  //    We can grab the HTMLImageElement directly.
+  // 2. Upstream is an intermediate (VAE Decode, ImageScale, etc) that does
+  //    not populate `imgs`. In that case the only way we KNOW an image has
+  //    flowed through is to track this Text Overlay node's own execution.
+  //    Once THIS node has run at least once, the upstream chain must have
+  //    been able to produce an image, so the editor can fetch it.
   const graph = window.app.graph;
   let linkObj = graph.links?.[link];
   if (!linkObj && typeof graph.links?.get === "function") linkObj = graph.links.get(link);
   if (!linkObj) return false;
   const upstream = graph.getNodeById(linkObj.origin_id);
   const img = upstream?.imgs?.[0];
-  return !!(img && img.complete && img.naturalWidth > 0);
+  if (img && img.complete && img.naturalWidth > 0) return true;
+  if (node._textOverlayHasRun) return true;
+  return false;
 }
 
 function refreshOpenButton(node) {
@@ -221,9 +231,34 @@ function refreshOpenButton(node) {
   }
 }
 
-// Refresh the button label whenever a workflow finishes (upstream may
-// have just produced its image) and whenever wires change on this node.
-api.addEventListener("executed", () => {
+// Refresh the button label whenever a workflow finishes. If the executed
+// node is a Text Overlay itself, mark it _textOverlayHasRun so the
+// readiness check passes even when upstream is an intermediate node that
+// doesn't populate `imgs[0]` (e.g. VAE Decode in a SD generation chain).
+api.addEventListener("executed", (e) => {
+  const detail = e?.detail || {};
+  const ridRaw = detail.node;
+  if (ridRaw != null) {
+    let executedNode = app.graph?.getNodeById?.(ridRaw);
+    if (!executedNode && typeof ridRaw === "string") {
+      executedNode = app.graph?.getNodeById?.(parseInt(ridRaw, 10));
+    }
+    if (executedNode?.comfyClass === NODE_CLASS) {
+      executedNode._textOverlayHasRun = true;
+      // Cache the input image URL the Python node stashed to temp/ so
+      // the editor canvas has something to draw on when upstream is an
+      // intermediate node (VAE Decode etc) that doesn't populate
+      // imgs[0]. Pulls the entry from detail.output, same shape as
+      // Save Mp4 / Preview Image Pixaroma.
+      const base = detail.output?.pixaroma_text_overlay_base?.[0];
+      if (base?.filename) {
+        const subfolder = base.subfolder ? `&subfolder=${encodeURIComponent(base.subfolder)}` : "";
+        const type = base.type || "temp";
+        executedNode._textOverlayBaseImageURL =
+          `/view?filename=${encodeURIComponent(base.filename)}${subfolder}&type=${encodeURIComponent(type)}&t=${Date.now()}`;
+      }
+    }
+  }
   for (const n of (app.graph?._nodes || app.graph?.nodes || [])) {
     if (n?.comfyClass === NODE_CLASS) refreshOpenButton(n);
   }
