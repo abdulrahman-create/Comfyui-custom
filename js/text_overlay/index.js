@@ -128,24 +128,19 @@ function setupTextOverlayNode(node) {
   }
 
   // Enforce a minimum node width so the user can't drag-shrink so narrow
-  // that the input values get clipped and labels overlap. 320 px is the
-  // smallest width where two number cells (LABEL value spinner) still
-  // render without overflow. Override computeSize (LiteGraph polls this
-  // when computing layout bounds) and self-heal on draw (Vue Compat #13
-  // says onResize is unreliable for DOM widget resizes).
+  // that the input values get clipped and labels overlap. Self-heal on
+  // draw is the Preview Image Pixaroma pattern #11 (Vue Compat #13 says
+  // onResize is unreliable for DOM-widget resizes; overriding
+  // node.computeSize interferes with LiteGraph's internal layout and can
+  // make the whole node body collapse on the current Vue frontend).
   const MIN_W = 320;
-  const _origComputeSize = node.computeSize?.bind(node);
-  node.computeSize = function () {
-    const s = _origComputeSize ? _origComputeSize() : [MIN_W, measureContentHeight()];
-    return [Math.max(MIN_W, s[0] || MIN_W), s[1]];
-  };
   const _origOnDrawForeground = node.onDrawForeground?.bind(node);
   node.onDrawForeground = function (ctx) {
-    if (this.size[0] < MIN_W) {
+    if (this.size && this.size[0] < MIN_W) {
       this.size[0] = MIN_W;
       this.setDirtyCanvas?.(true, true);
     }
-    return _origOnDrawForeground?.(ctx);
+    return _origOnDrawForeground ? _origOnDrawForeground(ctx) : undefined;
   };
 
   // Defer panel population past configure() so saved state is restored first
