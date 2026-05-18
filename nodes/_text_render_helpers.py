@@ -158,7 +158,7 @@ def _round_rect(draw, x, y, w, h, r, fill):
 # ────────────────────────────────────────────────────────────────────────────
 _BG_PAD_X = 16
 _BG_PAD_Y = 10
-_BG_RADIUS = 6
+_BG_RADIUS = 0
 
 
 def compute_text_bbox(layer):

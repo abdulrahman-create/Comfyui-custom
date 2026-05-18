@@ -10,7 +10,7 @@ import { loadFontForLayer, canvasFontString } from "./fonts.mjs";
 // Hardcoded bg-pill defaults (user can't tune; spec §3, §4)
 const BG_PAD_X = 16;
 const BG_PAD_Y = 10;
-const BG_RADIUS = 6;
+const BG_RADIUS = 0;
 
 /** Render one text overlay onto the canvas context.
  *  Async because font must be loaded first.
