@@ -160,10 +160,17 @@ const _batch = {
 // app.queuePrompt's return shape differs across ComfyUI versions. Only
 // captures while our batch loop is actively submitting (activeCapture
 // flag), so unrelated queue submissions don't end up in our Set.
+//
+// The size cap (< _batch.total) defends against the niche case where a
+// PromptMulti node ALSO lives in the same workflow: its app.queuePrompt
+// patch wraps each of our PP iterations in an extra inner loop, which
+// would otherwise dump PM's prompt_ids into our Set too and bloat the
+// "X left" counter. Capping at total keeps the counter honest about
+// PromptPack-driven runs even when nested.
 const _origApiQueuePrompt = api.queuePrompt.bind(api);
 api.queuePrompt = async function (...args) {
   const res = await _origApiQueuePrompt(...args);
-  if (_batch.activeCapture && res) {
+  if (_batch.activeCapture && res && _batch.promptIds.size < _batch.total) {
     const pid = res.prompt_id != null ? String(res.prompt_id) : null;
     if (pid) _batch.promptIds.add(pid);
   }
@@ -235,6 +242,12 @@ api.addEventListener("execution_error", (event) => {
 // - 1 prompt -> 1 queue item.
 // - Multiple Prompt Pack nodes -> only the first drives the count.
 // - Per-iteration error -> log and continue (don't abort the batch).
+//
+// Known limitation: right-click "Queue (Batch Count: N)" submits with
+// batchCount=N. We pass batchCount=1 inside our loop because each enqueue
+// is its own prompt; the user-requested batchCount is effectively dropped.
+// Same trade-off Prompt Multi makes; matches user expectation that the
+// node "owns" the queue count.
 
 const _origQueuePrompt = app.queuePrompt.bind(app);
 app.queuePrompt = async function (num, batchCount) {
