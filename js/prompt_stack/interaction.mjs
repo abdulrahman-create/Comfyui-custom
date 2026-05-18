@@ -22,6 +22,7 @@ export function attachLabelEditor(node, inputEl, rowId) {
   inputEl.addEventListener("input", (e) => {
     e.stopImmediatePropagation();
     staged = inputEl.value;
+    if (typeof node._pixPsRefreshClear === "function") node._pixPsRefreshClear();
   });
 
   inputEl.addEventListener("keydown", (e) => {
@@ -63,6 +64,8 @@ export function attachTextareaEditor(node, taEl, rowId) {
     // Ask the host node to grow its own height so the rest of the body
     // (Add row button + other rows below) stays inside the node frame.
     if (typeof node._pixPsGrow === "function") node._pixPsGrow();
+    // Update the Clear text / Reset button enabled state on every keystroke.
+    if (typeof node._pixPsRefreshClear === "function") node._pixPsRefreshClear();
     if (!pending) {
       pending = true;
       // Commit on idle (next frame). Cheap and keeps state in sync without

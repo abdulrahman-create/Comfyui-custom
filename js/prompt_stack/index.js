@@ -6,6 +6,8 @@ import {
   deleteRow,
   toggleEnabled,
   reorderRows,
+  clearAllText,
+  resetToDefault,
 } from "./core.mjs";
 import { injectCSS, buildRoot, renderRows, measureContentHeight } from "./render.mjs";
 import { pixConfirm } from "./interaction.mjs";
@@ -88,6 +90,35 @@ function makeHandlers(node, root) {
       });
     },
     onAdd: () => { addRow(node); rerender(); },
+    onClearAll: async () => {
+      const state = readState(node);
+      const filled = state.rows.filter((r) => r.text && r.text.trim()).length;
+      if (filled === 0) return;
+      const ok = await pixConfirm({
+        title: "Clear all text?",
+        message: `This will empty the text in all ${state.rows.length} row${state.rows.length === 1 ? "" : "s"}. Labels and ON/OFF toggles are kept.`,
+        okText: "Clear",
+        cancelText: "Cancel",
+      });
+      if (!ok) return;
+      clearAllText(node);
+      rerender();
+    },
+    onReset: async () => {
+      const ok = await pixConfirm({
+        title: "Reset to default?",
+        message: "This will replace all rows with one empty row, ON, no label. Your current rows will be lost.",
+        okText: "Reset",
+        cancelText: "Cancel",
+      });
+      if (!ok) return;
+      resetToDefault(node);
+      rerender();
+      requestAnimationFrame(() => {
+        fitNodeToContent(node);
+        node.setDirtyCanvas(true, true);
+      });
+    },
     onDragStart: (_id, _ev) => { /* Task 9 */ },
     onDragOver: (_id, _ev) => { /* Task 9 */ },
     onDrop: (fromId, toId, above) => {
@@ -185,6 +216,7 @@ app.registerExtension({
       this._pixPsRoot = null;
       this._pixPsRerender = null;
       this._pixPsGrow = null;
+      this._pixPsRefreshClear = null;
       if (origRemoved) return origRemoved.apply(this, arguments);
     };
   },

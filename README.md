@@ -222,9 +222,12 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
-### **May 18, 2026 (1.3.36)**
-- **NEW: Prompt Multi Pixaroma** - same row-based layout as Prompt Stack, but instead of joining your prompts into one, it runs the workflow once for each enabled row. Type three prompt variants, hit Run, get three images - one per prompt. Each becomes its own item in the queue panel so you can cancel them individually. Toggle the orange ON / OFF pill to skip rows without deleting them. Drag the handle on the left to reorder. Great for batch-comparing prompt ideas with a single click.
-- **Prompt Reader Pixaroma reads Prompt Multi output:** Drop a PNG generated through Prompt Multi back into Prompt Reader and you get the exact prompt that produced that specific image.
+### **May 18, 2026 (1.3.37)**
+- **Prompt Multi Pixaroma - new List mode for sending different prompts to different parts of the same workflow.** Two pills at the top of the node toggle between Queue Text (the original behaviour - one image per enabled prompt) and List Prompts (one run, the whole list goes out as a single wire). In List mode, pair with the new Prompt From List Pixaroma to pick which prompt feeds which downstream slot - perfect for multi-scene workflows where scene 1, scene 2, scene 3 each need a different prompt from the same library.
+- **NEW: Prompt From List Pixaroma** - tiny picker node. Wire it to Prompt Multi's `prompts` output, set a number for which row you want, and the picked prompt comes out the other side. Drop several copies in your workflow, each set to a different number, to fan one library out to many destinations without cluttering the library node with multiple output dots.
+- **Prompt Multi - extra polish:** new **Clear prompts** and **Reset** buttons next to Add prompt; **rows are now called "Prompt 1, Prompt 2…"** instead of "Row 1, Row 2…"; **empty enabled prompts are skipped at run time** so a leftover blank row doesn't waste a queue slot.
+- **Prompt Stack Pixaroma - matching polish:** new **Clear text** and **Reset** buttons next to Add row, same themed confirm dialogs as Prompt Multi.
+- **Prompt Reader Pixaroma reads the new flow:** Drop a PNG generated through the new List Prompts + From List combo back into Prompt Reader and you get the exact prompt that produced that specific image.
 
 ### **May 17, 2026 (1.3.35)**
 - **AI background removal works on 4-6 GB cards.** BiRefNet Standard no longer fails with out-of-memory on a 6 GB card. The dropdown adds a new **BiRefNet Low VRAM** option for guaranteed-fits 512px cutouts when you want it faster. If memory still gets tight, the model automatically retries at smaller sizes and finally falls back to CPU - the click never silently fails.

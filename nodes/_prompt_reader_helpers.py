@@ -70,11 +70,23 @@ _RGTHREE_ANY_KEY_RE = re.compile(r"^any_(\d+)$")
 # in pure Python (mirrors nodes/node_prompt_stack.py's build() logic).
 _PROMPT_STACK_CLASS = "PixaromaPromptStack"
 
-# Prompt Multi Pixaroma: each queue item bakes its active prompt into the
-# hidden PromptMultiState STRING input as {"version":1,"activePrompt":"..."}.
-# The saved workflow embedded in the PNG records exactly the prompt that
-# produced THAT image, so recovery is a direct read of activePrompt.
+# Prompt Multi Pixaroma: holds a library of prompts AND can run in either
+# of two modes (Queue or List). The hidden PromptMultiState STRING input is
+# {"version":2, "mode":"queue"|"list", "activePrompt":"...", "rowTexts":[...]}.
+# Two dynamic outputs (only one visible at a time, depending on mode):
+#   - "text"  (queue mode): the active row's prompt this queue iteration
+#                            -> read activePrompt directly
+#   - "list"  (list mode):  the full enabled-rows list -> downstream Prompt
+#                            From List picks one by index
+# When the walker reaches a Multi node directly, the slot it came in from
+# tells us which path to follow. Output slot 0 always exists in the saved
+# workflow (since the JS dynamically reconciles the visible output).
 _PROMPT_MULTI_CLASS = "PixaromaPromptMulti"
+
+# Prompt From List Pixaroma: tiny picker that grabs one row from a Prompt
+# Multi's list output via an "index" widget. The walker chases its
+# `prompts` input back to the upstream Multi and indexes rowTexts.
+_PROMPT_FROM_LIST_CLASS = "PixaromaPromptFromList"
 
 _MAX_WALK_DEPTH = 24
 # Chase depth caps how many PixaromaPromptReader hops we follow when an image
@@ -202,16 +214,87 @@ def _pix_prompt_stack_extract(inputs: dict) -> Optional[str]:
     return sep.join(parts)
 
 
+def _pix_prompt_multi_row_at(inputs: dict, index_1based: int) -> Optional[str]:
+    """Return the prompt text at the given 1-based index from a Multi's
+    enabled-rows list, or None.
+
+    Used by the From List walker to resolve which library row a downstream
+    Prompt From List node was pointing at when this image was generated.
+    The rowTexts field already contains ONLY enabled non-empty rows in
+    display order, so a From List index of 1 maps to rowTexts[0].
+    """
+    raw = inputs.get("PromptMultiState")
+    if not isinstance(raw, str) or not raw:
+        return None
+    try:
+        state = json.loads(raw)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(state, dict):
+        return None
+    rows = state.get("rowTexts")
+    if not isinstance(rows, list):
+        return None
+    idx0 = int(index_1based) - 1
+    if idx0 < 0 or idx0 >= len(rows):
+        return None
+    item = rows[idx0]
+    if not isinstance(item, str):
+        return None
+    item = item.strip()
+    return item or None
+
+
+def _pix_prompt_from_list_resolve(node: dict, nodes: dict) -> Optional[str]:
+    """Resolve a PixaromaPromptFromList node to its picked text.
+
+    Reads the node's `index` widget value, follows the `prompts` input back
+    to an upstream PixaromaPromptMulti (in List mode), and returns
+    rowTexts[index-1]. Returns None when the upstream isn't a Multi, the
+    index is missing / out of range, or the resolved row is empty.
+
+    ComfyUI prompt JSON shape: widget values live in inputs (since they
+    were promoted to the inputs dict at submit time); link values are
+    [upstream_node_id, output_slot_idx] tuples.
+    """
+    inputs = node.get("inputs") or {}
+    if not isinstance(inputs, dict):
+        return None
+    idx = inputs.get("index", 1)
+    if not isinstance(idx, (int, float)):
+        try:
+            idx = int(idx)
+        except (TypeError, ValueError):
+            return None
+    idx = int(idx)
+    link = inputs.get("prompts")
+    if not (isinstance(link, list) and len(link) >= 1):
+        return None
+    upstream_id = link[0]
+    upstream = nodes.get(str(upstream_id))
+    if not isinstance(upstream, dict):
+        return None
+    if upstream.get("class_type") != _PROMPT_MULTI_CLASS:
+        # Some other node is feeding the list - we can't resolve it here.
+        return None
+    return _pix_prompt_multi_row_at(upstream.get("inputs") or {}, idx)
+
+
 def _pix_prompt_multi_extract(inputs: dict) -> Optional[str]:
     """Read the active prompt from a PixaromaPromptMulti's saved state.
 
     The hidden PromptMultiState input is a JSON string of shape:
-        { "version": 1, "activePrompt": str }
+        { "version": 2, "mode": "queue"|"list",
+          "activePrompt": str, "rowTexts": [str, ...] }
+    (v1 schema {version:1, activePrompt} also handled - same field name.)
 
-    Each queue item bakes its active row's text into activePrompt at submit
-    time (via the JS app.graphToPrompt hook). The PNG embedded workflow
-    captures exactly the prompt that produced that image, so recovery is a
-    direct read - no joining, no row iteration.
+    Used when the walker reaches a Multi node via its `text` output (queue
+    mode). Each queue iteration bakes that row's text into activePrompt at
+    submit time, so the PNG embedded workflow captures exactly the prompt
+    that produced that image. Recovery is a direct read.
+
+    For Multi nodes reached via a Prompt From List node (list mode), use
+    _pix_prompt_from_list_resolve instead - it indexes rowTexts properly.
 
     Returns the active prompt, or None when missing / malformed / empty.
     """
@@ -321,6 +404,15 @@ def _walk_for_text(
     # hidden PromptMultiState as {"activePrompt": "..."}. Read it directly.
     if cls == _PROMPT_MULTI_CLASS:
         text = _pix_prompt_multi_extract(inputs)
+        if text:
+            captured.append(text)
+        return
+
+    # Prompt From List Pixaroma: a tiny picker that grabs one row from a
+    # Prompt Multi's `list` output. Read its index widget, walk back to the
+    # upstream Multi, and resolve rowTexts[index-1].
+    if cls == _PROMPT_FROM_LIST_CLASS:
+        text = _pix_prompt_from_list_resolve(node, nodes)
         if text:
             captured.append(text)
         return

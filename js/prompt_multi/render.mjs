@@ -4,7 +4,7 @@
 // an "+ Add row" button. Each row is its own <div> with controls.
 // Click handlers and drag handlers are wired in interaction.mjs (Task 5+).
 
-import { readState } from "./core.mjs";
+import { readState, MODE_QUEUE, MODE_LIST } from "./core.mjs";
 import { attachLabelEditor, attachTextareaEditor, attachDragHandlers } from "./interaction.mjs";
 
 const CSS_ID = "pix-prompt-multi-css";
@@ -18,6 +18,42 @@ const CSS = `
   box-sizing: border-box;
   font-family: inherit;
   color: #ddd;
+}
+
+.pix-pm-modebar {
+  display: flex;
+  gap: 0;
+  background: #1a1a1a;
+  border: 1px solid #2e2e2e;
+  border-radius: 4px;
+  padding: 3px;
+  user-select: none;
+}
+.pix-pm-modepill {
+  flex: 1;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  color: #888;
+  padding: 5px 10px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.pix-pm-modepill:hover { color: #ddd; background: rgba(255,255,255,0.04); }
+.pix-pm-modepill.is-active {
+  background: #f66744;
+  color: #fff;
+}
+.pix-pm-modepill.is-active:hover { background: #ff7a58; color: #fff; }
+.pix-pm-modehint {
+  font-size: 10px;
+  color: #777;
+  text-align: center;
+  margin: -2px 0 2px 0;
+  font-style: italic;
+  user-select: none;
 }
 
 .pix-pm-row {
@@ -136,8 +172,13 @@ const CSS = `
 }
 .pix-pm-textarea:focus { border-color: #f66744; }
 
-.pix-pm-add {
+.pix-pm-actions {
+  display: flex;
+  gap: 6px;
   align-self: flex-start;
+  margin-top: 4px;
+}
+.pix-pm-add, .pix-pm-clear, .pix-pm-reset {
   background: #2a2a2a;
   border: 1px solid #3a3a3a;
   border-radius: 3px;
@@ -145,9 +186,11 @@ const CSS = `
   cursor: pointer;
   font-size: 12px;
   padding: 4px 10px;
-  margin-top: 4px;
+  font-family: inherit;
 }
-.pix-pm-add:hover { background: #333; border-color: #f66744; color: #f66744; }
+.pix-pm-add:hover, .pix-pm-clear:hover, .pix-pm-reset:hover { background: #333; border-color: #f66744; color: #f66744; }
+.pix-pm-clear:disabled, .pix-pm-reset:disabled { color: #555; border-color: #2e2e2e; background: #232323; cursor: not-allowed; }
+.pix-pm-clear:disabled:hover, .pix-pm-reset:disabled:hover { background: #232323; border-color: #2e2e2e; color: #555; }
 
 .pix-pm-confirm-backdrop {
   position: fixed;
@@ -252,6 +295,37 @@ export function renderRows(node, root, rowHandlers) {
   const state = readState(node);
   root.innerHTML = "";
 
+  // Mode bar at the top: Queue / List toggle pills.
+  const modebar = document.createElement("div");
+  modebar.className = "pix-pm-modebar";
+
+  const queuePill = document.createElement("div");
+  queuePill.className = "pix-pm-modepill" + (state.mode === MODE_QUEUE ? " is-active" : "");
+  queuePill.textContent = "Queue Text";
+  queuePill.title = "Queue mode - click Run, the workflow runs once per enabled prompt (N images). Wire the `text` output to a CLIP Text Encode.";
+  queuePill.addEventListener("click", () => {
+    if (state.mode !== MODE_QUEUE) rowHandlers.onSetMode(MODE_QUEUE);
+  });
+  modebar.appendChild(queuePill);
+
+  const listPill = document.createElement("div");
+  listPill.className = "pix-pm-modepill" + (state.mode === MODE_LIST ? " is-active" : "");
+  listPill.textContent = "List Prompts";
+  listPill.title = "List mode - click Run, the workflow runs ONCE. Wire the `prompts` output into Prompt From List Pixaroma nodes downstream to grab specific rows.";
+  listPill.addEventListener("click", () => {
+    if (state.mode !== MODE_LIST) rowHandlers.onSetMode(MODE_LIST);
+  });
+  modebar.appendChild(listPill);
+
+  root.appendChild(modebar);
+
+  const hint = document.createElement("div");
+  hint.className = "pix-pm-modehint";
+  hint.textContent = state.mode === MODE_QUEUE
+    ? "One image per enabled prompt - wire the `text` output"
+    : "All enabled prompts go out as a list - wire `prompts` into Prompt From List";
+  root.appendChild(hint);
+
   for (const row of state.rows) {
     const rowEl = document.createElement("div");
     rowEl.className = "pix-pm-row" + (row.enabled ? "" : " is-disabled");
@@ -278,7 +352,7 @@ export function renderRows(node, root, rowHandlers) {
     label.type = "text";
     label.className = "pix-pm-label";
     label.value = row.label || "";
-    label.placeholder = `Row ${state.rows.indexOf(row) + 1}`;
+    label.placeholder = `Prompt ${state.rows.indexOf(row) + 1}`;
     head.appendChild(label);
     attachLabelEditor(node, label, row.id);
 
@@ -297,7 +371,7 @@ export function renderRows(node, root, rowHandlers) {
     ta.className = "pix-pm-textarea";
     ta.value = row.text || "";
     ta.rows = 2;
-    ta.placeholder = "Type a prompt variant. Each enabled row becomes one queue item when you click Run.";
+    ta.placeholder = "Type a prompt variant. Each enabled row with text queues one workflow run. Empty rows are skipped.";
     rowEl.appendChild(ta);
     attachTextareaEditor(node, ta, row.id);
 
@@ -306,10 +380,55 @@ export function renderRows(node, root, rowHandlers) {
     root.appendChild(rowEl);
   }
 
+  const actions = document.createElement("div");
+  actions.className = "pix-pm-actions";
+
   const add = document.createElement("button");
   add.className = "pix-pm-add";
   add.type = "button";
-  add.textContent = "+ Add row";
+  add.textContent = "+ Add prompt";
   add.addEventListener("click", () => rowHandlers.onAdd());
-  root.appendChild(add);
+  actions.appendChild(add);
+
+  const clear = document.createElement("button");
+  clear.className = "pix-pm-clear";
+  clear.type = "button";
+  clear.textContent = "Clear prompts";
+  clear.title = "Empty the text in every row (keeps row count, labels and toggles)";
+  clear.addEventListener("click", () => rowHandlers.onClearAll());
+  actions.appendChild(clear);
+
+  const reset = document.createElement("button");
+  reset.className = "pix-pm-reset";
+  reset.type = "button";
+  reset.textContent = "Reset";
+  reset.title = "Reset to default (two empty rows, both ON, no labels)";
+  reset.addEventListener("click", () => rowHandlers.onReset());
+  actions.appendChild(reset);
+
+  // Reactive enable/disable: walk live DOM inputs so buttons update on every
+  // keystroke without waiting for state commit or a re-render. Exposed on the
+  // node so attachTextareaEditor and attachLabelEditor can poke it.
+  const refreshActionButtons = () => {
+    const tas = root.querySelectorAll(".pix-pm-textarea");
+    let anyText = false;
+    for (const ta of tas) {
+      if (ta.value && ta.value.trim()) { anyText = true; break; }
+    }
+    clear.disabled = !anyText;
+
+    const labels = root.querySelectorAll(".pix-pm-label");
+    let anyLabel = false;
+    for (const lab of labels) {
+      if (lab.value && lab.value.trim()) { anyLabel = true; break; }
+    }
+    const s = readState(node);
+    const anyDisabled = s.rows.some((r) => !r.enabled);
+    const notTwoRows = s.rows.length !== 2;
+    reset.disabled = !(anyText || anyLabel || anyDisabled || notTwoRows);
+  };
+  refreshActionButtons();
+  node._pixPmRefreshClear = refreshActionButtons;
+
+  root.appendChild(actions);
 }
