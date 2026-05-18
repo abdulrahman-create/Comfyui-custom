@@ -70,6 +70,12 @@ _RGTHREE_ANY_KEY_RE = re.compile(r"^any_(\d+)$")
 # in pure Python (mirrors nodes/node_prompt_stack.py's build() logic).
 _PROMPT_STACK_CLASS = "PixaromaPromptStack"
 
+# Prompt Multi Pixaroma: each queue item bakes its active prompt into the
+# hidden PromptMultiState STRING input as {"version":1,"activePrompt":"..."}.
+# The saved workflow embedded in the PNG records exactly the prompt that
+# produced THAT image, so recovery is a direct read of activePrompt.
+_PROMPT_MULTI_CLASS = "PixaromaPromptMulti"
+
 _MAX_WALK_DEPTH = 24
 # Chase depth caps how many PixaromaPromptReader hops we follow when an image
 # was generated from a workflow that itself contained a PromptReader pointing
@@ -196,6 +202,35 @@ def _pix_prompt_stack_extract(inputs: dict) -> Optional[str]:
     return sep.join(parts)
 
 
+def _pix_prompt_multi_extract(inputs: dict) -> Optional[str]:
+    """Read the active prompt from a PixaromaPromptMulti's saved state.
+
+    The hidden PromptMultiState input is a JSON string of shape:
+        { "version": 1, "activePrompt": str }
+
+    Each queue item bakes its active row's text into activePrompt at submit
+    time (via the JS app.graphToPrompt hook). The PNG embedded workflow
+    captures exactly the prompt that produced that image, so recovery is a
+    direct read - no joining, no row iteration.
+
+    Returns the active prompt, or None when missing / malformed / empty.
+    """
+    raw = inputs.get("PromptMultiState")
+    if not isinstance(raw, str) or not raw:
+        return None
+    try:
+        state = json.loads(raw)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(state, dict):
+        return None
+    txt = state.get("activePrompt", "")
+    if not isinstance(txt, str):
+        return None
+    txt = txt.strip()
+    return txt or None
+
+
 def _rgthree_any_switch_active_link(inputs: dict):
     """Return the upstream node-id wired to rgthree Any Switch's active input.
 
@@ -279,6 +314,15 @@ def _walk_for_text(
         joined = _pix_prompt_stack_extract(inputs)
         if joined:
             captured.append(joined)
+        return
+
+    # Prompt Multi Pixaroma: each generated image carries only the prompt
+    # that produced THIS image (the active row at queue time), baked into the
+    # hidden PromptMultiState as {"activePrompt": "..."}. Read it directly.
+    if cls == _PROMPT_MULTI_CLASS:
+        text = _pix_prompt_multi_extract(inputs)
+        if text:
+            captured.append(text)
         return
 
     # Single pass over inputs. For each one, classify as text-carrying
