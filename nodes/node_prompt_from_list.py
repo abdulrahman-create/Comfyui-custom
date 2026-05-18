@@ -1,12 +1,12 @@
 """Prompt From List Pixaroma - tiny picker that grabs one prompt from a list.
 
-Pair with Prompt Picker Pixaroma's `prompts` output. Drop multiple of these
-in a workflow so different downstream slots can each pull a different prompt
-from the same library, without cluttering the library node with many output
-dots.
+Pair with Prompt Multi Pixaroma's `prompts` output (List mode). Drop
+multiple of these in a workflow so different downstream slots can each
+pull a different prompt from the same library, without cluttering the
+library node with many output dots.
 
 Inputs:
-- prompts (PIXAROMA_PROMPT_LIST): the list output from Prompt Picker Pixaroma
+- prompts (PIXAROMA_PROMPT_LIST): the prompts list output from Prompt Multi
 - index (INT, 1-based): which prompt in the list to send out
 
 Output:
@@ -22,14 +22,14 @@ PIXAROMA_PROMPT_LIST = "PIXAROMA_PROMPT_LIST"
 
 class PixaromaPromptFromList:
     DESCRIPTION = (
-        "Prompt From List Pixaroma - tiny picker. Takes the `prompts` list "
-        "output from a Prompt Picker Pixaroma node and outputs one prompt "
-        "from it, chosen by the index number.\n\n"
-        "Drop several of these in a workflow (all wired to the same Prompt "
-        "Picker) so scene 1 gets prompt 1, scene 2 gets prompt 2, etc. - "
-        "without piling many output dots on the library node.\n\n"
-        "Index is 1-based: 1 picks the first prompt in the library. If the "
-        "index is out of range the output is an empty string."
+        "Prompt From List Pixaroma - tiny picker. Takes the `prompts` "
+        "output from a Prompt Multi Pixaroma node (set to List mode) and "
+        "outputs one prompt from it, chosen by the index number.\n\n"
+        "Drop several of these in a workflow (all wired to the same "
+        "Prompt Multi) so scene 1 gets prompt 1, scene 2 gets prompt 2, "
+        "etc. - without piling many output dots on the library node.\n\n"
+        "Index is 1-based: 1 picks the first prompt in the library. If "
+        "the index is out of range the output is an empty string."
     )
 
     @classmethod

@@ -1,18 +1,17 @@
 """Prompt Multi Pixaroma - prompt list with two run modes.
 
-Two modes (toggled by the pill at the top of the node body):
+Two outputs (both always visible):
+- text (STRING): the active row's prompt this queue iteration. Use in
+  Queue mode - wire to CLIP Text Encode for one image per enabled row.
+- prompts (PIXAROMA_PROMPT_LIST): the list of enabled non-empty rows.
+  Use in List mode - wire into Prompt From List Pixaroma nodes
+  downstream so different parts of the same workflow can pull different
+  prompts from the same library.
 
-QUEUE mode (default):
-- One click on Run queues one workflow per ON row, in a loop. Each queue
-  item bakes that row's text into the `text` output, so you get N images.
-- The `text` output is visible. The `list` output is hidden.
-
-LIST mode:
-- One click on Run queues exactly one workflow. The `list` output emits
-  the ON rows' prompts as a PIXAROMA_PROMPT_LIST wire. Pair with one or
-  more Prompt From List Pixaroma nodes downstream to send different rows
-  to different parts of the same workflow.
-- The `list` output is visible. The `text` output is hidden.
+Mode toggle (pills at the top of the node body) only controls the queue
+loop behavior:
+- QUEUE mode (default): click Run -> queue fires N times, one per ON row.
+- LIST mode: click Run -> queue fires once normally.
 
 Backend contract:
 - 1 hidden STRING input (PromptMultiState) carrying mode + activePrompt +
@@ -33,17 +32,21 @@ class PixaromaPromptMulti:
         "Queue mode: click Run and the workflow runs once per enabled "
         "prompt, in a loop. Empty rows are silently skipped. Each prompt "
         "becomes its own item in the queue panel so you can cancel "
-        "individually. Use this when you want to compare prompt variants "
-        "(one image per prompt).\n\n"
+        "individually. Wire the `text` output to CLIP Text Encode. Use "
+        "this when you want to compare prompt variants (one image per "
+        "prompt).\n\n"
         "List mode: click Run once and the node sends ALL enabled prompts "
-        "as a list (no queue loop). Pair with one or more Prompt From "
-        "List Pixaroma nodes downstream; each grabs a different prompt by "
-        "number. Use this when you want different parts of the same "
-        "workflow (scene 1, scene 2, ...) to each pull a different prompt "
-        "from the same library, without extra nodes everywhere.\n\n"
-        "Click + Add prompt to add a row. Toggle ON/OFF to include/exclude. "
-        "Drag the handle to reorder. Clear prompts wipes text but keeps "
-        "rows. Reset goes back to two empty rows."
+        "as a list (no queue loop). Wire the `prompts` output into one "
+        "or more Prompt From List Pixaroma nodes downstream; each grabs "
+        "a different prompt by number. Use this when you want different "
+        "parts of the same workflow (scene 1, scene 2, ...) to each pull "
+        "a different prompt from the same library, without extra nodes "
+        "everywhere.\n\n"
+        "Both outputs are always visible - the mode pill just controls "
+        "whether the queue loops or not. Click + Add prompt to add a row. "
+        "Toggle ON/OFF to include/exclude. Drag the handle to reorder. "
+        "Clear prompts wipes text but keeps rows. Reset goes back to two "
+        "empty rows."
     )
 
     @classmethod
@@ -54,7 +57,7 @@ class PixaromaPromptMulti:
         }
 
     RETURN_TYPES = ("STRING", PIXAROMA_PROMPT_LIST)
-    RETURN_NAMES = ("text", "list")
+    RETURN_NAMES = ("text", "prompts")
     FUNCTION = "build"
     CATEGORY = "👑 Pixaroma"
 
