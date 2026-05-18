@@ -3,7 +3,7 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
-ComfyUI-Pixaroma is a custom node plugin for ComfyUI that adds interactive visual editors (3D Builder, Paint Studio, Image Composer, Image Crop, Note Pixaroma - a rich-text annotation node, Preview Image Pixaroma - an in-node image previewer with Save Disk / Save Output / Copy / Open buttons, Notify Pixaroma - a terminal node that plays a sound from `assets/sounds/` when reached, useful as a workflow-completion alert when working in another window, Load Image Pixaroma - a drop-in replacement for native LoadImage with inline resize controls and 7 outputs IMAGE/MASK/WIDTH/HEIGHT/FILENAME/ORIGINAL_WIDTH/ORIGINAL_HEIGHT, Prompt Multi Pixaroma - hold a list of prompt variants on one node with two run modes via a pill toggle: Queue Text (one workflow run per enabled row) or List Prompts (one run, the whole list goes out a `prompts` output for downstream Prompt From List nodes to pick from), Prompt From List Pixaroma - tiny picker node that grabs one prompt from a Prompt Multi `prompts` list by 1-based index, drop several to fan one library out to different scenes, Prompt Pack Pixaroma - paste a block of prompts and queue one workflow run per prompt with a pill toggle to pick Paragraph (blank-line splits) or Line (newline splits) and a counter pill in the corner showing total / active) directly inside ComfyUI workflows. It also includes Align Pixaroma, a toggleable canvas-wide smart-snap and alignment-guide system (no nodes added; patches `LGraphCanvas` so any node drag/resize snaps to nearby edges and centers with orange guide lines). It has zero core dependencies — PIL and PyTorch come from ComfyUI's environment. All nodes share the `👑 Pixaroma` menu category.
+ComfyUI-Pixaroma is a custom node plugin for ComfyUI that adds interactive visual editors (3D Builder, Paint Studio, Image Composer, Image Crop, Note Pixaroma - a rich-text annotation node, Preview Image Pixaroma - an in-node image previewer with Save Disk / Save Output / Copy / Open buttons, Notify Pixaroma - a terminal node that plays a sound from `assets/sounds/` when reached, useful as a workflow-completion alert when working in another window, Load Image Pixaroma - a drop-in replacement for native LoadImage with inline resize controls and 7 outputs IMAGE/MASK/WIDTH/HEIGHT/FILENAME/ORIGINAL_WIDTH/ORIGINAL_HEIGHT, Prompt Multi Pixaroma - hold a list of prompt variants on one node with two run modes via a pill toggle: Queue Text (one workflow run per enabled row) or List Prompts (one run, the whole list goes out a `prompts` output for downstream Prompt From List nodes to pick from), Prompt From List Pixaroma - tiny picker node that grabs one prompt from a Prompt Multi `prompts` list by 1-based index, drop several to fan one library out to different scenes, Prompt Pack Pixaroma - paste a block of prompts and queue one workflow run per prompt with a pill toggle to pick Paragraph (blank-line splits) or Line (newline splits) and a counter pill in the corner showing total / active, Text Overlay Pixaroma - fullscreen WYSIWYG multi-layer text editor with 10 bundled fonts (Inter / Roboto / Montserrat / Oswald / Playfair Display / Lora / Bebas Neue / Anton / Caveat / JetBrains Mono), per-layer font / size / weight / italic / color / alignment / line-height / letter-spacing / opacity / rotation, plus toggleable stroke / shadow / background pill; takes an optional upstream image or paints text on a blank canvas at user-chosen width / height / bg color) directly inside ComfyUI workflows. It also includes Align Pixaroma, a toggleable canvas-wide smart-snap and alignment-guide system (no nodes added; patches `LGraphCanvas` so any node drag/resize snaps to nearby edges and centers with orange guide lines). It has zero core dependencies — PIL and PyTorch come from ComfyUI's environment. All nodes share the `👑 Pixaroma` menu category.
 
 ## Development Setup
 No build step. Install by placing this folder in `ComfyUI/custom_nodes/`. ComfyUI auto-imports `__init__.py` on startup.
@@ -54,7 +54,10 @@ js/
 │   ├── layout.mjs      # createEditorLayout() — fullscreen overlay shell
 │   ├── components.mjs  # Buttons, panels, sliders, inputs, tool grids, zoom, transform
 │   ├── layers.mjs      # Photoshop-style layer panel with drag reorder
-│   └── canvas.mjs      # Canvas settings, frame overlay, toolbar + drag-drop
+│   ├── canvas.mjs      # Canvas settings, frame overlay, toolbar + drag-drop
+│   ├── fonts.mjs       # Font registry + FontFace loader (Text Overlay + future Composer text layers)
+│   ├── text_render.mjs # Pure renderTextLayer(ctx, layer) - canvas API mirror of nodes/_text_render_helpers.py
+│   └── text_editor.mjs # Per-layer text properties panel (right sidebar UI, reusable)
 │
 ├── shared/             # Shared utilities (constants, node preview, helpers)
 │   ├── index.mjs       # Barrel re-export
@@ -212,6 +215,25 @@ js/
 │                       #  Python returns float("nan") from IS_CHANGED
 │                       #  so notification fires on every Run, even
 │                       #  when upstream is fully cached.
+│
+├── text_overlay/       # Text Overlay Pixaroma — fullscreen multi-layer text editor
+│   ├── index.js        # Entry: extension registration, in-node Open button +
+│   │                   #  preview thumbnail, app.graphToPrompt hook (Pattern #9)
+│   │                   #  with subgraph tail-id matching. Preview persistence via
+│   │                   #  Pattern #4 (restoreFromProperties from both nodeCreated
+│   │                   #  microtask AND onConfigure). DOM widget canvasOnly:true.
+│   ├── core.mjs        # TextOverlayEditor class — lifecycle, render loop, save
+│   │                   #  flow, undo stack, zoom, layers panel build. Patches
+│   │                   #  app.loadGraphData + app.graph.configure while open
+│   │                   #  (Vue Compat #6) + onRemoved resurrection-close.
+│   ├── interaction.mjs # Canvas mouse + keyboard: click to select, drag bbox to
+│   │                   #  move, corner handles scale fontSize (Alt = from center),
+│   │                   #  rotation handle (Shift = 15deg snap), Arrow keys nudge
+│   │                   #  (Shift = 10px), Delete to remove, Ctrl+Z/Y undo/redo.
+│   │                   #  Uses inverse-rotate for hit-test on rotated layers.
+│   └── api.mjs         # Backend wrapper — saveThumbnail POSTs PNG to
+│                       #  /pixaroma/api/text_overlay/save (temp/), returns URL
+│                       #  for the in-node preview image.
 │
 ├── audio_studio/       # AudioReact Pixaroma — fullscreen editor for audio-reactive effects
 │   ├── index.js        # Entry: button widget on the node, app.graphToPrompt hook
@@ -861,6 +883,36 @@ These patterns were hard-won during the May-2026 implementation and post-review 
 
 14. **Walker MUST extract Prompt Multi Pixaroma's active prompt from the hidden state JSON.** Same family of bug as Pattern #13: Prompt Multi has no wired text output either. The JS `app.queuePrompt` patch in `js/prompt_multi/index.js` enqueues ONE workflow per enabled row, with each workflow's hidden `PromptMultiState` input baked at submit time as `{"version":1,"activePrompt":"<the row's text>"}`. So each saved PNG carries the exact prompt that produced THAT image (not all rows - just the one). Recovery is therefore a direct read, NOT a reconstruction from rows: `_walk_for_text` dispatches on `class_type == "PixaromaPromptMulti"` right after the Prompt Stack branch and calls `_pix_prompt_multi_extract(inputs)`, which parses `inputs.PromptMultiState` and returns `state["activePrompt"]` (stripped, None if empty). Do NOT mistakenly try to read `rows` here - the JS hook deliberately strips them and ships only `activePrompt` to keep the embedded workflow small and unambiguous. Bug class this prevents: user generates 3 images via Prompt Multi (red / blue / green), drops the blue PNG back on Prompt Reader, gets "no positive prompt found" when in fact the blue prompt is sitting right there in the hidden state.
 
+### Text Overlay Pixaroma Patterns (do not regress)
+
+These patterns emerged during initial implementation. Re-read before touching `js/text_overlay/`, `js/framework/text_*.mjs`, `nodes/node_text_overlay.py`, or `nodes/_text_render_helpers.py`.
+
+1. **Render parity is approximate, never bit-exact.** Different rasterizers between browser canvas (OS-native) and PIL (FreeType) mean even the same algorithm produces different pixels at sub-pixel positions. The parity script (`scripts/text_overlay_parity_check.py`) tolerates ΔE up to 10 on under 2% of pixels. Tightening the tolerance produces false-positive failures on OS upgrades. Goldens lock the Python output only; the JS side is checked visually at editor save-time (the in-node thumbnail and the workflow output should match).
+
+2. **Math doc is the single source of truth.** Any render formula change MUST update `docs/text-overlay-render.md` FIRST, then `js/framework/text_render.mjs`, then `nodes/_text_render_helpers.py`, then re-run `scripts/text_overlay_parity_check.py --regenerate`. Skipping any step means the JS and Python sides drift silently. Same lesson as AudioReact Pattern #3.
+
+3. **Font bundle catalog is duplicated in two places.** The BUNDLE list lives in both `server_routes.py::pixaroma_fonts_list` and `nodes/_text_render_helpers.py::_BUNDLE`. Adding a new font means editing both. The duplication is intentional: server_routes.py runs in the aiohttp context, _text_render_helpers.py in the Comfy execution context; a cross-cutting shared catalog file would add a third import path for no real win. The 10 font NAMES in the bundle correspond to 11 actual TTF files (9 variable fonts + Bebas Neue + Anton statics) - variable fonts list multiple weight entries pointing to the same file with different `wght_axis` values.
+
+4. **Variable fonts use `font.set_variation_by_axes([wght])` in PIL.** The bundled fonts are mostly variable (one TTF per font name covers 100..900 weight range via the wght axis). The Python loader calls `set_variation_by_axes` after `ImageFont.truetype` to pin a specific weight. Static fonts (Bebas Neue, Anton) skip the variation step. The catalog field `wght_axis = None` distinguishes static from variable. PIL silently no-ops if a static font is asked to set a variation axis - we wrap in try/except for defensive safety.
+
+5. **Browser FontFace registers with `weight: "100 900"` for variable fonts.** The single FontFace declaration covers all weights of the variable font. Canvas font string then includes the weight (e.g. `font: "700 36px <family>"`) and the browser auto-picks the right interpolation. Static fonts register with their single weight. Italic gets its own family suffix (`Pix-PlayfairDisplay-Italic`) so italic + non-italic don't collide on the same family at the same weight range.
+
+6. **Italic synthesis: skew by 12 degrees.** When the requested font lacks an italic variant, both renderers skew the rendered text 12 degrees horizontally to fake italic. The synthesized output kerns slightly differently between canvas (matrix transform) and PIL (Image transform). Accepted as known approximation in the math doc.
+
+7. **PIL stroke + fill is a TWO-CALL sequence.** PIL's `stroke_width` parameter to `draw.text` draws BOTH the stroke and the fill in one call - but the fill alpha gets thinned by stroke_width pixels. The text_render helper draws the stroke first (text in stroke color with stroke_width) THEN the fill on top (text in fill color, no stroke_width). Looks redundant but matches canvas behavior exactly. Don't "optimize" by collapsing to one call.
+
+8. **`_layerBbox` in interaction.mjs is an APPROXIMATION.** It uses synchronous canvas `measureText` to estimate bbox for hit-testing and handle placement, NOT the full async layout pipeline used by renderTextLayer. The selection rectangle on screen may be a few px off from the actual rendered text bbox, especially with custom letter-spacing or background pill. Acceptable for click targeting. Do not use `_layerBbox` output for actual rendering positioning - that goes through the real async layout.
+
+9. **`canvasOnly: true` on the DOM widget (Vue Compat #15).** Button + preview thumbnail would otherwise duplicate in the right-sidebar Parameters tab AND corrupt node-body layout via stale state writes. Standard Pixaroma boilerplate for any DOM widget on a Pixaroma node.
+
+10. **Pattern #4 preview persistence: dual restore (microtask + onConfigure).** `node.properties.textOverlayState.previewUrl` is the source of truth for the in-node thumbnail. Restore from BOTH `queueMicrotask(() => restoreFromProperties(this))` in `setupTextOverlayNode` AND `nodeType.prototype.onConfigure`. Idempotent: short-circuits when the image src is already populated.
+
+11. **Pattern #9 graphToPrompt hook.** `TextOverlayState` is declared `hidden` in Python's INPUT_TYPES, populated only at submission via the `app.graphToPrompt` hook in `js/text_overlay/index.js`. Tail-id matching ensures subgraph nodes are correctly addressed (uses the same `buildPixNodeIndex` + `findPixNode` pattern as Resolution Pixaroma). Do not be tempted to convert `TextOverlayState` to a required STRING widget - that re-exposes the slot dot and creates the persistence-fragility class documented in Vue Compat #9.
+
+12. **Editor lifecycle uses Vue Compat #6 patches.** `app.loadGraphData` + `app.graph.configure` are neutered while the editor is open so Ctrl+Z cannot tear down the workflow underneath. Restored in `close()`. Critical: the close path must run before unmount, or the patches leak. Resurrection-close safety net via `node.onRemoved` patch also restored on close.
+
+13. **Layer rotation: hit-test uses inverse-rotate.** The selection bbox is painted with the rotation transform applied. Hit testing applies the INVERSE rotation to the cursor position so we can compare against the un-rotated bbox. Same math is used for hit-testing both the bbox body (for click-to-select / drag-to-move) and the corner / rotation handles. Anchor-preserving scale during corner-drag also uses the un-rotated bbox.
+
 ### Offline-first: Vendored Three.js
 The 3D Builder used to `import("https://esm.sh/three@0.170.0/…")` at runtime, which
 broke with `ERR_CONNECTION_RESET` for any user running ComfyUI offline or behind a
@@ -944,6 +996,10 @@ Files are named by concern. Match the task to the file:
 | Change Prompt Pack Pixaroma textarea / pill / counter / queue-loop / output | `js/prompt_pack/` (index.js for queuePrompt patch + extension wiring + graphToPrompt hook + DEFAULT sizing; core.mjs for state schema + MODE_PARAGRAPH / MODE_LINE constants + `parsePrompts(text, mode)`; render.mjs for DOM including the mode pill bar + textarea + counter pill; interaction.mjs for events). Python in `nodes/node_prompt_pack.py`. State on `node.properties.promptPackState` (`{version:1, mode:"paragraph"|"line", text:"...", activePrompt:""}`) + `app.graphToPrompt` hook injecting `{version, activePrompt}` into hidden `PromptPackState` (Pattern #9). `app.queuePrompt` patch in index.js finds the first Prompt Pack node, parses text via `parsePrompts`, loops one `_origQueuePrompt(num, 1)` per non-empty prompt (mutates `activePrompt` before each call so graphToPrompt captures the right one), bails with toast when 0 prompts. Per-iteration enqueue errors logged + skipped (don't abort). Single `text` STRING output to match Prompt Multi / Prompt Stack / Show Text. Counter pill in the textarea's bottom-right corner shows `N prompts` idle / `i / N` (orange) during run / `0 prompts` (grey) empty. CSS prefix `.pix-pp-*` keeps it isolated from Prompt Stack's `.pix-ps-*` and Prompt Multi's `.pix-pm-*`. DOM widget MUST have `canvasOnly: true` (Vue Compat #15) or pill + textarea also render in the right-sidebar Parameters tab. Prompt Reader walker chases this node via `_pix_prompt_pack_extract` in `nodes/_prompt_reader_helpers.py` - mirrors Prompt Multi extract since both ship `{activePrompt}` in their hidden state. |
 | Add backend route | `server_routes.py` |
 | Add a new Python node | `nodes/node_<name>.py` |
+| Change Text Overlay editor layers / canvas / interactions | `js/text_overlay/` (core.mjs for lifecycle + render loop + layers panel, interaction.mjs for canvas mouse + keyboard + drag handles, api.mjs for backend save, index.js for in-node UI + graphToPrompt hook) |
+| Change text rendering (Text Overlay AND future Composer text layers) | `js/framework/text_render.mjs` (browser canvas) + `nodes/_text_render_helpers.py` (PIL). **Math doc at `docs/text-overlay-render.md` is the single source of truth — update doc first, then BOTH implementations, then re-run `scripts/text_overlay_parity_check.py --regenerate` to refresh goldens.** Skipping any step means JS and Python sides drift silently. |
+| Change the per-layer text property panel (Text Overlay sidebar, reusable for future Composer text layers) | `js/framework/text_editor.mjs`. Single export `createTextEditorPanel({mount, onChange})` returns `{setLayer, destroy}`. CSS prefix `.pix-te-*`. Color picker via `openPixaromaColorPickerPopup(anchorEl, {initialColor, onPick})` from `js/shared/color_picker.mjs`. |
+| Add or change a bundled font | Drop the .ttf into `assets/fonts/`. Add a row to the BUNDLE list in BOTH `server_routes.py::pixaroma_fonts_list` AND `nodes/_text_render_helpers.py::_BUNDLE` (deliberate duplication: server runs in aiohttp context, helpers in Comfy execution context; keep in sync). Re-run `scripts/download_fonts.py` adds it to the local cache. For variable fonts: set the `wght_axis` field; static fonts use `None`. |
 | AudioReact Pixaroma — change motion mode or overlay effect | `nodes/_audio_react_engine.py` (engine — all motion functions, overlays, audio helpers `bandpass_fft` / `audio_envelope` / `onset_track`, `process_aspect`, `Params` dataclass, `MOTION_MODES` / `OVERLAYS` registries, `generate_video()`). NEVER inline math into `node_audio_studio.py`; divergence breaks parity. Update `docs/audio-react-math.md` first, then engine, then `js/audio_studio/shaders.mjs` (GLSL mirror), then re-run `scripts/audio_parity_check.py --regenerate` and the browser parity harness. |
 | AudioReact Pixaroma — change effect math | DO NOT change in `node_audio_studio.py`. Update `nodes/_audio_react_engine.py` only. Mirror the change to `js/audio_studio/shaders.mjs` (GLSL). Update `docs/audio-react-math.md` (single source of truth). Re-run the parity scripts. |
 | AudioReact Pixaroma — editor UI / sidebar | `js/audio_studio/ui.mjs` (controls / tabs) + `js/audio_studio/core.mjs` (open/close/save/discard, source resolution, undo, header pills). |
