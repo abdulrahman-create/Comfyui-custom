@@ -331,11 +331,25 @@ export class TextOverlayEditor {
 
   fitWidth() {
     const s = this.state; if (!s || !s.text) return;
-    const bbox = this._textBbox(s);
-    if (bbox.w <= 0) return;
-    const factor = (this.canvasWidth * 0.95) / bbox.w;
-    s.fontSize = Math.max(8, Math.round(s.fontSize * factor));
-    s.x = Math.round((this.canvasWidth - bbox.w * factor) / 2);
+    // Iterative shrink-to-fit. A single-shot factor = target/bbox.w is
+    // off because (a) the bg pad is fixed and doesn't scale with font
+    // size, so the new bbox is smaller than (old bbox * factor), and
+    // (b) canvas measureText with a custom @font-face can be slightly
+    // narrower than the actual render width when the font isn't fully
+    // settled for the measure canvas. Iterate a few times re-measuring
+    // each pass; converges in 1-3 iterations.
+    const target = this.canvasWidth * 0.95;
+    for (let i = 0; i < 6; i++) {
+      const bbox = this._textBbox(s);
+      if (bbox.w <= 0) break;
+      if (bbox.w <= target + 1) break; // close enough, slight under is ok
+      const factor = target / bbox.w;
+      const newSize = Math.max(8, Math.round(s.fontSize * factor));
+      if (newSize === s.fontSize) break;
+      s.fontSize = newSize;
+    }
+    const finalBbox = this._textBbox(s);
+    s.x = Math.round((this.canvasWidth - finalBbox.w) / 2);
     this._snapshotMaybe();
     this.editorPanel.setLayer(s);
     if (this.node._textOverlayBodyPanel) this.node._textOverlayBodyPanel.setLayer(s);
@@ -344,11 +358,18 @@ export class TextOverlayEditor {
 
   fitHeight() {
     const s = this.state; if (!s || !s.text) return;
-    const bbox = this._textBbox(s);
-    if (bbox.h <= 0) return;
-    const factor = (this.canvasHeight * 0.95) / bbox.h;
-    s.fontSize = Math.max(8, Math.round(s.fontSize * factor));
-    s.y = Math.round((this.canvasHeight - bbox.h * factor) / 2);
+    const target = this.canvasHeight * 0.95;
+    for (let i = 0; i < 6; i++) {
+      const bbox = this._textBbox(s);
+      if (bbox.h <= 0) break;
+      if (bbox.h <= target + 1) break;
+      const factor = target / bbox.h;
+      const newSize = Math.max(8, Math.round(s.fontSize * factor));
+      if (newSize === s.fontSize) break;
+      s.fontSize = newSize;
+    }
+    const finalBbox = this._textBbox(s);
+    s.y = Math.round((this.canvasHeight - finalBbox.h) / 2);
     this._snapshotMaybe();
     this.editorPanel.setLayer(s);
     if (this.node._textOverlayBodyPanel) this.node._textOverlayBodyPanel.setLayer(s);
@@ -378,7 +399,15 @@ export class TextOverlayEditor {
     this.selCanvas = document.createElement("canvas");
     this.selCanvas.width = this.canvasWidth + 2 * pad;
     this.selCanvas.height = this.canvasHeight + 2 * pad;
-    this.selCanvas.style.cssText = `position:absolute; left:${-pad}px; top:${-pad}px; pointer-events:none;`;
+    // pointer-events left ON (default) so corner / rotate handles that
+    // sit OUTSIDE the visible canvas (when the text is bigger than the
+    // canvas, or near an edge) can still be grabbed. SEL_PAD = 200 gives
+    // a 200 px catch zone around the canvas in every direction. The
+    // selCanvas covers the canvas area too, so all clicks end up here
+    // and get routed by _canvasCoords which uses this.canvas's bounding
+    // rect as origin (so coordinates outside the canvas come through as
+    // negative / past-edge values, exactly what the hit-test needs).
+    this.selCanvas.style.cssText = `position:absolute; left:${-pad}px; top:${-pad}px;`;
     this.canvasWrap.appendChild(this.selCanvas);
   }
 

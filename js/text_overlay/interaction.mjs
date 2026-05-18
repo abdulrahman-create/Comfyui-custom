@@ -15,7 +15,11 @@ TextOverlayEditor.prototype._installInteractions = function () {
   this._onKeyDownBound = (e) => this._onKeyDown(e);
   this._onWheelBound = (e) => this._onCanvasWheel(e);
 
-  this.canvas.addEventListener("mousedown", this._onCanvasMouseDownBound);
+  // Listen on selCanvas (the larger overlay canvas, SEL_PAD px around
+  // the main canvas) so handles outside the visible canvas are still
+  // clickable. Falls back to this.canvas if selCanvas wasn't built.
+  this._mouseDownTarget = this.selCanvas || this.canvas;
+  this._mouseDownTarget.addEventListener("mousedown", this._onCanvasMouseDownBound);
   window.addEventListener("mousemove", this._onMouseMoveBound);
   window.addEventListener("mouseup", this._onMouseUpBound);
   this.layout.overlay.addEventListener("keydown", this._onKeyDownBound);
@@ -25,7 +29,7 @@ TextOverlayEditor.prototype._installInteractions = function () {
 };
 
 TextOverlayEditor.prototype._uninstallInteractions = function () {
-  if (this.canvas) this.canvas.removeEventListener("mousedown", this._onCanvasMouseDownBound);
+  if (this._mouseDownTarget) this._mouseDownTarget.removeEventListener("mousedown", this._onCanvasMouseDownBound);
   window.removeEventListener("mousemove", this._onMouseMoveBound);
   window.removeEventListener("mouseup", this._onMouseUpBound);
   if (this.layout?.overlay) this.layout.overlay.removeEventListener("keydown", this._onKeyDownBound);
@@ -36,9 +40,21 @@ TextOverlayEditor.prototype._onCanvasWheel = function (e) {
   e.preventDefault();
   if (e.shiftKey) {
     const s = this.state; if (!s || !s.text) return;
+    // Capture the bbox top-left BEFORE the resize so we can explicitly
+    // re-anchor after. fontSize bumps don't move x/y on their own, but
+    // align=center renders the text centered within the bbox, so the
+    // text visual center shifts as the bbox grows. Re-anchoring x/y
+    // explicitly to the previous top-left keeps the bbox stuck where
+    // it was, which is what users expect for wheel-resize.
+    const beforeBbox = this._textBbox(s);
+    const anchorX = beforeBbox.x;
+    const anchorY = beforeBbox.y;
     const step = e.altKey ? 10 : 5;
     const dir = e.deltaY > 0 ? -1 : 1;
     s.fontSize = Math.max(8, Math.min(512, (s.fontSize || 96) + dir * step));
+    // Re-anchor: bbox top-left == anchorX/Y, no matter what bbox.w / .h are now.
+    s.x = anchorX;
+    s.y = anchorY;
     this._snapshotMaybe();
     this.editorPanel.setLayer(s);
     if (this.node._textOverlayBodyPanel) this.node._textOverlayBodyPanel.setLayer(s);
