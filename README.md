@@ -128,6 +128,9 @@ A multi-line text field with a STRING output. Write your prompt (or any other lo
 ### 🧱 Prompt Stack Pixaroma
 A single node that holds an ordered stack of prompt chunks you can mute or include with one click. Add as many rows as you want, type a different piece of your prompt in each (style words, subject, lighting, quality boosters, anything), give each row a short label so you remember what it does, and toggle the orange **ON / OFF** pill to include or skip that row at run time. All the ON rows get joined into one text output with whatever separator you pick in **Settings → 👑 Pixaroma → Prompt Stack** (default comma+space, also works as newline, space, pipe, or anything you type). Drag the handle on the left of any row to reorder them, and the join order updates too. Rows that grow to many lines scroll on their own. The node tidies itself as you add and delete rows so it always fits its content with a bit of breathing room. Everything saves with your workflow. Great for testing prompt variants by clicking toggles instead of editing text.
 
+### 🎲 Prompt Multi Pixaroma
+The sibling of Prompt Stack: instead of joining your rows into one text output, it **runs the workflow once for each enabled row**. Type two or more prompt variants, give each a short label (e.g. "v1", "blue version"), and hit Run - you get one image per enabled prompt, sequentially, each as its own item in the ComfyUI queue panel so you can cancel any of them individually. Toggle the orange **ON / OFF** pill to skip a row without deleting it. Drag the handle on the left to reorder. Each generated image carries only the prompt that produced it, so dropping the PNG back into **Prompt Reader Pixaroma** correctly recovers that exact variant. Great for batch-comparing prompt ideas with a single click instead of editing text and re-running by hand.
+
 ### 🔔 Notify Pixaroma
 A small terminal node that plays a sound when reached during workflow execution. Drop one at the end of a workflow to hear "render finished" while you're in another browser tab or app, or branch one off any node mid-graph to be alerted at a checkpoint. Pick from 10 bundled notification sounds (drop more `.mp3`/`.wav`/`.ogg` into `assets/sounds/` to extend), set a per-node volume and an optional label, and tap the **▶ Preview** button to audition a sound without running the workflow. A master toggle in **Settings → 👑 Pixaroma → Notify** silences every Notify node at once for quiet sessions. Each node also has its own enabled toggle. Always re-fires on every Run, even when upstream is fully cached.
 
@@ -218,6 +221,10 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 ---
 
 ## 🛠 Changelog
+
+### **May 18, 2026 (1.3.36)**
+- **NEW: Prompt Multi Pixaroma** - same row-based layout as Prompt Stack, but instead of joining your prompts into one, it runs the workflow once for each enabled row. Type three prompt variants, hit Run, get three images - one per prompt. Each becomes its own item in the queue panel so you can cancel them individually. Toggle the orange ON / OFF pill to skip rows without deleting them. Drag the handle on the left to reorder. Great for batch-comparing prompt ideas with a single click.
+- **Prompt Reader Pixaroma reads Prompt Multi output:** Drop a PNG generated through Prompt Multi back into Prompt Reader and you get the exact prompt that produced that specific image.
 
 ### **May 17, 2026 (1.3.35)**
 - **AI background removal works on 4-6 GB cards.** BiRefNet Standard no longer fails with out-of-memory on a 6 GB card. The dropdown adds a new **BiRefNet Low VRAM** option for guaranteed-fits 512px cutouts when you want it faster. If memory still gets tight, the model automatically retries at smaller sizes and finally falls back to CPU - the click never silently fails.
