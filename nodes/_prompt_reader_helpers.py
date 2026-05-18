@@ -76,6 +76,12 @@ _PROMPT_STACK_CLASS = "PixaromaPromptStack"
 # produced THAT image, so recovery is a direct read of activePrompt.
 _PROMPT_MULTI_CLASS = "PixaromaPromptMulti"
 
+# Prompt Picker Pixaroma: holds a library of prompts and outputs the active
+# row via the hidden PromptPickerState STRING input as
+# {"version":1,"activeText":"..."}. Same recovery shape as Prompt Multi:
+# direct read of activeText.
+_PROMPT_PICKER_CLASS = "PixaromaPromptPicker"
+
 _MAX_WALK_DEPTH = 24
 # Chase depth caps how many PixaromaPromptReader hops we follow when an image
 # was generated from a workflow that itself contained a PromptReader pointing
@@ -202,6 +208,34 @@ def _pix_prompt_stack_extract(inputs: dict) -> Optional[str]:
     return sep.join(parts)
 
 
+def _pix_prompt_picker_extract(inputs: dict) -> Optional[str]:
+    """Read the active prompt from a PixaromaPromptPicker's saved state.
+
+    The hidden PromptPickerState input is a JSON string of shape:
+        { "version": 1, "activeText": str }
+
+    The JS app.graphToPrompt hook bakes whichever row was active at submit
+    time into activeText, so the embedded workflow records exactly the prompt
+    that produced the image. Recovery is a direct read.
+
+    Returns the active prompt, or None when missing / malformed / empty.
+    """
+    raw = inputs.get("PromptPickerState")
+    if not isinstance(raw, str) or not raw:
+        return None
+    try:
+        state = json.loads(raw)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(state, dict):
+        return None
+    txt = state.get("activeText", "")
+    if not isinstance(txt, str):
+        return None
+    txt = txt.strip()
+    return txt or None
+
+
 def _pix_prompt_multi_extract(inputs: dict) -> Optional[str]:
     """Read the active prompt from a PixaromaPromptMulti's saved state.
 
@@ -321,6 +355,15 @@ def _walk_for_text(
     # hidden PromptMultiState as {"activePrompt": "..."}. Read it directly.
     if cls == _PROMPT_MULTI_CLASS:
         text = _pix_prompt_multi_extract(inputs)
+        if text:
+            captured.append(text)
+        return
+
+    # Prompt Picker Pixaroma: same shape as Prompt Multi - the active row's
+    # text is baked into the hidden PromptPickerState as
+    # {"activeText": "..."}. Read it directly.
+    if cls == _PROMPT_PICKER_CLASS:
+        text = _pix_prompt_picker_extract(inputs)
         if text:
             captured.append(text)
         return
