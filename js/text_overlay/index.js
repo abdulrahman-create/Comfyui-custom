@@ -122,9 +122,11 @@ function setupTextOverlayNode(node) {
   });
 
   // Default size for new nodes; LiteGraph restores saved sizes via configure.
-  // The compact v2 layout fits comfortably in ~430 px.
+  // The compact layout (after collapsing Rotate/X/Y into one row) fits
+  // in roughly 380 px including title + slots; pick 390 so there is a
+  // touch of breathing room.
   if (!node.size || node.size[0] < 320) {
-    node.size = [340, 430];
+    node.size = [340, 390];
   }
 
   // Enforce a minimum node width so the user can't drag-shrink so narrow

@@ -158,18 +158,22 @@ export function createTextEditorPanel({ mount, onChange, onReset }) {
     /* withClear= */ true,
   );
 
-  // Reset to defaults: compact, low-key, full-width but subtle.
+  // Reset to defaults: centered chip the same size as one of the align
+  // buttons. Lives in a 3-column row so it sits in the middle column.
   if (onReset) {
+    const resetRow = el("div", "pix-to-reset-row");
     const resetBtn = el("button", "pix-to-reset-btn");
     resetBtn.type = "button";
-    resetBtn.textContent = "Reset to defaults";
+    resetBtn.textContent = "RESET";
+    resetBtn.title = "Restore all settings to their defaults";
     resetBtn.addEventListener("click", () => {
       const l = layerNow(); if (!l) return;
       onReset(l);
       setLayer(l);
       fireChange();
     });
-    root.appendChild(resetBtn);
+    resetRow.appendChild(resetBtn);
+    root.appendChild(resetRow);
   }
 
   // Load font catalog; pre-load fonts so popup items render in their own typeface.
@@ -681,20 +685,24 @@ function injectCSS() {
       background: repeating-conic-gradient(#333 0% 25%, #444 0% 50%) 0 0 / 8px 8px !important;
     }
 
-    /* Reset button: small orange chip, right-aligned. Mirrors the
-       Load Image .pix-li-snap-btn 'OFF' chip visual: tiny pill that
-       clearly reads as a button (vs the previous low-key text link). */
+    /* Reset row: 3-column grid so the button sits centered (middle
+       column) and matches the width of a single align chip. */
+    .pix-to-reset-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 3px;
+    }
     .pix-to-reset-btn {
-      align-self: flex-end;
-      margin-top: 4px;
+      grid-column: 2;
       background: ${BRAND};
       border: 1px solid ${BRAND};
-      border-radius: 3px;
+      border-radius: 4px;
       color: #fff;
-      padding: 4px 10px;
+      padding: 5px 0;
       cursor: pointer;
-      font: 600 10px ui-sans-serif, system-ui, sans-serif;
-      letter-spacing: 0.3px;
+      font: 600 11px ui-sans-serif, system-ui, sans-serif;
+      letter-spacing: 0.5px;
+      min-height: 26px;
     }
     .pix-to-reset-btn:hover { background: #ff7e5a; border-color: #ff7e5a; }
 
