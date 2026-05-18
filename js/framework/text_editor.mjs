@@ -322,11 +322,19 @@ function injectCSS() {
     .pix-te-select { width:100%; background:#0d0d0d; color:#fff; border:1px solid #333; border-radius:4px; padding:6px 10px; font:13px system-ui; }
     .pix-te-select-sm { padding:5px 8px; font:12px system-ui; }
     /* Orange highlight on dropdown options (overrides browser default blue).
-       Works in Chrome/Edge; Firefox honors :checked but ignores :hover here.
-       The OS-rendered hover state on some platforms can't be styled at all. */
+       The native <select> popup is partly OS-rendered: :checked + :hover work
+       in modern Chrome/Edge, the keyboard-focus highlight may still leak OS
+       blue on some platforms (cannot be fully styled via CSS). */
     .pix-te-select option { background-color:#0d0d0d; color:#fff; }
-    .pix-te-select option:checked { background:#f66744 !important; background-color:#f66744 !important; color:#fff !important; box-shadow:inset 0 0 0 999px #f66744 !important; }
-    .pix-te-select option:hover { background:#2a1f1a; color:#f66744; }
+    .pix-te-select option:checked,
+    .pix-te-select option:hover,
+    .pix-te-select option:focus,
+    .pix-te-select option:active {
+      background:#f66744 !important;
+      background-color:#f66744 !important;
+      color:#fff !important;
+      box-shadow:inset 0 0 0 999px #f66744 !important;
+    }
     .pix-te-input-mono { flex:1; background:#0d0d0d; color:#fff; border:1px solid #333; border-radius:4px; padding:6px 10px; font:12px monospace; box-sizing:border-box; }
     .pix-te-row3 { display:grid; grid-template-columns:1fr 1fr auto; gap:6px; align-items:end; }
     .pix-te-cell { display:flex; flex-direction:column; gap:3px; }

@@ -122,6 +122,15 @@ export class TextOverlayEditor {
     });
     this.editorPanel.setLayer(this.state);
 
+    // First-time auto-center: when a fresh node opens for the first time with
+    // an upstream image, center the text on the canvas so it fits regardless
+    // of aspect ratio. Flag is cleared so subsequent opens respect the saved
+    // position.
+    if (this.state?._autoCenterPending && this.baseImage && this.state.text) {
+      this._autoCenter();
+      delete this.state._autoCenterPending;
+    }
+
     // Wire Save to Disk
     this.layout.onSaveToDisk = () => this.saveToDisk().catch((e) => {
       console.warn("[Text Overlay] saveToDisk failed", e);
@@ -132,6 +141,15 @@ export class TextOverlayEditor {
 
     this.requestRender();
     this.zoomFit();
+  }
+
+  _autoCenter() {
+    const s = this.state; if (!s) return;
+    const bbox = this._textBbox(s);
+    s.x = Math.round((this.canvasWidth - bbox.w) / 2);
+    s.y = Math.round((this.canvasHeight - bbox.h) / 2);
+    this.editorPanel.setLayer(s);
+    if (this.node._textOverlayBodyPanel) this.node._textOverlayBodyPanel.setLayer(s);
   }
 
   close() {

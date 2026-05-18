@@ -13,23 +13,29 @@ const NODE_CLASS = "PixaromaTextOverlay";
 const STATE_PROP = "textOverlayState";
 const HIDDEN_INPUT_NAME = "TextOverlayState";
 
-// Default state when adding a fresh node OR migrating from v1 multi-layer
+// Default state when adding a fresh node OR migrating from older versions.
+// Position x/y are deliberately small so the text fits in ANY canvas size out
+// of the box. The _autoCenterPending flag tells the editor to center the text
+// on the canvas the first time it opens with an upstream image available; the
+// editor clears the flag after centering so subsequent opens use the saved
+// position. See core.mjs::open.
 const DEFAULT_STATE = {
-  version: 2,
+  version: 3,
   text: "Your text here",
   font: "Inter",
   weight: 400,
   italic: false,
   align: "center",
-  fontSize: 96,
+  fontSize: 64,
   lineHeight: 1.2,
   letterSpacing: 0,
-  x: 240,
-  y: 455,
+  x: 20,
+  y: 20,
   rotation: 0,
   opacity: 1.0,
   color: "#FFFFFF",
   bgColor: null,
+  _autoCenterPending: true,
 };
 
 app.registerExtension({
@@ -61,10 +67,9 @@ app.registerExtension({
 function ensureValidState(node) {
   if (!node.properties) node.properties = {};
   const cur = node.properties[STATE_PROP];
-  // Migrate / fresh: v1 multi-layer state (or missing) → reset to v2 defaults.
-  // Spec §3: "if loaded state has no version field OR version: 1 (multi-layer),
-  // replace with defaults. No attempt to migrate layer 0's properties."
-  if (!cur || cur.version !== 2) {
+  // Reset to defaults when version is missing or older than current.
+  // v1 (multi-layer) and v2 (bad defaults) both replaced wholesale.
+  if (!cur || cur.version !== 3) {
     node.properties[STATE_PROP] = { ...DEFAULT_STATE };
   }
 }
