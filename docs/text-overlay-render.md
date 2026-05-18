@@ -42,7 +42,9 @@ When `letterSpacing == 0` (the common case), both sides draw the line as a singl
 `lineHeight_px = round(fontSize * lineHeight)` where `lineHeight` is the multiplier (default 1.2).
 
 `bbox_width = max(line_width_i for i in lines)`
-`bbox_height = lineHeight_px * lineCount`
+`bbox_height = ascender + descender + (lineCount - 1) * lineHeight_px`
+
+The `ascender` and `descender` are measured from the font metrics (browser: `ctx.measureText("Mg").actualBoundingBoxAscent/Descent`; PIL: `font.getmetrics()`). This makes the bbox wrap the actual visible glyph extent rather than the full leaded line box, so the selection contour matches what the user sees and the background pill hugs the text. The `lineHeight` multiplier still adds spacing BETWEEN lines.
 
 ## 3. Background Pill Bbox
 

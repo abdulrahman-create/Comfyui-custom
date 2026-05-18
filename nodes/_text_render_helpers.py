@@ -194,15 +194,20 @@ def render_text_layer(base_img, layer):
     line_height_px = round(eff_font_size * line_height_mult)
     # Update letter_spacing variable for the rest of the function (used by _draw_line)
     letter_spacing = eff_letter_spacing
-    # Background padding also scales with renderScale so the pill stays proportional
+    # Background padding scales with renderScale so the pill stays proportional
     pad_x = (bg.get("paddingX", 12) * render_scale) if bg else 0
     pad_y = (bg.get("paddingY", 8) * render_scale) if bg else 0
+
+    # bbox height uses ascender + descender (visible glyph extent) for the
+    # first line, plus line_height_px per additional line. Matches the JS side
+    # so the selection contour wraps the visible text rather than the leaded box.
+    ascender, descender = pil_font.getmetrics()
+
     bbox_w = int(round(max_line_w + 2 * pad_x))
-    bbox_h = int(round(line_height_px * len(lines) + 2 * pad_y))
+    glyph_h = ascender + descender
+    bbox_h = int(round(glyph_h + max(0, len(lines) - 1) * line_height_px + 2 * pad_y))
     bbox_w = max(1, bbox_w)
     bbox_h = max(1, bbox_h)
-
-    ascender, _descender = pil_font.getmetrics()
 
     # Render layer to its own RGBA so we can rotate + opacity cleanly
     layer_img = Image.new("RGBA", (bbox_w, bbox_h), (0, 0, 0, 0))

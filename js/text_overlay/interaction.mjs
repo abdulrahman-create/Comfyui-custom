@@ -82,14 +82,18 @@ TextOverlayEditor.prototype._layerBbox = function (layer) {
   const lines = String(layer.text ?? "").split("\n");
   const widths = lines.map((ln) => ctx.measureText(ln).width + Math.max(0, ln.length - 1) * (layer.letterSpacing || 0));
   const lineHeightPx = Math.round(layer.fontSize * (layer.lineHeight || 1.2));
+  // Use the actual font glyph extent (ascender + descender via measureText)
+  // for the FIRST line height, then add lineHeightPx per additional line.
+  // Matches the render-side bbox so the selection contour wraps visible glyphs.
+  const m = ctx.measureText("Mg");
+  const asc = m.actualBoundingBoxAscent || layer.fontSize * 0.78;
+  const desc = m.actualBoundingBoxDescent || layer.fontSize * 0.22;
   let w = Math.max(0, ...widths);
-  let h = lines.length * lineHeightPx;
+  let h = (asc + desc) + Math.max(0, lines.length - 1) * lineHeightPx;
   if (layer.background) {
     w += 2 * (layer.background.paddingX || 12);
     h += 2 * (layer.background.paddingY || 8);
   }
-  // Account for scale (anisotropic + flip). Selection bbox must follow the
-  // FINAL visible size or the dashed outline detaches from the text.
   const sX = Math.abs(layer.scaleX ?? 1);
   const sY = Math.abs(layer.scaleY ?? 1);
   w *= sX; h *= sY;

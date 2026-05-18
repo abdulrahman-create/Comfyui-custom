@@ -32,23 +32,26 @@ export async function renderTextLayer(ctx, layer) {
   const letterSpacing = (layer.letterSpacing ?? 0) * renderScale;
   const lines = String(layer.text ?? "").split("\n");
 
-  // Measure each line
+  // Measure each line + font metrics
   ctx.save();
   ctx.font = fontStr;
   const lineWidths = lines.map((line) => measureLine(ctx, line, letterSpacing));
-  const maxLineW = Math.max(0, ...lineWidths);
+  const maxLineW = Math.max(0, ...lines.length ? lineWidths : [0]);
+  // Sample metrics from "Mg" (covers uppercase ascender + lowercase descender)
+  const metrics = ctx.measureText("Mg");
+  const ascender = metrics.actualBoundingBoxAscent || effFontSize * 0.78;
+  const descender = metrics.actualBoundingBoxDescent || effFontSize * 0.22;
+  ctx.restore();
+
+  // bbox height = visible glyph extent (ascender + descender) for the first
+  // line, plus lineHeightPx spacing per additional line. This makes the
+  // selection contour wrap the visible text rather than the leaded box.
   let bboxW = maxLineW;
-  let bboxH = lineHeightPx * lines.length;
-  // Background pill padding scales with renderScale so the pill stays proportional
+  let bboxH = ascender + descender + Math.max(0, lines.length - 1) * lineHeightPx;
   const padX = layer.background ? (layer.background.paddingX ?? 12) * renderScale : 0;
   const padY = layer.background ? (layer.background.paddingY ?? 8) * renderScale : 0;
   bboxW += 2 * padX;
   bboxH += 2 * padY;
-
-  // Per-line ascent (for baseline placement)
-  const metrics = ctx.measureText("Mg");
-  const ascender = metrics.actualBoundingBoxAscent || layer.fontSize * 0.8;
-  ctx.restore();
 
   // Off-screen scratch canvas (for opacity + rotation passes)
   const scratch = document.createElement("canvas");
