@@ -259,8 +259,9 @@ export function applyState(root, state, runState) {
 }
 
 // Update just the counter pill. runState is optional:
-//   { running: true, index: 3, total: 12 } -> "3 / 12" in orange
-//   undefined / null / running:false       -> "N prompts" or "0 prompts"
+//   { running: true, remaining: 3 }    -> "3 left" in orange (counts DOWN
+//                                         as workflows finish executing)
+//   undefined / null / running:false   -> "N prompts" or "0 prompts"
 //
 // We use a small inline parse (mirrors core.mjs parsePrompts) so render.mjs
 // doesn't depend on core.mjs at module load time.
@@ -275,7 +276,7 @@ export function updateCounter(root, state, runState) {
   els.counter.classList.remove("active", "empty");
   if (runState && runState.running) {
     els.counter.classList.add("active");
-    els.counter.textContent = `${runState.index} / ${runState.total}`;
+    els.counter.textContent = `${runState.remaining} left`;
   } else if (total === 0) {
     els.counter.classList.add("empty");
     els.counter.textContent = "0 prompts";

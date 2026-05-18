@@ -1,4 +1,5 @@
 import { app } from "/scripts/app.js";
+import { api } from "/scripts/api.js";
 import {
   STATE_PROP,
   readState,
@@ -106,6 +107,75 @@ app.graphToPrompt = async function (...args) {
   return result;
 };
 
+// Batch tracking - counts down "X left" as each queued workflow actually
+// finishes executing (NOT just gets accepted into the queue). The
+// queuePrompt patch captures the prompt_id from each _origQueuePrompt
+// response and adds it to _batch.promptIds. The api 'executing' listener
+// below removes a prompt_id when its workflow finishes, then refreshes the
+// counter from the new Set size.
+//
+// Filtering by prompt_id avoids miscounting if the user has other workflows
+// running concurrently (their executing events fire too but their prompt_ids
+// aren't in our Set so we ignore them).
+//
+// If the user clicks Run mid-batch, _batch gets reset to the new batch.
+// Any still-running old workflows fire executing events that we ignore
+// (their prompt_ids no longer match) - the counter tracks the new batch
+// cleanly.
+
+const _batch = {
+  node: null,
+  total: 0,
+  promptIds: new Set(),
+};
+
+function _refreshBatchCounter() {
+  const node = _batch.node;
+  if (!node || !node._pixPpRoot) return;
+  const state = node.properties?.[STATE_PROP];
+  if (!state) return;
+  const remaining = _batch.promptIds.size;
+  if (remaining === 0) {
+    _batch.node = null;
+    _batch.total = 0;
+    updateCounter(node._pixPpRoot, state);
+  } else {
+    updateCounter(node._pixPpRoot, state, { running: true, remaining, total: _batch.total });
+  }
+  node.setDirtyCanvas(true, true);
+}
+
+api.addEventListener("executing", (event) => {
+  const detail = event?.detail;
+  // ComfyUI fires 'executing' with detail.node === null when a workflow
+  // finishes. Same event also fires per-node during execution (detail.node
+  // is the running node-id string) - we skip those.
+  if (detail == null) return;
+  if (detail.node !== null && detail.node !== undefined) return;
+  const pid = detail.prompt_id != null ? String(detail.prompt_id) : null;
+  if (!pid || !_batch.promptIds.has(pid)) return;
+  _batch.promptIds.delete(pid);
+  _refreshBatchCounter();
+});
+
+// Some ComfyUI versions emit execution_success / execution_error instead of
+// (or in addition to) the executing-null signal. Catch those too so the
+// counter doesn't get stuck at "X left" forever on error or on newer builds.
+api.addEventListener("execution_success", (event) => {
+  const detail = event?.detail;
+  const pid = detail?.prompt_id != null ? String(detail.prompt_id) : null;
+  if (!pid || !_batch.promptIds.has(pid)) return;
+  _batch.promptIds.delete(pid);
+  _refreshBatchCounter();
+});
+api.addEventListener("execution_error", (event) => {
+  const detail = event?.detail;
+  const pid = detail?.prompt_id != null ? String(detail.prompt_id) : null;
+  if (!pid || !_batch.promptIds.has(pid)) return;
+  _batch.promptIds.delete(pid);
+  _refreshBatchCounter();
+});
+
 // app.queuePrompt patch.
 //
 // On every Run click: find the first PixaromaPromptPack node in the graph,
@@ -113,6 +183,10 @@ app.graphToPrompt = async function (...args) {
 // prompt. Each iteration mutates state.activePrompt BEFORE calling the
 // original queuePrompt, so the graphToPrompt hook above captures the right
 // prompt for each enqueue.
+//
+// After each successful enqueue we capture the response's prompt_id into
+// _batch.promptIds so the api 'executing' listener can count it down when
+// the workflow actually finishes rendering.
 //
 // Edge cases:
 // - No Prompt Pack node in graph -> fall through unchanged (hot path).
@@ -136,27 +210,49 @@ app.queuePrompt = async function (num, batchCount) {
 
   const root = ppNode._pixPpRoot;
   const total = prompts.length;
-  const results = [];
 
+  // Reset batch tracking for the new submission. Any in-flight prompt_ids
+  // from a previous batch are dropped - their workflows will still complete
+  // but we no longer follow them in the counter.
+  _batch.node = ppNode;
+  _batch.total = total;
+  _batch.promptIds.clear();
+
+  // Show "N left" immediately so the user has feedback while the queue
+  // submission loop runs (which only takes ms, but the first workflow
+  // execution can take seconds-minutes).
+  if (root) {
+    ppNode.properties = ppNode.properties || {};
+    if (!ppNode.properties[STATE_PROP]) ppNode.properties[STATE_PROP] = state;
+    updateCounter(root, ppNode.properties[STATE_PROP], { running: true, remaining: total, total });
+    ppNode.setDirtyCanvas(true, true);
+  }
+
+  const results = [];
   for (let i = 0; i < prompts.length; i++) {
     ppNode.properties = ppNode.properties || {};
     if (!ppNode.properties[STATE_PROP]) ppNode.properties[STATE_PROP] = state;
     ppNode.properties[STATE_PROP].activePrompt = prompts[i];
 
-    if (root) {
-      updateCounter(root, ppNode.properties[STATE_PROP], { running: true, index: i + 1, total });
-      ppNode.setDirtyCanvas(true, true);
-    }
-
     try {
       const r = await _origQueuePrompt(num, 1);
+      // Capture prompt_id - shape varies across ComfyUI versions, try common ones.
+      const pid =
+        r?.prompt_id != null ? String(r.prompt_id) :
+        r?.[1]?.prompt_id != null ? String(r[1].prompt_id) :
+        null;
+      if (pid) _batch.promptIds.add(pid);
       results.push(r);
     } catch (err) {
       console.error("Pixaroma.PromptPack: per-prompt enqueue failed", err);
     }
   }
 
-  if (root) {
+  // If we failed to capture any prompt_ids (unsupported ComfyUI version),
+  // the counter would hang at "N left" forever - reset to idle as a fallback.
+  if (_batch.promptIds.size === 0 && root) {
+    _batch.node = null;
+    _batch.total = 0;
     updateCounter(root, ppNode.properties[STATE_PROP]);
     ppNode.setDirtyCanvas(true, true);
   }
