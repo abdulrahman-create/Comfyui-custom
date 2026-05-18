@@ -209,16 +209,20 @@ def _pix_prompt_stack_extract(inputs: dict) -> Optional[str]:
 
 
 def _pix_prompt_picker_extract(inputs: dict) -> Optional[str]:
-    """Read the active prompt from a PixaromaPromptPicker's saved state.
+    """Read the resolved prompt texts from a PixaromaPromptPicker's saved state.
 
-    The hidden PromptPickerState input is a JSON string of shape:
-        { "version": 1, "activeText": str }
+    v2 schema (current): hidden PromptPickerState input is a JSON string of
+    shape { "version": 2, "pickTexts": [str, ...] }. Each entry is the text
+    that was sent through that output slot at submit time.
 
-    The JS app.graphToPrompt hook bakes whichever row was active at submit
-    time into activeText, so the embedded workflow records exactly the prompt
-    that produced the image. Recovery is a direct read.
+    v1 schema (legacy, from the brief single-output era): { "version": 1,
+    "activeText": str }. Treated as a single-pick state.
 
-    Returns the active prompt, or None when missing / malformed / empty.
+    When there is more than one pick text, they are joined with newlines so
+    the Prompt Reader readout shows all of them. The first non-empty pick is
+    listed first; empty picks are skipped to keep the output tidy.
+
+    Returns the joined text, or None when missing / malformed / empty.
     """
     raw = inputs.get("PromptPickerState")
     if not isinstance(raw, str) or not raw:
@@ -229,11 +233,20 @@ def _pix_prompt_picker_extract(inputs: dict) -> Optional[str]:
         return None
     if not isinstance(state, dict):
         return None
-    txt = state.get("activeText", "")
-    if not isinstance(txt, str):
-        return None
-    txt = txt.strip()
-    return txt or None
+
+    pick_texts = state.get("pickTexts")
+    if isinstance(pick_texts, list):
+        parts = [p.strip() for p in pick_texts if isinstance(p, str) and p.strip()]
+        if not parts:
+            return None
+        return "\n\n".join(parts) if len(parts) > 1 else parts[0]
+
+    # v1 legacy fallback.
+    legacy = state.get("activeText", "")
+    if isinstance(legacy, str):
+        legacy = legacy.strip()
+        return legacy or None
+    return None
 
 
 def _pix_prompt_multi_extract(inputs: dict) -> Optional[str]:
