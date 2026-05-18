@@ -41,67 +41,60 @@ def _load_helpers():
     return mod
 
 
-# 10 reference configs covering major code paths
+# 10 reference configs covering simplified v2 schema (no effects)
 REFERENCE_CASES = [
     ("01_plain_single.png", (512, 256), "#1a2a4a", [
-        {"visible": True, "text": "Hello", "font": "Inter", "weight": 400, "italic": False,
+        {"text": "Hello", "font": "Inter", "weight": 400, "italic": False,
          "fontSize": 48, "lineHeight": 1.2, "letterSpacing": 0, "align": "left",
          "color": "#FFFFFF", "opacity": 1.0, "x": 50, "y": 80, "rotation": 0}
     ]),
     ("02_multiline_center.png", (512, 256), "#2a1a3a", [
-        {"visible": True, "text": "Line One\nLine Two", "font": "Inter", "weight": 700, "italic": False,
+        {"text": "Line One\nLine Two", "font": "Inter", "weight": 700, "italic": False,
          "fontSize": 36, "lineHeight": 1.3, "letterSpacing": 0, "align": "center",
          "color": "#FFFFFF", "opacity": 1.0, "x": 100, "y": 50, "rotation": 0}
     ]),
     ("03_bold_italic.png", (512, 256), "#3a1a2a", [
-        {"visible": True, "text": "Bold Italic", "font": "PlayfairDisplay", "weight": 700, "italic": True,
+        {"text": "Bold Italic", "font": "PlayfairDisplay", "weight": 700, "italic": True,
          "fontSize": 56, "lineHeight": 1.2, "letterSpacing": 0, "align": "center",
          "color": "#FFFFFF", "opacity": 1.0, "x": 80, "y": 80, "rotation": 0}
     ]),
-    ("04_with_stroke.png", (512, 256), "#1a3a1a", [
-        {"visible": True, "text": "STROKED", "font": "BebasNeue", "weight": 400, "italic": False,
-         "fontSize": 72, "lineHeight": 1.0, "letterSpacing": 2, "align": "center",
-         "color": "#FFEE00", "opacity": 1.0, "stroke": {"color": "#000000", "width": 4},
-         "x": 60, "y": 80, "rotation": 0}
-    ]),
-    ("05_with_shadow.png", (512, 256), "#2a2a4a", [
-        {"visible": True, "text": "Shadowed", "font": "Roboto", "weight": 700, "italic": False,
-         "fontSize": 48, "lineHeight": 1.2, "letterSpacing": 0, "align": "left",
-         "color": "#FFFFFF", "opacity": 1.0,
-         "shadow": {"color": "#000000", "blur": 8, "offsetX": 4, "offsetY": 4, "opacity": 0.7},
-         "x": 60, "y": 90, "rotation": 0}
-    ]),
-    ("06_with_background_pill.png", (512, 256), "#5a5a5a", [
-        {"visible": True, "text": "BG Pill", "font": "Montserrat", "weight": 800, "italic": False,
+    ("04_bg_pill.png", (512, 256), "#5a5a5a", [
+        {"text": "BG Pill", "font": "Montserrat", "weight": 800, "italic": False,
          "fontSize": 42, "lineHeight": 1.2, "letterSpacing": 0, "align": "center",
-         "color": "#FFFFFF", "opacity": 1.0,
-         "background": {"color": "#f66744", "paddingX": 18, "paddingY": 10, "radius": 10, "opacity": 1.0},
+         "color": "#FFFFFF", "opacity": 1.0, "bgColor": "#f66744",
          "x": 120, "y": 95, "rotation": 0}
     ]),
-    ("07_rotated_30.png", (512, 256), "#1a4a3a", [
-        {"visible": True, "text": "Rotated", "font": "Anton", "weight": 400, "italic": False,
+    ("05_rotated_30.png", (512, 256), "#1a4a3a", [
+        {"text": "Rotated", "font": "Anton", "weight": 400, "italic": False,
          "fontSize": 56, "lineHeight": 1.2, "letterSpacing": 0, "align": "left",
          "color": "#FFFFFF", "opacity": 1.0,
          "x": 120, "y": 90, "rotation": 30}
     ]),
-    ("08_compound.png", (512, 256), "#2a2a2a", [
-        {"visible": True, "text": "Compound", "font": "Lora", "weight": 700, "italic": False,
-         "fontSize": 48, "lineHeight": 1.2, "letterSpacing": 1, "align": "center",
-         "color": "#FFFFFF", "opacity": 1.0,
-         "stroke": {"color": "#000000", "width": 2},
-         "shadow": {"color": "#000000", "blur": 6, "offsetX": 0, "offsetY": 3, "opacity": 0.6},
-         "background": {"color": "#222244", "paddingX": 14, "paddingY": 8, "radius": 8, "opacity": 0.9},
-         "x": 100, "y": 80, "rotation": 15}
-    ]),
-    ("09_letter_spacing.png", (512, 256), "#3a3a3a", [
-        {"visible": True, "text": "WIDE TEXT", "font": "Oswald", "weight": 600, "italic": False,
+    ("06_letter_spacing.png", (512, 256), "#3a3a3a", [
+        {"text": "WIDE TEXT", "font": "Oswald", "weight": 600, "italic": False,
          "fontSize": 48, "lineHeight": 1.0, "letterSpacing": 12, "align": "center",
          "color": "#FFFFFF", "opacity": 1.0, "x": 60, "y": 90, "rotation": 0}
     ]),
-    ("10_handwriting_opacity.png", (512, 256), "#2a3a4a", [
-        {"visible": True, "text": "Soft", "font": "Caveat", "weight": 500, "italic": False,
+    ("07_handwriting_opacity.png", (512, 256), "#2a3a4a", [
+        {"text": "Soft", "font": "Caveat", "weight": 500, "italic": False,
          "fontSize": 80, "lineHeight": 1.0, "letterSpacing": 0, "align": "left",
          "color": "#FFFFFF", "opacity": 0.5, "x": 180, "y": 70, "rotation": -10}
+    ]),
+    ("08_bg_pill_multiline.png", (512, 320), "#1a1a1a", [
+        {"text": "Multi\nLine\nPill", "font": "Inter", "weight": 700, "italic": False,
+         "fontSize": 36, "lineHeight": 1.2, "letterSpacing": 0, "align": "center",
+         "color": "#FFFFFF", "opacity": 1.0, "bgColor": "#222244",
+         "x": 180, "y": 70, "rotation": 0}
+    ]),
+    ("09_right_align.png", (512, 256), "#3a2a1a", [
+        {"text": "Long line\nShort", "font": "Lora", "weight": 700, "italic": False,
+         "fontSize": 36, "lineHeight": 1.2, "letterSpacing": 0, "align": "right",
+         "color": "#FFFFFF", "opacity": 1.0, "x": 80, "y": 80, "rotation": 0}
+    ]),
+    ("10_monospace.png", (512, 256), "#1a1a1a", [
+        {"text": "code()", "font": "JetBrainsMono", "weight": 500, "italic": False,
+         "fontSize": 48, "lineHeight": 1.2, "letterSpacing": 2, "align": "left",
+         "color": "#00ff88", "opacity": 1.0, "x": 80, "y": 90, "rotation": 0}
     ]),
 ]
 
