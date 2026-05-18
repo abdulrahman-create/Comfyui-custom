@@ -1,42 +1,45 @@
-"""Prompt Picker Pixaroma - row-based prompt library with multiple independent outputs.
+"""Prompt Picker Pixaroma - row-based prompt library.
+
+Two outputs:
+- text (STRING): the active row's text. Use this for the simple "pick one
+  prompt from a library" case - wire straight into CLIP Text Encode.
+- prompts (PIXAROMA_PROMPT_LIST): a list of every row's text. Use this for
+  the "fan out to many slots" case - wire into one or more Prompt From List
+  Pixaroma nodes downstream, each picking its own index, so different parts
+  of the workflow get different prompts.
 
 Backend contract:
-- 1 hidden STRING input (PromptPickerState) carrying picks JSON.
-- MAX_OUTPUTS STRING outputs (text_1, text_2, ..., text_8).
-  Each output sends the text of whichever library row the user picked for
-  that output slot. Outputs not actively used by the workflow are unwired
-  and ignored.
+- 1 hidden STRING input (PromptPickerState) carrying { activeText, rowTexts }
+  as JSON. Injected at submission time by app.graphToPrompt (Vue Compat #9).
 
-All row state, ordering, and the per-output pick mapping live in JS
-(js/prompt_picker/index.js). Python sees only the resolved per-output text
-list via the hidden PromptPickerState payload, injected at submission time by
-app.graphToPrompt (see Vue Compat #9 in CLAUDE.md).
-
-Different from Prompt Multi: this node outputs N prompts in ONE workflow run
-(one per output slot), it does NOT loop / queue multiple runs.
+All row state, ordering, and the active-index selection live in JS
+(js/prompt_picker/index.js). Python sees only the resolved active text and
+the list of row texts via the hidden PromptPickerState payload.
 """
 import json
 
 
-MAX_OUTPUTS = 8
+# Custom type so only matching Prompt From List Pixaroma nodes (or anything
+# else that opts into this exact type string) can wire into our list output.
+PIXAROMA_PROMPT_LIST = "PIXAROMA_PROMPT_LIST"
 
 
 class PixaromaPromptPicker:
     DESCRIPTION = (
         "Prompt Picker Pixaroma - hold a library of labeled prompts on one "
-        "node and send different prompts to different parts of the workflow "
-        "by wiring multiple outputs.\n\n"
-        "Each row in the library is a labeled prompt. The Outputs section "
-        "below the library lists one entry per output slot; for each output, "
-        "pick which library row's text gets sent through it. Click + Add "
-        "output to add another output (up to 8). Wire each output to "
-        "wherever you need (scene 1, scene 2, character description, etc.).\n\n"
-        "Click + Add prompt to add a library row. Drag the handle on the "
-        "left to reorder. Clear text wipes all rows but keeps the row "
-        "structure. Reset goes back to one empty row and one output.\n\n"
-        "Use this when you want a single library of prompts feeding multiple "
-        "slots in one workflow. Unlike Prompt Multi, this does NOT queue "
-        "multiple runs; one Run produces one output per output slot."
+        "node. Two outputs let you use the library two different ways:\n\n"
+        "text: the active row's prompt as a plain string. Pick the active "
+        "row with the small number selector at the top. Wire this into a "
+        "CLIP Text Encode for the simple single-prompt case.\n\n"
+        "prompts: a list of every row's prompt. Wire this into one or more "
+        "Prompt From List Pixaroma nodes downstream; each of those is tiny "
+        "and just picks one row by number. Use this when you want different "
+        "parts of the same workflow (scene 1, scene 2, scene 3) to receive "
+        "different prompts from the same library, without piling many "
+        "output dots on this node.\n\n"
+        "Click + Add prompt to add a row. Drag the handle to reorder. "
+        "Clear text wipes all rows but keeps the row structure. Reset goes "
+        "back to one empty row."
     )
 
     @classmethod
@@ -46,8 +49,8 @@ class PixaromaPromptPicker:
             "hidden": {"PromptPickerState": ("STRING", {"default": "{}"})},
         }
 
-    RETURN_TYPES = ("STRING",) * MAX_OUTPUTS
-    RETURN_NAMES = tuple(f"text_{i + 1}" for i in range(MAX_OUTPUTS))
+    RETURN_TYPES = ("STRING", PIXAROMA_PROMPT_LIST)
+    RETURN_NAMES = ("text", "prompts")
     FUNCTION = "build"
     CATEGORY = "👑 Pixaroma"
 
@@ -64,20 +67,17 @@ class PixaromaPromptPicker:
             print("[Pixaroma] Prompt Picker: invalid PromptPickerState JSON, returning empty")
             state = {}
 
-        # The JS graphToPrompt hook bakes the resolved per-output texts into
-        # state["pickTexts"] at submit time, so the backend doesn't need to
-        # know the row contents at all. Fallback to empty strings for any
-        # unused output slots.
-        pick_texts = state.get("pickTexts")
-        if not isinstance(pick_texts, list):
-            pick_texts = []
-        result = []
-        for i in range(MAX_OUTPUTS):
-            if i < len(pick_texts) and isinstance(pick_texts[i], str):
-                result.append(pick_texts[i])
-            else:
-                result.append("")
-        return tuple(result)
+        active = state.get("activeText", "")
+        if not isinstance(active, str):
+            active = ""
+
+        rows = state.get("rowTexts")
+        if not isinstance(rows, list):
+            rows = []
+        # Normalize: every entry must be a string.
+        rows = [r if isinstance(r, str) else "" for r in rows]
+
+        return (active, rows)
 
 
 NODE_CLASS_MAPPINGS = {"PixaromaPromptPicker": PixaromaPromptPicker}

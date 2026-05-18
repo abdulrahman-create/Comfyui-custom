@@ -76,11 +76,23 @@ _PROMPT_STACK_CLASS = "PixaromaPromptStack"
 # produced THAT image, so recovery is a direct read of activePrompt.
 _PROMPT_MULTI_CLASS = "PixaromaPromptMulti"
 
-# Prompt Picker Pixaroma: holds a library of prompts and outputs the active
-# row via the hidden PromptPickerState STRING input as
-# {"version":1,"activeText":"..."}. Same recovery shape as Prompt Multi:
-# direct read of activeText.
+# Prompt Picker Pixaroma: holds a library of prompts; the hidden
+# PromptPickerState STRING input is
+# {"version":3, "activeText":"...", "rowTexts":[str,...]}. Two outputs:
+#   - "text" (slot 0): the active row's prompt -> read activeText
+#   - "prompts" (slot 1): the full list -> Prompt From List downstream picks
+#     one by index
+# When the walker comes back via slot 0, recovery is a direct read of
+# activeText. When it comes back via slot 1, the From List node holds the
+# specific index needed and is special-cased separately.
 _PROMPT_PICKER_CLASS = "PixaromaPromptPicker"
+_PROMPT_PICKER_TEXT_SLOT = 0
+_PROMPT_PICKER_LIST_SLOT = 1
+
+# Prompt From List Pixaroma: tiny picker that grabs one row from a Prompt
+# Picker's list output via an "index" widget. The walker chases its
+# `prompts` input back to the upstream Picker and indexes rowTexts.
+_PROMPT_FROM_LIST_CLASS = "PixaromaPromptFromList"
 
 _MAX_WALK_DEPTH = 24
 # Chase depth caps how many PixaromaPromptReader hops we follow when an image
@@ -208,22 +220,8 @@ def _pix_prompt_stack_extract(inputs: dict) -> Optional[str]:
     return sep.join(parts)
 
 
-def _pix_prompt_picker_extract(inputs: dict) -> Optional[str]:
-    """Read the resolved prompt texts from a PixaromaPromptPicker's saved state.
-
-    v2 schema (current): hidden PromptPickerState input is a JSON string of
-    shape { "version": 2, "pickTexts": [str, ...] }. Each entry is the text
-    that was sent through that output slot at submit time.
-
-    v1 schema (legacy, from the brief single-output era): { "version": 1,
-    "activeText": str }. Treated as a single-pick state.
-
-    When there is more than one pick text, they are joined with newlines so
-    the Prompt Reader readout shows all of them. The first non-empty pick is
-    listed first; empty picks are skipped to keep the output tidy.
-
-    Returns the joined text, or None when missing / malformed / empty.
-    """
+def _pix_prompt_picker_parse_state(inputs: dict) -> Optional[dict]:
+    """Parse the hidden PromptPickerState JSON. Returns the dict or None."""
     raw = inputs.get("PromptPickerState")
     if not isinstance(raw, str) or not raw:
         return None
@@ -231,22 +229,89 @@ def _pix_prompt_picker_extract(inputs: dict) -> Optional[str]:
         state = json.loads(raw)
     except (ValueError, TypeError):
         return None
-    if not isinstance(state, dict):
+    return state if isinstance(state, dict) else None
+
+
+def _pix_prompt_picker_active_text(inputs: dict) -> Optional[str]:
+    """Active row's text from a PixaromaPromptPicker.
+
+    Used when the walker reaches a Picker via its `text` output (slot 0).
+    Returns activeText, or falls back to legacy schemas:
+      v2 picked-array: returns the first non-empty entry from pickTexts
+      v1: returns activeText
+    """
+    state = _pix_prompt_picker_parse_state(inputs)
+    if not state:
         return None
 
-    pick_texts = state.get("pickTexts")
-    if isinstance(pick_texts, list):
-        parts = [p.strip() for p in pick_texts if isinstance(p, str) and p.strip()]
-        if not parts:
-            return None
-        return "\n\n".join(parts) if len(parts) > 1 else parts[0]
+    txt = state.get("activeText", "")
+    if isinstance(txt, str) and txt.strip():
+        return txt.strip()
 
-    # v1 legacy fallback.
-    legacy = state.get("activeText", "")
-    if isinstance(legacy, str):
-        legacy = legacy.strip()
-        return legacy or None
+    # v2 legacy: pickTexts array (the brief multi-output era).
+    pt = state.get("pickTexts")
+    if isinstance(pt, list):
+        for p in pt:
+            if isinstance(p, str) and p.strip():
+                return p.strip()
     return None
+
+
+def _pix_prompt_picker_row_at(inputs: dict, index_1based: int) -> Optional[str]:
+    """Return the prompt text at the given 1-based row index, or None.
+
+    Used by the From List walker to resolve which library row a downstream
+    From List node was pointing at when this image was generated.
+    """
+    state = _pix_prompt_picker_parse_state(inputs)
+    if not state:
+        return None
+    rows = state.get("rowTexts")
+    if not isinstance(rows, list):
+        return None
+    idx0 = int(index_1based) - 1
+    if idx0 < 0 or idx0 >= len(rows):
+        return None
+    item = rows[idx0]
+    if not isinstance(item, str):
+        return None
+    item = item.strip()
+    return item or None
+
+
+def _pix_prompt_from_list_resolve(node: dict, nodes: dict) -> Optional[str]:
+    """Resolve a PixaromaPromptFromList node to its picked text.
+
+    Reads the node's `index` widget value, follows the `prompts` input back
+    to an upstream PixaromaPromptPicker, and returns rowTexts[index-1].
+    Returns None when the upstream isn't a Picker, the index is missing /
+    out of range, or the resolved row is empty.
+
+    ComfyUI prompt JSON shape: widget values live in inputs (since they were
+    promoted to the inputs dict at submit time); link values are
+    [upstream_node_id, output_slot_idx] tuples.
+    """
+    inputs = node.get("inputs") or {}
+    if not isinstance(inputs, dict):
+        return None
+    idx = inputs.get("index", 1)
+    if not isinstance(idx, (int, float)):
+        try:
+            idx = int(idx)
+        except (TypeError, ValueError):
+            return None
+    idx = int(idx)
+    link = inputs.get("prompts")
+    if not (isinstance(link, list) and len(link) >= 1):
+        return None
+    upstream_id = link[0]
+    upstream = nodes.get(str(upstream_id))
+    if not isinstance(upstream, dict):
+        return None
+    if upstream.get("class_type") != _PROMPT_PICKER_CLASS:
+        # Some other node is feeding the list - we can't resolve it here.
+        return None
+    return _pix_prompt_picker_row_at(upstream.get("inputs") or {}, idx)
 
 
 def _pix_prompt_multi_extract(inputs: dict) -> Optional[str]:
@@ -372,11 +437,19 @@ def _walk_for_text(
             captured.append(text)
         return
 
-    # Prompt Picker Pixaroma: same shape as Prompt Multi - the active row's
-    # text is baked into the hidden PromptPickerState as
-    # {"activeText": "..."}. Read it directly.
+    # Prompt Picker Pixaroma: hit via its `text` output (the active row).
+    # Direct read of activeText from the hidden state.
     if cls == _PROMPT_PICKER_CLASS:
-        text = _pix_prompt_picker_extract(inputs)
+        text = _pix_prompt_picker_active_text(inputs)
+        if text:
+            captured.append(text)
+        return
+
+    # Prompt From List Pixaroma: a tiny picker that grabs one row from a
+    # Prompt Picker's `prompts` list output. Read its index widget, walk
+    # back to the upstream Picker, and resolve rowTexts[index-1].
+    if cls == _PROMPT_FROM_LIST_CLASS:
+        text = _pix_prompt_from_list_resolve(node, nodes)
         if text:
             captured.append(text)
         return
