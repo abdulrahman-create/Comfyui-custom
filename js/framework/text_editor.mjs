@@ -75,17 +75,30 @@ export function createTextEditorPanel({ mount, onChange }) {
   });
   weightRow.appendChild(ui.italicBtn);
 
-  // Align chips
+  // Align chips — icon buttons (uses shared assets/icons/ui/align-*.svg)
   label("ALIGN", root);
   const alignRow = el("div", "pix-te-row3"); root.appendChild(alignRow);
+  const ALIGN_ICONS = {
+    left:   "/pixaroma/assets/icons/ui/align-left.svg",
+    center: "/pixaroma/assets/icons/ui/align-center-h.svg",
+    right:  "/pixaroma/assets/icons/ui/align-right.svg",
+  };
   ui.alignChips = ["left", "center", "right"].map((a) => {
-    const b = el("button", "pix-te-btn pix-te-align"); b.dataset.align = a;
-    b.textContent = { left: "L", center: "C", right: "R" }[a];
+    const b = el("button", "pix-te-btn pix-te-align-icon"); b.dataset.align = a;
     b.title = `Align ${a}`;
+    const img = document.createElement("img");
+    img.src = ALIGN_ICONS[a];
+    img.style.cssText = "width:14px; height:14px; filter:invert(0.8); pointer-events:none;";
+    b.appendChild(img);
     b.addEventListener("click", () => {
       const l = layerNow(); if (!l) return;
       l.align = a;
-      ui.alignChips.forEach((c) => c.classList.toggle("active", c.dataset.align === a));
+      ui.alignChips.forEach((c) => {
+        const active = c.dataset.align === a;
+        c.classList.toggle("active", active);
+        const i = c.querySelector("img");
+        if (i) i.style.filter = active ? "invert(1)" : "invert(0.8)";
+      });
       fireChange();
     });
     alignRow.appendChild(b); return b;
@@ -271,8 +284,12 @@ export function createTextEditorPanel({ mount, onChange }) {
       ui.fontSelect.value = layer.font ?? "Inter";
       ui.weightSelect.value = String(layer.weight ?? 400);
       ui.italicBtn.classList.toggle("active", !!layer.italic);
-      ui.alignChips.forEach((c) =>
-        c.classList.toggle("active", c.dataset.align === (layer.align ?? "left")));
+      ui.alignChips.forEach((c) => {
+        const active = c.dataset.align === (layer.align ?? "left");
+        c.classList.toggle("active", active);
+        const i = c.querySelector("img");
+        if (i) i.style.filter = active ? "invert(1)" : "invert(0.8)";
+      });
       ui.sizeSlider.setValue(layer.fontSize ?? 36);
       ui.lineHeightSlider.setValue(layer.lineHeight ?? 1.2);
       ui.letterSpacingSlider.setValue(layer.letterSpacing ?? 0);
@@ -375,6 +392,7 @@ function injectCSS() {
     .pix-te-btn.active { background:#2a1f1a; color:${BRAND}; border-color:${BRAND}; }
     .pix-te-italic { font:italic 600 14px serif; }
     .pix-te-align { font:600 12px system-ui; }
+    .pix-te-align-icon { display:flex; align-items:center; justify-content:center; padding:6px 4px; }
     .pix-te-color-row { display:flex; gap:6px; align-items:center; }
     .pix-te-color-swatch { width:32px; height:32px; border-radius:4px; border:1px solid #444; cursor:pointer; flex:0 0 32px; background:#fff; }
     .pix-te-toggle { flex:1; background:#0d0d0d; color:#aaa; border:1px solid #333; padding:6px; font:11px system-ui; border-radius:4px; cursor:pointer; }

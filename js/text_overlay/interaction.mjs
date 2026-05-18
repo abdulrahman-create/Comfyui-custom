@@ -15,14 +15,17 @@ TextOverlayEditor.prototype._installInteractions = function () {
   this._onMouseUpBound = (e) => this._onCanvasMouseUp(e);
   this._onCanvasDblClickBound = (e) => this._onCanvasDblClick(e);
   this._onKeyDownBound = (e) => this._onKeyDown(e);
+  this._onWheelBound = (e) => this._onCanvasWheel(e);
 
   this.canvas.addEventListener("mousedown", this._onCanvasMouseDownBound);
   window.addEventListener("mousemove", this._onMouseMoveBound);
   window.addEventListener("mouseup", this._onMouseUpBound);
   this.canvas.addEventListener("dblclick", this._onCanvasDblClickBound);
-  // Listen on overlay so we get keys regardless of focus
   this.layout.overlay.addEventListener("keydown", this._onKeyDownBound);
-  // Tab the overlay so it can receive key events
+  // Wheel on the canvas HOST (not just the canvas) so the listener catches
+  // scrolls in the padding area too. passive:false because we always
+  // preventDefault to stop page scroll.
+  if (this.canvasHost) this.canvasHost.addEventListener("wheel", this._onWheelBound, { passive: false });
   this.layout.overlay.tabIndex = -1;
   this.layout.overlay.focus();
 };
@@ -33,6 +36,28 @@ TextOverlayEditor.prototype._uninstallInteractions = function () {
   window.removeEventListener("mouseup", this._onMouseUpBound);
   if (this.canvas) this.canvas.removeEventListener("dblclick", this._onCanvasDblClickBound);
   if (this.layout?.overlay) this.layout.overlay.removeEventListener("keydown", this._onKeyDownBound);
+  if (this.canvasHost && this._onWheelBound) this.canvasHost.removeEventListener("wheel", this._onWheelBound);
+};
+
+TextOverlayEditor.prototype._onCanvasWheel = function (e) {
+  e.preventDefault();
+  // Shift + wheel = resize the SELECTED layer's font size (±5 per tick,
+  // ±10 with Alt for finer / coarser stepping). Plain wheel = zoom canvas.
+  if (e.shiftKey) {
+    const layer = this.layers[this.selectedIndex];
+    if (!layer) return;
+    const step = e.altKey ? 10 : 5;
+    const dir = e.deltaY > 0 ? -1 : 1;
+    layer.fontSize = Math.max(8, Math.min(512, (layer.fontSize || 36) + dir * step));
+    this._snapshotMaybe();
+    this.textPanel.setLayer(layer);
+    this.requestRender();
+    return;
+  }
+  // Plain wheel: zoom by 1.1x per tick (in or out depending on direction).
+  // Multi-tick (touchpad pinch reports many small ticks) accumulates via factor.
+  const factor = Math.exp(-e.deltaY * 0.0015);
+  this.zoomBy(factor);
 };
 
 TextOverlayEditor.prototype._canvasCoords = function (e) {
@@ -63,6 +88,11 @@ TextOverlayEditor.prototype._layerBbox = function (layer) {
     w += 2 * (layer.background.paddingX || 12);
     h += 2 * (layer.background.paddingY || 8);
   }
+  // Account for scale (anisotropic + flip). Selection bbox must follow the
+  // FINAL visible size or the dashed outline detaches from the text.
+  const sX = Math.abs(layer.scaleX ?? 1);
+  const sY = Math.abs(layer.scaleY ?? 1);
+  w *= sX; h *= sY;
   return { x: layer.x, y: layer.y, w: Math.max(20, w), h: Math.max(20, h) };
 };
 

@@ -17,9 +17,19 @@ export async function renderTextLayer(ctx, layer) {
   if (!layer || layer.visible === false) return;
 
   const variant = await loadFontForLayer(layer.font, layer.weight || 400, !!layer.italic);
-  const fontStr = canvasFontString(variant, layer.fontSize);
-  const lineHeightPx = Math.round(layer.fontSize * (layer.lineHeight ?? 1.2));
-  const letterSpacing = layer.letterSpacing ?? 0;
+
+  // Effective scale: pick the larger axis as the rendering scale so the text
+  // is rendered at its native resolution (vector → sharp) on at least one axis.
+  // Anisotropic stretching is then a post-render scale applied to the smaller
+  // axis only. Cap at >= 1 so DOWNSCALING isn't done at render time (rasters
+  // downscale fine — we use post-scale for those instead).
+  const absX = Math.abs(layer.scaleX ?? 1);
+  const absY = Math.abs(layer.scaleY ?? 1);
+  const renderScale = Math.max(1, absX, absY);
+  const effFontSize = layer.fontSize * renderScale;
+  const fontStr = canvasFontString(variant, effFontSize);
+  const lineHeightPx = Math.round(effFontSize * (layer.lineHeight ?? 1.2));
+  const letterSpacing = (layer.letterSpacing ?? 0) * renderScale;
   const lines = String(layer.text ?? "").split("\n");
 
   // Measure each line
@@ -29,8 +39,9 @@ export async function renderTextLayer(ctx, layer) {
   const maxLineW = Math.max(0, ...lineWidths);
   let bboxW = maxLineW;
   let bboxH = lineHeightPx * lines.length;
-  const padX = layer.background ? (layer.background.paddingX ?? 12) : 0;
-  const padY = layer.background ? (layer.background.paddingY ?? 8) : 0;
+  // Background pill padding scales with renderScale so the pill stays proportional
+  const padX = layer.background ? (layer.background.paddingX ?? 12) * renderScale : 0;
+  const padY = layer.background ? (layer.background.paddingY ?? 8) * renderScale : 0;
   bboxW += 2 * padX;
   bboxH += 2 * padY;
 
@@ -50,9 +61,9 @@ export async function renderTextLayer(ctx, layer) {
     sctx.setTransform(1, 0, -Math.tan((12 * Math.PI) / 180), 1, 0, 0);
   }
 
-  // 1. Background pill
+  // 1. Background pill (radius scaled by renderScale to stay proportional)
   if (layer.background) {
-    const r = Math.min(layer.background.radius ?? 6, bboxW / 2, bboxH / 2);
+    const r = Math.min((layer.background.radius ?? 6) * renderScale, bboxW / 2, bboxH / 2);
     sctx.save();
     sctx.fillStyle = withAlpha(layer.background.color, layer.background.opacity ?? 1);
     roundRect(sctx, 0, 0, bboxW, bboxH, r);
@@ -60,7 +71,8 @@ export async function renderTextLayer(ctx, layer) {
     sctx.restore();
   }
 
-  // 2. Shadow (rendered to a 3rd canvas so it can be blurred without affecting fill)
+  // 2. Shadow (rendered to a 3rd canvas so it can be blurred without affecting fill).
+  // All px-values (offset, blur) scaled by renderScale.
   if (layer.shadow) {
     const shadowCanvas = document.createElement("canvas");
     shadowCanvas.width = scratch.width;
@@ -69,25 +81,27 @@ export async function renderTextLayer(ctx, layer) {
     shctx.font = fontStr;
     shctx.textBaseline = "alphabetic";
     shctx.fillStyle = layer.shadow.color;
+    const shOffX = (layer.shadow.offsetX ?? 0) * renderScale;
+    const shOffY = (layer.shadow.offsetY ?? 0) * renderScale;
     for (let i = 0; i < lines.length; i++) {
-      const lx = lineOriginX(layer.align, padX, maxLineW, lineWidths[i]) + (layer.shadow.offsetX ?? 0);
-      const ly = padY + ascender + i * lineHeightPx + (layer.shadow.offsetY ?? 0);
+      const lx = lineOriginX(layer.align, padX, maxLineW, lineWidths[i]) + shOffX;
+      const ly = padY + ascender + i * lineHeightPx + shOffY;
       drawLine(shctx, lines[i], lx, ly, letterSpacing, /*stroke=*/ false);
     }
     sctx.save();
-    sctx.filter = `blur(${layer.shadow.blur ?? 8}px)`;
+    sctx.filter = `blur(${(layer.shadow.blur ?? 8) * renderScale}px)`;
     sctx.globalAlpha = layer.shadow.opacity ?? 1;
     sctx.drawImage(shadowCanvas, 0, 0);
     sctx.restore();
   }
 
-  // 3. Stroke
+  // 3. Stroke (width scaled by renderScale)
   if (layer.stroke) {
     sctx.save();
     sctx.font = fontStr;
     sctx.textBaseline = "alphabetic";
     sctx.strokeStyle = layer.stroke.color;
-    sctx.lineWidth = layer.stroke.width;
+    sctx.lineWidth = layer.stroke.width * renderScale;
     sctx.lineJoin = "round";
     for (let i = 0; i < lines.length; i++) {
       const lx = lineOriginX(layer.align, padX, maxLineW, lineWidths[i]);
@@ -109,28 +123,27 @@ export async function renderTextLayer(ctx, layer) {
   }
   sctx.restore();
 
-  // Final composite onto target ctx with scale + flip + blur + rotation + opacity + blend
-  const scaleX = (layer.scaleX ?? 1) * (layer.flippedX ? -1 : 1);
-  const scaleY = (layer.scaleY ?? 1) * (layer.flippedY ? -1 : 1);
-  const scaledW = bboxW * Math.abs(scaleX);
-  const scaledH = bboxH * Math.abs(scaleY);
+  // Final composite. The scratch is already rendered at renderScale; we only
+  // post-scale by (scaleX/renderScale, scaleY/renderScale) which is (1,1) for
+  // uniform scale (sharp), or anisotropic for stretch (Y axis blurs when
+  // scaleY < scaleX, X axis blurs when scaleX < scaleY — accepted because
+  // stretching a typeface is inherently a distortion).
+  const sX = (layer.scaleX ?? 1) / renderScale * (layer.flippedX ? -1 : 1);
+  const sY = (layer.scaleY ?? 1) / renderScale * (layer.flippedY ? -1 : 1);
+  const scaledW = bboxW * Math.abs(sX);
+  const scaledH = bboxH * Math.abs(sY);
 
   ctx.save();
-  // Blend mode (per math doc §12)
   if (layer.blendMode && layer.blendMode !== "Normal") {
     const op = blendModeToComposite(layer.blendMode);
     if (op) ctx.globalCompositeOperation = op;
   }
-  // Blur via canvas filter (matches PIL GaussianBlur, same as shadow blur path)
   if (layer.blur && layer.blur > 0) {
     ctx.filter = `blur(${layer.blur}px)`;
   }
-  // Translate to center of the FINAL scaled bbox
   ctx.translate(layer.x + scaledW / 2, layer.y + scaledH / 2);
   if (layer.rotation) ctx.rotate((layer.rotation * Math.PI) / 180);
-  // Apply scale + flip
-  ctx.scale(scaleX, scaleY);
-  // Now origin is the center of the UN-scaled scratch. Shift to its top-left.
+  ctx.scale(sX, sY);
   ctx.translate(-bboxW / 2, -bboxH / 2);
   ctx.globalAlpha = layer.opacity ?? 1;
   ctx.drawImage(scratch, 0, 0);

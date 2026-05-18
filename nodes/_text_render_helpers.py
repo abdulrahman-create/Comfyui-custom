@@ -177,15 +177,26 @@ def render_text_layer(base_img, layer):
     sh = layer.get("shadow") or None
     st = layer.get("stroke") or None
 
-    pil_font, synthesized_italic = load_pil_font(font_id, weight, italic, font_size)
+    # Effective scale: render at the LARGER axis's scale so text stays sharp
+    # on at least one axis. Anisotropic stretch is a post-resize on the other
+    # axis. Cap at >= 1 — downscale is sharp via resize.
+    abs_x = abs(float(layer.get("scaleX", 1.0)))
+    abs_y = abs(float(layer.get("scaleY", 1.0)))
+    render_scale = max(1.0, abs_x, abs_y)
+    eff_font_size = font_size * render_scale
+    eff_letter_spacing = letter_spacing * render_scale
+
+    pil_font, synthesized_italic = load_pil_font(font_id, weight, italic, eff_font_size)
 
     lines = text.split("\n")
-    line_widths = [_measure_line(pil_font, ln, letter_spacing) for ln in lines]
+    line_widths = [_measure_line(pil_font, ln, eff_letter_spacing) for ln in lines]
     max_line_w = max(line_widths) if line_widths else 0
-    line_height_px = round(font_size * line_height_mult)
-
-    pad_x = bg.get("paddingX", 12) if bg else 0
-    pad_y = bg.get("paddingY", 8) if bg else 0
+    line_height_px = round(eff_font_size * line_height_mult)
+    # Update letter_spacing variable for the rest of the function (used by _draw_line)
+    letter_spacing = eff_letter_spacing
+    # Background padding also scales with renderScale so the pill stays proportional
+    pad_x = (bg.get("paddingX", 12) * render_scale) if bg else 0
+    pad_y = (bg.get("paddingY", 8) * render_scale) if bg else 0
     bbox_w = int(round(max_line_w + 2 * pad_x))
     bbox_h = int(round(line_height_px * len(lines) + 2 * pad_y))
     bbox_w = max(1, bbox_w)
@@ -202,30 +213,35 @@ def render_text_layer(base_img, layer):
         bg_color_rgba = _hex_to_rgb(bg.get("color", "#000000")) + (
             int(round(255 * float(bg.get("opacity", 1)))),
         )
-        r = min(int(bg.get("radius", 6)), bbox_w // 2, bbox_h // 2)
+        # radius scaled by render_scale (same as pad) so it stays proportional
+        r = min(int(bg.get("radius", 6) * render_scale), bbox_w // 2, bbox_h // 2)
         _round_rect(draw, 0, 0, bbox_w - 1, bbox_h - 1, r, bg_color_rgba)
 
-    # 2. Shadow (separate image, blur + composite)
+    # 2. Shadow (separate image, blur + composite) — all px-values scaled by
+    # render_scale so the FINAL composited shadow has the user-set pixel sizes
+    # after post-scale ratio reduces back down.
     if sh:
         shadow_img = Image.new("RGBA", (bbox_w, bbox_h), (0, 0, 0, 0))
         sdraw = ImageDraw.Draw(shadow_img)
         sh_color = _hex_to_rgb(sh.get("color", "#000000")) + (
             int(round(255 * float(sh.get("opacity", 1)))),
         )
+        sh_off_x = float(sh.get("offsetX", 0)) * render_scale
+        sh_off_y = float(sh.get("offsetY", 0)) * render_scale
         for i, ln in enumerate(lines):
-            lx = _line_origin_x(align, pad_x, max_line_w, line_widths[i]) + float(sh.get("offsetX", 0))
-            ly = pad_y + ascender + i * line_height_px + float(sh.get("offsetY", 0))
+            lx = _line_origin_x(align, pad_x, max_line_w, line_widths[i]) + sh_off_x
+            ly = pad_y + ascender + i * line_height_px + sh_off_y
             _draw_line(sdraw, pil_font, ln, lx, ly, letter_spacing, sh_color)
-        blur_r = float(sh.get("blur", 8))
+        blur_r = float(sh.get("blur", 8)) * render_scale
         if blur_r > 0:
             shadow_img = shadow_img.filter(ImageFilter.GaussianBlur(radius=blur_r))
         layer_img = Image.alpha_composite(layer_img, shadow_img)
         draw = ImageDraw.Draw(layer_img)
 
-    # 3. Stroke
+    # 3. Stroke (width scaled by render_scale)
     if st:
         st_color = _hex_to_rgb(st.get("color", "#000000")) + (255,)
-        sw = int(round(st.get("width", 2)))
+        sw = int(round(st.get("width", 2) * render_scale))
         for i, ln in enumerate(lines):
             lx = _line_origin_x(align, pad_x, max_line_w, line_widths[i])
             ly = pad_y + ascender + i * line_height_px
@@ -255,12 +271,17 @@ def render_text_layer(base_img, layer):
         alpha = alpha.point(lambda a: int(a * opacity))
         layer_img.putalpha(alpha)
 
-    # Scale (independent X/Y stretch)
+    # Post-scale: the layer was rendered at render_scale (max axis), apply the
+    # leftover ratio so each axis ends at its target absolute scale. For uniform
+    # scale this is (1, 1) → no resize → sharp. For anisotropic stretch only
+    # the smaller axis gets resized.
     scale_x = float(layer.get("scaleX", 1.0))
     scale_y = float(layer.get("scaleY", 1.0))
-    if scale_x != 1.0 or scale_y != 1.0:
-        new_w = max(1, int(round(layer_img.size[0] * scale_x)))
-        new_h = max(1, int(round(layer_img.size[1] * scale_y)))
+    post_x = abs(scale_x) / render_scale
+    post_y = abs(scale_y) / render_scale
+    if post_x != 1.0 or post_y != 1.0:
+        new_w = max(1, int(round(layer_img.size[0] * post_x)))
+        new_h = max(1, int(round(layer_img.size[1] * post_y)))
         layer_img = layer_img.resize((new_w, new_h), resample=Image.BICUBIC)
 
     # Flip
