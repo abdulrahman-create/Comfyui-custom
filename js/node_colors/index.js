@@ -135,11 +135,17 @@ function injectCSS() {
   overflow: hidden;
   transition: background 0.08s linear;
 }
+/* Preview matches LiteGraph's UNSELECTED node rendering: title text in
+   dim gray (#999, the NODE_TITLE_COLOR default), regular weight, no
+   bright-white overlay. When the user selects the actual node in the
+   workflow the text flips white, but the saved workflow JSON only
+   carries the base color, so the unselected look is what most viewers
+   see most of the time. */
 .pix-nc-preview-titlebar {
   padding: 6px 10px;
-  font: 12px system-ui, sans-serif;
-  font-weight: 500;
-  color: rgba(255,255,255,0.92);
+  font: 12px Tahoma, system-ui, sans-serif;
+  font-weight: 400;
+  color: #999;
   transition: background 0.08s linear;
 }
 .pix-nc-preview-body {
@@ -147,8 +153,8 @@ function injectCSS() {
   transition: background 0.08s linear;
 }
 .pix-nc-preview-row {
-  font: 11px system-ui, sans-serif;
-  color: rgba(255,255,255,0.6);
+  font: 11px Tahoma, system-ui, sans-serif;
+  color: rgba(255,255,255,0.5);
   padding: 2px 0;
   display: flex; align-items: center; gap: 6px;
 }
