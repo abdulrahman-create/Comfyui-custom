@@ -227,6 +227,9 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 > 💡 **After updating Pixaroma:** hard-refresh your ComfyUI browser tab with **Ctrl+Shift+R** (or **Cmd+Shift+R** on Mac). The browser keeps old node visuals cached, and without a hard refresh you may still see the previous version of a node even though the update installed correctly.
 
+### **May 19, 2026 (1.3.46)**
+- **Align Pixaroma: now lines up cleanly with Labels and Notes.** Label Pixaroma and Note Pixaroma do not have a title bar above their body, but Align was assuming every node did. So trying to align a Label or Note next to another node snapped you 30 pixels off from where you actually wanted to land. Now Align knows that no-title-bar nodes have no chrome above them, so Labels and Notes snap to their real top and bottom edges, and regular nodes snap to a Label's real edges. Aligning a Label header above a node, or putting a Note caption flush against the top of a workflow, finally works the way it looks.
+
 ### **May 19, 2026 (1.3.45)**
 - **Label Pixaroma and Note Pixaroma: no more timing badge on Run.** When you click Run, ComfyUI normally paints a small "X.Xs" badge above each node showing how long it took to execute. On real nodes that is useful (you can spot slow steps), but on Pixaroma Label and Note (which are pure annotations: styled text headers and rich-text documentation, no actual work to do) the badge looked weird floating above your titles and notes. Both nodes now skip ComfyUI's execution graph entirely, so they render exactly the same on the canvas but no longer count as executed nodes, so no badge.
 
