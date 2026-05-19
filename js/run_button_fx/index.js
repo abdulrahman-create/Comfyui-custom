@@ -5,7 +5,8 @@ const FX_OPTIONS = [
   "Pixaroma Orange",
   "Ignition",
   "Sparkle",
-  "Lightning",
+  "Thor",
+  "Flash",
   "Rocket",
 ];
 
@@ -88,21 +89,32 @@ function injectCSS() {
       100% { transform: translate(var(--dx), var(--dy)) scale(0); opacity: 0; }
     }
 
-    .pix-rb-fx-lightning {
+    .pix-rb-fx-bolts {
       position: fixed;
       pointer-events: none;
       z-index: 99999;
       overflow: visible;
     }
-    .pix-rb-fx-lightning polyline {
+    .pix-rb-fx-bolts polyline {
       fill: none;
-      stroke: #ffffff;
+      stroke: var(--bolt-color, #ffffff);
       stroke-width: 2;
       stroke-linecap: round;
       stroke-linejoin: round;
-      filter: drop-shadow(0 0 3px #aaccff) drop-shadow(0 0 8px #4488ff);
+      filter: drop-shadow(0 0 3px var(--bolt-glow-1, #aaccff))
+              drop-shadow(0 0 8px var(--bolt-glow-2, #4488ff));
       opacity: 0;
       animation: pix-rb-bolt-anim 380ms ease-out forwards;
+    }
+    .pix-rb-fx-bolts.is-thor {
+      --bolt-color: #ffffff;
+      --bolt-glow-1: #aaccff;
+      --bolt-glow-2: #4488ff;
+    }
+    .pix-rb-fx-bolts.is-flash {
+      --bolt-color: #fff6c8;
+      --bolt-glow-1: #ffb633;
+      --bolt-glow-2: #f66744;
     }
     @keyframes pix-rb-bolt-anim {
       0%   { opacity: 0; stroke-width: 4; }
@@ -222,12 +234,12 @@ function pointsToAttr(pts) {
   return pts.map((p) => p[0].toFixed(1) + "," + p[1].toFixed(1)).join(" ");
 }
 
-function spawnLightning(button) {
+function spawnBolts(button, variant) {
   const r = button.getBoundingClientRect();
-  const pad = 100;
+  const pad = 75;
   const svgNS = "http://www.w3.org/2000/svg";
   const svg = document.createElementNS(svgNS, "svg");
-  svg.classList.add("pix-rb-fx-lightning");
+  svg.classList.add("pix-rb-fx-bolts", "is-" + variant);
   svg.style.left = (r.left - pad) + "px";
   svg.style.top = (r.top - pad) + "px";
   const W = r.width + pad * 2;
@@ -242,32 +254,49 @@ function spawnLightning(button) {
   const boltCount = 5 + Math.floor(Math.random() * 2);
   for (let i = 0; i < boltCount; i++) {
     const angle = (Math.PI * 2 * i) / boltCount + (Math.random() - 0.5) * 0.7;
-    const length = 65 + Math.random() * 55;
+    const length = 42 + Math.random() * 32;
     const ex = cx + Math.cos(angle) * length;
     const ey = cy + Math.sin(angle) * length;
-    const main = jaggedBoltPoints(cx, cy, ex, ey, 7, 11);
+    const main = jaggedBoltPoints(cx, cy, ex, ey, 6, 8);
     const poly = document.createElementNS(svgNS, "polyline");
     poly.setAttribute("points", pointsToAttr(main));
-    poly.style.animationDelay = (i * 25) + "ms";
+    poly.style.animationDelay = (i * 22) + "ms";
     svg.appendChild(poly);
 
-    if (Math.random() > 0.35) {
+    if (Math.random() > 0.4) {
       const split = Math.floor(main.length * (0.35 + Math.random() * 0.35));
       const bx = main[split][0];
       const by = main[split][1];
       const bAngle = angle + (Math.random() - 0.5) * 1.4;
-      const bLen = 22 + Math.random() * 28;
+      const bLen = 16 + Math.random() * 18;
       const branch = jaggedBoltPoints(
         bx, by,
         bx + Math.cos(bAngle) * bLen,
         by + Math.sin(bAngle) * bLen,
-        4, 8,
+        4, 6,
       );
       const bPoly = document.createElementNS(svgNS, "polyline");
       bPoly.setAttribute("points", pointsToAttr(branch));
-      bPoly.style.animationDelay = (i * 25 + 50) + "ms";
-      bPoly.style.strokeWidth = "1.4";
+      bPoly.style.animationDelay = (i * 22 + 40) + "ms";
+      bPoly.style.strokeWidth = "1.3";
       svg.appendChild(bPoly);
+    }
+
+    const endForkCount = 2 + Math.floor(Math.random() * 2);
+    for (let j = 0; j < endForkCount; j++) {
+      const fAngle = angle + (Math.random() - 0.5) * 1.6;
+      const fLen = 6 + Math.random() * 10;
+      const fEnd = jaggedBoltPoints(
+        ex, ey,
+        ex + Math.cos(fAngle) * fLen,
+        ey + Math.sin(fAngle) * fLen,
+        3, 3,
+      );
+      const fPoly = document.createElementNS(svgNS, "polyline");
+      fPoly.setAttribute("points", pointsToAttr(fEnd));
+      fPoly.style.animationDelay = (i * 22 + 20) + "ms";
+      fPoly.style.strokeWidth = "1.1";
+      svg.appendChild(fPoly);
     }
   }
 
@@ -312,8 +341,8 @@ function attachIgnition(button) {
   return () => button.removeEventListener("click", handler);
 }
 
-function attachLightning(button) {
-  const handler = () => spawnLightning(button);
+function attachBolts(button, variant) {
+  const handler = () => spawnBolts(button, variant);
   button.addEventListener("click", handler);
   return () => button.removeEventListener("click", handler);
 }
@@ -367,9 +396,13 @@ function applyFx(button, fx) {
       button.classList.add("pix-rb-orange");
       cleanupCurrent = attachSparkle(button);
       break;
-    case "Lightning":
+    case "Thor":
       button.classList.add("pix-rb-orange");
-      cleanupCurrent = attachLightning(button);
+      cleanupCurrent = attachBolts(button, "thor");
+      break;
+    case "Flash":
+      button.classList.add("pix-rb-orange");
+      cleanupCurrent = attachBolts(button, "flash");
       break;
     case "Rocket":
       button.classList.add("pix-rb-orange");
