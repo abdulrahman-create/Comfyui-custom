@@ -24,14 +24,44 @@ import torch
 import folder_paths
 from PIL import Image
 
-import comfy.bg_removal_model
-import comfy.model_management
-import comfy.model_patcher
-import comfy.ops
-import comfy.utils
+# comfy.bg_removal_model was added to ComfyUI core in a recent build.
+# Older installs (notably ComfyUI portable releases prior to mid-2026)
+# don't have it. From Pixaroma 1.3.31 onward this module is imported
+# by server_routes.py, node_composition.py and node_remove_background.py
+# - all reached by __init__.py at plugin import - so a single missing
+# core module would crash the ENTIRE plugin (no Pixaroma nodes at all)
+# instead of just disabling BG removal. See GitHub issue #37 for the
+# original report.
+#
+# Fix: detect availability up front and degrade gracefully.
+# - Other Pixaroma nodes load and work normally.
+# - Standalone Remove Background node shows a clear "update ComfyUI"
+#   message instead of crashing.
+# - Composer / Paint AI Remove BG: rembg models still work; BiRefNet
+#   variants surface as unavailable via the biRefNetSupported flag in
+#   get_birefnet_inventory.
+try:
+    import comfy.bg_removal_model
+    import comfy.model_management
+    import comfy.model_patcher
+    import comfy.ops
+    import comfy.utils
+    _BIREFNET_AVAILABLE = True
+    _BIREFNET_IMPORT_ERROR = None
+except ImportError as _import_err:
+    _BIREFNET_AVAILABLE = False
+    _BIREFNET_IMPORT_ERROR = str(_import_err)
+    logging.warning(
+        "Pixaroma: BiRefNet background removal disabled - your ComfyUI is "
+        "missing a required core module (%s). Update ComfyUI (Manager or "
+        "git pull) to enable BiRefNet. All other Pixaroma nodes continue "
+        "to work normally.",
+        _import_err,
+    )
 
 
 SENTINEL_NO_MODELS = "(no models - see Info tab)"
+SENTINEL_NEED_COMFY_UPDATE = "(update ComfyUI to enable BiRefNet)"
 _DEFAULT_MODEL_NAME = "birefnet.safetensors"
 _BIREFNET_MARKER = "bb.layers.1.blocks.0.attn.relative_position_index"
 _HR_RE = re.compile(r"(?<![a-z])hr(?![a-z])", re.IGNORECASE)
@@ -103,47 +133,68 @@ def _resolution_for_filename(name):
     return 1024
 
 
-class _PixaromaBgModel(comfy.bg_removal_model.BackgroundRemovalModel):
-    """BackgroundRemovalModel that accepts a config dict instead of a json
-    file path, so we can pass a custom image_size without writing a temp
-    json. Mirrors the parent body line-for-line except for the dict-vs-file
-    config source.
+# Class definition gated: subclasses comfy.bg_removal_model so it can
+# only exist when that module imported successfully. On older ComfyUI
+# this is None and every function that would build one (_load_bg_model,
+# _get_cached_model, run_birefnet_on_pil) raises via _need_birefnet().
+if _BIREFNET_AVAILABLE:
+    class _PixaromaBgModel(comfy.bg_removal_model.BackgroundRemovalModel):
+        """BackgroundRemovalModel that accepts a config dict instead of a json
+        file path, so we can pass a custom image_size without writing a temp
+        json. Mirrors the parent body line-for-line except for the dict-vs-file
+        config source.
 
-    force_cpu=True pins the model to CPU at fp32 (used as the last-ditch
-    fallback when GPU OOMs at every retry resolution)."""
+        force_cpu=True pins the model to CPU at fp32 (used as the last-ditch
+        fallback when GPU OOMs at every retry resolution)."""
 
-    def __init__(self, config, force_cpu=False):
-        self.image_size = config.get("image_size", 1024)
-        self.image_mean = config.get("image_mean", [0.0, 0.0, 0.0])
-        self.image_std = config.get("image_std", [1.0, 1.0, 1.0])
-        self.model_type = config.get("model_type", "birefnet")
-        self.config = config.copy()
+        def __init__(self, config, force_cpu=False):
+            self.image_size = config.get("image_size", 1024)
+            self.image_mean = config.get("image_mean", [0.0, 0.0, 0.0])
+            self.image_std = config.get("image_std", [1.0, 1.0, 1.0])
+            self.model_type = config.get("model_type", "birefnet")
+            self.config = config.copy()
 
-        model_class = comfy.bg_removal_model.BG_REMOVAL_MODELS.get(self.model_type)
-        if model_class is None:
-            raise ValueError(
-                f"Remove Background Pixaroma: unknown model_type {self.model_type!r}. "
-                "This node currently only supports 'birefnet'."
+            model_class = comfy.bg_removal_model.BG_REMOVAL_MODELS.get(self.model_type)
+            if model_class is None:
+                raise ValueError(
+                    f"Remove Background Pixaroma: unknown model_type {self.model_type!r}. "
+                    "This node currently only supports 'birefnet'."
+                )
+
+            if force_cpu:
+                cpu = torch.device("cpu")
+                self.load_device = cpu
+                offload_device = cpu
+                # CPU runs everything in fp32 — fp16 on CPU is slower than fp32
+                # in PyTorch and risks silent precision loss in BiRefNet's ops.
+                self.dtype = torch.float32
+            else:
+                self.load_device = comfy.model_management.text_encoder_device()
+                offload_device = comfy.model_management.text_encoder_offload_device()
+                self.dtype = comfy.model_management.text_encoder_dtype(self.load_device)
+            self.model = model_class(config, self.dtype, offload_device, comfy.ops.manual_cast)
+            self.model.eval()
+
+            self.patcher = comfy.model_patcher.CoreModelPatcher(
+                self.model,
+                load_device=self.load_device,
+                offload_device=offload_device,
             )
+else:
+    _PixaromaBgModel = None
 
-        if force_cpu:
-            cpu = torch.device("cpu")
-            self.load_device = cpu
-            offload_device = cpu
-            # CPU runs everything in fp32 — fp16 on CPU is slower than fp32
-            # in PyTorch and risks silent precision loss in BiRefNet's ops.
-            self.dtype = torch.float32
-        else:
-            self.load_device = comfy.model_management.text_encoder_device()
-            offload_device = comfy.model_management.text_encoder_offload_device()
-            self.dtype = comfy.model_management.text_encoder_dtype(self.load_device)
-        self.model = model_class(config, self.dtype, offload_device, comfy.ops.manual_cast)
-        self.model.eval()
 
-        self.patcher = comfy.model_patcher.CoreModelPatcher(
-            self.model,
-            load_device=self.load_device,
-            offload_device=offload_device,
+def _need_birefnet():
+    """Raise a clear user-facing error when BiRefNet support is unavailable.
+    Called at the top of every function that would touch comfy.bg_removal_model
+    or _PixaromaBgModel. The plugin still loads on old ComfyUI - users only
+    see this if they try to USE BG removal."""
+    if not _BIREFNET_AVAILABLE:
+        raise RuntimeError(
+            "BiRefNet background removal requires a newer ComfyUI. Update "
+            "ComfyUI via Manager or 'git pull' inside the ComfyUI folder, "
+            "then restart. All other Pixaroma nodes continue to work. "
+            f"(Missing core module: {_BIREFNET_IMPORT_ERROR})"
         )
 
 
@@ -151,6 +202,7 @@ def _load_bg_model(ckpt_path, image_size, force_cpu=False):
     """Load a BiRefNet safetensors at the requested input resolution.
     Optionally force CPU device (used as last-ditch fallback on GPU OOM).
     Refuses non-BiRefNet or non-Swin-L weights with a clear message."""
+    _need_birefnet()
     sd = comfy.utils.load_torch_file(ckpt_path)
     if _BIREFNET_MARKER not in sd:
         raise ValueError(
@@ -271,6 +323,12 @@ def _list_models():
     """Return the list of model filenames the dropdown should show.
     Sentinel item when the folder is empty so the dropdown is never blank.
     Pins `birefnet.safetensors` to position 0 so it becomes the default."""
+    # On old ComfyUI the BiRefNet machinery cannot run at all - even if
+    # the user has the .safetensors on disk, loading would crash. Show
+    # a clear sentinel in the dropdown so they get a useful error
+    # message instead of a confusing crash trace.
+    if not _BIREFNET_AVAILABLE:
+        return [SENTINEL_NEED_COMFY_UPDATE]
     try:
         names = folder_paths.get_filename_list("background_removal")
     except Exception:
@@ -320,7 +378,15 @@ def get_birefnet_inventory():
             found = None
         entry["installed"] = bool(found and os.path.isfile(found))
         out.append(entry)
-    return {"modelDir": model_dir, "variants": out}
+    return {
+        "modelDir": model_dir,
+        "variants": out,
+        # Frontend can use this to hide BiRefNet entries when the user's
+        # ComfyUI is too old, and surface a "Please update ComfyUI" hint
+        # in the Composer / Paint AI Remove BG dropdown.
+        "biRefNetSupported": _BIREFNET_AVAILABLE,
+        "biRefNetUnavailableReason": _BIREFNET_IMPORT_ERROR if not _BIREFNET_AVAILABLE else None,
+    }
 
 
 def run_birefnet_on_pil(pil_image, model_id):
@@ -340,6 +406,7 @@ def run_birefnet_on_pil(pil_image, model_id):
     not a known BiRefNet variant. Raises RuntimeError if every retry
     path (GPU at all resolutions + CPU) failed.
     """
+    _need_birefnet()
     if model_id not in _BIREFNET_IDS:
         raise ValueError(
             f"run_birefnet_on_pil: unknown BiRefNet model id {model_id!r}."
