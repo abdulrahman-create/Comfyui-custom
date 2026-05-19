@@ -14,6 +14,7 @@ import folder_paths
 
 from ._bg_removal_helpers import (
     SENTINEL_NO_MODELS,
+    SENTINEL_NEED_COMFY_UPDATE,
     _INSTALL_MESSAGE,
     _get_cached_model,
     _list_models,
@@ -52,6 +53,15 @@ class PixaromaRemoveBackground:
     )
 
     def execute(self, image, model):
+        if model == SENTINEL_NEED_COMFY_UPDATE:
+            raise ValueError(
+                "Remove Background Pixaroma: your ComfyUI is missing the "
+                "comfy.bg_removal_model core module. Update ComfyUI via "
+                "Manager or 'git pull' inside the ComfyUI folder, then "
+                "restart. All other Pixaroma nodes work normally even on "
+                "this older ComfyUI - only BiRefNet background removal "
+                "needs the newer core."
+            )
         if model == SENTINEL_NO_MODELS:
             raise ValueError(_INSTALL_MESSAGE)
 
