@@ -59,8 +59,8 @@ const CSS = `
   min-width: 32px;
   height: 18px;
   border-radius: 9px;
-  background: #2a2a2a;
-  border: 1px solid #3a3a3a;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.15);
   cursor: pointer;
   flex-shrink: 0;
   display: inline-flex;
@@ -68,15 +68,16 @@ const CSS = `
   justify-content: center;
   font-size: 9px;
   font-weight: 600;
-  color: #888;
+  color: rgba(255, 255, 255, 0.65);
   letter-spacing: 0.5px;
   padding: 0 6px;
   transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
   user-select: none;
 }
 .pix-ps-toggle:hover {
-  border-color: #555;
-  color: #ccc;
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.35);
+  color: #fff;
 }
 .pix-ps-toggle.on {
   background: #f66744;
@@ -90,8 +91,8 @@ const CSS = `
 
 .pix-ps-label {
   flex: 1;
-  background: #1a1a1a;
-  border: 1px solid #2e2e2e;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 3px;
   color: #ddd;
   font-size: 11px;
@@ -100,7 +101,7 @@ const CSS = `
   min-width: 0;
 }
 .pix-ps-label:focus { border-color: #f66744; }
-.pix-ps-label::placeholder { color: #666; font-style: italic; }
+.pix-ps-label::placeholder { color: rgba(255, 255, 255, 0.4); font-style: italic; }
 
 .pix-ps-delete {
   width: 18px;
@@ -118,18 +119,20 @@ const CSS = `
 .pix-ps-delete:hover { color: #f66744; background: rgba(246,103,68,0.12); }
 .pix-ps-delete:disabled { color: #444; cursor: not-allowed; background: transparent; }
 
+/* Textarea interior matches Prompt Pack / Prompt Multi / Text Pixaroma
+   per UI conventions #3 (#1d1d1d / #e0e0e0 / #333 / 12px monospace /
+   6px 8px / 4px corners). */
 .pix-ps-textarea {
   width: 100%;
   min-height: 38px;
   max-height: 120px;
   resize: none;
-  background: #1a1a1a;
-  border: 1px solid #2e2e2e;
-  border-radius: 3px;
-  color: #ddd;
-  font-family: ui-monospace, Menlo, Consolas, monospace;
-  font-size: 12px;
-  padding: 4px 6px;
+  background: #1d1d1d;
+  border: 1px solid #333;
+  border-radius: 4px;
+  color: #e0e0e0;
+  font: 12px monospace;
+  padding: 6px 8px;
   outline: none;
   box-sizing: border-box;
   overflow-y: auto;
@@ -138,23 +141,45 @@ const CSS = `
 
 .pix-ps-actions {
   display: flex;
-  gap: 6px;
+  gap: 4px;
   align-self: flex-start;
   margin-top: 4px;
+  user-select: none;
 }
+/* Bottom action buttons - shared visual style with Prompt Pack +
+   Prompt Multi: box-sizing border-box, min-width 86, semi-transparent
+   white overlay default (adapts to any node colour the user picks via
+   right-click -> Colors), full BRAND orange fill on hover. */
 .pix-ps-add, .pix-ps-clear, .pix-ps-reset {
-  background: #2a2a2a;
-  border: 1px solid #3a3a3a;
-  border-radius: 3px;
-  color: #ddd;
+  box-sizing: border-box;
+  min-width: 86px;
+  user-select: none;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  color: rgba(255, 255, 255, 0.85);
   cursor: pointer;
-  font-size: 12px;
-  padding: 4px 10px;
+  font: 11px sans-serif;
+  padding: 4px 12px;
   font-family: inherit;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
 }
-.pix-ps-add:hover, .pix-ps-clear:hover, .pix-ps-reset:hover { background: #333; border-color: #f66744; color: #f66744; }
-.pix-ps-clear:disabled, .pix-ps-reset:disabled { color: #555; border-color: #2e2e2e; background: #232323; cursor: not-allowed; }
-.pix-ps-clear:disabled:hover, .pix-ps-reset:disabled:hover { background: #232323; border-color: #2e2e2e; color: #555; }
+.pix-ps-add:hover, .pix-ps-clear:hover, .pix-ps-reset:hover {
+  background: #f66744;
+  border-color: #f66744;
+  color: #fff;
+}
+.pix-ps-clear:disabled, .pix-ps-reset:disabled {
+  color: rgba(255, 255, 255, 0.3);
+  cursor: default;
+  background: rgba(255, 255, 255, 0.02);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+.pix-ps-clear:disabled:hover, .pix-ps-reset:disabled:hover {
+  background: rgba(255, 255, 255, 0.02);
+  border-color: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.3);
+}
 
 .pix-ps-confirm-backdrop {
   position: fixed;
@@ -319,14 +344,15 @@ export function renderRows(node, root, rowHandlers) {
   const add = document.createElement("button");
   add.className = "pix-ps-add";
   add.type = "button";
-  add.textContent = "+ Add row";
+  add.textContent = "Add row";
+  add.title = "Append an empty row at the end of the stack";
   add.addEventListener("click", () => rowHandlers.onAdd());
   actions.appendChild(add);
 
   const clear = document.createElement("button");
   clear.className = "pix-ps-clear";
   clear.type = "button";
-  clear.textContent = "Clear text";
+  clear.textContent = "Clear all";
   clear.title = "Empty the text in every row (keeps rows, labels and toggles)";
   clear.addEventListener("click", () => rowHandlers.onClearAll());
   actions.appendChild(clear);

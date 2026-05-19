@@ -1,10 +1,19 @@
 import { app } from "/scripts/app.js";
 import { BRAND } from "../shared/index.mjs";
 
-const MIN_W = 200;
-const MIN_H = 120;
-const DEFAULT_W = 280;
-const DEFAULT_H = 200;
+// Resize clamp - user verified 210 x 118 as the smallest comfortable
+// size for a compact label/readout. WIDGET_MIN_H is kept smaller than
+// MIN_H so the DOM widget itself doesn't force a larger ComfyUI natural
+// floor; MIN_H is what the resize handle enforces. Saved workflows /
+// duplicates keep their size because configure() runs after nodeCreated
+// (Vue Compat #8) and overrides our DEFAULT.
+const MIN_W = 210;
+const MIN_H = 118;
+const WIDGET_MIN_H = 80;
+// Default = minimum, so fresh-on-canvas drops are compact and the user
+// grows the node only when they want more reading room.
+const DEFAULT_W = 210;
+const DEFAULT_H = 118;
 const PLACEHOLDER = "text...";
 
 // One-shot CSS injection. The hover-reveal needs a CSS selector
@@ -78,20 +87,24 @@ app.registerExtension({
       ta.readOnly = true;
       ta.placeholder = PLACEHOLDER;
       ta.spellcheck = false;
+      // Interior styling matches Prompt Pack / Text Pixaroma for visual
+      // consistency across the three text nodes. Border stays #333 by
+      // default (no permanent orange ring) since this is a display node
+      // and the orange Copy button on hover already signals interactivity.
       ta.style.cssText = `
         flex: 1;
         width: 100%;
         height: 100%;
         box-sizing: border-box;
-        background: #111;
-        color: #c8c8c8;
-        border: 1.5px solid ${BRAND};
+        background: #1d1d1d;
+        color: #e0e0e0;
+        border: 1px solid #333;
         border-radius: 4px;
-        padding: 8px;
+        padding: 6px 8px;
         margin: 0;
         font-family: monospace;
-        font-size: 13px;
-        line-height: 1.3;
+        font-size: 12px;
+        line-height: 1.35;
         resize: none;
         outline: none;
         white-space: pre-wrap;
@@ -137,13 +150,19 @@ app.registerExtension({
           ta.value = v == null ? "" : String(v);
         },
         serialize: true,
-        getMinHeight: () => MIN_H,
+        // WIDGET_MIN_H (not MIN_H) so the DOM widget itself doesn't
+        // force ComfyUI's natural floor above the explicit MIN_H clamp.
+        getMinHeight: () => WIDGET_MIN_H,
       });
       this._pixTextWidget = widget;
 
-      if (!this.size || this.size[0] < MIN_W || this.size[1] < MIN_H) {
-        this.size = [DEFAULT_W, DEFAULT_H];
-      }
+      // Set default size unconditionally on fresh placement. configure()
+      // runs AFTER nodeCreated (Vue Compat #8) and restores the saved
+      // size for workflow load + duplicate, so existing workflows keep
+      // their size. Mutating size[0/1] instead of replacing the array
+      // plays nicely with any reactive proxy Vue may have on node.size.
+      this.size[0] = DEFAULT_W;
+      this.size[1] = DEFAULT_H;
     };
 
     nodeType.prototype.onExecuted = function (output) {
@@ -157,6 +176,18 @@ app.registerExtension({
       origOnResize?.call(this, size);
       this.size[0] = Math.max(this.size[0], MIN_W);
       this.size[1] = Math.max(this.size[1], MIN_H);
+    };
+
+    // Self-heal min size on every paint (Preview Image Pattern #11 + UI
+    // conventions #7). Belt-and-braces with onResize because Vue Compat
+    // #13 + Align Pattern #6 mean some resize paths bypass onResize and
+    // the Copy button can clip past the node frame after grow-then-shrink.
+    const origDraw = nodeType.prototype.onDrawForeground;
+    nodeType.prototype.onDrawForeground = function (ctx) {
+      if (origDraw) origDraw.call(this, ctx);
+      if (this.flags?.collapsed) return;
+      if (this.size[0] < MIN_W) this.size[0] = MIN_W;
+      if (this.size[1] < MIN_H) this.size[1] = MIN_H;
     };
   },
 });

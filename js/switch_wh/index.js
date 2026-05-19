@@ -15,6 +15,13 @@ const PAD = 6;
 const GAP = 6;
 const WIDGET_H = BTN_H + PAD * 2;
 
+// Default = minimum size (CLAUDE.md UI conventions #5). Resize handle
+// can't shrink past these or the A/B buttons clip past the node frame.
+const DEFAULT_W = 210;
+const DEFAULT_H = 140;
+const MIN_W = 210;
+const MIN_H = 140;
+
 function injectCSS() {
   if (document.getElementById("pix-switchwh-css")) return;
   const style = document.createElement("style");
@@ -32,9 +39,12 @@ function injectCSS() {
       flex: 1;
       height: ${BTN_H}px;
       border-radius: 6px;
-      border: 1px solid #444;
-      background: #2a2a2a;
-      color: #cfcfcf;
+      /* Semi-transparent white overlay instead of fixed dark grey so the
+         non-active button adapts when the user changes the node colour
+         via right-click -> Colors. Matches Text Pixaroma's button style. */
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      background: rgba(255, 255, 255, 0.05);
+      color: rgba(255, 255, 255, 0.85);
       font-weight: 600;
       font-size: 13px;
       letter-spacing: 0.5px;
@@ -43,7 +53,11 @@ function injectCSS() {
       font-family: inherit;
       padding: 0;
     }
-    .pix-swh-btn:hover { border-color: #888; color: #fff; }
+    .pix-swh-btn:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: rgba(255, 255, 255, 0.35);
+      color: #fff;
+    }
     .pix-swh-btn.active {
       background: ${BRAND};
       color: #fff;
@@ -116,6 +130,17 @@ function setupNode(node) {
     margin: 4,
     serialize: false,
   });
+
+  // Default size for fresh-on-canvas placements. Without this, LiteGraph's
+  // auto-size left the node too short on first drop and the user had to
+  // resize once to snap it to a comfortable size. configure() runs AFTER
+  // nodeCreated (Vue Compat #8) and overwrites with the saved size on
+  // workflow restore + duplicate, so existing workflows keep their size.
+  // Mutate the array instead of replacing it - plays nicer with any
+  // reactive proxy Vue may have on node.size.
+  node.size[0] = DEFAULT_W;
+  node.size[1] = DEFAULT_H;
+  node.setDirtyCanvas(true, true);
 }
 
 app.registerExtension({
@@ -129,6 +154,30 @@ app.registerExtension({
       // Defer so node.properties is settled before we read it.
       queueMicrotask(() => this._pixSwhRefresh?.());
       return r;
+    };
+
+    // Clamp manual resize so the A/B buttons never clip past the node
+    // frame (CLAUDE.md UI conventions #5 + #7). Mutate BOTH the param
+    // and this.size - some LiteGraph forks treat the param as the new
+    // size, others have already written to this.size.
+    const _origOnResize = nodeType.prototype.onResize;
+    nodeType.prototype.onResize = function (size) {
+      if (size[0] < MIN_W) size[0] = MIN_W;
+      if (size[1] < MIN_H) size[1] = MIN_H;
+      if (this.size[0] < MIN_W) this.size[0] = MIN_W;
+      if (this.size[1] < MIN_H) this.size[1] = MIN_H;
+      if (_origOnResize) return _origOnResize.apply(this, arguments);
+    };
+
+    // Self-heal min size on every paint (Preview Image Pattern #11 +
+    // UI conventions #7). Catches resize paths that bypass onResize
+    // per Vue Compat #13.
+    const _origDraw = nodeType.prototype.onDrawForeground;
+    nodeType.prototype.onDrawForeground = function (ctx) {
+      if (_origDraw) _origDraw.call(this, ctx);
+      if (this.flags?.collapsed) return;
+      if (this.size[0] < MIN_W) this.size[0] = MIN_W;
+      if (this.size[1] < MIN_H) this.size[1] = MIN_H;
     };
   },
 

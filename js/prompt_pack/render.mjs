@@ -2,14 +2,17 @@
 //
 // Layout:
 //   .pix-pp-root
-//     .pix-pp-modebar              (pill toggle at top)
-//       .pix-pp-modepill[.active]  (Paragraph)
-//       .pix-pp-modepill[.active]  (Line)
 //     .pix-pp-tawrap               (textarea wrapper)
 //       .pix-pp-ta                 (the textarea)
-//     .pix-pp-bottombar            (bottom strip: clear left, counter right)
-//       .pix-pp-clearbtn           (Clear prompts button - left)
-//       .pix-pp-counter            (small pill - right)
+//     .pix-pp-bottombar            (bottom strip)
+//       .pix-pp-actions            (Copy all / Replace / Clear buttons)
+//         .pix-pp-actbtn           (each action button)
+//       .pix-pp-counter            (small pill on the right)
+//
+// Paragraph / Line mode pills are NOT in the DOM - they're canvas-
+// painted at the slot-row Y by the onDrawForeground hook in index.js
+// so the DOM widget body stays compact (mirrors the way Text Pixaroma
+// puts its action buttons up on the slot row).
 
 const BRAND = "#f66744";
 
@@ -31,29 +34,9 @@ export function injectCSS() {
       color: #e0e0e0;
       font: 12px sans-serif;
     }
-    .pix-pp-modebar {
-      display: flex;
-      gap: 0;
-      align-self: flex-start;
-      background: #1d1d1d;
-      border-radius: 6px;
-      padding: 2px;
-      flex: 0 0 auto;
-    }
-    .pix-pp-modepill {
-      padding: 3px 12px;
-      font: 11px sans-serif;
-      color: #888;
-      cursor: pointer;
-      border-radius: 4px;
-      user-select: none;
-      transition: background 0.1s, color 0.1s;
-    }
-    .pix-pp-modepill:hover { color: #ccc; }
-    .pix-pp-modepill.active {
-      background: ${BRAND};
-      color: #fff;
-    }
+    /* Paragraph / Line pills are now painted on the canvas at the
+       slot-row Y so the DOM widget body stays compact. CSS for them
+       lives in the canvas paintPill helper in index.js. */
     .pix-pp-tawrap {
       position: relative;
       flex: 1 1 auto;
@@ -83,36 +66,68 @@ export function injectCSS() {
       gap: 8px;
       padding: 0 2px;
     }
-    .pix-pp-clearbtn {
-      background: #2a2a2a;
-      border: 1px solid #3a3a3a;
+    /* Action buttons (Copy all / Replace / Clear). Semi-transparent
+       white overlay default so the button blends with whatever node
+       colour the user picks. Hover = full BRAND orange fill (not just
+       orange border) so the click target is unambiguous. */
+    .pix-pp-actions {
+      display: flex;
+      gap: 4px;
+      flex: 0 0 auto;
+      /* Stop text selection bleeding from the textarea into the button
+         labels when the user drag-selects to the edge of the field. */
+      user-select: none;
+    }
+    .pix-pp-actbtn {
+      /* box-sizing: border-box so min-width includes padding + border -
+         otherwise content-box adds an extra 26px per button (24 padding
+         + 2 border) and the bottom row overflows even at the clamp. */
+      box-sizing: border-box;
+      /* min-width keeps all three buttons the same size when the label
+         briefly changes to "Copied" / "Pasted" so the row never reflows
+         under the cursor. 86px fits the widest label ("Copy all") with
+         padding included. */
+      min-width: 86px;
+      user-select: none;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.15);
       border-radius: 4px;
-      color: #ddd;
+      color: rgba(255, 255, 255, 0.85);
       cursor: pointer;
       font: 11px sans-serif;
       padding: 4px 12px;
       transition: background 0.1s, color 0.1s, border-color 0.1s;
     }
-    .pix-pp-clearbtn:hover {
-      background: #333;
+    .pix-pp-actbtn:hover {
+      background: ${BRAND};
       border-color: ${BRAND};
       color: #fff;
     }
-    .pix-pp-clearbtn[disabled] {
-      color: #555;
+    .pix-pp-actbtn[disabled] {
+      color: rgba(255, 255, 255, 0.3);
       cursor: default;
-      background: #1d1d1d;
-      border-color: #2a2a2a;
+      background: rgba(255, 255, 255, 0.02);
+      border-color: rgba(255, 255, 255, 0.08);
     }
-    .pix-pp-clearbtn[disabled]:hover {
-      background: #1d1d1d;
-      border-color: #2a2a2a;
-      color: #555;
+    .pix-pp-actbtn[disabled]:hover {
+      background: rgba(255, 255, 255, 0.02);
+      border-color: rgba(255, 255, 255, 0.08);
+      color: rgba(255, 255, 255, 0.3);
+    }
+    /* Success flash - shown after a successful Copy / Replace. Higher
+       specificity (including the hover variant) so the green wins even
+       when the mouse is still on the button after the click. Same green
+       Show Text Pixaroma uses for its Copy feedback. */
+    .pix-pp-actbtn.is-flashing,
+    .pix-pp-actbtn.is-flashing:hover {
+      background: #3ec371;
+      border-color: #3ec371;
+      color: #fff;
     }
     .pix-pp-counter {
       font: 10px sans-serif;
-      color: #888;
-      background: #2a2a2a;
+      color: rgba(255, 255, 255, 0.6);
+      background: rgba(255, 255, 255, 0.05);
       padding: 2px 8px;
       border-radius: 10px;
       user-select: none;
@@ -120,93 +135,24 @@ export function injectCSS() {
     }
     .pix-pp-counter.active {
       color: ${BRAND};
-      background: #1d1d1d;
+      background: rgba(0, 0, 0, 0.25);
       border: 1px solid ${BRAND};
     }
     .pix-pp-counter.empty {
-      color: #555;
+      color: rgba(255, 255, 255, 0.3);
     }
-    .pix-pp-confirm-backdrop {
-      position: fixed;
-      inset: 0;
-      background: rgba(0, 0, 0, 0.55);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 10000;
-      font-family: inherit;
-      -webkit-font-smoothing: antialiased;
-    }
-    .pix-pp-confirm-box {
-      background: #1d1d1d;
-      border: 1px solid #2e2e2e;
-      border-radius: 6px;
-      min-width: 320px;
-      max-width: 480px;
-      padding: 18px 20px;
-      color: #ddd;
-      box-shadow: 0 8px 32px rgba(0,0,0,0.6);
-    }
-    .pix-pp-confirm-title {
-      font-size: 14px;
-      font-weight: 600;
-      color: #fff;
-      margin: 0 0 8px 0;
-    }
-    .pix-pp-confirm-msg {
-      font-size: 13px;
-      color: #bbb;
-      margin: 0 0 16px 0;
-      line-height: 1.4;
-    }
-    .pix-pp-confirm-actions {
-      display: flex;
-      gap: 8px;
-      justify-content: flex-end;
-    }
-    .pix-pp-confirm-btn {
-      background: #2a2a2a;
-      border: 1px solid #3a3a3a;
-      border-radius: 3px;
-      color: #ddd;
-      cursor: pointer;
-      font-size: 12px;
-      padding: 6px 14px;
-      font-family: inherit;
-    }
-    .pix-pp-confirm-btn:hover { background: #333; border-color: #555; }
-    .pix-pp-confirm-btn.primary {
-      background: ${BRAND};
-      border-color: ${BRAND};
-      color: #fff;
-    }
-    .pix-pp-confirm-btn.primary:hover { background: #ff7a58; border-color: #ff7a58; }
+    /* (Confirm-dialog CSS removed - Clear is now instant per spec.) */
   `;
   document.head.appendChild(style);
 }
 
-// Build the static DOM tree. Returns the root element. The textarea +
-// counter + pill + clear button elements are stored on the root for the
-// caller to wire up in interaction.mjs.
+// Build the static DOM tree. Returns the root element. Pills (Paragraph /
+// Line) are NOT in the DOM - they're canvas-painted at the slot-row Y by
+// the onDrawForeground hook in index.js. The DOM widget body now holds
+// just the textarea + a bottom bar with three action buttons + counter.
 export function buildRoot() {
   const root = document.createElement("div");
   root.className = "pix-pp-root";
-
-  const modebar = document.createElement("div");
-  modebar.className = "pix-pp-modebar";
-
-  const pillPara = document.createElement("div");
-  pillPara.className = "pix-pp-modepill";
-  pillPara.textContent = "Paragraph";
-  pillPara.dataset.mode = "paragraph";
-
-  const pillLine = document.createElement("div");
-  pillLine.className = "pix-pp-modepill";
-  pillLine.textContent = "Line";
-  pillLine.dataset.mode = "line";
-
-  modebar.appendChild(pillPara);
-  modebar.appendChild(pillLine);
 
   const tawrap = document.createElement("div");
   tawrap.className = "pix-pp-tawrap";
@@ -221,38 +167,56 @@ export function buildRoot() {
   const bottombar = document.createElement("div");
   bottombar.className = "pix-pp-bottombar";
 
+  // Three action buttons on the left of the bottom bar - mirrors Text
+  // Pixaroma's button trio but in the bottom row instead of the top.
+  const actions = document.createElement("div");
+  actions.className = "pix-pp-actions";
+
+  const copyBtn = document.createElement("button");
+  copyBtn.type = "button";
+  copyBtn.className = "pix-pp-actbtn";
+  copyBtn.textContent = "Copy all";
+  copyBtn.title = "Copy the entire textarea content to the clipboard";
+
+  const replaceBtn = document.createElement("button");
+  replaceBtn.type = "button";
+  replaceBtn.className = "pix-pp-actbtn";
+  replaceBtn.textContent = "Replace";
+  replaceBtn.title = "Replace the textarea with text from the clipboard (image / empty clipboard shows a toast and leaves the text alone)";
+
   const clearBtn = document.createElement("button");
   clearBtn.type = "button";
-  clearBtn.className = "pix-pp-clearbtn";
-  clearBtn.textContent = "Clear prompts";
+  clearBtn.className = "pix-pp-actbtn";
+  clearBtn.textContent = "Clear";
+  clearBtn.title = "Empty the textarea instantly (no confirm)";
   clearBtn.disabled = true;
+
+  actions.append(copyBtn, replaceBtn, clearBtn);
 
   const counter = document.createElement("div");
   counter.className = "pix-pp-counter empty";
   counter.textContent = "0 prompts";
 
-  bottombar.appendChild(clearBtn);
+  bottombar.appendChild(actions);
   bottombar.appendChild(counter);
 
-  root.appendChild(modebar);
   root.appendChild(tawrap);
   root.appendChild(bottombar);
 
-  root._pixPp = { pillPara, pillLine, ta, counter, clearBtn };
+  root._pixPp = { ta, counter, copyBtn, replaceBtn, clearBtn };
 
   return root;
 }
 
 // Apply the current state to the DOM.
-//   - Pill active state matches state.mode
 //   - Textarea value matches state.text (only if it differs - avoid stomping the caret)
 //   - Counter updates via updateCounter()
 //   - Clear button enabled state reflects whether there is text to clear
+// (Pill active state is canvas-painted; the node re-paints on every
+// dirty canvas tick.)
 export function applyState(root, state, runState) {
   const els = root._pixPp;
   if (!els) return;
-  els.pillPara.classList.toggle("active", state.mode === "paragraph");
-  els.pillLine.classList.toggle("active", state.mode === "line");
   if (els.ta.value !== state.text) els.ta.value = state.text;
   updateCounter(root, state, runState);
   updateClearButton(root, state);

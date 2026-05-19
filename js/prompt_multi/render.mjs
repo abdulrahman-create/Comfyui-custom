@@ -4,11 +4,16 @@
 // an "+ Add row" button. Each row is its own <div> with controls.
 // Click handlers and drag handlers are wired in interaction.mjs (Task 5+).
 
-import { readState, MODE_QUEUE, MODE_LIST } from "./core.mjs";
+import { readState } from "./core.mjs";
 import { attachLabelEditor, attachTextareaEditor, attachDragHandlers } from "./interaction.mjs";
 
 const CSS_ID = "pix-prompt-multi-css";
 
+// Pixaroma node UI conventions (CLAUDE.md): semi-transparent white
+// overlays for adaptive UI surfaces so the node body colour (custom
+// right-click -> Colors) shows through correctly. Action buttons mirror
+// Prompt Pack's .pix-pp-actbtn (box-sizing border-box, min-width 86,
+// full BRAND hover, user-select none).
 const CSS = `
 .pix-pm-root {
   display: flex;
@@ -20,42 +25,12 @@ const CSS = `
   color: #ddd;
 }
 
-.pix-pm-modebar {
-  display: flex;
-  gap: 0;
-  background: #1a1a1a;
-  border: 1px solid #2e2e2e;
-  border-radius: 4px;
-  padding: 3px;
-  user-select: none;
-}
-.pix-pm-modepill {
-  flex: 1;
-  text-align: center;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.5px;
-  color: #888;
-  padding: 5px 10px;
-  border-radius: 3px;
-  cursor: pointer;
-  transition: background 0.12s ease, color 0.12s ease;
-}
-.pix-pm-modepill:hover { color: #ddd; background: rgba(255,255,255,0.04); }
-.pix-pm-modepill.is-active {
-  background: #f66744;
-  color: #fff;
-}
-.pix-pm-modepill.is-active:hover { background: #ff7a58; color: #fff; }
-.pix-pm-modehint {
-  font-size: 10px;
-  color: #777;
-  text-align: center;
-  margin: -2px 0 2px 0;
-  font-style: italic;
-  user-select: none;
-}
-
+/* Row card uses fixed dark grey background + visible grey border (NOT
+   the adaptive white-overlay used for interactive surfaces). The card
+   is a passive container - the visible contour reads more clearly here
+   than a semi-transparent overlay would. The interactive surfaces
+   INSIDE the row (toggle, label input, textarea, delete) keep their
+   adaptive treatment. */
 .pix-pm-row {
   display: flex;
   flex-direction: column;
@@ -95,8 +70,8 @@ const CSS = `
   min-width: 32px;
   height: 18px;
   border-radius: 9px;
-  background: #2a2a2a;
-  border: 1px solid #3a3a3a;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.15);
   cursor: pointer;
   flex-shrink: 0;
   display: inline-flex;
@@ -104,15 +79,16 @@ const CSS = `
   justify-content: center;
   font-size: 9px;
   font-weight: 600;
-  color: #888;
+  color: rgba(255, 255, 255, 0.65);
   letter-spacing: 0.5px;
   padding: 0 6px;
   transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
   user-select: none;
 }
 .pix-pm-toggle:hover {
-  border-color: #555;
-  color: #ccc;
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.35);
+  color: #fff;
 }
 .pix-pm-toggle.on {
   background: #f66744;
@@ -126,8 +102,8 @@ const CSS = `
 
 .pix-pm-label {
   flex: 1;
-  background: #1a1a1a;
-  border: 1px solid #2e2e2e;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 3px;
   color: #ddd;
   font-size: 11px;
@@ -136,7 +112,7 @@ const CSS = `
   min-width: 0;
 }
 .pix-pm-label:focus { border-color: #f66744; }
-.pix-pm-label::placeholder { color: #666; font-style: italic; }
+.pix-pm-label::placeholder { color: rgba(255, 255, 255, 0.4); font-style: italic; }
 
 .pix-pm-delete {
   width: 18px;
@@ -154,43 +130,63 @@ const CSS = `
 .pix-pm-delete:hover { color: #f66744; background: rgba(246,103,68,0.12); }
 .pix-pm-delete:disabled { color: #444; cursor: not-allowed; background: transparent; }
 
+/* Textarea interior matches Prompt Pack / Text Pixaroma for consistency. */
 .pix-pm-textarea {
   width: 100%;
   min-height: 38px;
   max-height: 120px;
   resize: none;
-  background: #1a1a1a;
-  border: 1px solid #2e2e2e;
-  border-radius: 3px;
-  color: #ddd;
-  font-family: ui-monospace, Menlo, Consolas, monospace;
-  font-size: 12px;
-  padding: 4px 6px;
+  background: #1d1d1d;
+  border: 1px solid #333;
+  border-radius: 4px;
+  color: #e0e0e0;
+  font: 12px monospace;
+  padding: 6px 8px;
   outline: none;
   box-sizing: border-box;
   overflow-y: auto;
 }
 .pix-pm-textarea:focus { border-color: #f66744; }
 
+/* Bottom action buttons mirror Prompt Pack's .pix-pp-actbtn exactly so
+   the two nodes feel like one design. Same min-width, same border-box,
+   same overlay default, same full BRAND hover. */
 .pix-pm-actions {
   display: flex;
-  gap: 6px;
+  gap: 4px;
   align-self: flex-start;
   margin-top: 4px;
+  user-select: none;
 }
-.pix-pm-add, .pix-pm-clear, .pix-pm-reset {
-  background: #2a2a2a;
-  border: 1px solid #3a3a3a;
-  border-radius: 3px;
-  color: #ddd;
+.pix-pm-actbtn {
+  box-sizing: border-box;
+  min-width: 86px;
+  user-select: none;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  color: rgba(255, 255, 255, 0.85);
   cursor: pointer;
-  font-size: 12px;
-  padding: 4px 10px;
-  font-family: inherit;
+  font: 11px sans-serif;
+  padding: 4px 12px;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
 }
-.pix-pm-add:hover, .pix-pm-clear:hover, .pix-pm-reset:hover { background: #333; border-color: #f66744; color: #f66744; }
-.pix-pm-clear:disabled, .pix-pm-reset:disabled { color: #555; border-color: #2e2e2e; background: #232323; cursor: not-allowed; }
-.pix-pm-clear:disabled:hover, .pix-pm-reset:disabled:hover { background: #232323; border-color: #2e2e2e; color: #555; }
+.pix-pm-actbtn:hover {
+  background: #f66744;
+  border-color: #f66744;
+  color: #fff;
+}
+.pix-pm-actbtn[disabled] {
+  color: rgba(255, 255, 255, 0.3);
+  cursor: default;
+  background: rgba(255, 255, 255, 0.02);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+.pix-pm-actbtn[disabled]:hover {
+  background: rgba(255, 255, 255, 0.02);
+  border-color: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.3);
+}
 
 .pix-pm-confirm-backdrop {
   position: fixed;
@@ -295,36 +291,10 @@ export function renderRows(node, root, rowHandlers) {
   const state = readState(node);
   root.innerHTML = "";
 
-  // Mode bar at the top: Queue / List toggle pills.
-  const modebar = document.createElement("div");
-  modebar.className = "pix-pm-modebar";
-
-  const queuePill = document.createElement("div");
-  queuePill.className = "pix-pm-modepill" + (state.mode === MODE_QUEUE ? " is-active" : "");
-  queuePill.textContent = "Queue Text";
-  queuePill.title = "Queue mode - click Run, the workflow runs once per enabled prompt (N images). Wire the `text` output to a CLIP Text Encode.";
-  queuePill.addEventListener("click", () => {
-    if (state.mode !== MODE_QUEUE) rowHandlers.onSetMode(MODE_QUEUE);
-  });
-  modebar.appendChild(queuePill);
-
-  const listPill = document.createElement("div");
-  listPill.className = "pix-pm-modepill" + (state.mode === MODE_LIST ? " is-active" : "");
-  listPill.textContent = "List Prompts";
-  listPill.title = "List mode - click Run, the workflow runs ONCE. Wire the `prompts` output into Prompt From List Pixaroma nodes downstream to grab specific rows.";
-  listPill.addEventListener("click", () => {
-    if (state.mode !== MODE_LIST) rowHandlers.onSetMode(MODE_LIST);
-  });
-  modebar.appendChild(listPill);
-
-  root.appendChild(modebar);
-
-  const hint = document.createElement("div");
-  hint.className = "pix-pm-modehint";
-  hint.textContent = state.mode === MODE_QUEUE
-    ? "One image per enabled prompt - wire the `text` output"
-    : "All enabled prompts go out as a list - wire `prompts` into Prompt From List";
-  root.appendChild(hint);
+  // Queue Text / List Prompts pills are NOT in the DOM - they're canvas-
+  // painted at the slot-row Y by the onDrawForeground hook in index.js
+  // (mirrors Prompt Pack's Paragraph / Line pill placement). Hover
+  // tooltip on each pill explains its mode.
 
   for (const row of state.rows) {
     const rowEl = document.createElement("div");
@@ -384,22 +354,23 @@ export function renderRows(node, root, rowHandlers) {
   actions.className = "pix-pm-actions";
 
   const add = document.createElement("button");
-  add.className = "pix-pm-add";
+  add.className = "pix-pm-actbtn";
   add.type = "button";
-  add.textContent = "+ Add prompt";
+  add.textContent = "Add prompt";
+  add.title = "Append an empty prompt row at the end of the list";
   add.addEventListener("click", () => rowHandlers.onAdd());
   actions.appendChild(add);
 
   const clear = document.createElement("button");
-  clear.className = "pix-pm-clear";
+  clear.className = "pix-pm-actbtn";
   clear.type = "button";
-  clear.textContent = "Clear prompts";
+  clear.textContent = "Clear all";
   clear.title = "Empty the text in every row (keeps row count, labels and toggles)";
   clear.addEventListener("click", () => rowHandlers.onClearAll());
   actions.appendChild(clear);
 
   const reset = document.createElement("button");
-  reset.className = "pix-pm-reset";
+  reset.className = "pix-pm-actbtn";
   reset.type = "button";
   reset.textContent = "Reset";
   reset.title = "Reset to default (two empty rows, both ON, no labels)";

@@ -6,21 +6,131 @@ import {
   restoreFromProperties,
   parsePrompts,
   findFirstPromptPackNode,
+  setMode,
+  MODE_PARAGRAPH,
+  MODE_LINE,
 } from "./core.mjs";
 import { injectCSS, buildRoot, applyState, updateCounter } from "./render.mjs";
 import { wireEvents, showNoPromptsToast } from "./interaction.mjs";
 
+const BRAND = "#f66744";
+
+// Default = minimum size (CLAUDE.md UI conventions #5). Fresh-on-canvas
+// drops at the compact size; user grows when they need more textarea
+// room. Was DEFAULT_H = 280 vs MIN_H = 180 which let user-shrunken
+// nodes grow back to 280 on reload.
 const DEFAULT_W = 400;
-const DEFAULT_H = 320;
+const DEFAULT_H = 180;
 // Minimum size the user is allowed to shrink the node to via the resize
-// handle. Anything smaller and the textarea + bottom bar overflow past the
-// node frame (the symptom this clamp prevents). Enforced in onResize.
-const MIN_W = 260;
-const MIN_H = 220;
-// Widget min-height seen by LiteGraph's layout. Matches the actual content
-// height: pill bar (~28) + gaps (~12) + textarea min (~80) + bottom bar
-// (~30) + root padding (~12) = ~162. Round up.
-const WIDGET_MIN_H = 170;
+// handle. Sized so the bottom bar (three action buttons at min-width 86
+// each border-box + 4px gaps + counter pill + root padding) fits without
+// crowding AND the textarea is wide enough for the default placeholder
+// text to read cleanly. Enforced in onResize and self-healed in
+// onDrawForeground.
+//   3 * 86 (buttons) + 2 * 4 (gaps) + 8 (gap to counter) + ~78 (counter
+//   pill width) + 12 (root padding) ~= 364, plus margin = 400.
+const MIN_W = 400;
+const MIN_H = 180;
+// Widget min-height seen by LiteGraph's layout. Without the in-widget pill
+// bar (which moved to canvas), content is: textarea min (~80) + bottom bar
+// (~30) + root padding (~12) = ~122. Round up.
+const WIDGET_MIN_H = 130;
+
+// Mode-pill geometry. Painted on the canvas at the slot-row Y so the
+// DOM widget below stays compact. Dimensions and corner radius match the
+// DOM action buttons (Copy all / Replace / Clear) at the bottom of the
+// node so the two rows read as one design system: same 86px wide, same
+// 4px corner radius, same height + font as a `.pix-pp-actbtn`.
+const PILL_Y = 11;
+const PILL_H = 22;
+const PILL_GAP = 4;
+const PILL_LEFT = 19;
+const PILL_W = 86;       // uniform, matches .pix-pp-actbtn min-width
+const PILL_RADIUS = 4;   // matches .pix-pp-actbtn border-radius
+
+function pillParaRect() {
+  return { x: PILL_LEFT, y: PILL_Y, w: PILL_W, h: PILL_H };
+}
+function pillLineRect() {
+  return { x: PILL_LEFT + PILL_W + PILL_GAP, y: PILL_Y, w: PILL_W, h: PILL_H };
+}
+function insideRect(pos, r) {
+  return pos[0] >= r.x && pos[0] <= r.x + r.w && pos[1] >= r.y && pos[1] <= r.y + r.h;
+}
+// Floating tooltip used by the canvas-painted pills. Pills can't carry a
+// native `title` attribute because they're not DOM elements, so we use a
+// single shared <div> appended to document.body and follow the cursor via
+// a mousemove listener while a pill is hovered. The element is created
+// lazily on first use; visibility is gated by show/hideTooltip calls.
+let _tooltipEl = null;
+let _tooltipMoveHandler = null;
+
+function ensureTooltip() {
+  if (_tooltipEl) return _tooltipEl;
+  _tooltipEl = document.createElement("div");
+  _tooltipEl.className = "pix-pp-tooltip";
+  _tooltipEl.style.cssText = [
+    "position: fixed",
+    "background: #1d1d1d",
+    "color: #ddd",
+    "padding: 6px 10px",
+    "border-radius: 4px",
+    "border: 1px solid #444",
+    "font: 11px 'Segoe UI', sans-serif",
+    "line-height: 1.35",
+    "pointer-events: none",
+    "z-index: 99999",
+    "max-width: 260px",
+    "box-shadow: 0 4px 12px rgba(0,0,0,0.4)",
+    "display: none",
+    "white-space: normal",
+  ].join("; ");
+  document.body.appendChild(_tooltipEl);
+  return _tooltipEl;
+}
+
+function showTooltip(text) {
+  const el = ensureTooltip();
+  el.textContent = text;
+  el.style.display = "block";
+  if (!_tooltipMoveHandler) {
+    _tooltipMoveHandler = (e) => {
+      el.style.left = `${e.clientX + 14}px`;
+      el.style.top = `${e.clientY + 18}px`;
+    };
+    document.addEventListener("mousemove", _tooltipMoveHandler);
+  }
+}
+
+function hideTooltip() {
+  if (_tooltipEl) _tooltipEl.style.display = "none";
+  if (_tooltipMoveHandler) {
+    document.removeEventListener("mousemove", _tooltipMoveHandler);
+    _tooltipMoveHandler = null;
+  }
+}
+
+function paintPill(ctx, r, label, active, hover) {
+  // Active OR hovered = solid orange (hover previews what an active
+  // pill looks like; click commits the toggle). Inactive default uses
+  // a subtle white overlay so the toggle adapts to whatever node colour
+  // the user picks. Corner radius and font match .pix-pp-actbtn so the
+  // top row and bottom row of the node feel like one design.
+  const isHot = active || hover;
+  ctx.fillStyle = isHot ? BRAND : "rgba(255,255,255,0.05)";
+  ctx.strokeStyle = isHot ? BRAND : "rgba(255,255,255,0.15)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(r.x, r.y, r.w, r.h, PILL_RADIUS);
+  else ctx.rect(r.x, r.y, r.w, r.h);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = isHot ? "#fff" : "rgba(255,255,255,0.85)";
+  ctx.font = "11px 'Segoe UI', sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(label, r.x + r.w / 2, r.y + r.h / 2);
+}
 
 app.registerExtension({
   name: "Pixaroma.PromptPack",
@@ -32,9 +142,21 @@ app.registerExtension({
     nodeType.prototype.onNodeCreated = function () {
       if (origNodeCreated) origNodeCreated.apply(this, arguments);
       const node = this;
-      // queueMicrotask defers until after ComfyUI's configure() has merged
-      // saved widget values - see Vue Compat #8 in CLAUDE.md. Without it,
-      // we render from Python defaults and then flash to the saved state.
+
+      // Size assignment runs SYNCHRONOUSLY in onNodeCreated (UI conventions
+      // #9). configure() runs AFTER nodeCreated (Vue Compat #8) and restores
+      // the saved size from JSON, overwriting whatever we set here - that's
+      // exactly what we want for workflow reload + node duplication. Putting
+      // this inside queueMicrotask was the bug: the microtask fired AFTER
+      // configure() and clobbered the restored size with the default.
+      // Mutate size[0/1] in place to play nicely with any reactive proxy.
+      if (node.size[0] < MIN_W) node.size[0] = DEFAULT_W;
+      if (node.size[1] < MIN_H) node.size[1] = DEFAULT_H;
+
+      // DOM widget creation + initial render stay in queueMicrotask
+      // because Vue Compat #8 says nodeCreated fires BEFORE configure()
+      // for widget value restoration; without the microtask, we'd render
+      // from Python defaults and flash to the saved state.
       queueMicrotask(() => {
         injectCSS();
         restoreFromProperties(node);
@@ -57,15 +179,6 @@ app.registerExtension({
         // Initial render from current state.
         applyState(root, readState(node));
 
-        // Default size on fresh-on-canvas. Saved workflows win because
-        // LiteGraph's configure() runs after onNodeCreated and overwrites
-        // node.size from the saved JSON. But we still enforce the absolute
-        // minimum (MIN_W / MIN_H) so a saved workflow with a stupidly-small
-        // size self-heals on load.
-        if (node.size[0] < DEFAULT_W) node.size[0] = DEFAULT_W;
-        if (node.size[1] < DEFAULT_H) node.size[1] = DEFAULT_H;
-        if (node.size[0] < MIN_W) node.size[0] = MIN_W;
-        if (node.size[1] < MIN_H) node.size[1] = MIN_H;
         node.setDirtyCanvas(true, true);
       });
     };
@@ -83,16 +196,93 @@ app.registerExtension({
     // Compat #13 notes onResize doesn't always fire reliably for DOM
     // widget resizes, but for the resize handle (the visible drag corner)
     // it does, which is the path users hit when accidentally over-shrinking.
+    // Mutate BOTH the `size` parameter AND `this.size` defensively because
+    // some LiteGraph forks treat the param as the new size while others
+    // already wrote it to this.size by the time the hook fires.
     const origOnResize = nodeType.prototype.onResize;
     nodeType.prototype.onResize = function (size) {
       if (size[0] < MIN_W) size[0] = MIN_W;
       if (size[1] < MIN_H) size[1] = MIN_H;
+      if (this.size[0] < MIN_W) this.size[0] = MIN_W;
+      if (this.size[1] < MIN_H) this.size[1] = MIN_H;
       if (origOnResize) return origOnResize.apply(this, arguments);
+    };
+
+    // Paint the Paragraph / Line pill toggle on the canvas at the slot-row
+    // Y so the DOM widget below stays compact (mirrors Text Pixaroma's
+    // top-row button pattern, Vue Compat #16). Hover detection via
+    // app.canvas.graph_mouse is free per-frame because LiteGraph redraws
+    // on every pointermove (Preview Image Pattern #5).
+    const origDraw = nodeType.prototype.onDrawForeground;
+    nodeType.prototype.onDrawForeground = function (ctx) {
+      if (origDraw) origDraw.call(this, ctx);
+      if (this.flags?.collapsed) return;
+
+      // Self-heal min width so the pills never overlap the output label.
+      if (this.size[0] < MIN_W) this.size[0] = MIN_W;
+
+      const state = readState(this);
+      const gm = app.canvas?.graph_mouse;
+      let hoverPara = false, hoverLine = false;
+      if (gm) {
+        const mx = gm[0] - this.pos[0];
+        const my = gm[1] - this.pos[1];
+        const local = [mx, my];
+        hoverPara = insideRect(local, pillParaRect());
+        hoverLine = insideRect(local, pillLineRect());
+      }
+      ctx.save();
+      paintPill(ctx, pillParaRect(), "Paragraph",
+                state.mode === MODE_PARAGRAPH, hoverPara);
+      paintPill(ctx, pillLineRect(), "Line",
+                state.mode === MODE_LINE, hoverLine);
+      ctx.restore();
+
+      // Tooltip - shown only on hover transitions so we don't re-fire
+      // showTooltip every frame. Mousemove follow is attached on first
+      // show and detached on hide so we never leak a global listener.
+      const newHover = hoverPara ? "paragraph" : hoverLine ? "line" : null;
+      if (this._pixPpHoverPill !== newHover) {
+        this._pixPpHoverPill = newHover;
+        if (newHover === "paragraph") {
+          showTooltip("Paragraph mode: each prompt is separated by a blank line. Best for long, multi-line prompts.");
+        } else if (newHover === "line") {
+          showTooltip("Line mode: one prompt per line. Best for short prompts or quick lists.");
+        } else {
+          hideTooltip();
+        }
+      }
+    };
+
+    const origDown = nodeType.prototype.onMouseDown;
+    nodeType.prototype.onMouseDown = function (e, pos) {
+      // Pill hit-test first so the click never accidentally lands on
+      // anything else. The two rects don't overlap each other, and they
+      // sit on the slot row where nothing else lives.
+      if (insideRect(pos, pillParaRect())) {
+        setMode(this, MODE_PARAGRAPH);
+        if (this._pixPpRoot) applyState(this._pixPpRoot, readState(this));
+        this.setDirtyCanvas(true, true);
+        return true;
+      }
+      if (insideRect(pos, pillLineRect())) {
+        setMode(this, MODE_LINE);
+        if (this._pixPpRoot) applyState(this._pixPpRoot, readState(this));
+        this.setDirtyCanvas(true, true);
+        return true;
+      }
+      return origDown ? origDown.call(this, e, pos) : false;
     };
 
     const origRemoved = nodeType.prototype.onRemoved;
     nodeType.prototype.onRemoved = function () {
       this._pixPpRoot = null;
+      // Hide tooltip if this node was the one being hovered. Without this,
+      // a tooltip can linger after a hovered node is deleted.
+      if (this._pixPpHoverPill) {
+        this._pixPpHoverPill = null;
+        hideTooltip();
+      }
       if (origRemoved) return origRemoved.apply(this, arguments);
     };
   },
