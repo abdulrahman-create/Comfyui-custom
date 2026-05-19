@@ -121,10 +121,16 @@ function drawToggle(ctx, nodeWidth, slotIdx0, on, disabled) {
   ctx.save();
   if (disabled) ctx.globalAlpha = 0.35;
 
-  // Pill background
+  // Pill background. OFF state uses semi-transparent white overlay so the
+  // toggle adapts when the user picks a custom node colour via right-click
+  // -> Colors (matches Text Pixaroma and Switch WH adaptive style). ON
+  // stays opaque BRAND orange so the active toggle is unambiguous on any
+  // node colour. Slightly higher opacity than Text Pixaroma's action
+  // buttons since the pill is smaller and needs to read as an interactive
+  // toggle, not a passive label.
   ctx.beginPath();
-  ctx.fillStyle = on ? BRAND : "#3a3a3a";
-  ctx.strokeStyle = on ? BRAND : "#555";
+  ctx.fillStyle = on ? BRAND : "rgba(255,255,255,0.06)";
+  ctx.strokeStyle = on ? BRAND : "rgba(255,255,255,0.18)";
   ctx.lineWidth = 1;
   const rad = TOGGLE_R;
   const t = r.y, b = r.y + r.h, l = r.x, ri = r.x + r.w;
@@ -171,7 +177,11 @@ function drawLabel(ctx, nodeWidth, slotIdx0, text, dim, placeholderType) {
     color = "#d8d8d8";
   } else if (dim) {
     display = "(empty)";
-    color = "#666";
+    // Trailing rows get a globalAlpha 0.45 dim above. Stack that with too
+    // dark a base colour and the text turns into a smudge. #aaa keeps the
+    // placeholder feel (dimmer than an active label) but stays readable
+    // after the alpha multiplication.
+    color = "#aaa";
   } else if (usefulType) {
     display = usefulType;
     color = "#d8d8d8"; // normal text color - reads like a real label

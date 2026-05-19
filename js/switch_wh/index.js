@@ -15,6 +15,13 @@ const PAD = 6;
 const GAP = 6;
 const WIDGET_H = BTN_H + PAD * 2;
 
+// Default = minimum size (CLAUDE.md UI conventions #5). Resize handle
+// can't shrink past these or the A/B buttons clip past the node frame.
+const DEFAULT_W = 210;
+const DEFAULT_H = 140;
+const MIN_W = 210;
+const MIN_H = 140;
+
 function injectCSS() {
   if (document.getElementById("pix-switchwh-css")) return;
   const style = document.createElement("style");
@@ -131,8 +138,8 @@ function setupNode(node) {
   // workflow restore + duplicate, so existing workflows keep their size.
   // Mutate the array instead of replacing it - plays nicer with any
   // reactive proxy Vue may have on node.size.
-  node.size[0] = 210;
-  node.size[1] = 140;
+  node.size[0] = DEFAULT_W;
+  node.size[1] = DEFAULT_H;
   node.setDirtyCanvas(true, true);
 }
 
@@ -147,6 +154,30 @@ app.registerExtension({
       // Defer so node.properties is settled before we read it.
       queueMicrotask(() => this._pixSwhRefresh?.());
       return r;
+    };
+
+    // Clamp manual resize so the A/B buttons never clip past the node
+    // frame (CLAUDE.md UI conventions #5 + #7). Mutate BOTH the param
+    // and this.size - some LiteGraph forks treat the param as the new
+    // size, others have already written to this.size.
+    const _origOnResize = nodeType.prototype.onResize;
+    nodeType.prototype.onResize = function (size) {
+      if (size[0] < MIN_W) size[0] = MIN_W;
+      if (size[1] < MIN_H) size[1] = MIN_H;
+      if (this.size[0] < MIN_W) this.size[0] = MIN_W;
+      if (this.size[1] < MIN_H) this.size[1] = MIN_H;
+      if (_origOnResize) return _origOnResize.apply(this, arguments);
+    };
+
+    // Self-heal min size on every paint (Preview Image Pattern #11 +
+    // UI conventions #7). Catches resize paths that bypass onResize
+    // per Vue Compat #13.
+    const _origDraw = nodeType.prototype.onDrawForeground;
+    nodeType.prototype.onDrawForeground = function (ctx) {
+      if (_origDraw) _origDraw.call(this, ctx);
+      if (this.flags?.collapsed) return;
+      if (this.size[0] < MIN_W) this.size[0] = MIN_W;
+      if (this.size[1] < MIN_H) this.size[1] = MIN_H;
     };
   },
 
