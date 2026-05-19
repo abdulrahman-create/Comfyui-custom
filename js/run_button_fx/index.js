@@ -147,10 +147,12 @@ function injectCSS() {
 }
 
 function findRunButton() {
+  const byTestId = document.querySelector('button[data-testid="queue-button"]');
+  if (byTestId) return byTestId;
   const buttons = document.querySelectorAll("button");
   for (const btn of buttons) {
     const text = (btn.textContent || "").trim();
-    if (text === "Run" && btn.querySelector("svg")) return btn;
+    if (text === "Run") return btn;
   }
   return null;
 }
