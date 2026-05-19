@@ -76,6 +76,71 @@ js/
 │                       #  inherits the brand colors via the category prefix —
 │                       #  do NOT re-add per-node color guards.
 │
+├── node_colors/        # Right-click "Pixaroma colors" submenu (single
+│   └── index.js        #  global extension, ~300 lines). Wraps
+│                       #  LGraphCanvas.prototype.getNodeMenuOptions to
+│                       #  append two entries to ANY node's right-click
+│                       #  menu: "👑 Pixaroma colors" submenu + "👑 Reset
+│                       #  node colors". Submenu via LiteGraph.ContextMenu
+│                       #  callback pattern contains 27 themes split
+│                       #  into THREE groups, each separated visually:
+│                       #  (a) STANDALONES (3 neutrals: Dark, Onyx,
+│                       #  Charcoal); (b) PRESETS (12 Plain hue themes);
+│                       #  (c) BOLD_PRESETS (12 Pixa[Hue] themes).
+│                       #  Every chromatic hue is defined ONCE in the
+│                       #  HUES array as { main, shadow } and produces
+│                       #  TWO themes that share an identity color:
+│                       #  Plain "[Hue]" = title=shadow, body=main;
+│                       #  Pixa[Hue]     = title=main, body=#1d1d1d.
+│                       #  So stacking a Plain node above a Pixa node
+│                       #  of the same hue places the saturated MAIN
+│                       #  color at the BOTTOM of Plain (its body) and
+│                       #  the TOP of Pixa (its title), matching across
+│                       #  the pair. Plain restores the traditional
+│                       #  Pixaroma title-darker-than-body look; Pixa
+│                       #  is the bold accent. 15 hue families: Red,
+│                       #  Orange, Gold, Olive, Lime, Green, Teal,
+│                       #  Cyan, Sky, Blue, Indigo, Purple, Magenta,
+│                       #  Pink, Brown. User's
+│                       #  hand-picked May-2026 main colors are
+│                       #  preserved: Red #9d1212, Orange #9d4912,
+│                       #  Green #004835, Blue #0d2a3a, Purple #3a1d3a;
+│                       #  Green shadow #15261c is also a user pick.
+│                       #  The Pixa* prefix is INTENTIONALLY ONLY
+│                       #  applied to the 12 BOLD_PRESETS so they
+│                       #  stand out in the submenu as the user's
+│                       #  easy-find branded rail.
+│                       #  plus a Favorite entry (reads two Pixaroma
+│                       #  settings Pixaroma.NodeColors.FavoriteTitle /
+│                       #  Body, type "color") plus "Pick custom..." which
+│                       #  opens a custom side-by-side modal (built from
+│                       #  scratch using createPixaromaColorPicker twice,
+│                       #  NOT openPixaromaColorPickerModal) so both title
+│                       #  and body pickers are visible at once with a
+│                       #  small live-preview node above that updates as
+│                       #  the user drags either SV plane. Apply stores
+│                       #  the picked pair as the new Favorite for next
+│                       #  time. Multi-select aware: when 2+ nodes are
+│                       #  selected AND the right-clicked node is one of
+│                       #  them, all entries apply to the whole selection
+│                       #  and the top-level labels show "(N nodes)".
+│                       #  Colors are written onto each node's .color /
+│                       #  .bgcolor, so they serialize into the workflow
+│                       #  JSON and travel to recipients without
+│                       #  requiring this plugin installed. The Dark
+│                       #  preset reuses the same hex values
+│                       #  brand/index.js uses for category-auto-coloring.
+│                       #  Settings live under distinct leaf categories
+│                       #  "Favorite Title" + "Favorite Body" so the Vue
+│                       #  settings panel does NOT dedupe them (Align
+│                       #  Pattern #10). Custom modal CSS is `pix-nc-*`
+│                       #  prefixed and injected once via injectCSS()
+│                       #  guarded by `#pix-nc-css` ID. Click-outside-to-
+│                       #  cancel uses the mousedown-on-backdrop guard so
+│                       #  an SV-plane drag that releases off the modal
+│                       #  does not discard the user's pick (same pattern
+│                       #  Text Overlay #12 documents).
+│
 ├── paint/              # Paint Studio (PaintStudio class, mixin pattern)
 │   ├── index.js        # Entry: ComfyUI extension registration
 │   ├── core.mjs        # Class shell: constructor, open/close, UI building
