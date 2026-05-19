@@ -43,19 +43,31 @@ const PRESETS = [
   { id: "ocean",    label: "Ocean",    title: "#0a2535", body: "#14384a" },
 ];
 
-// 5 BOLD accent presets (more saturated title color with a consistent
-// #1d1d1d body so they read as one unified "branded" family). The
-// Pixa* naming is intentional and ONLY applied to these five so they
-// stand out in the submenu as the user's easy-find favorites; the 18
-// subtle presets above stay on plain hue names. Title hexes for Red /
-// Green / Blue / Purple are the user's hand-picked May-2026 favorites;
-// #9d4912 was added to fill the warm-orange gap.
+// BOLD Pixa* presets. Two stylistic families, both Pixa-prefixed so
+// they group together in the submenu under the user's easy-find rail:
+//
+// 1) "Solid" series (first 5) - saturated title color + neutral
+//    #1d1d1d body. Title hexes are the user's hand-picked May-2026
+//    favorites; #9d4912 was added to fill the warm-orange gap.
+//
+// 2) "Jewel" series (last 6) - saturated title color + a darker
+//    saturated body in the SAME hue family, so the title and body
+//    read as one rich colored card. PixaRuby is the user's hand-picked
+//    May-2026 deep-red favorite (#5a2222 / #381313); the other five
+//    are matched-style variations across the wheel (warm amber, deep
+//    green, deep blue, deep purple, pink-red coral).
 const BOLD_PRESETS = [
-  { id: "pixared",    label: "PixaRed",    title: "#9d1212", body: "#1d1d1d" },
-  { id: "pixaorange", label: "PixaOrange", title: "#9d4912", body: "#1d1d1d" },
-  { id: "pixagreen",  label: "PixaGreen",  title: "#004835", body: "#1d1d1d" },
-  { id: "pixablue",   label: "PixaBlue",   title: "#0d2a3a", body: "#1d1d1d" },
-  { id: "pixapurple", label: "PixaPurple", title: "#3a1d3a", body: "#1d1d1d" },
+  { id: "pixared",      label: "PixaRed",      title: "#9d1212", body: "#1d1d1d" },
+  { id: "pixaorange",   label: "PixaOrange",   title: "#9d4912", body: "#1d1d1d" },
+  { id: "pixagreen",    label: "PixaGreen",    title: "#004835", body: "#1d1d1d" },
+  { id: "pixablue",     label: "PixaBlue",     title: "#0d2a3a", body: "#1d1d1d" },
+  { id: "pixapurple",   label: "PixaPurple",   title: "#3a1d3a", body: "#1d1d1d" },
+  { id: "pixaruby",     label: "PixaRuby",     title: "#5a2222", body: "#381313" },
+  { id: "pixatopaz",    label: "PixaTopaz",    title: "#5a4022", body: "#382613" },
+  { id: "pixaemerald",  label: "PixaEmerald",  title: "#225a32", body: "#133820" },
+  { id: "pixasapphire", label: "PixaSapphire", title: "#22325a", body: "#131f38" },
+  { id: "pixaamethyst", label: "PixaAmethyst", title: "#502260", body: "#2e1338" },
+  { id: "pixacoral",    label: "PixaCoral",    title: "#5a2238", body: "#381320" },
 ];
 
 // Curated swatch sets for the Pick custom modal. The default

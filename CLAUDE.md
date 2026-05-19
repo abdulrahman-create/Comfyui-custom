@@ -89,17 +89,22 @@ js/
 │                       #  Forest / Sage / Teal / Ocean; title/body hex
 │                       #  pairs defined in PRESETS at the top of the
 │                       #  file, ordered as a wheel traversal so
-│                       #  adjacent entries feel related) PLUS 5 BOLD
-│                       #  accent presets (PixaRed / PixaOrange /
-│                       #  PixaGreen / PixaBlue / PixaPurple; saturated
-│                       #  title color with a consistent #1d1d1d body
-│                       #  so they read as a unified branded family)
-│                       #  defined in BOLD_PRESETS. The Pixa* prefix is
-│                       #  INTENTIONALLY ONLY applied to the 5 bold
-│                       #  presets so they stand out in the submenu as
-│                       #  the user's easy-find favorites; the 18
-│                       #  subtle presets stay on plain hue names.
-│                       #  Submenu separator splits the two groups
+│                       #  adjacent entries feel related) PLUS 11 BOLD
+│                       #  Pixa* presets in BOLD_PRESETS, split into
+│                       #  two stylistic families: (a) Solid 5 (PixaRed
+│                       #  / PixaOrange / PixaGreen / PixaBlue /
+│                       #  PixaPurple) use a saturated title color with
+│                       #  a consistent #1d1d1d body; (b) Jewel 6
+│                       #  (PixaRuby / PixaTopaz / PixaEmerald /
+│                       #  PixaSapphire / PixaAmethyst / PixaCoral) use
+│                       #  a saturated title with a darker saturated
+│                       #  body in the same hue family. The Pixa*
+│                       #  prefix is INTENTIONALLY ONLY applied to
+│                       #  these 11 bold presets so they stand out in
+│                       #  the submenu as the user's easy-find
+│                       #  favorites; the 18 subtle presets stay on
+│                       #  plain hue names. Submenu separator splits
+│                       #  the subtle group from the Pixa* group
 │                       #  visually.
 │                       #  plus a Favorite entry (reads two Pixaroma
 │                       #  settings Pixaroma.NodeColors.FavoriteTitle /
