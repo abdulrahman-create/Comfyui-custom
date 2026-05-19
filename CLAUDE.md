@@ -492,6 +492,7 @@ Pixaroma registers user-facing settings in ComfyUI's Settings panel using the `s
 |------------|------|----------|---------|
 | `Pixaroma.Compare.DefaultMode` | combo | `js/compare/index.js` | Default view mode for new Compare nodes |
 | `Pixaroma.Preview.DefaultLayout` | combo | `js/preview/index.js` | Default batch layout (Grid / Strip) for Preview Image Pixaroma; per-node toggle in the widget overrides |
+| `Pixaroma.Preview.DefaultSaveMode` | combo | `js/preview/index.js` | Default `save_mode` (Preview / Save) for newly-created Preview Image Pixaroma nodes; saved workflows keep their original value because `configure()` runs AFTER `onNodeCreated` (Vue Compat #8). Distinct category leaf `"Preview (save mode)"` so it does not collide with DefaultLayout (Align Pattern #10) |
 
 ### Transparent Background Save-to-Disk
 Paint, Composer, and 3D Builder each have a "Transparent BG (Save to Disk)" checkbox next to their BG color picker. It only affects **Save to Disk** — the workflow "Save" path is untouched so existing workflows stay compatible (Python nodes still output RGB tensors).
