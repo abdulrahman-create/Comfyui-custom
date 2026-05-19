@@ -225,6 +225,8 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
+> 💡 **After updating Pixaroma:** hard-refresh your ComfyUI browser tab with **Ctrl+Shift+R** (or **Cmd+Shift+R** on Mac). The browser keeps old node visuals cached, and without a hard refresh you may still see the previous version of a node even though the update installed correctly.
+
 ### **May 18, 2026 (1.3.39)**
 - **NEW: Text Overlay Pixaroma** - add a styled text caption to any image. 10 bundled fonts, bold / italic, three alignments, size, line height, letter spacing, opacity, rotation, X / Y, text color and an optional background bar behind the text. Math expressions work in every number field (type `100+12`, hit Enter, you get 112). Click **Open Text Editor** for a fullscreen canvas: drag the text to move it, drag the corners to resize from the center (Alt to resize from the opposite corner instead), drag the round handle to rotate, Shift+wheel to scale in place, snap guides catch on canvas center / thirds / edges. **Fit W** and **Fit H** buttons fill the text to the image width or height. **Save to Disk** exports a PNG straight to your machine. Wire the optional **text** input to override the caption from any upstream text source, and the textarea grays out so you know typing there is ignored. New nodes auto-center the text on whatever image you wire in, so the first render comes out looking right without any positioning fiddle.
 
