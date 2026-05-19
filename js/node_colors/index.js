@@ -361,18 +361,23 @@ function pickCustom(nodes) {
   });
 }
 
+// Inline swatch HTML for a menu entry: a small "node-shaped" chip that
+// shows the title color on top (50%) and the body color on bottom (50%).
+// Mimics what an actual ComfyUI node looks like at a glance.
+function swatchHTML(titleHex, bodyHex) {
+  return `<span style="display:inline-block; width:32px; height:14px; border:1px solid rgba(255,255,255,0.18); border-radius:3px; vertical-align:middle; margin-right:10px; background: linear-gradient(to bottom, ${titleHex} 0%, ${titleHex} 50%, ${bodyHex} 50%, ${bodyHex} 100%);"></span>`;
+}
+
 function buildSubmenuOptions(targets) {
   const items = PRESETS.map((p) => ({
-    content: p.label,
+    content: `${swatchHTML(p.title, p.body)}${p.label}`,
     callback: () => applyColors(targets, p.title, p.body),
   }));
   items.push(null); // separator
+  const fav = getFavorite();
   items.push({
-    content: "Favorite (from settings)",
-    callback: () => {
-      const fav = getFavorite();
-      applyColors(targets, fav.title, fav.body);
-    },
+    content: `${swatchHTML(fav.title, fav.body)}Favorite (from settings)`,
+    callback: () => applyColors(targets, fav.title, fav.body),
   });
   items.push({
     content: "Pick custom...",
