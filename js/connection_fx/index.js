@@ -16,20 +16,28 @@ function injectCSS() {
   const style = document.createElement("style");
   style.id = "pix-conn-fx-css";
   style.textContent = `
-    .pix-conn-fx-sparkle {
+    .pix-conn-fx-bolts {
       position: fixed;
       pointer-events: none;
       z-index: 99999;
-      width: 5px;
-      height: 5px;
-      border-radius: 50%;
-      background: #ffd866;
-      box-shadow: 0 0 6px #f66744, 0 0 3px #ffffff;
-      animation: pix-conn-fx-sparkle-anim 850ms ease-out forwards;
+      overflow: visible;
     }
-    @keyframes pix-conn-fx-sparkle-anim {
-      0%   { transform: translate(0, 0) scale(1); opacity: 1; }
-      100% { transform: translate(var(--dx), var(--dy)) scale(0); opacity: 0; }
+    .pix-conn-fx-bolts polyline {
+      fill: none;
+      stroke: #fff6c8;
+      stroke-width: 1.5;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      filter: drop-shadow(0 0 2px #ffb633)
+              drop-shadow(0 0 5px #f66744);
+      opacity: 0;
+      animation: pix-conn-fx-bolt-anim 380ms ease-out forwards;
+    }
+    @keyframes pix-conn-fx-bolt-anim {
+      0%   { opacity: 0; stroke-width: 3; }
+      10%  { opacity: 1; stroke-width: 2; }
+      35%  { opacity: 1; stroke-width: 1.5; }
+      100% { opacity: 0; stroke-width: 0.5; }
     }
   `;
   document.head.appendChild(style);
@@ -110,6 +118,8 @@ function drawApproachIndicators(canvas) {
       const alpha = proximity * (0.55 + pulse * 0.45);
       const sx = toScreenX(pos[0]);
       const sy = toScreenY(pos[1]);
+      const cursorSx = toScreenX(cursor[0]);
+      const cursorSy = toScreenY(cursor[1]);
       const haloR = 9 + proximity * 5 + pulse * 3;
       const dotR = 3.5 + proximity * 1.2;
 
@@ -122,6 +132,24 @@ function drawApproachIndicators(canvas) {
       ctx.arc(sx, sy, dotR, 0, Math.PI * 2);
       ctx.fillStyle = `rgba(246, 103, 68, ${alpha})`;
       ctx.fill();
+
+      const FLOW_HZ = 1.3;
+      const PARTICLE_COUNT = 6;
+      const partR = 1.8 + proximity * 0.8;
+      for (let p = 0; p < PARTICLE_COUNT; p++) {
+        const isReverse = p % 2 === 1;
+        const phaseOff = p / PARTICLE_COUNT;
+        let progress = (t * FLOW_HZ + phaseOff) % 1.0;
+        if (isReverse) progress = 1 - progress;
+        const px = cursorSx + (sx - cursorSx) * progress;
+        const py = cursorSy + (sy - cursorSy) * progress;
+        const fade = Math.sin(progress * Math.PI);
+        const pAlpha = proximity * fade * 0.9;
+        ctx.beginPath();
+        ctx.arc(px, py, partR, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(255, 170, 80, ${pAlpha})`;
+        ctx.fill();
+      }
     }
   }
   ctx.restore();
@@ -129,6 +157,28 @@ function drawApproachIndicators(canvas) {
   if (typeof canvas.setDirty === "function") {
     canvas.setDirty(true, true);
   }
+}
+
+function jaggedBoltPoints(x1, y1, x2, y2, segments, jitter) {
+  const points = [[x1, y1]];
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const len = Math.sqrt(dx * dx + dy * dy) || 1;
+  const perpX = -dy / len;
+  const perpY = dx / len;
+  for (let i = 1; i < segments; i++) {
+    const t = i / segments;
+    const cx = x1 + dx * t;
+    const cy = y1 + dy * t;
+    const off = (Math.random() - 0.5) * jitter * 2;
+    points.push([cx + perpX * off, cy + perpY * off]);
+  }
+  points.push([x2, y2]);
+  return points;
+}
+
+function pointsToAttr(pts) {
+  return pts.map((p) => p[0].toFixed(1) + "," + p[1].toFixed(1)).join(" ");
 }
 
 function spawnConnectionSparkles(node, slotIndex) {
@@ -151,21 +201,49 @@ function spawnConnectionSparkles(node, slotIndex) {
   const cx = rect.left + (pos[0] + ds.offset[0]) * ds.scale;
   const cy = rect.top + (pos[1] + ds.offset[1]) * ds.scale;
 
-  const count = 10;
-  for (let i = 0; i < count; i++) {
-    const angle = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.45;
-    const dist = 16 + Math.random() * 14;
-    const dx = Math.cos(angle) * dist;
-    const dy = Math.sin(angle) * dist;
-    const el = document.createElement("div");
-    el.className = "pix-conn-fx-sparkle";
-    el.style.left = cx + "px";
-    el.style.top = cy + "px";
-    el.style.setProperty("--dx", dx + "px");
-    el.style.setProperty("--dy", dy + "px");
-    document.body.appendChild(el);
-    setTimeout(() => el.remove(), 900);
+  const pad = 40;
+  const svgNS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(svgNS, "svg");
+  svg.classList.add("pix-conn-fx-bolts");
+  svg.style.left = (cx - pad) + "px";
+  svg.style.top = (cy - pad) + "px";
+  svg.style.width = (pad * 2) + "px";
+  svg.style.height = (pad * 2) + "px";
+  svg.setAttribute("viewBox", "0 0 " + (pad * 2) + " " + (pad * 2));
+
+  const lcx = pad;
+  const lcy = pad;
+  const boltCount = 5 + Math.floor(Math.random() * 2);
+  for (let i = 0; i < boltCount; i++) {
+    const angle = (Math.PI * 2 * i) / boltCount + (Math.random() - 0.5) * 0.6;
+    const length = 12 + Math.random() * 10;
+    const ex = lcx + Math.cos(angle) * length;
+    const ey = lcy + Math.sin(angle) * length;
+    const main = jaggedBoltPoints(lcx, lcy, ex, ey, 4, 3);
+    const poly = document.createElementNS(svgNS, "polyline");
+    poly.setAttribute("points", pointsToAttr(main));
+    poly.style.animationDelay = (i * 18) + "ms";
+    svg.appendChild(poly);
+
+    if (Math.random() > 0.5) {
+      const fAngle = angle + (Math.random() - 0.5) * 1.4;
+      const fLen = 4 + Math.random() * 5;
+      const fork = jaggedBoltPoints(
+        ex, ey,
+        ex + Math.cos(fAngle) * fLen,
+        ey + Math.sin(fAngle) * fLen,
+        2, 2,
+      );
+      const fPoly = document.createElementNS(svgNS, "polyline");
+      fPoly.setAttribute("points", pointsToAttr(fork));
+      fPoly.style.animationDelay = (i * 18 + 20) + "ms";
+      fPoly.style.strokeWidth = "1";
+      svg.appendChild(fPoly);
+    }
   }
+
+  document.body.appendChild(svg);
+  setTimeout(() => svg.remove(), 500);
 }
 
 function installDrawHook() {
