@@ -119,12 +119,14 @@ export function injectCSS() {
     }
     .pix-li-popup-section:not(:first-child) { border-top: 1px solid #2a2a2a; }
     /* Dimensions info bar — replaces the "drag/paste" hint once an image
-       is loaded. Stacks: ORIGINAL on top, RESIZED below (when active).
-       Each line: tiny aspect rect, dims, simplified ratio label. */
+       is loaded. Horizontal layout: [INPUT  dims  ratio] → [OUTPUT  dims
+       ratio], both halves on the same line so we save vertical space
+       when a resize mode is active. When resize is Off, only the Input
+       half is rendered. */
     .pix-li-diminfo {
       display: flex;
-      flex-direction: column;
-      gap: 3px;
+      align-items: center;
+      gap: 6px;
       background: #1d1d1d;
       border: 1px solid #333;
       border-radius: 4px;
@@ -134,37 +136,39 @@ export function injectCSS() {
     .pix-li-diminfo-row {
       display: flex;
       align-items: center;
-      gap: 6px;
+      gap: 5px;
+      flex: 1;
+      min-width: 0; /* allow shrinking when both halves visible */
     }
     .pix-li-diminfo-tag {
       font-size: 8px;
       color: #777;
       text-transform: uppercase;
       letter-spacing: 0.5px;
-      min-width: 38px;
     }
     .pix-li-diminfo-dims {
       color: #ddd;
       flex: 1;
+      white-space: nowrap;
     }
     .pix-li-diminfo-ratio {
       color: #888;
+      flex-shrink: 0;
     }
     .pix-li-diminfo-arrow {
       color: ${BRAND};
-      text-align: center;
-      font-size: 9px;
+      font-size: 11px;
       line-height: 1;
-      margin: -1px 0;
+      flex-shrink: 0;
     }
     .pix-li-diminfo .pix-li-shape {
       flex-shrink: 0;
     }
-    /* Highlight the OUTPUT row by tinting the dims orange when resize active. */
+    /* Highlight the OUTPUT half by tinting the dims orange when resize active. */
     .pix-li-diminfo-row.out .pix-li-diminfo-dims { color: ${BRAND}; font-weight: 600; }
     .pix-li-chips {
       display: grid;
-      grid-template-columns: repeat(2, 1fr);
+      grid-template-columns: repeat(3, 1fr);
       gap: 3px;
     }
     .pix-li-chip {
@@ -185,7 +189,7 @@ export function injectCSS() {
       color: #fff;
       border-color: ${BRAND};
     }
-    .pix-li-chip.span-full { grid-column: span 2; }
+    .pix-li-chip.span-full { grid-column: span 3; }
     .pix-li-panel {
       background: #1d1d1d;
       border: 1px solid #444;

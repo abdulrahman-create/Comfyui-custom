@@ -134,11 +134,14 @@ function updateInfoBar(node) {
     return row;
   }
 
+  // Horizontal layout: [Input row] → [Output row] on the same line. Saves
+  // a row of vertical space when a resize mode is active. When Off, only
+  // the Input half is rendered.
   info.appendChild(makeRow("Input", W, H, false));
   if (resizeActive) {
     const arrow = document.createElement("div");
     arrow.className = "pix-li-diminfo-arrow";
-    arrow.textContent = "↓";
+    arrow.textContent = "→";
     info.appendChild(arrow);
     info.appendChild(makeRow("Output", outW, outH, true));
   }
@@ -335,6 +338,13 @@ function setupLoadImageNode(node) {
     serialize: false,
   });
   node._pixLiWidget = widget;
+
+  // Default node width for fresh-on-canvas placements. Wider than the
+  // LiteGraph default so the [Input → Output] info bar and the 3-column
+  // chip grid fit comfortably side-by-side. LiteGraph's configure runs
+  // AFTER nodeCreated and overwrites with the saved value, so existing
+  // workflows keep whatever width the user had.
+  if (!node.size || node.size[0] < 380) node.size[0] = 380;
 
   // Track the currently-focused load-image node for Ctrl+V routing.
   // (One global listener; nodes register/unregister themselves on selection.)
