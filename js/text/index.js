@@ -1,7 +1,7 @@
 import { app } from "/scripts/app.js";
 import { BRAND } from "../shared/index.mjs";
 
-// Text Pixaroma — multi-line text field with a STRING output. The native
+// Text Pixaroma: multi-line text field with a STRING output. The native
 // ComfyUI multiline widget is HIDDEN; we render our own DOM widget so the
 // interior styling (font, padding, focus border) matches Prompt Pack
 // Pixaroma exactly. Bottom row holds three action buttons (Copy all /
@@ -105,6 +105,24 @@ function injectCSS() {
       border-color: #3ec371;
       color: #fff;
     }
+    /* Wired-input lock: when another node is wired into the text input,
+       the workflow uses the wire value instead of whatever is typed here.
+       Gray + italic + not-allowed cursor signals that typing is ignored. */
+    .pix-text-ta.pix-text-locked {
+      color: #888;
+      font-style: italic;
+      cursor: not-allowed;
+      background: #161616;
+    }
+    .pix-text-lockhint {
+      color: ${BRAND};
+      font: 10px sans-serif;
+      font-style: italic;
+      padding: 0 2px;
+      margin: 0;
+      flex: 0 0 auto;
+      user-select: none;
+    }
   `;
   document.head.appendChild(style);
 }
@@ -142,7 +160,7 @@ function hideNativeTextWidget(node) {
     if (w.element) w.element.style.display = "none";
     if (w.inputEl) w.inputEl.style.display = "none";
   }
-  // Vue may DOM-render a widget AFTER nodeCreated — re-hide on the next
+  // Vue may DOM-render a widget AFTER nodeCreated, so re-hide on the next
   // animation frame as a belt-and-braces.
   requestAnimationFrame(() => {
     for (const w of (node.widgets || [])) {
@@ -190,9 +208,46 @@ function buildRoot() {
 
   bottombar.append(copyBtn, replaceBtn, clearBtn);
 
-  root.append(tawrap, bottombar);
-  root._pixText = { ta, copyBtn, replaceBtn, clearBtn };
+  // Hint shown when the text input is wired (hidden by default).
+  const lockHint = document.createElement("div");
+  lockHint.className = "pix-text-lockhint";
+  lockHint.textContent = "Wired from upstream; typing here is ignored";
+  lockHint.style.display = "none";
+
+  root.append(tawrap, lockHint, bottombar);
+  root._pixText = { ta, copyBtn, replaceBtn, clearBtn, lockHint };
   return root;
+}
+
+function isTextInputWired(node) {
+  const inputs = node.inputs;
+  if (!Array.isArray(inputs)) return false;
+  for (const inp of inputs) {
+    if (inp && inp.name === "text" && inp.link != null) return true;
+  }
+  return false;
+}
+
+function refreshTextLock(node) {
+  const root = node._pixTextRoot;
+  if (!root || !root._pixText) return;
+  const { ta, lockHint, copyBtn, replaceBtn, clearBtn } = root._pixText;
+  const wired = isTextInputWired(node);
+  if (wired) {
+    ta.readOnly = true;
+    ta.classList.add("pix-text-locked");
+    lockHint.style.display = "block";
+    // Disable destructive buttons; Copy all stays useful (the user might
+    // still want to copy whatever they typed before wiring).
+    replaceBtn.disabled = true;
+    clearBtn.disabled = true;
+  } else {
+    ta.readOnly = false;
+    ta.classList.remove("pix-text-locked");
+    lockHint.style.display = "none";
+    replaceBtn.disabled = false;
+    updateClearEnabled(root);
+  }
 }
 
 function syncToNative(node, root) {
@@ -303,6 +358,9 @@ function setupNode(node) {
   // that already meet MIN are left alone.
   if (node.size[0] < MIN_W) node.size[0] = DEFAULT_W;
   if (node.size[1] < MIN_H) node.size[1] = DEFAULT_H;
+  // Initial lock-state check deferred until node.inputs is populated by
+  // configure() (Vue Compat #8 - configure runs after nodeCreated).
+  queueMicrotask(() => refreshTextLock(node));
   node.setDirtyCanvas(true, true);
 }
 
@@ -326,7 +384,18 @@ app.registerExtension({
           }
           updateClearEnabled(root);
         }
+        refreshTextLock(this);
       });
+      return r;
+    };
+
+    // When the text input is wired/unwired, gray the textarea + show
+    // the "wired from upstream" hint so it's obvious the typed text
+    // is overridden at runtime. Same pattern Text Overlay uses.
+    const origOnConnectionsChange = nodeType.prototype.onConnectionsChange;
+    nodeType.prototype.onConnectionsChange = function () {
+      const r = origOnConnectionsChange?.apply(this, arguments);
+      queueMicrotask(() => refreshTextLock(this));
       return r;
     };
 
