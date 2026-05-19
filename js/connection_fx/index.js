@@ -6,9 +6,8 @@ const PROXIMITY_RADIUS = 110;
 let enabled = false;
 let cssInjected = false;
 let drawHookInstalled = false;
-let connectHookInstalled = false;
 let origDrawFront = null;
-let origConnect = null;
+let lastLinkIds = null;
 
 function injectCSS() {
   if (cssInjected) return;
@@ -246,6 +245,61 @@ function spawnConnectionSparkles(node, slotIndex) {
   setTimeout(() => svg.remove(), 500);
 }
 
+function collectLinkIds() {
+  const graph = app.graph;
+  if (!graph || !graph.links) return null;
+  const links = graph.links;
+  const ids = new Set();
+  if (Array.isArray(links)) {
+    for (const link of links) {
+      if (link && link.id != null) ids.add(link.id);
+    }
+  } else if (typeof links.forEach === "function") {
+    links.forEach((link) => {
+      if (link && link.id != null) ids.add(link.id);
+    });
+  } else {
+    for (const k in links) {
+      const link = links[k];
+      if (link && link.id != null) ids.add(link.id);
+    }
+  }
+  return ids;
+}
+
+function findLinkById(id) {
+  const graph = app.graph;
+  if (!graph || !graph.links) return null;
+  const links = graph.links;
+  if (Array.isArray(links)) {
+    return links.find((l) => l && l.id === id) || null;
+  }
+  if (typeof links.get === "function") {
+    return links.get(id) || null;
+  }
+  return links[id] || null;
+}
+
+function detectNewConnections() {
+  if (!enabled) return;
+  const current = collectLinkIds();
+  if (!current) return;
+  if (lastLinkIds !== null) {
+    for (const id of current) {
+      if (!lastLinkIds.has(id)) {
+        const link = findLinkById(id);
+        if (link) {
+          const targetNode = app.graph.getNodeById(link.target_id);
+          if (targetNode && typeof link.target_slot === "number") {
+            spawnConnectionSparkles(targetNode, link.target_slot);
+          }
+        }
+      }
+    }
+  }
+  lastLinkIds = current;
+}
+
 function installDrawHook() {
   if (drawHookInstalled) return;
   const LGC = window.LGraphCanvas;
@@ -254,6 +308,7 @@ function installDrawHook() {
   LGC.prototype.drawFrontCanvas = function () {
     const r = origDrawFront ? origDrawFront.apply(this, arguments) : undefined;
     try {
+      detectNewConnections();
       drawApproachIndicators(this);
     } catch (e) {
       /* swallow */
@@ -263,36 +318,14 @@ function installDrawHook() {
   drawHookInstalled = true;
 }
 
-function installConnectHook() {
-  if (connectHookInstalled) return;
-  const LGN = window.LGraphNode;
-  if (!LGN || !LGN.prototype || !LGN.prototype.connect) return;
-  origConnect = LGN.prototype.connect;
-  LGN.prototype.connect = function (slot, target_node, target_slot) {
-    const result = origConnect.apply(this, arguments);
-    try {
-      if (
-        enabled &&
-        result &&
-        target_node &&
-        typeof target_slot === "number"
-      ) {
-        spawnConnectionSparkles(target_node, target_slot);
-      }
-    } catch (e) {
-      /* swallow */
-    }
-    return result;
-  };
-  connectHookInstalled = true;
-}
-
 function onSettingChange(v) {
   enabled = !!v;
   if (enabled) {
     injectCSS();
     installDrawHook();
-    installConnectHook();
+    lastLinkIds = collectLinkIds();
+  } else {
+    lastLinkIds = null;
   }
 }
 
