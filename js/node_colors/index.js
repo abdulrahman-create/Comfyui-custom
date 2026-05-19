@@ -54,7 +54,7 @@ const HUES = [
   { id: "orange",  label: "Orange",  main: "#9d4912", shadow: "#3a2814" },
   { id: "gold",    label: "Gold",    main: "#8a6814", shadow: "#3a3014" },
   { id: "olive",   label: "Olive",   main: "#4d6814", shadow: "#1f2814" },
-  { id: "lime",    label: "Lime",    main: "#5a8a14", shadow: "#2a3a14" },
+  { id: "lime",    label: "Lime",    main: "#2d5a0d", shadow: "#152a08" },
   { id: "green",   label: "Green",   main: "#004835", shadow: "#15261c" },
   { id: "teal",    label: "Teal",    main: "#006b5e", shadow: "#102a25" },
   { id: "cyan",    label: "Cyan",    main: "#0a6a8d", shadow: "#1a3a4a" },
