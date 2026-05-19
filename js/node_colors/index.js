@@ -16,58 +16,61 @@ import { createPixaromaColorPicker } from "../shared/color_picker.mjs";
 // node is one of them, the action applies to all of them, and the label
 // shows "(N nodes)".
 
-// 18 curated SUBTLE presets (title and body in matching dark hue, title
-// slightly darker than body, matching the brand convention from
-// js/brand/index.js). Hues are spread around the wheel so users can
-// visually group nodes by function. Ordered as a wheel traversal:
-// neutrals -> cool -> purple -> red -> warm -> green -> cyan, so
-// adjacent entries feel related.
-const PRESETS = [
+// ── Theme system (May 2026 rethink) ────────────────────────────────────
+// Three groups, all on a consistent "every hue has a Plain + Pixa pair"
+// convention with three neutral standalones at the top:
+//
+//   STANDALONES  - true neutrals with no hue, so no pair makes sense.
+//                  Dark uses the legacy Pixaroma title-darker-than-body
+//                  convention so it matches the brand default body.
+//   PRESETS      - 12 hue families in "jewel" style: saturated bright
+//                  title + a darker saturated body in the same hue
+//                  family. Title brighter than body so both feel like
+//                  one rich colored card.
+//   BOLD_PRESETS - 12 hue families in "solid" style: same hue family
+//                  as the Plain, but body is always #1d1d1d. Name is
+//                  Pixa[Hue] so the user can scan the submenu and find
+//                  them as their easy-find branded rail.
+//
+// Every Plain hue has a matching Pixa[Hue] partner so "Green" pairs
+// with "PixaGreen", "Red" with "PixaRed", etc. User's hand-picked
+// May-2026 favorites are preserved in the Pixa* slots: PixaRed
+// #9d1212, PixaGreen #004835, PixaBlue #0d2a3a, PixaPurple #3a1d3a.
+
+const STANDALONES = [
   { id: "dark",     label: "Dark",     title: "#1d1d1d", body: "#2a2a2a" },
   { id: "onyx",     label: "Onyx",     title: "#060606", body: "#141414" },
   { id: "charcoal", label: "Charcoal", title: "#262220", body: "#36312f" },
-  { id: "steel",    label: "Steel",    title: "#1c2228", body: "#2a3038" },
-  { id: "slate",    label: "Slate",    title: "#1a2332", body: "#25334a" },
-  { id: "midnight", label: "Midnight", title: "#0e1a2b", body: "#1a2940" },
-  { id: "indigo",   label: "Indigo",   title: "#1a1d3a", body: "#2a2d54" },
-  { id: "mauve",    label: "Mauve",    title: "#2d1f3a", body: "#3d2d4d" },
-  { id: "plum",     label: "Plum",     title: "#2a1a2e", body: "#3d2842" },
-  { id: "wine",     label: "Wine",     title: "#2a141b", body: "#3d1d28" },
-  { id: "crimson",  label: "Crimson",  title: "#2e0d12", body: "#3d1a20" },
-  { id: "mocha",    label: "Mocha",    title: "#1f1814", body: "#2e2218" },
-  { id: "amber",    label: "Amber",    title: "#2a1d10", body: "#3d2c1a" },
-  { id: "olive",    label: "Olive",    title: "#1f2614", body: "#2d3520" },
-  { id: "forest",   label: "Forest",   title: "#13261c", body: "#004835" },
-  { id: "sage",     label: "Sage",     title: "#1a2620", body: "#2a3a30" },
-  { id: "teal",     label: "Teal",     title: "#102b2f", body: "#1a3f44" },
-  { id: "ocean",    label: "Ocean",    title: "#0a2535", body: "#14384a" },
 ];
 
-// BOLD Pixa* presets. Two stylistic families, both Pixa-prefixed so
-// they group together in the submenu under the user's easy-find rail:
-//
-// 1) "Solid" series (first 5) - saturated title color + neutral
-//    #1d1d1d body. Title hexes are the user's hand-picked May-2026
-//    favorites; #9d4912 was added to fill the warm-orange gap.
-//
-// 2) "Jewel" series (last 6) - saturated title color + a darker
-//    saturated body in the SAME hue family, so the title and body
-//    read as one rich colored card. PixaRuby is the user's hand-picked
-//    May-2026 deep-red favorite (#5a2222 / #381313); the other five
-//    are matched-style variations across the wheel (warm amber, deep
-//    green, deep blue, deep purple, pink-red coral).
+const PRESETS = [
+  { id: "red",    label: "Red",    title: "#5a2222", body: "#381313" },
+  { id: "orange", label: "Orange", title: "#5a3a14", body: "#382613" },
+  { id: "gold",   label: "Gold",   title: "#5a4a14", body: "#38301a" },
+  { id: "olive",  label: "Olive",  title: "#3a4a14", body: "#22281f" },
+  { id: "green",  label: "Green",  title: "#225a32", body: "#133820" },
+  { id: "teal",   label: "Teal",   title: "#226e5a", body: "#133a3a" },
+  { id: "cyan",   label: "Cyan",   title: "#225a7a", body: "#133a4a" },
+  { id: "blue",   label: "Blue",   title: "#22325a", body: "#131f38" },
+  { id: "indigo", label: "Indigo", title: "#2e225a", body: "#1a1438" },
+  { id: "purple", label: "Purple", title: "#502260", body: "#2e1338" },
+  { id: "pink",   label: "Pink",   title: "#5a2238", body: "#381320" },
+  { id: "brown",  label: "Brown",  title: "#3a2814", body: "#221608" },
+];
+
 const BOLD_PRESETS = [
-  { id: "pixared",      label: "PixaRed",      title: "#9d1212", body: "#1d1d1d" },
-  { id: "pixaorange",   label: "PixaOrange",   title: "#9d4912", body: "#1d1d1d" },
-  { id: "pixagreen",    label: "PixaGreen",    title: "#004835", body: "#1d1d1d" },
-  { id: "pixablue",     label: "PixaBlue",     title: "#0d2a3a", body: "#1d1d1d" },
-  { id: "pixapurple",   label: "PixaPurple",   title: "#3a1d3a", body: "#1d1d1d" },
-  { id: "pixaruby",     label: "PixaRuby",     title: "#5a2222", body: "#381313" },
-  { id: "pixatopaz",    label: "PixaTopaz",    title: "#5a4022", body: "#382613" },
-  { id: "pixaemerald",  label: "PixaEmerald",  title: "#225a32", body: "#133820" },
-  { id: "pixasapphire", label: "PixaSapphire", title: "#22325a", body: "#131f38" },
-  { id: "pixaamethyst", label: "PixaAmethyst", title: "#502260", body: "#2e1338" },
-  { id: "pixacoral",    label: "PixaCoral",    title: "#5a2238", body: "#381320" },
+  { id: "pixared",    label: "PixaRed",    title: "#9d1212", body: "#1d1d1d" },
+  { id: "pixaorange", label: "PixaOrange", title: "#9d4912", body: "#1d1d1d" },
+  { id: "pixagold",   label: "PixaGold",   title: "#ad8e14", body: "#1d1d1d" },
+  { id: "pixaolive",  label: "PixaOlive",  title: "#6a8a14", body: "#1d1d1d" },
+  { id: "pixagreen",  label: "PixaGreen",  title: "#004835", body: "#1d1d1d" },
+  { id: "pixateal",   label: "PixaTeal",   title: "#006b5e", body: "#1d1d1d" },
+  { id: "pixacyan",   label: "PixaCyan",   title: "#0a7a8d", body: "#1d1d1d" },
+  { id: "pixablue",   label: "PixaBlue",   title: "#0d2a3a", body: "#1d1d1d" },
+  { id: "pixaindigo", label: "PixaIndigo", title: "#2415a8", body: "#1d1d1d" },
+  { id: "pixapurple", label: "PixaPurple", title: "#3a1d3a", body: "#1d1d1d" },
+  { id: "pixapink",   label: "PixaPink",   title: "#8a224a", body: "#1d1d1d" },
+  { id: "pixabrown",  label: "PixaBrown",  title: "#5d3818", body: "#1d1d1d" },
 ];
 
 // Curated swatch sets for the Pick custom modal. The default
@@ -469,18 +472,31 @@ function swatchHTML(titleHex, bodyHex) {
 }
 
 function buildSubmenuOptions(targets) {
-  const items = PRESETS.map((p) => ({
-    content: `${swatchHTML(p.title, p.body)}${p.label}`,
-    callback: () => applyColors(targets, p.title, p.body),
-  }));
-  items.push(null); // separator: subtle -> bold
+  const items = [];
+  // Group 1: Standalone neutrals
+  for (const p of STANDALONES) {
+    items.push({
+      content: `${swatchHTML(p.title, p.body)}${p.label}`,
+      callback: () => applyColors(targets, p.title, p.body),
+    });
+  }
+  items.push(null); // separator: standalones -> plain hue pairs
+  // Group 2: Plain hue jewel pairs
+  for (const p of PRESETS) {
+    items.push({
+      content: `${swatchHTML(p.title, p.body)}${p.label}`,
+      callback: () => applyColors(targets, p.title, p.body),
+    });
+  }
+  items.push(null); // separator: plain -> Pixa solid pairs
+  // Group 3: Pixa solid (neutral body) pairs
   for (const p of BOLD_PRESETS) {
     items.push({
       content: `${swatchHTML(p.title, p.body)}${p.label}`,
       callback: () => applyColors(targets, p.title, p.body),
     });
   }
-  items.push(null); // separator: bold -> favorite + custom
+  items.push(null); // separator: presets -> favorite + custom
   const fav = getFavorite();
   items.push({
     content: `${swatchHTML(fav.title, fav.body)}Favorite (from settings)`,

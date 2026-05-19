@@ -82,30 +82,31 @@ js/
 │                       #  append two entries to ANY node's right-click
 │                       #  menu: "👑 Pixaroma colors" submenu + "👑 Reset
 │                       #  node colors". Submenu via LiteGraph.ContextMenu
-│                       #  callback pattern contains 18 SUBTLE dark
-│                       #  presets (Dark / Onyx / Charcoal / Steel /
-│                       #  Slate / Midnight / Indigo / Mauve / Plum /
-│                       #  Wine / Crimson / Mocha / Amber / Olive /
-│                       #  Forest / Sage / Teal / Ocean; title/body hex
-│                       #  pairs defined in PRESETS at the top of the
-│                       #  file, ordered as a wheel traversal so
-│                       #  adjacent entries feel related) PLUS 11 BOLD
-│                       #  Pixa* presets in BOLD_PRESETS, split into
-│                       #  two stylistic families: (a) Solid 5 (PixaRed
-│                       #  / PixaOrange / PixaGreen / PixaBlue /
-│                       #  PixaPurple) use a saturated title color with
-│                       #  a consistent #1d1d1d body; (b) Jewel 6
-│                       #  (PixaRuby / PixaTopaz / PixaEmerald /
-│                       #  PixaSapphire / PixaAmethyst / PixaCoral) use
-│                       #  a saturated title with a darker saturated
-│                       #  body in the same hue family. The Pixa*
-│                       #  prefix is INTENTIONALLY ONLY applied to
-│                       #  these 11 bold presets so they stand out in
-│                       #  the submenu as the user's easy-find
-│                       #  favorites; the 18 subtle presets stay on
-│                       #  plain hue names. Submenu separator splits
-│                       #  the subtle group from the Pixa* group
-│                       #  visually.
+│                       #  callback pattern contains 27 themes split
+│                       #  into THREE groups, each separated visually:
+│                       #  (a) STANDALONES (3 neutrals - Dark, Onyx,
+│                       #  Charcoal - no hue, no pair); (b) PRESETS
+│                       #  (12 Plain hue jewel pairs - Red, Orange,
+│                       #  Gold, Olive, Green, Teal, Cyan, Blue,
+│                       #  Indigo, Purple, Pink, Brown - saturated
+│                       #  title + darker saturated body in same hue);
+│                       #  (c) BOLD_PRESETS (12 Pixa-prefixed solid
+│                       #  pairs - PixaRed, PixaOrange, PixaGold,
+│                       #  PixaOlive, PixaGreen, PixaTeal, PixaCyan,
+│                       #  PixaBlue, PixaIndigo, PixaPurple, PixaPink,
+│                       #  PixaBrown - same hue families as PRESETS but
+│                       #  body is always #1d1d1d). Every Plain hue
+│                       #  pairs with its Pixa[Hue] partner (Green +
+│                       #  PixaGreen, Red + PixaRed, etc.) so the user
+│                       #  can pick the matched-body or neutral-body
+│                       #  variant of the same hue. The user's
+│                       #  hand-picked May-2026 favorites are
+│                       #  preserved in PixaRed (#9d1212), PixaGreen
+│                       #  (#004835), PixaBlue (#0d2a3a), PixaPurple
+│                       #  (#3a1d3a). The Pixa* prefix is INTENTIONALLY
+│                       #  ONLY applied to the 12 solid themes so they
+│                       #  stand out in the submenu as the user's
+│                       #  easy-find branded rail.
 │                       #  plus a Favorite entry (reads two Pixaroma
 │                       #  settings Pixaroma.NodeColors.FavoriteTitle /
 │                       #  Body, type "color") plus "Pick custom..." which
