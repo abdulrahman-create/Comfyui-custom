@@ -4,19 +4,12 @@ const FX_OPTIONS = [
   "None",
   "Pixaroma Orange",
   "Ignition",
-  "Pulse",
   "Sparkle",
   "Lightning",
-  "Aurora",
   "Rocket",
 ];
 
-const FX_CLASSES = [
-  "pix-rb-orange",
-  "pix-rb-pulse",
-  "pix-rb-aurora",
-  "pix-rb-rocket-shake",
-];
+const FX_CLASSES = ["pix-rb-orange", "pix-rb-rocket-shake"];
 
 let currentFx = "None";
 let currentButton = null;
@@ -29,41 +22,18 @@ function injectCSS() {
   const style = document.createElement("style");
   style.id = "pix-rb-fx-css";
   style.textContent = `
-    button.pix-rb-orange,
-    button.pix-rb-pulse,
-    button.pix-rb-aurora {
+    button.pix-rb-orange {
       background: linear-gradient(180deg, #ff7a4d, #f66744) !important;
       color: #ffffff !important;
       border-color: #c44520 !important;
       transition: filter 180ms, transform 120ms, box-shadow 180ms;
     }
-    button.pix-rb-orange:hover,
-    button.pix-rb-pulse:hover {
+    button.pix-rb-orange:hover {
       filter: brightness(1.15);
       box-shadow: 0 0 14px rgba(246, 103, 68, 0.65);
     }
-    button.pix-rb-orange:active,
-    button.pix-rb-pulse:active,
-    button.pix-rb-aurora:active {
+    button.pix-rb-orange:active {
       transform: scale(0.96);
-    }
-
-    button.pix-rb-pulse {
-      animation: pix-rb-pulse-anim 2.2s ease-in-out infinite;
-    }
-    @keyframes pix-rb-pulse-anim {
-      0%, 100% { box-shadow: 0 0 4px rgba(246, 103, 68, 0.35); }
-      50%      { box-shadow: 0 0 18px rgba(246, 103, 68, 0.95); }
-    }
-
-    button.pix-rb-aurora {
-      background: linear-gradient(90deg, #f66744, #ff9d7d, #ffb088, #f66744, #c44520, #f66744) !important;
-      background-size: 400% 100% !important;
-      animation: pix-rb-aurora-anim 6s linear infinite;
-    }
-    @keyframes pix-rb-aurora-anim {
-      0%   { background-position: 0% 50%; }
-      100% { background-position: 400% 50%; }
     }
 
     .pix-rb-fx-flame {
@@ -71,18 +41,26 @@ function injectCSS() {
       pointer-events: none;
       z-index: 99999;
       background: radial-gradient(ellipse at right center,
-        rgba(255, 235, 59, 1) 0%,
-        rgba(255, 152, 0, 0.95) 22%,
-        rgba(244, 67, 54, 0.85) 50%,
-        rgba(244, 67, 54, 0) 100%);
-      filter: blur(3px);
+        rgba(255, 245, 120, 1) 0%,
+        rgba(255, 180, 40, 0.95) 18%,
+        rgba(255, 100, 30, 0.85) 42%,
+        rgba(220, 40, 30, 0.55) 70%,
+        rgba(220, 40, 30, 0) 100%);
+      filter: blur(2.5px);
       transform-origin: right center;
-      animation: pix-rb-flame-anim 600ms ease-out forwards;
+      clip-path: polygon(
+        0% 50%,
+        12% 35%, 25% 28%, 40% 25%, 55% 22%, 70% 28%, 85% 32%,
+        100% 38%, 100% 62%,
+        85% 68%, 70% 72%, 55% 78%, 40% 75%, 25% 72%, 12% 65%
+      );
+      animation: pix-rb-flame-anim 650ms ease-out forwards;
     }
     @keyframes pix-rb-flame-anim {
-      0%   { transform: scaleX(0); opacity: 0; }
-      20%  { transform: scaleX(1); opacity: 1; }
-      100% { transform: scaleX(1.7); opacity: 0; }
+      0%   { transform: scaleX(0.2) scaleY(0.8); opacity: 0; }
+      18%  { transform: scaleX(1) scaleY(1); opacity: 1; }
+      55%  { transform: scaleX(1.3) scaleY(0.95); opacity: 0.85; }
+      100% { transform: scaleX(1.7) scaleY(0.6); opacity: 0; }
     }
 
     .pix-rb-fx-sparkle {
@@ -99,6 +77,22 @@ function injectCSS() {
     @keyframes pix-rb-sparkle-anim {
       0%   { transform: translateY(0) scale(1); opacity: 1; }
       100% { transform: translateY(-32px) scale(0); opacity: 0; }
+    }
+
+    .pix-rb-fx-sparkleburst {
+      position: fixed;
+      pointer-events: none;
+      z-index: 99999;
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: #ffeb3b;
+      box-shadow: 0 0 8px #ffeb3b, 0 0 4px #ffffff;
+      animation: pix-rb-sparkleburst-anim 900ms ease-out forwards;
+    }
+    @keyframes pix-rb-sparkleburst-anim {
+      0%   { transform: translate(0, 0) scale(1); opacity: 1; }
+      100% { transform: translate(var(--dx), var(--dy)) scale(0); opacity: 0; }
     }
 
     .pix-rb-fx-arc {
@@ -118,7 +112,7 @@ function injectCSS() {
     }
 
     button.pix-rb-rocket-shake {
-      animation: pix-rb-rocket-shake-anim 400ms ease-in-out;
+      animation: pix-rb-rocket-shake-anim 420ms ease-in-out;
     }
     @keyframes pix-rb-rocket-shake-anim {
       0%, 100% { transform: translate(0, 0); }
@@ -129,18 +123,32 @@ function injectCSS() {
       75%      { transform: translate(-1px, -1px); }
       90%      { transform: translate(1px, 0); }
     }
-    .pix-rb-fx-rocketflame {
+
+    .pix-rb-fx-exhaust {
       position: fixed;
       pointer-events: none;
       z-index: 99999;
-      font-size: 22px;
-      line-height: 1;
-      animation: pix-rb-rocketflame-anim 600ms ease-out forwards;
+      background: radial-gradient(ellipse at top center,
+        rgba(255, 245, 120, 1) 0%,
+        rgba(255, 180, 40, 0.95) 18%,
+        rgba(255, 100, 30, 0.85) 42%,
+        rgba(220, 40, 30, 0.55) 70%,
+        rgba(220, 40, 30, 0) 100%);
+      filter: blur(2.5px);
+      transform-origin: top center;
+      clip-path: polygon(
+        50% 100%,
+        35% 88%, 28% 75%, 22% 60%, 25% 45%, 28% 30%, 32% 15%,
+        38% 0%, 62% 0%,
+        68% 15%, 72% 30%, 75% 45%, 78% 60%, 72% 75%, 65% 88%
+      );
+      animation: pix-rb-exhaust-anim 700ms ease-out forwards;
     }
-    @keyframes pix-rb-rocketflame-anim {
-      0%   { opacity: 0; transform: translateY(-6px) scale(0.8); }
-      30%  { opacity: 1; transform: translateY(0) scale(1); }
-      100% { opacity: 0; transform: translateY(22px) scale(0.7); }
+    @keyframes pix-rb-exhaust-anim {
+      0%   { transform: scaleY(0.2) scaleX(0.8); opacity: 0; }
+      18%  { transform: scaleY(1) scaleX(1); opacity: 1; }
+      55%  { transform: scaleY(1.3) scaleX(0.95); opacity: 0.85; }
+      100% { transform: scaleY(1.7) scaleX(0.6); opacity: 0; }
     }
   `;
   document.head.appendChild(style);
@@ -157,17 +165,46 @@ function findRunButton() {
   return null;
 }
 
-function spawnFlame(button) {
+function spawnFlamePuff(button, opts) {
   const r = button.getBoundingClientRect();
-  const w = 90;
+  const w = 70 + Math.random() * 35;
+  const h = r.height * (0.7 + Math.random() * 0.5);
+  const yOffset = (Math.random() - 0.5) * r.height * 0.35;
   const el = document.createElement("div");
   el.className = "pix-rb-fx-flame";
-  el.style.left = (r.left - w) + "px";
-  el.style.top = r.top + "px";
+  el.style.left = (r.left - w + 4) + "px";
+  el.style.top = (r.top + (r.height - h) / 2 + yOffset) + "px";
   el.style.width = w + "px";
-  el.style.height = r.height + "px";
+  el.style.height = h + "px";
   document.body.appendChild(el);
   setTimeout(() => el.remove(), 700);
+}
+
+function spawnFlame(button) {
+  for (let i = 0; i < 3; i++) {
+    setTimeout(() => spawnFlamePuff(button), i * 55);
+  }
+}
+
+function spawnExhaustPuff(button) {
+  const r = button.getBoundingClientRect();
+  const w = r.width * (0.45 + Math.random() * 0.3);
+  const h = 45 + Math.random() * 25;
+  const xOffset = (Math.random() - 0.5) * r.width * 0.22;
+  const el = document.createElement("div");
+  el.className = "pix-rb-fx-exhaust";
+  el.style.left = (r.left + (r.width - w) / 2 + xOffset) + "px";
+  el.style.top = (r.bottom - 4) + "px";
+  el.style.width = w + "px";
+  el.style.height = h + "px";
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 750);
+}
+
+function spawnExhaust(button) {
+  for (let i = 0; i < 3; i++) {
+    setTimeout(() => spawnExhaustPuff(button), i * 55);
+  }
 }
 
 function spawnArc(button) {
@@ -193,15 +230,25 @@ function spawnSparkle(button) {
   setTimeout(() => el.remove(), 1700);
 }
 
-function spawnRocketFlame(button) {
+function spawnSparkleBurst(button) {
   const r = button.getBoundingClientRect();
-  const el = document.createElement("div");
-  el.className = "pix-rb-fx-rocketflame";
-  el.textContent = "🔥";
-  el.style.left = (r.left + r.width / 2 - 11) + "px";
-  el.style.top = (r.bottom + 2) + "px";
-  document.body.appendChild(el);
-  setTimeout(() => el.remove(), 700);
+  const cx = r.left + r.width / 2;
+  const cy = r.top + r.height / 2;
+  const count = 16;
+  for (let i = 0; i < count; i++) {
+    const angle = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.4;
+    const dist = 40 + Math.random() * 25;
+    const dx = Math.cos(angle) * dist;
+    const dy = Math.sin(angle) * dist;
+    const el = document.createElement("div");
+    el.className = "pix-rb-fx-sparkleburst";
+    el.style.left = cx + "px";
+    el.style.top = cy + "px";
+    el.style.setProperty("--dx", dx + "px");
+    el.style.setProperty("--dy", dy + "px");
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 950);
+  }
 }
 
 function attachIgnition(button) {
@@ -220,7 +267,12 @@ function attachSparkle(button) {
   const id = setInterval(() => {
     if (button.isConnected) spawnSparkle(button);
   }, 550);
-  return () => clearInterval(id);
+  const clickHandler = () => spawnSparkleBurst(button);
+  button.addEventListener("click", clickHandler);
+  return () => {
+    clearInterval(id);
+    button.removeEventListener("click", clickHandler);
+  };
 }
 
 function attachRocket(button) {
@@ -228,8 +280,8 @@ function attachRocket(button) {
     button.classList.remove("pix-rb-rocket-shake");
     void button.offsetWidth;
     button.classList.add("pix-rb-rocket-shake");
-    setTimeout(() => button.classList.remove("pix-rb-rocket-shake"), 420);
-    spawnRocketFlame(button);
+    setTimeout(() => button.classList.remove("pix-rb-rocket-shake"), 440);
+    spawnExhaust(button);
   };
   button.addEventListener("click", handler);
   return () => {
@@ -256,9 +308,6 @@ function applyFx(button, fx) {
       button.classList.add("pix-rb-orange");
       cleanupCurrent = attachIgnition(button);
       break;
-    case "Pulse":
-      button.classList.add("pix-rb-pulse");
-      break;
     case "Sparkle":
       button.classList.add("pix-rb-orange");
       cleanupCurrent = attachSparkle(button);
@@ -266,9 +315,6 @@ function applyFx(button, fx) {
     case "Lightning":
       button.classList.add("pix-rb-orange");
       cleanupCurrent = attachLightning(button);
-      break;
-    case "Aurora":
-      button.classList.add("pix-rb-aurora");
       break;
     case "Rocket":
       button.classList.add("pix-rb-orange");
