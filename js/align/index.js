@@ -277,12 +277,25 @@ function rectEdges(rect) {
   };
 }
 
+// Visual title-bar height for a node. Returns 0 for nodes that render no
+// title bar at all: collapsed nodes (LiteGraph hides the body and only
+// shows the title strip) AND nodes that opt out via flags.no_title
+// (Pixaroma Label / Note set this so they render as pure decorative
+// surfaces with no chrome). Otherwise returns LiteGraph's standard
+// title-bar height (defaults to 30 px).
+function getTitleH(n) {
+  if (n.flags?.collapsed) return 0;
+  if (n.flags?.no_title) return 0;
+  return window.LiteGraph?.NODE_TITLE_HEIGHT || 30;
+}
+
 function nodeRect(n) {
   // In LiteGraph, node.pos[1] is the top of the BODY (below the title bar),
   // and node.size[1] is the body height. The title sits at pos[1] - titleH.
   // For snap to align with the visual top edge of the node, include the
   // title bar in the rect. Collapsed nodes have no body, just title.
-  const titleH = (n.flags?.collapsed) ? 0 : (window.LiteGraph?.NODE_TITLE_HEIGHT || 30);
+  // no_title nodes (Label / Note) have no title bar at all.
+  const titleH = getTitleH(n);
   return {
     x: n.pos[0],
     y: n.pos[1] - titleH,
@@ -473,12 +486,11 @@ function onWindowPointerMove(e) {
   );
   if (!sessionMatches) {
     if (multiNodes) {
-      const titleH = window.LiteGraph?.NODE_TITLE_HEIGHT || 30;
       const origPositions = new Map();
       let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
       for (const n of multiNodes) {
         origPositions.set(n.id, { x: n.pos[0], y: n.pos[1] });
-        const visTop = n.pos[1] - (n.flags?.collapsed ? 0 : titleH);
+        const visTop = n.pos[1] - getTitleH(n);
         minX = Math.min(minX, n.pos[0]);
         minY = Math.min(minY, visTop);
         maxX = Math.max(maxX, n.pos[0] + n.size[0]);
@@ -534,7 +546,7 @@ function onWindowPointerMove(e) {
   if (state.dragInfo.lockType === "resize") {
     // All edges below are in VISUAL coords (top includes the title bar) so
     // they line up with other nodes' visual edges from nodeRect().
-    const titleH = (draggedNode.flags?.collapsed) ? 0 : (window.LiteGraph?.NODE_TITLE_HEIGHT || 30);
+    const titleH = getTitleH(draggedNode);
     // Detect which edges are moving by comparing current vs initial edge
     // positions. Once an edge moves, mark it sticky so we keep snapping it
     // even when LiteGraph clamps it at min size.
@@ -757,7 +769,7 @@ function onWindowPointerMove(e) {
 
   // Build moving rect at desired position. Use the VISUAL rect (including
   // the title bar above pos[1]) so snap aligns with what the user sees.
-  const titleH = (draggedNode.flags?.collapsed) ? 0 : (window.LiteGraph?.NODE_TITLE_HEIGHT || 30);
+  const titleH = getTitleH(draggedNode);
   const w = draggedNode.size[0];
   const h = draggedNode.size[1];
   const movingRect = { x: desiredX, y: desiredY - titleH, w, h: h + titleH };
