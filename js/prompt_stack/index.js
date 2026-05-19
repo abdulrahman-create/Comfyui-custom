@@ -14,6 +14,13 @@ import { pixConfirm } from "./interaction.mjs";
 
 const DEFAULT_W = 400;
 const DEFAULT_H = 180;
+// Resize-handle floor (CLAUDE.md UI conventions #7). Sized so the bottom
+// action row (3 buttons * 86 border-box + 2 * 4 gaps + root padding ~=
+// 282) plus a small breathing margin fits without clipping. MIN_H stays
+// at DEFAULT_H so a single-row node never collapses below its starting
+// size; the user can still grow the node arbitrarily large.
+const MIN_W = 320;
+const MIN_H = 180;
 
 // Defensive cleanup for nodes carried over from the older wire-mode version
 // of this node (or from any future ComfyUI build that decides to auto-create
@@ -209,6 +216,30 @@ app.registerExtension({
       restoreFromProperties(this);
       if (this._pixPsRerender) this._pixPsRerender();
       return r;
+    };
+
+    // Clamp manual resize so the bottom action row never overflows past
+    // the node frame. Mutate BOTH the parameter AND this.size defensively
+    // (some LiteGraph forks treat the param as the new size).
+    const origOnResize = nodeType.prototype.onResize;
+    nodeType.prototype.onResize = function (size) {
+      if (size[0] < MIN_W) size[0] = MIN_W;
+      if (size[1] < MIN_H) size[1] = MIN_H;
+      if (this.size[0] < MIN_W) this.size[0] = MIN_W;
+      if (this.size[1] < MIN_H) this.size[1] = MIN_H;
+      if (origOnResize) return origOnResize.apply(this, arguments);
+    };
+
+    // Self-heal min size on every paint (Preview Image Pattern #11).
+    // Catches resize paths that bypass onResize per Vue Compat #13 -
+    // some DOM-widget resizes never fire onResize, and Align Pixaroma
+    // can write node.size directly via cursor delta.
+    const origDraw = nodeType.prototype.onDrawForeground;
+    nodeType.prototype.onDrawForeground = function (ctx) {
+      if (origDraw) origDraw.call(this, ctx);
+      if (this.flags?.collapsed) return;
+      if (this.size[0] < MIN_W) this.size[0] = MIN_W;
+      if (this.size[1] < MIN_H) this.size[1] = MIN_H;
     };
 
     const origRemoved = nodeType.prototype.onRemoved;

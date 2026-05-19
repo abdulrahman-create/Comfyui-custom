@@ -17,10 +17,110 @@ import {
 import { injectCSS, buildRoot, renderRows, measureContentHeight } from "./render.mjs";
 import { pixConfirm } from "./interaction.mjs";
 
-const DEFAULT_W = 420;
-const DEFAULT_H = 290;
-// Title bar + body padding + the two output dots on the right side.
-const CHROME_ALLOWANCE = 70;
+const BRAND = "#f66744";
+
+// Default == minimum, so fresh-on-canvas drops are compact and the node
+// grows itself via growNodeToContent when the user adds rows. Matches
+// the convention used by Text Pixaroma + Show Text Pixaroma. Values
+// verified empirically with the sizer console snippet.
+const DEFAULT_W = 380;
+const DEFAULT_H = 292;
+const MIN_W = 380;
+const MIN_H = 292;
+// Slot-row space at the top of the body (where the canvas-painted Queue
+// Text / List Prompts pills live: PILL_Y 20 + PILL_H 22 + margin ~ 50)
+// plus a buffer for DOM widget padding. Earlier 44 was too small: with
+// pills at Y=20 the DOM widget got `size[1] - 50` of space, but we only
+// budgeted 44 above contentH so action buttons overlapped the textareas
+// when the user typed enough to autogrow a row to its max height. Sized
+// so both rows hitting their 120px textarea cap still leaves a clean
+// gap above the action buttons.
+const CHROME_ALLOWANCE = 68;
+
+// Mode-pill geometry. Painted on the canvas at the slot-row Y so the
+// DOM widget below stays compact. Dimensions and corner radius match
+// the bottom action buttons (Prompt Pack convention - same design
+// language across Pixaroma nodes).
+const PILL_Y = 20;
+const PILL_H = 22;
+const PILL_GAP = 4;
+const PILL_LEFT = 20;
+const PILL_W = 86;
+const PILL_RADIUS = 4;
+
+function pillQueueRect() {
+  return { x: PILL_LEFT, y: PILL_Y, w: PILL_W, h: PILL_H };
+}
+function pillListRect() {
+  return { x: PILL_LEFT + PILL_W + PILL_GAP, y: PILL_Y, w: PILL_W, h: PILL_H };
+}
+function insideRect(pos, r) {
+  return pos[0] >= r.x && pos[0] <= r.x + r.w && pos[1] >= r.y && pos[1] <= r.y + r.h;
+}
+function paintPill(ctx, r, label, active, hover) {
+  const isHot = active || hover;
+  ctx.fillStyle = isHot ? BRAND : "rgba(255,255,255,0.05)";
+  ctx.strokeStyle = isHot ? BRAND : "rgba(255,255,255,0.15)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(r.x, r.y, r.w, r.h, PILL_RADIUS);
+  else ctx.rect(r.x, r.y, r.w, r.h);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = isHot ? "#fff" : "rgba(255,255,255,0.85)";
+  ctx.font = "11px 'Segoe UI', sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(label, r.x + r.w / 2, r.y + r.h / 2);
+}
+
+// Floating tooltip for the canvas-painted pills. One shared element on
+// document.body, follows the cursor via a window mousemove listener
+// while a pill is hovered. Same pattern as Prompt Pack.
+let _tooltipEl = null;
+let _tooltipMoveHandler = null;
+function ensureTooltip() {
+  if (_tooltipEl) return _tooltipEl;
+  _tooltipEl = document.createElement("div");
+  _tooltipEl.className = "pix-pm-tooltip";
+  _tooltipEl.style.cssText = [
+    "position: fixed",
+    "background: #1d1d1d",
+    "color: #ddd",
+    "padding: 6px 10px",
+    "border-radius: 4px",
+    "border: 1px solid #444",
+    "font: 11px 'Segoe UI', sans-serif",
+    "line-height: 1.35",
+    "pointer-events: none",
+    "z-index: 99999",
+    "max-width: 260px",
+    "box-shadow: 0 4px 12px rgba(0,0,0,0.4)",
+    "display: none",
+    "white-space: normal",
+  ].join("; ");
+  document.body.appendChild(_tooltipEl);
+  return _tooltipEl;
+}
+function showTooltip(text) {
+  const el = ensureTooltip();
+  el.textContent = text;
+  el.style.display = "block";
+  if (!_tooltipMoveHandler) {
+    _tooltipMoveHandler = (e) => {
+      el.style.left = `${e.clientX + 14}px`;
+      el.style.top = `${e.clientY + 18}px`;
+    };
+    document.addEventListener("mousemove", _tooltipMoveHandler);
+  }
+}
+function hideTooltip() {
+  if (_tooltipEl) _tooltipEl.style.display = "none";
+  if (_tooltipMoveHandler) {
+    document.removeEventListener("mousemove", _tooltipMoveHandler);
+    _tooltipMoveHandler = null;
+  }
+}
 
 function growNodeToContent(node) {
   const root = node._pixPmRoot;
@@ -142,6 +242,20 @@ app.registerExtension({
     nodeType.prototype.onNodeCreated = function () {
       if (origNodeCreated) origNodeCreated.apply(this, arguments);
       const node = this;
+
+      // Size assignment runs SYNCHRONOUSLY in onNodeCreated (UI conventions
+      // #9). configure() runs AFTER nodeCreated (Vue Compat #8) and
+      // overwrites with the saved JSON size for workflow reload + node
+      // duplication. Putting this inside queueMicrotask was the bug: the
+      // microtask fired AFTER configure() and clobbered the restored size
+      // with the default. Mutate size[0/1] in place for any reactive proxy.
+      if (node.size[0] < MIN_W) node.size[0] = DEFAULT_W;
+      if (node.size[1] < MIN_H) node.size[1] = DEFAULT_H;
+
+      // DOM widget creation + initial render stay in queueMicrotask
+      // because Vue Compat #8 says nodeCreated fires BEFORE configure()
+      // for widget value restoration; without the microtask, we'd render
+      // from Python defaults and flash to the saved state.
       queueMicrotask(() => {
         injectCSS();
         restoreFromProperties(node);
@@ -163,9 +277,6 @@ app.registerExtension({
         };
 
         rerender();
-
-        if (node.size[0] < DEFAULT_W) node.size[0] = DEFAULT_W;
-        if (node.size[1] < DEFAULT_H) node.size[1] = DEFAULT_H;
         node.setDirtyCanvas(true, true);
       });
     };
@@ -178,12 +289,102 @@ app.registerExtension({
       return r;
     };
 
+    // Clamp manual resize so the canvas pills (top row) and the action
+    // buttons (bottom row) never overflow the node frame. Mutate BOTH the
+    // parameter AND this.size defensively (some LiteGraph forks treat the
+    // param as the new size, others have already written to this.size).
+    const origOnResize = nodeType.prototype.onResize;
+    nodeType.prototype.onResize = function (size) {
+      if (size[0] < MIN_W) size[0] = MIN_W;
+      if (size[1] < MIN_H) size[1] = MIN_H;
+      if (this.size[0] < MIN_W) this.size[0] = MIN_W;
+      if (this.size[1] < MIN_H) this.size[1] = MIN_H;
+      if (origOnResize) return origOnResize.apply(this, arguments);
+    };
+
+    // Paint Queue Text / List Prompts pills on the canvas at the slot-row Y.
+    // Same approach Prompt Pack uses for Paragraph / Line. Hover state shows
+    // BRAND orange (preview what the active state will look like). Tooltip
+    // text covers what each mode does so we can drop the inline hint.
+    const origDraw = nodeType.prototype.onDrawForeground;
+    nodeType.prototype.onDrawForeground = function (ctx) {
+      if (origDraw) origDraw.call(this, ctx);
+      if (this.flags?.collapsed) return;
+
+      // Self-heal min size on every paint (Preview Image Pattern #11).
+      // Catches resize paths that bypass onResize per Vue Compat #13.
+      if (this.size[0] < MIN_W) this.size[0] = MIN_W;
+      if (this.size[1] < MIN_H) this.size[1] = MIN_H;
+
+      const state = readState(this);
+      const gm = app.canvas?.graph_mouse;
+      let hoverQueue = false, hoverList = false;
+      if (gm) {
+        const mx = gm[0] - this.pos[0];
+        const my = gm[1] - this.pos[1];
+        const local = [mx, my];
+        hoverQueue = insideRect(local, pillQueueRect());
+        hoverList = insideRect(local, pillListRect());
+      }
+      ctx.save();
+      paintPill(ctx, pillQueueRect(), "Queue Text",
+                state.mode === MODE_QUEUE, hoverQueue);
+      paintPill(ctx, pillListRect(), "List Prompts",
+                state.mode === MODE_LIST, hoverList);
+      ctx.restore();
+
+      // Tooltip on hover transitions only (not every frame).
+      const newHover = hoverQueue ? "queue" : hoverList ? "list" : null;
+      if (this._pixPmHoverPill !== newHover) {
+        this._pixPmHoverPill = newHover;
+        if (newHover === "queue") {
+          showTooltip("Queue Text: click Run and the workflow runs once per enabled prompt (N images). Wire the `text` output to a CLIP Text Encode.");
+        } else if (newHover === "list") {
+          showTooltip("List Prompts: click Run and the workflow runs ONCE. Wire the `prompts` output into Prompt From List Pixaroma nodes downstream to grab specific rows.");
+        } else {
+          hideTooltip();
+        }
+      }
+    };
+
+    // Pill click → toggle mode. Hit-test first so the click never accidentally
+    // lands on anything else. Rects don't overlap each other; they sit on the
+    // slot row where nothing else lives (output dots are on the right).
+    const origDown = nodeType.prototype.onMouseDown;
+    nodeType.prototype.onMouseDown = function (e, pos) {
+      if (insideRect(pos, pillQueueRect())) {
+        const state = readState(this);
+        if (state.mode !== MODE_QUEUE) {
+          setMode(this, MODE_QUEUE);
+          if (this._pixPmRerender) this._pixPmRerender();
+        }
+        this.setDirtyCanvas(true, true);
+        return true;
+      }
+      if (insideRect(pos, pillListRect())) {
+        const state = readState(this);
+        if (state.mode !== MODE_LIST) {
+          setMode(this, MODE_LIST);
+          if (this._pixPmRerender) this._pixPmRerender();
+        }
+        this.setDirtyCanvas(true, true);
+        return true;
+      }
+      return origDown ? origDown.call(this, e, pos) : false;
+    };
+
     const origRemoved = nodeType.prototype.onRemoved;
     nodeType.prototype.onRemoved = function () {
       this._pixPmRoot = null;
       this._pixPmRerender = null;
       this._pixPmGrow = null;
       this._pixPmRefreshClear = null;
+      // Hide tooltip if this node was the one being hovered; otherwise it
+      // can linger after a hovered node is deleted.
+      if (this._pixPmHoverPill) {
+        this._pixPmHoverPill = null;
+        hideTooltip();
+      }
       if (origRemoved) return origRemoved.apply(this, arguments);
     };
   },

@@ -1,26 +1,38 @@
 // Prompt Pack Pixaroma - event wiring.
 //
-// Hooks up the pill toggle, textarea, and Clear button to state mutations +
-// counter updates. All real state changes go through core.mjs helpers; this
-// module is just glue between DOM events and the state layer.
+// Hooks up the textarea + the three bottom action buttons (Copy all /
+// Replace / Clear) to state mutations + counter updates. All real state
+// changes go through core.mjs helpers; this module is just glue between
+// DOM events and the state layer. The Paragraph / Line pill toggle lives
+// on the canvas now and is wired in index.js (onDrawForeground +
+// onMouseDown on the nodeType prototype).
 
-import { setMode, setText, readState, MODE_PARAGRAPH, MODE_LINE } from "./core.mjs";
+import { app } from "/scripts/app.js";
+import { setText, readState } from "./core.mjs";
 import { applyState, updateCounter, updateClearButton } from "./render.mjs";
+
+function flashBtnText(btn, label) {
+  const orig = btn.textContent;
+  btn.textContent = label;
+  // Add the green-flash class. CSS overrides the hover orange so the
+  // user sees a clear green "did something" feedback even if the mouse
+  // is still parked on the button after the click.
+  btn.classList.add("is-flashing");
+  setTimeout(() => {
+    btn.textContent = orig;
+    btn.classList.remove("is-flashing");
+  }, 700);
+}
+
+function toast(severity, msg) {
+  const t = app?.extensionManager?.toast;
+  if (t?.add) t.add({ severity, summary: "Prompt Pack", detail: msg, life: 2000 });
+  else console.warn("[Pixaroma.PromptPack]", msg);
+}
 
 export function wireEvents(node, root) {
   const els = root._pixPp;
   if (!els) return;
-
-  els.pillPara.addEventListener("click", () => {
-    setMode(node, MODE_PARAGRAPH);
-    applyState(root, readState(node));
-    node.setDirtyCanvas(true, true);
-  });
-  els.pillLine.addEventListener("click", () => {
-    setMode(node, MODE_LINE);
-    applyState(root, readState(node));
-    node.setDirtyCanvas(true, true);
-  });
 
   // Textarea typing - update state on every keystroke (cheap) and recount.
   // We use 'input' (not 'change') so the counter is live.
@@ -44,92 +56,60 @@ export function wireEvents(node, root) {
     e.stopPropagation();
   });
 
-  // Clear prompts button. Confirms before wiping (textarea Ctrl+Z does NOT
-  // undo programmatic value assignment, so once cleared, the prompts are gone).
-  els.clearBtn.addEventListener("click", async () => {
+  // Copy all - dumps the whole textarea to the clipboard. Mirrors Text
+  // Pixaroma's Copy all action. "Nothing to copy" toast on empty so the
+  // user never silently fails.
+  els.copyBtn.addEventListener("click", async () => {
+    const txt = els.ta.value || "";
+    if (!txt) { toast("info", "Nothing to copy"); return; }
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error("Clipboard not available");
+      await navigator.clipboard.writeText(txt);
+      flashBtnText(els.copyBtn, "Copied");
+    } catch (err) {
+      console.warn("[Pixaroma.PromptPack] copy failed", err);
+      toast("warn", "Could not copy to clipboard");
+    }
+  });
+
+  // Replace - read clipboard text and overwrite the textarea. Empty
+  // clipboard / image-only clipboard returns "" on Chrome; we bail with
+  // a "Nothing to paste" toast so an accidental click never wipes
+  // existing prompts. Mirrors Text Pixaroma's Replace action.
+  els.replaceBtn.addEventListener("click", async () => {
+    try {
+      if (!navigator.clipboard?.readText) throw new Error("Clipboard read not available");
+      const txt = await navigator.clipboard.readText();
+      if (!txt) { toast("info", "Nothing to paste"); return; }
+      setText(node, txt);
+      applyState(root, readState(node));
+      flashBtnText(els.replaceBtn, "Pasted");
+      node.setDirtyCanvas(true, true);
+    } catch (err) {
+      console.warn("[Pixaroma.PromptPack] paste failed", err);
+      toast("warn", "Could not paste from clipboard");
+    }
+  });
+
+  // Clear - INSTANT wipe, no confirm dialog (per user request). The
+  // textarea content is gone afterwards; users can re-paste from the
+  // clipboard if they regret it.
+  els.clearBtn.addEventListener("click", () => {
     if (els.clearBtn.disabled) return;
-    const ok = await pixConfirm({
-      title: "Clear prompts?",
-      message: "This will empty the textarea. Cannot be undone.",
-      okText: "Clear",
-      cancelText: "Cancel",
-    });
-    if (!ok) return;
     setText(node, "");
     applyState(root, readState(node));
     node.setDirtyCanvas(true, true);
   });
 
-  // Don't let pointer events on the button start a node drag.
-  els.clearBtn.addEventListener("pointerdown", (e) => e.stopPropagation());
-  els.clearBtn.addEventListener("mousedown", (e) => e.stopPropagation());
+  // Don't let pointer events on the buttons start a node drag.
+  for (const b of [els.copyBtn, els.replaceBtn, els.clearBtn]) {
+    b.addEventListener("pointerdown", (e) => e.stopPropagation());
+    b.addEventListener("mousedown", (e) => e.stopPropagation());
+  }
 }
 
-// Themed confirm dialog. Same pattern as Prompt Multi / Prompt Stack pixConfirm.
-// Returns a Promise<boolean>: true on OK, false on Cancel / Escape / backdrop click.
-export function pixConfirm({ title, message, okText = "OK", cancelText = "Cancel" } = {}) {
-  return new Promise((resolve) => {
-    const backdrop = document.createElement("div");
-    backdrop.className = "pix-pp-confirm-backdrop";
-
-    const box = document.createElement("div");
-    box.className = "pix-pp-confirm-box";
-
-    const titleEl = document.createElement("div");
-    titleEl.className = "pix-pp-confirm-title";
-    titleEl.textContent = title || "Confirm";
-    box.appendChild(titleEl);
-
-    if (message) {
-      const msgEl = document.createElement("div");
-      msgEl.className = "pix-pp-confirm-msg";
-      msgEl.textContent = message;
-      box.appendChild(msgEl);
-    }
-
-    const actions = document.createElement("div");
-    actions.className = "pix-pp-confirm-actions";
-
-    const cancelBtn = document.createElement("button");
-    cancelBtn.type = "button";
-    cancelBtn.className = "pix-pp-confirm-btn";
-    cancelBtn.textContent = cancelText;
-    actions.appendChild(cancelBtn);
-
-    const okBtn = document.createElement("button");
-    okBtn.type = "button";
-    okBtn.className = "pix-pp-confirm-btn primary";
-    okBtn.textContent = okText;
-    actions.appendChild(okBtn);
-
-    box.appendChild(actions);
-    backdrop.appendChild(box);
-    document.body.appendChild(backdrop);
-
-    let done = false;
-    const finish = (val) => {
-      if (done) return;
-      done = true;
-      window.removeEventListener("keydown", onKey, true);
-      backdrop.remove();
-      resolve(val);
-    };
-
-    const onKey = (e) => {
-      if (e.key === "Escape") { e.preventDefault(); e.stopImmediatePropagation(); finish(false); }
-      else if (e.key === "Enter") { e.preventDefault(); e.stopImmediatePropagation(); finish(true); }
-    };
-    window.addEventListener("keydown", onKey, true);
-
-    backdrop.addEventListener("mousedown", (e) => {
-      if (e.target === backdrop) finish(false);
-    });
-    cancelBtn.addEventListener("click", () => finish(false));
-    okBtn.addEventListener("click", () => finish(true));
-
-    queueMicrotask(() => okBtn.focus());
-  });
-}
+// (The themed pixConfirm dialog that lived here was removed when Clear
+//  became instant per the user request - no other call site needed it.)
 
 // Toast helper - same as Prompt Multi's showNoEnabledToast pattern.
 // Uses ComfyUI's modern toast API first, falls back to a hand-rolled orange

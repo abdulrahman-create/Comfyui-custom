@@ -64,7 +64,7 @@ export function attachTextareaEditor(node, taEl, rowId) {
     // Ask the host node to grow its own height so the rest of the body
     // (Add row button + other rows below) stays inside the node frame.
     if (typeof node._pixPsGrow === "function") node._pixPsGrow();
-    // Update the Clear text / Reset button enabled state on every keystroke.
+    // Update the Clear all / Reset button enabled state on every keystroke.
     if (typeof node._pixPsRefreshClear === "function") node._pixPsRefreshClear();
     if (!pending) {
       pending = true;
@@ -183,11 +183,14 @@ const _drag = { id: null };
 
 export function attachDragHandlers(node, rowEl, rowId, onDrop) {
   rowEl.addEventListener("dragstart", (e) => {
-    // Don't initiate drag if the event target is an input/textarea/button.
-    // This protects native text-selection and click behavior in the row's
-    // controls (label input, textarea, ON pill, X delete).
-    const tag = (e.target.tagName || "").toLowerCase();
-    if (tag === "input" || tag === "textarea" || tag === "button") {
+    // ONLY allow drag when the user actually grabs the handle (⋮⋮). Any
+    // other mousedown inside the row - including textarea padding, label
+    // input edge, ON pill, X delete, or the row's own padding - must NOT
+    // initiate a row drag. The earlier tag-based check bailed on
+    // <input>/<textarea>/<button> but missed the row padding and any edge
+    // case where Chrome reported e.target as the row <div> itself, which
+    // was hijacking text-selection drag inside the textarea.
+    if (!e.target.closest || !e.target.closest(".pix-ps-handle")) {
       e.preventDefault();
       return;
     }
