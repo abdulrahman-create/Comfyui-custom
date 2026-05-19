@@ -3,11 +3,13 @@ import { app } from "/scripts/app.js";
 const FX_OPTIONS = [
   "None",
   "Pixaroma Orange",
-  "Ignition",
-  "Sparkle",
-  "Thor",
   "Flash",
+  "Ignition",
+  "Thor",
+  "Sparkle",
   "Rocket",
+  "Shockwave",
+  "Frost",
 ];
 
 const FX_CLASSES = ["pix-rb-orange", "pix-rb-rocket-shake"];
@@ -154,6 +156,59 @@ function injectCSS() {
       0%   { transform: scaleY(0.3); opacity: 0; }
       20%  { transform: scaleY(1); opacity: 1; }
       100% { transform: scaleY(1.7); opacity: 0; }
+    }
+
+    .pix-rb-fx-ring {
+      position: fixed;
+      pointer-events: none;
+      z-index: 99999;
+      border: 3px solid #f66744;
+      border-radius: 12px;
+      box-shadow: 0 0 14px rgba(246, 103, 68, 0.55),
+                  inset 0 0 8px rgba(246, 103, 68, 0.35);
+      box-sizing: border-box;
+      animation: pix-rb-ring-anim 750ms ease-out forwards;
+    }
+    @keyframes pix-rb-ring-anim {
+      0%   { transform: scale(0.9); opacity: 0.95; border-width: 4px; }
+      100% { transform: scale(2.4); opacity: 0; border-width: 1px; }
+    }
+
+    .pix-rb-fx-snow {
+      position: fixed;
+      pointer-events: none;
+      z-index: 99999;
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: #ecf7ff;
+      box-shadow: 0 0 5px #88ddff, 0 0 2px #ffffff;
+      animation: pix-rb-snow-anim 2.3s ease-out forwards;
+    }
+    @keyframes pix-rb-snow-anim {
+      0%   { transform: translateY(0) scale(1); opacity: 1; }
+      100% { transform: translateY(42px) scale(0.35); opacity: 0; }
+    }
+
+    .pix-rb-fx-shard {
+      position: fixed;
+      pointer-events: none;
+      z-index: 99999;
+      height: 2px;
+      background: linear-gradient(90deg,
+        rgba(200, 238, 255, 0) 0%,
+        rgba(255, 255, 255, 1) 30%,
+        rgba(200, 238, 255, 1) 65%,
+        rgba(200, 238, 255, 0) 100%);
+      box-shadow: 0 0 4px rgba(136, 221, 255, 0.75);
+      transform-origin: 0% 50%;
+      transform: rotate(var(--angle)) scaleX(0);
+      animation: pix-rb-shard-anim 720ms ease-out forwards;
+    }
+    @keyframes pix-rb-shard-anim {
+      0%   { transform: rotate(var(--angle)) scaleX(0); opacity: 0; }
+      28%  { transform: rotate(var(--angle)) scaleX(1); opacity: 1; }
+      100% { transform: rotate(var(--angle)) scaleX(1); opacity: 0; }
     }
   `;
   document.head.appendChild(style);
@@ -365,6 +420,75 @@ function attachBolts(button, variant) {
   return () => button.removeEventListener("click", handler);
 }
 
+function spawnShockwave(button) {
+  const r = button.getBoundingClientRect();
+  for (let i = 0; i < 3; i++) {
+    setTimeout(() => {
+      const el = document.createElement("div");
+      el.className = "pix-rb-fx-ring";
+      el.style.left = r.left + "px";
+      el.style.top = r.top + "px";
+      el.style.width = r.width + "px";
+      el.style.height = r.height + "px";
+      document.body.appendChild(el);
+      setTimeout(() => el.remove(), 800);
+    }, i * 130);
+  }
+}
+
+function attachShockwave(button) {
+  const handler = () => spawnShockwave(button);
+  button.addEventListener("click", handler);
+  return () => button.removeEventListener("click", handler);
+}
+
+function spawnSnowflake(button) {
+  const r = button.getBoundingClientRect();
+  const el = document.createElement("div");
+  el.className = "pix-rb-fx-snow";
+  el.style.left = (r.left + Math.random() * r.width) + "px";
+  el.style.top = (r.top + r.height * 0.15 + Math.random() * 6) + "px";
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 2400);
+}
+
+function spawnFrostBurst(button) {
+  const r = button.getBoundingClientRect();
+  const bw = r.width;
+  const bh = r.height;
+  const perim = 2 * (bw + bh);
+  const count = 10 + Math.floor(Math.random() * 3);
+  const slot = perim / count;
+  for (let i = 0; i < count; i++) {
+    const d = (i + 0.5) * slot + (Math.random() - 0.5) * slot * 0.6;
+    const start = perimeterPoint(d, bw, bh, 0);
+    const px = r.left + start.x;
+    const py = r.top + start.y;
+    const angle = Math.atan2(start.ny, start.nx) + (Math.random() - 0.5) * 0.5;
+    const length = 14 + Math.random() * 14;
+    const el = document.createElement("div");
+    el.className = "pix-rb-fx-shard";
+    el.style.left = px + "px";
+    el.style.top = (py - 1) + "px";
+    el.style.width = length + "px";
+    el.style.setProperty("--angle", angle + "rad");
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 770);
+  }
+}
+
+function attachFrost(button) {
+  const id = setInterval(() => {
+    if (button.isConnected) spawnSnowflake(button);
+  }, 620);
+  const clickHandler = () => spawnFrostBurst(button);
+  button.addEventListener("click", clickHandler);
+  return () => {
+    clearInterval(id);
+    button.removeEventListener("click", clickHandler);
+  };
+}
+
 function attachSparkle(button) {
   const id = setInterval(() => {
     if (button.isConnected) spawnSparkle(button);
@@ -425,6 +549,14 @@ function applyFx(button, fx) {
     case "Rocket":
       button.classList.add("pix-rb-orange");
       cleanupCurrent = attachRocket(button);
+      break;
+    case "Shockwave":
+      button.classList.add("pix-rb-orange");
+      cleanupCurrent = attachShockwave(button);
+      break;
+    case "Frost":
+      button.classList.add("pix-rb-orange");
+      cleanupCurrent = attachFrost(button);
       break;
     default:
       break;

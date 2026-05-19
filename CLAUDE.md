@@ -145,8 +145,9 @@ js/
 │   └── index.js        # Frontend-only patch (no Python node). One ComfyUI
 │                       #  setting `Pixaroma.RunButton.FX` (combo) under
 │                       #  category ["👑 Pixaroma", "Run Button"] with
-│                       #  options: None / Pixaroma Orange / Ignition /
-│                       #  Sparkle / Thor / Flash / Rocket.
+│                       #  options: None / Pixaroma Orange / Flash /
+│                       #  Ignition / Thor / Sparkle / Rocket /
+│                       #  Shockwave / Frost.
 │                       #  Default OFF (None) - zero work when disabled.
 │                       #  Run button found by text-content match
 │                       #  (textContent === "Run" && has SVG) so it stays
@@ -606,7 +607,7 @@ Pixaroma registers user-facing settings in ComfyUI's Settings panel using the `s
 | `Pixaroma.Compare.DefaultMode` | combo | `js/compare/index.js` | Default view mode for new Compare nodes |
 | `Pixaroma.Preview.DefaultLayout` | combo | `js/preview/index.js` | Default batch layout (Grid / Strip) for Preview Image Pixaroma; per-node toggle in the widget overrides |
 | `Pixaroma.Preview.DefaultSaveMode` | combo | `js/preview/index.js` | Default `save_mode` (Preview / Save) for newly-created Preview Image Pixaroma nodes; saved workflows keep their original value because `configure()` runs AFTER `onNodeCreated` (Vue Compat #8). Distinct category leaf `"Preview (save mode)"` so it does not collide with DefaultLayout (Align Pattern #10) |
-| `Pixaroma.RunButton.FX` | combo | `js/run_button_fx/index.js` | Visual effect for ComfyUI's Run button. Options: None / Pixaroma Orange / Ignition / Sparkle / Thor / Flash / Rocket. Default None - zero perf cost when disabled (MutationObserver never starts). Pure visual layer, never blocks queueing. |
+| `Pixaroma.RunButton.FX` | combo | `js/run_button_fx/index.js` | Visual effect for ComfyUI's Run button. Options: None / Pixaroma Orange / Flash / Ignition / Thor / Sparkle / Rocket / Shockwave / Frost. Default None - zero perf cost when disabled (MutationObserver never starts). Pure visual layer, never blocks queueing. |
 
 ### Pixaroma node UI conventions (do not regress)
 
