@@ -141,6 +141,37 @@ js/
 │                       #  does not discard the user's pick (same pattern
 │                       #  Text Overlay #12 documents).
 │
+├── connection_fx/      # Connection FX (single file, ~210 lines)
+│   └── index.js        # Frontend-only patch (no Python node). One
+│                       #  boolean setting `Pixaroma.Connection.FX`
+│                       #  under category ["👑 Pixaroma", "Connections"],
+│                       #  default OFF. When ON: (a) wraps
+│                       #  LGraphCanvas.prototype.drawFrontCanvas to
+│                       #  paint a pulsing BRAND #f66744 dot + halo at
+│                       #  every type-compatible target slot within
+│                       #  ~110 graph-units of the cursor while a wire
+│                       #  is being dragged - alpha scales with both
+│                       #  proximity and a sin(t*5) pulse, halo radius
+│                       #  too. Calls setDirty(true,true) per frame so
+│                       #  the pulse keeps animating during the drag.
+│                       #  Detects the drag via canvas.connecting_links
+│                       #  (newer API) with fallback to connecting_node
+│                       #  + connecting_output (older API). Wildcard
+│                       #  "*" types match everything. (b) wraps
+│                       #  LGraphNode.prototype.connect (which fires
+│                       #  once per successful connection, regardless of
+│                       #  per-node onConnectionsChange overrides like
+│                       #  the Switch Pixaroma configuring-gate) and
+│                       #  spawns 10 yellow position:fixed sparkle divs
+│                       #  in a circle at the target slot's screen
+│                       #  position. Slot graph -> screen conversion
+│                       #  uses (pos + ds.offset) * ds.scale + canvas
+│                       #  bounding rect offset. Hooks WRAP, never
+│                       #  replace; gated on `enabled` boolean so the
+│                       #  toggling cost is zero when off. CSS class
+│                       #  `pix-conn-fx-sparkle` injected once via
+│                       #  injectCSS() guarded by #pix-conn-fx-css ID.
+│
 ├── run_button_fx/      # Run Button FX (single file, ~290 lines)
 │   └── index.js        # Frontend-only patch (no Python node). One ComfyUI
 │                       #  setting `Pixaroma.RunButton.FX` (combo) under
@@ -608,6 +639,7 @@ Pixaroma registers user-facing settings in ComfyUI's Settings panel using the `s
 | `Pixaroma.Preview.DefaultLayout` | combo | `js/preview/index.js` | Default batch layout (Grid / Strip) for Preview Image Pixaroma; per-node toggle in the widget overrides |
 | `Pixaroma.Preview.DefaultSaveMode` | combo | `js/preview/index.js` | Default `save_mode` (Preview / Save) for newly-created Preview Image Pixaroma nodes; saved workflows keep their original value because `configure()` runs AFTER `onNodeCreated` (Vue Compat #8). Distinct category leaf `"Preview (save mode)"` so it does not collide with DefaultLayout (Align Pattern #10) |
 | `Pixaroma.RunButton.FX` | combo | `js/run_button_fx/index.js` | Visual effect for ComfyUI's Run button. Options: None / Pixaroma Orange / Flash / Ignition / Thor / Sparkle / Rocket / Shockwave. Default None - zero perf cost when disabled (MutationObserver never starts). Pure visual layer, never blocks queueing. |
+| `Pixaroma.Connection.FX` | boolean | `js/connection_fx/index.js` | Connection feedback. When dragging a wire, paint pulsing orange "magnet" indicators on every type-compatible target slot within ~110 graph units of the cursor; on successful connection, spawn a small yellow sparkle burst at the target slot's screen position. Default OFF; zero perf cost when off. |
 
 ### Pixaroma node UI conventions (do not regress)
 
