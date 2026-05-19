@@ -431,6 +431,17 @@ app.registerExtension({
       this._pixTextNative = null;
       if (origRemoved) return origRemoved.apply(this, arguments);
     };
+
+    // Block new wires onto Text Pixaroma entirely. Text Pixaroma is for
+    // TYPING text directly; Show Text Pixaroma is the right node for
+    // receiving text from another node. The wire-lock UX above stays
+    // as a fallback so legacy workflows that already have a wire saved
+    // into Text Pixaroma keep working (and visibly flag the wired
+    // state) - we just don't let users create NEW wires.
+    nodeType.prototype.onConnectInput = function () {
+      toast("warn", "Text Pixaroma is for typing. Use Show Text Pixaroma to receive text from another node.");
+      return false;
+    };
   },
 
   nodeCreated(node) {
