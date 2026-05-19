@@ -234,9 +234,22 @@ function pointsToAttr(pts) {
   return pts.map((p) => p[0].toFixed(1) + "," + p[1].toFixed(1)).join(" ");
 }
 
+function perimeterPoint(d, bw, bh, pad) {
+  if (d < bw) {
+    return { x: pad + d, y: pad, nx: 0, ny: -1 };
+  }
+  if (d < bw + bh) {
+    return { x: pad + bw, y: pad + (d - bw), nx: 1, ny: 0 };
+  }
+  if (d < 2 * bw + bh) {
+    return { x: pad + bw - (d - bw - bh), y: pad + bh, nx: 0, ny: 1 };
+  }
+  return { x: pad, y: pad + bh - (d - 2 * bw - bh), nx: -1, ny: 0 };
+}
+
 function spawnBolts(button, variant) {
   const r = button.getBoundingClientRect();
-  const pad = 75;
+  const pad = 70;
   const svgNS = "http://www.w3.org/2000/svg";
   const svg = document.createElementNS(svgNS, "svg");
   svg.classList.add("pix-rb-fx-bolts", "is-" + variant);
@@ -248,44 +261,49 @@ function spawnBolts(button, variant) {
   svg.style.height = H + "px";
   svg.setAttribute("viewBox", "0 0 " + W + " " + H);
 
-  const cx = pad + r.width / 2;
-  const cy = pad + r.height / 2;
+  const bw = r.width;
+  const bh = r.height;
+  const perim = 2 * (bw + bh);
 
-  const boltCount = 5 + Math.floor(Math.random() * 2);
+  const boltCount = 7 + Math.floor(Math.random() * 3);
+  const slot = perim / boltCount;
   for (let i = 0; i < boltCount; i++) {
-    const angle = (Math.PI * 2 * i) / boltCount + (Math.random() - 0.5) * 0.7;
-    const length = 42 + Math.random() * 32;
-    const ex = cx + Math.cos(angle) * length;
-    const ey = cy + Math.sin(angle) * length;
-    const main = jaggedBoltPoints(cx, cy, ex, ey, 6, 8);
+    const d = (i + 0.5) * slot + (Math.random() - 0.5) * slot * 0.8;
+    const start = perimeterPoint(d, bw, bh, pad);
+    const baseAngle = Math.atan2(start.ny, start.nx);
+    const angle = baseAngle + (Math.random() - 0.5) * 1.0;
+    const length = 26 + Math.random() * 28;
+    const ex = start.x + Math.cos(angle) * length;
+    const ey = start.y + Math.sin(angle) * length;
+    const main = jaggedBoltPoints(start.x, start.y, ex, ey, 5, 6);
     const poly = document.createElementNS(svgNS, "polyline");
     poly.setAttribute("points", pointsToAttr(main));
-    poly.style.animationDelay = (i * 22) + "ms";
+    poly.style.animationDelay = (i * 18) + "ms";
     svg.appendChild(poly);
 
-    if (Math.random() > 0.4) {
+    if (Math.random() > 0.5) {
       const split = Math.floor(main.length * (0.35 + Math.random() * 0.35));
       const bx = main[split][0];
       const by = main[split][1];
       const bAngle = angle + (Math.random() - 0.5) * 1.4;
-      const bLen = 16 + Math.random() * 18;
+      const bLen = 11 + Math.random() * 14;
       const branch = jaggedBoltPoints(
         bx, by,
         bx + Math.cos(bAngle) * bLen,
         by + Math.sin(bAngle) * bLen,
-        4, 6,
+        3, 5,
       );
       const bPoly = document.createElementNS(svgNS, "polyline");
       bPoly.setAttribute("points", pointsToAttr(branch));
-      bPoly.style.animationDelay = (i * 22 + 40) + "ms";
+      bPoly.style.animationDelay = (i * 18 + 30) + "ms";
       bPoly.style.strokeWidth = "1.3";
       svg.appendChild(bPoly);
     }
 
-    const endForkCount = 2 + Math.floor(Math.random() * 2);
+    const endForkCount = 1 + Math.floor(Math.random() * 3);
     for (let j = 0; j < endForkCount; j++) {
       const fAngle = angle + (Math.random() - 0.5) * 1.6;
-      const fLen = 6 + Math.random() * 10;
+      const fLen = 5 + Math.random() * 9;
       const fEnd = jaggedBoltPoints(
         ex, ey,
         ex + Math.cos(fAngle) * fLen,
@@ -294,7 +312,7 @@ function spawnBolts(button, variant) {
       );
       const fPoly = document.createElementNS(svgNS, "polyline");
       fPoly.setAttribute("points", pointsToAttr(fEnd));
-      fPoly.style.animationDelay = (i * 22 + 20) + "ms";
+      fPoly.style.animationDelay = (i * 18 + 18) + "ms";
       fPoly.style.strokeWidth = "1.1";
       svg.appendChild(fPoly);
     }
