@@ -76,21 +76,35 @@ js/
 │                       #  inherits the brand colors via the category prefix —
 │                       #  do NOT re-add per-node color guards.
 │
-├── node_colors/        # Right-click "Apply Pixaroma colors" menu (single
-│   └── index.js        #  global extension, ~60 lines). Wraps
+├── node_colors/        # Right-click "Pixaroma colors" submenu (single
+│   └── index.js        #  global extension, ~150 lines). Wraps
 │                       #  LGraphCanvas.prototype.getNodeMenuOptions to
 │                       #  append two entries to ANY node's right-click
-│                       #  menu: "👑 Apply Pixaroma colors" sets
-│                       #  node.color = #1d1d1d + node.bgcolor = #2a2a2a;
-│                       #  "Reset node colors" deletes both. Multi-select
-│                       #  aware: when 2+ nodes are selected AND the
-│                       #  right-clicked node is one of them, applies to
-│                       #  all, and the label updates to "...to N nodes".
-│                       #  The colors are written onto each node's
-│                       #  properties, so they serialize into the workflow
-│                       #  JSON and travel to recipients without requiring
-│                       #  this plugin installed. Reuses the same hex
-│                       #  values brand/ uses for category-auto-coloring.
+│                       #  menu: "👑 Pixaroma colors" submenu + "Reset
+│                       #  node colors". Submenu via LiteGraph.ContextMenu
+│                       #  callback pattern contains 6 curated dark
+│                       #  presets (Dark / Slate / Forest / Plum / Rose /
+│                       #  Amber; title/body hex pairs defined in the
+│                       #  PRESETS array at the top of the file) plus a
+│                       #  Favorite entry (reads two Pixaroma settings
+│                       #  Pixaroma.NodeColors.FavoriteTitle/Body, type
+│                       #  "color") plus "Pick custom..." which opens the
+│                       #  Pixaroma Color Picker modal twice (title then
+│                       #  body) and saves the picked pair as the new
+│                       #  Favorite for next time. Multi-select aware:
+│                       #  when 2+ nodes are selected AND the right-clicked
+│                       #  node is one of them, all entries apply to the
+│                       #  whole selection and the top-level label shows
+│                       #  "(N nodes)". Colors are written onto each
+│                       #  node's .color / .bgcolor, so they serialize
+│                       #  into the workflow JSON and travel to recipients
+│                       #  without requiring this plugin installed. The
+│                       #  Dark preset reuses the same hex values
+│                       #  brand/index.js uses for category-auto-coloring.
+│                       #  Settings live under distinct leaf categories
+│                       #  "Favorite Title" + "Favorite Body" so the Vue
+│                       #  settings panel does NOT dedupe them (Align
+│                       #  Pattern #10).
 │
 ├── paint/              # Paint Studio (PaintStudio class, mixin pattern)
 │   ├── index.js        # Entry: ComfyUI extension registration
