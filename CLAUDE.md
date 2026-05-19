@@ -84,27 +84,29 @@ js/
 │                       #  node colors". Submenu via LiteGraph.ContextMenu
 │                       #  callback pattern contains 27 themes split
 │                       #  into THREE groups, each separated visually:
-│                       #  (a) STANDALONES (3 neutrals - Dark, Onyx,
-│                       #  Charcoal - no hue, no pair); (b) PRESETS
-│                       #  (12 Plain hue jewel pairs - Red, Orange,
-│                       #  Gold, Olive, Green, Teal, Cyan, Blue,
-│                       #  Indigo, Purple, Pink, Brown - saturated
-│                       #  title + darker saturated body in same hue);
-│                       #  (c) BOLD_PRESETS (12 Pixa-prefixed solid
-│                       #  pairs - PixaRed, PixaOrange, PixaGold,
-│                       #  PixaOlive, PixaGreen, PixaTeal, PixaCyan,
-│                       #  PixaBlue, PixaIndigo, PixaPurple, PixaPink,
-│                       #  PixaBrown - same hue families as PRESETS but
-│                       #  body is always #1d1d1d). Every Plain hue
-│                       #  pairs with its Pixa[Hue] partner (Green +
-│                       #  PixaGreen, Red + PixaRed, etc.) so the user
-│                       #  can pick the matched-body or neutral-body
-│                       #  variant of the same hue. The user's
-│                       #  hand-picked May-2026 favorites are
-│                       #  preserved in PixaRed (#9d1212), PixaGreen
-│                       #  (#004835), PixaBlue (#0d2a3a), PixaPurple
-│                       #  (#3a1d3a). The Pixa* prefix is INTENTIONALLY
-│                       #  ONLY applied to the 12 solid themes so they
+│                       #  (a) STANDALONES (3 neutrals: Dark, Onyx,
+│                       #  Charcoal); (b) PRESETS (12 Plain hue themes);
+│                       #  (c) BOLD_PRESETS (12 Pixa[Hue] themes).
+│                       #  Every chromatic hue is defined ONCE in the
+│                       #  HUES array as { main, shadow } and produces
+│                       #  TWO themes that share an identity color:
+│                       #  Plain "[Hue]" = title=shadow, body=main;
+│                       #  Pixa[Hue]     = title=main, body=#1d1d1d.
+│                       #  So stacking a Plain node above a Pixa node
+│                       #  of the same hue places the saturated MAIN
+│                       #  color at the BOTTOM of Plain (its body) and
+│                       #  the TOP of Pixa (its title), matching across
+│                       #  the pair. Plain restores the traditional
+│                       #  Pixaroma title-darker-than-body look; Pixa
+│                       #  is the bold accent. Hue families: Red,
+│                       #  Orange, Gold, Olive, Green, Teal, Cyan,
+│                       #  Blue, Indigo, Purple, Pink, Brown. User's
+│                       #  hand-picked May-2026 main colors are
+│                       #  preserved: Red #9d1212, Orange #9d4912,
+│                       #  Green #004835, Blue #0d2a3a, Purple #3a1d3a;
+│                       #  Green shadow #15261c is also a user pick.
+│                       #  The Pixa* prefix is INTENTIONALLY ONLY
+│                       #  applied to the 12 BOLD_PRESETS so they
 │                       #  stand out in the submenu as the user's
 │                       #  easy-find branded rail.
 │                       #  plus a Favorite entry (reads two Pixaroma

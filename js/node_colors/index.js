@@ -16,26 +16,30 @@ import { createPixaromaColorPicker } from "../shared/color_picker.mjs";
 // node is one of them, the action applies to all of them, and the label
 // shows "(N nodes)".
 
-// ── Theme system (May 2026 rethink) ────────────────────────────────────
-// Three groups, all on a consistent "every hue has a Plain + Pixa pair"
-// convention with three neutral standalones at the top:
+// ── Theme system (May 2026 v2 rethink) ─────────────────────────────────
+// Three groups, with EVERY chromatic hue defined ONCE in HUES and
+// producing TWO themes that share a single "identity color":
 //
-//   STANDALONES  - true neutrals with no hue, so no pair makes sense.
-//                  Dark uses the legacy Pixaroma title-darker-than-body
-//                  convention so it matches the brand default body.
-//   PRESETS      - 12 hue families in "jewel" style: saturated bright
-//                  title + a darker saturated body in the same hue
-//                  family. Title brighter than body so both feel like
-//                  one rich colored card.
-//   BOLD_PRESETS - 12 hue families in "solid" style: same hue family
-//                  as the Plain, but body is always #1d1d1d. Name is
-//                  Pixa[Hue] so the user can scan the submenu and find
-//                  them as their easy-find branded rail.
+//   - Plain "[Hue]"  title = SHADOW (darker desaturated variant),
+//                    body  = MAIN  (the saturated identity color).
+//                    Restores the traditional Pixaroma title-darker-
+//                    than-body look from brand/index.js.
+//   - Pixa[Hue]      title = MAIN  (same identity color as Plain body),
+//                    body  = #1d1d1d (Pixaroma dark gray).
 //
-// Every Plain hue has a matching Pixa[Hue] partner so "Green" pairs
-// with "PixaGreen", "Red" with "PixaRed", etc. User's hand-picked
-// May-2026 favorites are preserved in the Pixa* slots: PixaRed
-// #9d1212, PixaGreen #004835, PixaBlue #0d2a3a, PixaPurple #3a1d3a.
+// So if you stack a Plain node above a Pixa node of the same hue,
+// the saturated MAIN color sits at the BOTTOM of Plain (its body)
+// and the TOP of Pixa (its title), matching across the pair. The
+// Plain is the "muted/Pixaroma-conventional" look, the Pixa is the
+// bold accent that lifts the same color up onto the title bar.
+//
+// User's hand-picked May-2026 favorites are preserved as the MAIN
+// colors of their respective hues:
+//   Red    #9d1212    Green  #004835
+//   Orange #9d4912    Blue   #0d2a3a
+//                     Purple #3a1d3a
+// Green shadow (#15261c) is the user's May-2026 hand-pick for the
+// Plain Green title.
 
 const STANDALONES = [
   { id: "dark",     label: "Dark",     title: "#1d1d1d", body: "#2a2a2a" },
@@ -43,35 +47,34 @@ const STANDALONES = [
   { id: "charcoal", label: "Charcoal", title: "#262220", body: "#36312f" },
 ];
 
-const PRESETS = [
-  { id: "red",    label: "Red",    title: "#5a2222", body: "#381313" },
-  { id: "orange", label: "Orange", title: "#5a3a14", body: "#382613" },
-  { id: "gold",   label: "Gold",   title: "#5a4a14", body: "#38301a" },
-  { id: "olive",  label: "Olive",  title: "#3a4a14", body: "#22281f" },
-  { id: "green",  label: "Green",  title: "#225a32", body: "#133820" },
-  { id: "teal",   label: "Teal",   title: "#226e5a", body: "#133a3a" },
-  { id: "cyan",   label: "Cyan",   title: "#225a7a", body: "#133a4a" },
-  { id: "blue",   label: "Blue",   title: "#22325a", body: "#131f38" },
-  { id: "indigo", label: "Indigo", title: "#2e225a", body: "#1a1438" },
-  { id: "purple", label: "Purple", title: "#502260", body: "#2e1338" },
-  { id: "pink",   label: "Pink",   title: "#5a2238", body: "#381320" },
-  { id: "brown",  label: "Brown",  title: "#3a2814", body: "#221608" },
+// Each hue: main = saturated identity color, shadow = darker
+// desaturated variant. Ordering is a wheel traversal warm -> cool.
+const HUES = [
+  { id: "red",    label: "Red",    main: "#9d1212", shadow: "#3a1414" },
+  { id: "orange", label: "Orange", main: "#9d4912", shadow: "#3a2814" },
+  { id: "gold",   label: "Gold",   main: "#8a6814", shadow: "#3a3014" },
+  { id: "olive",  label: "Olive",  main: "#4d6814", shadow: "#1f2814" },
+  { id: "green",  label: "Green",  main: "#004835", shadow: "#15261c" },
+  { id: "teal",   label: "Teal",   main: "#006b5e", shadow: "#102a25" },
+  { id: "cyan",   label: "Cyan",   main: "#0a6a8d", shadow: "#1a3a4a" },
+  { id: "blue",   label: "Blue",   main: "#0d2a3a", shadow: "#1a242e" },
+  { id: "indigo", label: "Indigo", main: "#2415a8", shadow: "#1d1a3a" },
+  { id: "purple", label: "Purple", main: "#3a1d3a", shadow: "#251a25" },
+  { id: "pink",   label: "Pink",   main: "#8a224a", shadow: "#3a1a26" },
+  { id: "brown",  label: "Brown",  main: "#6a4818", shadow: "#2e1f12" },
 ];
 
-const BOLD_PRESETS = [
-  { id: "pixared",    label: "PixaRed",    title: "#9d1212", body: "#1d1d1d" },
-  { id: "pixaorange", label: "PixaOrange", title: "#9d4912", body: "#1d1d1d" },
-  { id: "pixagold",   label: "PixaGold",   title: "#ad8e14", body: "#1d1d1d" },
-  { id: "pixaolive",  label: "PixaOlive",  title: "#6a8a14", body: "#1d1d1d" },
-  { id: "pixagreen",  label: "PixaGreen",  title: "#004835", body: "#1d1d1d" },
-  { id: "pixateal",   label: "PixaTeal",   title: "#006b5e", body: "#1d1d1d" },
-  { id: "pixacyan",   label: "PixaCyan",   title: "#0a7a8d", body: "#1d1d1d" },
-  { id: "pixablue",   label: "PixaBlue",   title: "#0d2a3a", body: "#1d1d1d" },
-  { id: "pixaindigo", label: "PixaIndigo", title: "#2415a8", body: "#1d1d1d" },
-  { id: "pixapurple", label: "PixaPurple", title: "#3a1d3a", body: "#1d1d1d" },
-  { id: "pixapink",   label: "PixaPink",   title: "#8a224a", body: "#1d1d1d" },
-  { id: "pixabrown",  label: "PixaBrown",  title: "#5d3818", body: "#1d1d1d" },
-];
+// Derived: title = shadow, body = main (Plain restores traditional
+// Pixaroma title-darker-than-body convention).
+const PRESETS = HUES.map((h) => ({
+  id: h.id, label: h.label, title: h.shadow, body: h.main,
+}));
+
+// Derived: title = main (same identity color as Plain body), body =
+// neutral dark gray (the Pixa "branded" body).
+const BOLD_PRESETS = HUES.map((h) => ({
+  id: "pixa" + h.id, label: "Pixa" + h.label, title: h.main, body: "#1d1d1d",
+}));
 
 // Curated swatch sets for the Pick custom modal. The default
 // PIXAROMA_PALETTE has a wide range including bright pastels that read
