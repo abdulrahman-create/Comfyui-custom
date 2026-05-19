@@ -40,7 +40,12 @@ class PixaromaNote:
 
     RETURN_TYPES = ()
     FUNCTION = "noop"
-    OUTPUT_NODE = True
+    # OUTPUT_NODE intentionally NOT set (defaults to False) so ComfyUI's
+    # executor skips Note entirely on Run. The note is pure annotation
+    # rendered in JS; there is no Python-side work to do. Skipping
+    # execution also stops ComfyUI from drawing an "X.Xs" timing badge
+    # above the note on every run, which looks weird on a decorative
+    # rich-text annotation.
     CATEGORY = "👑 Pixaroma"
 
     def noop(self, note_json):

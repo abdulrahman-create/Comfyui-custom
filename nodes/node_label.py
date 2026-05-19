@@ -20,7 +20,12 @@ class PixaromaLabel:
 
     RETURN_TYPES = ()
     FUNCTION = "noop"
-    OUTPUT_NODE = True
+    # OUTPUT_NODE intentionally NOT set (defaults to False) so ComfyUI's
+    # executor skips Label entirely on Run. The label is pure decoration
+    # rendered in JS; there is no Python-side work to do. Skipping
+    # execution also stops ComfyUI from drawing an "X.Xs" timing badge
+    # above the node every run, which looks weird on what is just a
+    # styled text caption.
     CATEGORY = "👑 Pixaroma"
 
     def noop(self, label_json):
