@@ -323,46 +323,55 @@ app.graphToPrompt = async function (...args) {
 };
 
 // Batch tracking - counts down "X left" as each queued workflow actually
-// finishes executing (NOT just gets accepted into the queue). The
-// queuePrompt patch captures the prompt_id from each _origQueuePrompt
-// response and adds it to _batch.promptIds. The api 'executing' listener
-// below removes a prompt_id when its workflow finishes, then refreshes the
-// counter from the new Set size.
+// finishes executing (NOT just gets accepted into the queue).
 //
-// Filtering by prompt_id avoids miscounting if the user has other workflows
-// running concurrently (their executing events fire too but their prompt_ids
-// aren't in our Set so we ignore them).
-//
-// If the user clicks Run mid-batch, _batch gets reset to the new batch.
-// Any still-running old workflows fire executing events that we ignore
-// (their prompt_ids no longer match) - the counter tracks the new batch
-// cleanly.
+// Race-safe two-set design (fixed May 2026): for trivial workflows like
+// Prompt Pack -> Text Pixaroma (no real rendering work) ComfyUI can
+// finish executing the workflow and fire the executing-null event
+// BEFORE the queuePrompt HTTP response returns with its prompt_id. The
+// naive "add pid on response, remove pid on finish" approach loses
+// those races and gets stuck at "N left". We handle this by tracking
+// finishes via a completedCount and stashing pids that arrive early in
+// earlyFinishedPids so the queuePrompt response handler can match them
+// retroactively.
 
 const _batch = {
   node: null,
   total: 0,
-  promptIds: new Set(),
-  activeCapture: false,  // true while our queuePrompt loop is running
+  pendingPids: new Set(),       // captured from queuePrompt response, waiting for finish event
+  earlyFinishedPids: new Set(), // finish event arrived before we saw the pid in a queuePrompt response
+  completedCount: 0,            // total finishes processed (so remaining = total - completedCount)
+  activeCapture: false,         // true while our queuePrompt loop is running
 };
 
 // Patch api.queuePrompt (the lower-level API call, NOT app.queuePrompt) so
 // we always get a response object with .prompt_id regardless of how
 // app.queuePrompt's return shape differs across ComfyUI versions. Only
 // captures while our batch loop is actively submitting (activeCapture
-// flag), so unrelated queue submissions don't end up in our Set.
+// flag), so unrelated queue submissions don't end up in our tracker.
 //
-// The size cap (< _batch.total) defends against the niche case where a
-// PromptMulti node ALSO lives in the same workflow: its app.queuePrompt
-// patch wraps each of our PP iterations in an extra inner loop, which
-// would otherwise dump PM's prompt_ids into our Set too and bloat the
-// "X left" counter. Capping at total keeps the counter honest about
-// PromptPack-driven runs even when nested.
+// The capture cap (completedCount + pendingPids.size < total) defends
+// against the niche case where a PromptMulti node ALSO lives in the same
+// workflow: its app.queuePrompt patch wraps each of our PP iterations in
+// an extra inner loop, which would otherwise dump PM's prompt_ids into
+// our tracker too and bloat the "X left" counter.
 const _origApiQueuePrompt = api.queuePrompt.bind(api);
 api.queuePrompt = async function (...args) {
   const res = await _origApiQueuePrompt(...args);
-  if (_batch.activeCapture && res && _batch.promptIds.size < _batch.total) {
+  if (_batch.activeCapture && res &&
+      _batch.completedCount + _batch.pendingPids.size < _batch.total) {
     const pid = res.prompt_id != null ? String(res.prompt_id) : null;
-    if (pid) _batch.promptIds.add(pid);
+    if (pid) {
+      if (_batch.earlyFinishedPids.has(pid)) {
+        // Workflow finished before we got the queue response (race).
+        // Don't add to pendingPids; just count it as complete now.
+        _batch.earlyFinishedPids.delete(pid);
+        _batch.completedCount++;
+        _refreshBatchCounter();
+      } else {
+        _batch.pendingPids.add(pid);
+      }
+    }
   }
   return res;
 };
@@ -372,15 +381,35 @@ function _refreshBatchCounter() {
   if (!node || !node._pixPpRoot) return;
   const state = node.properties?.[STATE_PROP];
   if (!state) return;
-  const remaining = _batch.promptIds.size;
+  const remaining = Math.max(0, _batch.total - _batch.completedCount);
   if (remaining === 0) {
     _batch.node = null;
     _batch.total = 0;
+    _batch.pendingPids.clear();
+    _batch.earlyFinishedPids.clear();
+    _batch.completedCount = 0;
     updateCounter(node._pixPpRoot, state);
   } else {
     updateCounter(node._pixPpRoot, state, { running: true, remaining, total: _batch.total });
   }
   node.setDirtyCanvas(true, true);
+}
+
+function _handleFinish(pid) {
+  if (!pid) return;
+  if (_batch.pendingPids.has(pid)) {
+    _batch.pendingPids.delete(pid);
+    _batch.completedCount++;
+    _refreshBatchCounter();
+  } else if (_batch.activeCapture &&
+             _batch.completedCount + _batch.pendingPids.size < _batch.total) {
+    // Race: finish arrived before we captured the pid. Stash it for the
+    // queuePrompt response handler to claim retroactively. Only stashes
+    // while our submission loop is still running AND we haven't yet
+    // accounted for `total` workflows, so unrelated finishes from other
+    // workflows don't get stashed.
+    _batch.earlyFinishedPids.add(pid);
+  }
 }
 
 api.addEventListener("executing", (event) => {
@@ -391,27 +420,19 @@ api.addEventListener("executing", (event) => {
   if (detail == null) return;
   if (detail.node !== null && detail.node !== undefined) return;
   const pid = detail.prompt_id != null ? String(detail.prompt_id) : null;
-  if (!pid || !_batch.promptIds.has(pid)) return;
-  _batch.promptIds.delete(pid);
-  _refreshBatchCounter();
+  _handleFinish(pid);
 });
 
 // Some ComfyUI versions emit execution_success / execution_error instead of
 // (or in addition to) the executing-null signal. Catch those too so the
 // counter doesn't get stuck at "X left" forever on error or on newer builds.
 api.addEventListener("execution_success", (event) => {
-  const detail = event?.detail;
-  const pid = detail?.prompt_id != null ? String(detail.prompt_id) : null;
-  if (!pid || !_batch.promptIds.has(pid)) return;
-  _batch.promptIds.delete(pid);
-  _refreshBatchCounter();
+  const pid = event?.detail?.prompt_id != null ? String(event.detail.prompt_id) : null;
+  _handleFinish(pid);
 });
 api.addEventListener("execution_error", (event) => {
-  const detail = event?.detail;
-  const pid = detail?.prompt_id != null ? String(detail.prompt_id) : null;
-  if (!pid || !_batch.promptIds.has(pid)) return;
-  _batch.promptIds.delete(pid);
-  _refreshBatchCounter();
+  const pid = event?.detail?.prompt_id != null ? String(event.detail.prompt_id) : null;
+  _handleFinish(pid);
 });
 
 // app.queuePrompt patch.
@@ -423,7 +444,7 @@ api.addEventListener("execution_error", (event) => {
 // prompt for each enqueue.
 //
 // After each successful enqueue we capture the response's prompt_id into
-// _batch.promptIds so the api 'executing' listener can count it down when
+// _batch.pendingPids so the api 'executing' listener can count it down when
 // the workflow actually finishes rendering.
 //
 // Edge cases:
@@ -460,7 +481,9 @@ app.queuePrompt = async function (num, batchCount) {
   // but we no longer follow them in the counter.
   _batch.node = ppNode;
   _batch.total = total;
-  _batch.promptIds.clear();
+  _batch.pendingPids.clear();
+  _batch.earlyFinishedPids.clear();
+  _batch.completedCount = 0;
 
   // Show "N left" immediately so the user has feedback while the queue
   // submission loop runs (which only takes ms, but the first workflow
@@ -482,7 +505,7 @@ app.queuePrompt = async function (num, batchCount) {
 
       try {
         // The api.queuePrompt wrapper above captures the prompt_id from
-        // the API response into _batch.promptIds.
+        // the API response into _batch.pendingPids.
         const r = await _origQueuePrompt(num, 1);
         results.push(r);
       } catch (err) {
@@ -493,11 +516,14 @@ app.queuePrompt = async function (num, batchCount) {
     _batch.activeCapture = false;
   }
 
-  // Safety net: if no prompt_ids ended up captured (unsupported ComfyUI
-  // version with a different api shape), reset the counter to idle so it
-  // doesn't hang at "N left" forever. Healthy path: the executing /
-  // execution_success listeners will count down the captured Set.
-  if (_batch.promptIds.size === 0 && root) {
+  // Safety net: if nothing ended up tracked (unsupported ComfyUI version
+  // with a different api shape), reset the counter to idle so it doesn't
+  // hang at "N left" forever. Healthy path: the executing /
+  // execution_success listeners will count down via _handleFinish.
+  if (_batch.pendingPids.size === 0 &&
+      _batch.completedCount === 0 &&
+      _batch.earlyFinishedPids.size === 0 &&
+      root) {
     _batch.node = null;
     _batch.total = 0;
     updateCounter(root, ppNode.properties[STATE_PROP]);
