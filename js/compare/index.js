@@ -29,10 +29,10 @@ const INIT_H = INIT_W + IMG_Y; // square preview area
 const MIN_W = BTN_X + BTN_W * 6 + BTN_GAP * 5 + 6;
 const MIN_H = IMG_Y + 100;
 // Copy button (Show 1/2 only) - same height as row 1 buttons so no
-// row-height change; right-aligned on row 2 so it does not push the
-// hint text or the opacity slider around.
+// row-height change. Right edge is glued to the right edge of the
+// last row 1 button (Difference) so the two stack visually in the
+// same column regardless of how wide the user has resized the node.
 const COPY_W = 56;
-const COPY_RIGHT_PAD = 6;
 
 // Button rect helpers — Show toggle is first, then 4 mode buttons
 function showRect() {
@@ -44,8 +44,11 @@ function modeRect(i) {
 function hintRect() {
   return { x: BTN_X, y: ROW2_Y, w: BTN_W * 6 + BTN_GAP * 5, h: BTN_H };
 }
-function copyRect(nodeW) {
-  return { x: nodeW - COPY_RIGHT_PAD - COPY_W, y: ROW2_Y, w: COPY_W, h: BTN_H };
+function copyRect() {
+  // Right edge = right edge of Difference (modeRect(4)) so the
+  // button stacks under it in a clean visual column.
+  const last = modeRect(4);
+  return { x: last.x + last.w - COPY_W, y: ROW2_Y, w: COPY_W, h: BTN_H };
 }
 function inside(pos, r) {
   return (
@@ -357,7 +360,7 @@ app.registerExtension({
       // slider keep full width. Mutually exclusive with the slider since
       // the slider only renders when _cmpShowWhich === 0.
       if (this._cmpShowWhich !== 0) {
-        const cr = copyRect(w);
+        const cr = copyRect();
         // Hover via app.canvas.graph_mouse - free per-frame, LiteGraph
         // redraws on every pointermove (Preview Image Pattern #5).
         let hover = false;
@@ -519,7 +522,7 @@ app.registerExtension({
       // Copy button (only visible in Show 1/2). Checked first so the
       // click is never accidentally routed to anything else - rects
       // don't overlap, this is just belt-and-braces.
-      if (this._cmpShowWhich !== 0 && inside(pos, copyRect(this.size[0]))) {
+      if (this._cmpShowWhich !== 0 && inside(pos, copyRect())) {
         copyShownImage(this);
         return true;
       }
