@@ -979,6 +979,19 @@ app.registerExtension({
       tooltip: "How a multi-image batch is laid out in the Preview Image Pixaroma node body. Grid wraps into rows (matches native ComfyUI); Strip is a single horizontal row. Each node also has its own toggle in the top-right of the preview area; this setting only affects the default for newly-created nodes.",
       category: ["👑 Pixaroma", "Preview"],
     },
+    {
+      // Distinct leaf category required: Vue's settings UI silently
+      // drops a row when two settings share the same leaf name
+      // (CLAUDE.md Align Pattern #10). DefaultLayout already owns
+      // "Preview", so this one uses "Preview (save mode)".
+      id: "Pixaroma.Preview.DefaultSaveMode",
+      name: "Default save mode",
+      type: "combo",
+      defaultValue: "Preview",
+      options: ["Preview", "Save"],
+      tooltip: "Initial value of the save_mode widget on newly-created Preview Image Pixaroma nodes. Preview writes batch frames to ComfyUI's temp/ folder (auto-cleared on restart, no clutter). Save writes them to output/ with embedded workflow metadata, like native SaveImage. Existing nodes keep whatever save_mode they were saved with - this setting only affects fresh nodes you drop on the canvas.",
+      category: ["👑 Pixaroma", "Preview (save mode)"],
+    },
   ],
 
   async beforeRegisterNodeDef(nodeType, nodeData) {
@@ -989,6 +1002,19 @@ app.registerExtension({
       if (origNodeCreated) origNodeCreated.apply(this, arguments);
       this.addCustomWidget(createButtonsWidget());
       this.addCustomWidget(createStripWidget());
+
+      // Apply user's preferred default save_mode for fresh nodes.
+      // onNodeCreated fires BEFORE configure() (Vue Compat #8), so for a
+      // saved-workflow node configure() will overwrite this with the
+      // serialised value - exactly what we want. Fresh-on-canvas nodes
+      // have no saved value, so this stick.
+      try {
+        const pref = app.ui?.settings?.getSettingValue?.("Pixaroma.Preview.DefaultSaveMode") || "Preview";
+        const target = pref === "Save" ? "save" : "preview";
+        const w = this.widgets?.find((x) => x.name === "save_mode");
+        if (w && w.value !== target) w.value = target;
+      } catch {}
+
       // Sensible default + minimum size
       if (!this.size || this.size[0] < DEFAULT_W) this.size[0] = DEFAULT_W;
       if (!this.size[1] || this.size[1] < DEFAULT_H) this.size[1] = DEFAULT_H;
