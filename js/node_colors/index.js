@@ -50,18 +50,21 @@ const STANDALONES = [
 // Each hue: main = saturated identity color, shadow = darker
 // desaturated variant. Ordering is a wheel traversal warm -> cool.
 const HUES = [
-  { id: "red",    label: "Red",    main: "#9d1212", shadow: "#3a1414" },
-  { id: "orange", label: "Orange", main: "#9d4912", shadow: "#3a2814" },
-  { id: "gold",   label: "Gold",   main: "#8a6814", shadow: "#3a3014" },
-  { id: "olive",  label: "Olive",  main: "#4d6814", shadow: "#1f2814" },
-  { id: "green",  label: "Green",  main: "#004835", shadow: "#15261c" },
-  { id: "teal",   label: "Teal",   main: "#006b5e", shadow: "#102a25" },
-  { id: "cyan",   label: "Cyan",   main: "#0a6a8d", shadow: "#1a3a4a" },
-  { id: "blue",   label: "Blue",   main: "#0d2a3a", shadow: "#1a242e" },
-  { id: "indigo", label: "Indigo", main: "#2415a8", shadow: "#1d1a3a" },
-  { id: "purple", label: "Purple", main: "#3a1d3a", shadow: "#251a25" },
-  { id: "pink",   label: "Pink",   main: "#8a224a", shadow: "#3a1a26" },
-  { id: "brown",  label: "Brown",  main: "#6a4818", shadow: "#2e1f12" },
+  { id: "red",     label: "Red",     main: "#9d1212", shadow: "#3a1414" },
+  { id: "orange",  label: "Orange",  main: "#9d4912", shadow: "#3a2814" },
+  { id: "gold",    label: "Gold",    main: "#8a6814", shadow: "#3a3014" },
+  { id: "olive",   label: "Olive",   main: "#4d6814", shadow: "#1f2814" },
+  { id: "lime",    label: "Lime",    main: "#5a8a14", shadow: "#2a3a14" },
+  { id: "green",   label: "Green",   main: "#004835", shadow: "#15261c" },
+  { id: "teal",    label: "Teal",    main: "#006b5e", shadow: "#102a25" },
+  { id: "cyan",    label: "Cyan",    main: "#0a6a8d", shadow: "#1a3a4a" },
+  { id: "sky",     label: "Sky",     main: "#1a5a8a", shadow: "#15263a" },
+  { id: "blue",    label: "Blue",    main: "#0d2a3a", shadow: "#1a242e" },
+  { id: "indigo",  label: "Indigo",  main: "#1f1a6a", shadow: "#15123a" },
+  { id: "purple",  label: "Purple",  main: "#3a1d3a", shadow: "#251a25" },
+  { id: "magenta", label: "Magenta", main: "#8a2275", shadow: "#2e1a25" },
+  { id: "pink",    label: "Pink",    main: "#8a224a", shadow: "#3a1a26" },
+  { id: "brown",   label: "Brown",   main: "#6a4818", shadow: "#2e1f12" },
 ];
 
 // Derived: title = shadow, body = main (Plain restores traditional

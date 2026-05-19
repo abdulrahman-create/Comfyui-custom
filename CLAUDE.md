@@ -98,9 +98,10 @@ js/
 │                       #  the TOP of Pixa (its title), matching across
 │                       #  the pair. Plain restores the traditional
 │                       #  Pixaroma title-darker-than-body look; Pixa
-│                       #  is the bold accent. Hue families: Red,
-│                       #  Orange, Gold, Olive, Green, Teal, Cyan,
-│                       #  Blue, Indigo, Purple, Pink, Brown. User's
+│                       #  is the bold accent. 15 hue families: Red,
+│                       #  Orange, Gold, Olive, Lime, Green, Teal,
+│                       #  Cyan, Sky, Blue, Indigo, Purple, Magenta,
+│                       #  Pink, Brown. User's
 │                       #  hand-picked May-2026 main colors are
 │                       #  preserved: Red #9d1212, Orange #9d4912,
 │                       #  Green #004835, Blue #0d2a3a, Purple #3a1d3a;
