@@ -464,16 +464,32 @@ export class NoteEditor {
     // single bottleneck every path goes through: `app.loadGraphData`. While
     // the editor is open, swallow the call so the graph state can't be
     // reloaded (undo/redo, template load, etc. all pause).
+    // Vue Compat #2/#6 SELF-HEAL: if the overlay is torn down WITHOUT our
+    // _cleanup running (e.g. the workflow tab is closed while the editor is
+    // open), these patches would otherwise stay installed forever and the
+    // user could no longer open OR create any workflow until a page refresh.
+    // So each wrapper checks whether our overlay (this._el) is still in the
+    // DOM; if it's gone, it restores the originals and passes the call
+    // through. Ctrl+Z while the editor is genuinely open is still blocked.
+    const ed = this;
     if (typeof app.loadGraphData === "function") {
       this._savedLoadGraphData = app.loadGraphData.bind(app);
-      app.loadGraphData = () => {
+      app.loadGraphData = function (...args) {
+        if (!ed._overlayAlive()) {
+          ed._restoreGraphPatches();
+          return window.app.loadGraphData(...args);
+        }
         console.warn("[pix-note] loadGraphData blocked while note editor is open");
         return Promise.resolve();
       };
     }
     if (app.graph && typeof app.graph.configure === "function") {
       this._savedGraphConfigure = app.graph.configure.bind(app.graph);
-      app.graph.configure = () => {
+      app.graph.configure = function (...args) {
+        if (!ed._overlayAlive()) {
+          ed._restoreGraphPatches();
+          return window.app.graph.configure(...args);
+        }
         console.warn("[pix-note] graph.configure blocked while note editor is open");
       };
     }
@@ -571,6 +587,36 @@ export class NoteEditor {
     });
   }
 
+  // Is this editor's overlay element still in the document? Used by the
+  // self-healing loadGraphData/configure patches to detect a teardown that
+  // bypassed _cleanup (Vue Compat #2).
+  _overlayAlive() {
+    return !!(this._el && this._el.isConnected);
+  }
+
+  // Restore the graph functions we neutered in open(). Idempotent + safe to
+  // call from BOTH _cleanup AND the self-heal path inside the patched
+  // loadGraphData/configure (so the editor can't permanently brick the UI).
+  _restoreGraphPatches() {
+    const app = window.app;
+    if (this._savedGraphUndo !== undefined) {
+      if (app.graph) {
+        app.graph.undo = this._savedGraphUndo;
+        app.graph.redo = this._savedGraphRedo;
+      }
+      this._savedGraphUndo = undefined;
+      this._savedGraphRedo = undefined;
+    }
+    if (this._savedLoadGraphData) {
+      app.loadGraphData = this._savedLoadGraphData;
+      this._savedLoadGraphData = null;
+    }
+    if (this._savedGraphConfigure) {
+      if (app.graph) app.graph.configure = this._savedGraphConfigure;
+      this._savedGraphConfigure = null;
+    }
+  }
+
   _cleanup() {
     // Centred modal still open? Close it first so its window-capture
     // keydown listener gets removed — otherwise it leaks past the
@@ -632,22 +678,7 @@ export class NoteEditor {
       window.removeEventListener("resize", this._onWindowResize);
       this._onWindowResize = null;
     }
-    if (this._savedGraphUndo !== undefined) {
-      if (app.graph) {
-        app.graph.undo = this._savedGraphUndo;
-        app.graph.redo = this._savedGraphRedo;
-      }
-      this._savedGraphUndo = undefined;
-      this._savedGraphRedo = undefined;
-    }
-    if (this._savedLoadGraphData) {
-      app.loadGraphData = this._savedLoadGraphData;
-      this._savedLoadGraphData = null;
-    }
-    if (this._savedGraphConfigure) {
-      if (app.graph) app.graph.configure = this._savedGraphConfigure;
-      this._savedGraphConfigure = null;
-    }
+    this._restoreGraphPatches();
     if (this._el && this._el.parentNode) this._el.parentNode.removeChild(this._el);
     this._el = null;
     if (this.node && this.node._noteEditor === this) {
