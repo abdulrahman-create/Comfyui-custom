@@ -20,6 +20,7 @@ const DEFAULT_STATE = {
   preview_open: false,
 };
 const WH_MODES = new Set(["fit_inside", "cover"]);
+const MIN_W = 320; // minimum node width — refine via the console sizer if needed
 
 function readState(node) {
   const v = node.properties?.[STATE_PROP];
@@ -244,7 +245,7 @@ app.registerExtension({
       });
       this._pixIrRoot = root;
       // Fresh-node default size (saved workflows restore their own via configure).
-      if (!this.size || this.size[0] < 270) this.size = [276, 340];
+      if (!this.size || this.size[0] < MIN_W) this.size = [360, 340];
       // Deferred initial render so configure() can land the saved state first
       // (Vue Compat #8). By microtask time, configure() has already run for a
       // loaded node, so node.properties[STATE_PROP] is set — we use that to
@@ -290,6 +291,15 @@ app.registerExtension({
       return _origRemoved?.apply(this, arguments);
     };
 
+    // Belt-and-braces minimum width: onResize is unreliable in the Vue
+    // frontend (Vue Compat #13) and Align Pixaroma writes node.size directly,
+    // so clamp here too (Pixaroma UI conventions #7).
+    const _origResize = nodeType.prototype.onResize;
+    nodeType.prototype.onResize = function (size) {
+      if (this.size[0] < MIN_W) this.size[0] = MIN_W;
+      return _origResize?.apply(this, arguments);
+    };
+
     // Paint the size readout in the empty space between the input and output
     // slot columns, on a dark panel, so it uses dead space and costs no body
     // height. Vertical center of the 4 slot rows is y=44 (TOP_PAD 4 + 4*20/2).
@@ -297,6 +307,7 @@ app.registerExtension({
     nodeType.prototype.onDrawForeground = function (ctx) {
       const r = _origDraw?.apply(this, arguments);
       if (this.flags?.collapsed) return r;
+      if (this.size[0] < MIN_W) { this.size[0] = MIN_W; this.setDirtyCanvas(true, true); }
       const info = getReadoutInfo(this);
       const cx = this.size[0] / 2;
       const cy = 44;
