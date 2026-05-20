@@ -50,9 +50,15 @@ export function injectCSS() {
        than the shared .pix-li-* rules so these win. */
     .pix-ir-root .pix-li-panel{background:rgba(255,255,255,.04);border:none;border-radius:6px;padding:9px 10px;}
     .pix-ir-root .pix-li-input-wide{width:100% !important;max-width:none;}
-    .pix-ir-root .pix-li-spin{width:18px;}
+    /* Solid filled triangle arrows (▲▼) like the chosen mockup, replacing the
+       shared outline-chevron carets. */
+    .pix-ir-root .pix-li-spin{width:16px;}
     .pix-ir-root .pix-li-spin-up::before,
-    .pix-ir-root .pix-li-spin-down::before{width:9px;height:9px;border-top-width:1.5px;border-right-width:1.5px;}
+    .pix-ir-root .pix-li-spin-down::before{
+      border:none;width:auto;height:auto;font-size:8px;line-height:1;
+      transform:translate(-50%,-50%);}
+    .pix-ir-root .pix-li-spin-up::before{content:"\25B2";}
+    .pix-ir-root .pix-li-spin-down::before{content:"\25BC";}
   `;
   const s = document.createElement("style");
   s.id = "pix-ir-css";
