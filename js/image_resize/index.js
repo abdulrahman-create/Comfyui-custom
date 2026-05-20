@@ -375,7 +375,7 @@ app.registerExtension({
       const midY = (BOX_TOP + BOX_BOTTOM) / 2;
 
       if (info.mode === "msg") {
-        ctx.font = `11px ${fam}`;
+        ctx.font = `13px ${fam}`;
         ctx.textAlign = "center";
         ctx.fillStyle = BRAND;
         ctx.fillText(info.text, cx, midY);
