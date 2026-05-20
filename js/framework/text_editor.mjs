@@ -170,6 +170,11 @@ export function createTextEditorPanel({ mount, onChange, onReset, onAlignCanvas 
       b.addEventListener("click", () => {
         const l = layerNow(); if (!l) return;
         onAlignCanvas(mode);
+        // Momentary action (snap to position), not a persistent mode like
+        // the text-align chips - so flash orange briefly to acknowledge the
+        // press instead of staying lit.
+        b.classList.add("is-flashing");
+        setTimeout(() => b.classList.remove("is-flashing"), 450);
       });
       posRow.appendChild(b);
     }
@@ -663,12 +668,16 @@ function injectCSS() {
     }
     .pix-to-chip:hover { border-color: #666; color: #ddd; }
     .pix-to-chip.active { background: ${BRAND}; color: #fff; border-color: ${BRAND}; }
+    /* Brief click acknowledgement for the momentary "Position on canvas"
+       buttons (they have no persistent active state). */
+    .pix-to-chip.is-flashing { background: ${BRAND}; border-color: ${BRAND}; }
     .pix-to-align-chip img {
       width: 14px; height: 14px;
       pointer-events: none;
       filter: brightness(0) saturate(100%) invert(75%);
     }
-    .pix-to-align-chip.active img { filter: brightness(0) invert(1); }
+    .pix-to-align-chip.active img,
+    .pix-to-align-chip.is-flashing img { filter: brightness(0) invert(1); }
 
     /* 2-column grid for number inputs + colors */
     .pix-to-grid2 {
