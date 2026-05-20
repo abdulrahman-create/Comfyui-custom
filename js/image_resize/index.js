@@ -344,8 +344,8 @@ app.registerExtension({
         const tw = ctx.measureText(info.text).width;
         const padX = 10, padY = 6;
         const bw = tw + padX * 2, bh = 22;
-        roundRectPath(ctx, cx - bw / 2, cy - bh / 2, bw, bh, 5);
-        ctx.fillStyle = "rgba(0,0,0,0.28)";
+        roundRectPath(ctx, cx - bw / 2, cy - bh / 2, bw, bh, bh / 2);
+        ctx.fillStyle = "rgba(0,0,0,0.5)";
         ctx.fill();
         ctx.textAlign = "center";
         ctx.fillStyle = BRAND;
@@ -385,8 +385,10 @@ app.registerExtension({
       ctx.scale(s, s);
 
       const left = -bw / 2, top = -bh / 2;
-      roundRectPath(ctx, left, top, bw, bh, 6);
-      ctx.fillStyle = "rgba(0,0,0,0.28)";
+      // Dark recessed "notch" look (like a phone camera cutout): darker fill,
+      // generously rounded corners.
+      roundRectPath(ctx, left, top, bw, bh, 12);
+      ctx.fillStyle = "rgba(0,0,0,0.5)";
       ctx.fill();
 
       const xLabel = left + padX;
