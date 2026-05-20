@@ -31,25 +31,36 @@ app.registerExtension({
 
     const origConfigure = nodeType.prototype.onConfigure;
     nodeType.prototype.onConfigure = function () {
-      const r = origConfigure?.apply(this, arguments);
-      ensureValidState(this);
-      // After configure, push current state into the body panel UI
-      if (this._textOverlayBodyPanel) {
-        this._textOverlayBodyPanel.setLayer(this.properties[STATE_PROP]);
+      // Gate the text-lock RESIZE during load. LGraphNode.configure() replays
+      // onConnectionsChange for every wired slot (Vue Compat #17); without the
+      // flag, that replay would resize the node by 1-2px (computeSize rounding)
+      // and falsely mark the workflow modified on a plain open. Cleared in
+      // finally so it always resets.
+      this._textOverlayConfiguring = true;
+      try {
+        const r = origConfigure?.apply(this, arguments);
+        ensureValidState(this);
+        // After configure, push current state into the body panel UI
+        if (this._textOverlayBodyPanel) {
+          this._textOverlayBodyPanel.setLayer(this.properties[STATE_PROP]);
+        }
+        refreshOpenButton(this);
+        refreshTextLock(this); // allowResize defaults false - no resize on load
+        return r;
+      } finally {
+        this._textOverlayConfiguring = false;
       }
-      refreshOpenButton(this);
-      refreshTextLock(this);
-      return r;
     };
 
     // Update the Open button + text-lock indicator when wires change
     // so the user sees the right state immediately (image wire affects
-    // the Open button; text wire grays out the textarea).
+    // the Open button; text wire grays out the textarea). Allow the resize
+    // only for REAL user wire changes (not the configure-replay during load).
     const origOnConnectionsChange = nodeType.prototype.onConnectionsChange;
     nodeType.prototype.onConnectionsChange = function () {
       const r = origOnConnectionsChange?.apply(this, arguments);
       refreshOpenButton(this);
-      refreshTextLock(this);
+      refreshTextLock(this, !this._textOverlayConfiguring);
       return r;
     };
   },
@@ -221,12 +232,18 @@ function isUpstreamImageReady(node) {
 // the textarea to editable when the wire is detached. Re-fits the node
 // height so the orange hint line under the textarea doesn't leave
 // stale empty space when removed.
-function refreshTextLock(node) {
+function refreshTextLock(node, allowResize = false) {
   const panel = node._textOverlayBodyPanel;
   if (!panel || typeof panel.setTextReadOnly !== "function") return;
   const link = node.inputs?.find((i) => i.name === "text")?.link;
   const wired = link != null;
   panel.setTextReadOnly(wired, wired ? "Text input is wired - upstream value is used" : "");
+  // The node-height snap runs ONLY for real user wire changes. On a plain
+  // workflow load the saved size already fits the hint state, and a
+  // computeSize() rounding difference of 1-2px would otherwise rewrite
+  // node.size and falsely flag the workflow as modified (issue: "Save
+  // Changes?" prompt on open+close with no edits).
+  if (!allowResize) return;
   // Defer to next frame so the hint's DOM layout settles before
   // computeSize re-measures. LiteGraph's computeSize returns the
   // total node height (chrome + slots + widgets) so we don't need
