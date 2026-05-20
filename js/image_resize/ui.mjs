@@ -75,7 +75,9 @@ export function injectCSS() {
     /* Fixed 50/50 columns: the W/H stack is always the left half (extends to
        center, ~aligned with the first 2 buttons) so the inputs never resize
        with the rect; the rect is centered in the right half. */
-    .pix-ir-root .pix-ir-wh-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:center;}
+    /* minmax(0,1fr) so a wide (landscape) rect can't steal width from the W/H
+       column - both columns stay exactly half. */
+    .pix-ir-root .pix-ir-wh-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;align-items:center;}
     .pix-ir-root .pix-ir-wh-col{display:flex;flex-direction:column;gap:6px;min-width:0;}
     .pix-ir-root .pix-ir-wh-col .pix-li-swap{width:100%;height:24px;align-self:auto;}
     .pix-ir-root .pix-ir-wh-grid .pix-li-wh-preview{margin-top:0;justify-content:center;}
