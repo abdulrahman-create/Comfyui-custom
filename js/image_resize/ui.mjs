@@ -56,8 +56,11 @@ export function injectCSS() {
     .pix-ir-root .pix-li-numinput{background:#1d1d1d !important;}
     .pix-ir-root .pix-li-numinput input{background:transparent !important;}
     /* Solid filled triangle arrows (▲▼) like the chosen mockup, replacing the
-       shared outline-chevron carets. */
-    .pix-ir-root .pix-li-spin{width:16px;}
+       shared outline-chevron carets. Drop the internal divider + match the
+       spinner fill so the field reads as ONE uniform dark box (no "two
+       strokes" / second-box look). */
+    .pix-ir-root .pix-li-spin{width:16px;border-left:none;}
+    .pix-ir-root .pix-li-spin > button{background:transparent;}
     .pix-ir-root .pix-li-spin-up::before,
     .pix-ir-root .pix-li-spin-down::before{
       border:none;width:auto;height:auto;font-size:8px;line-height:1;
