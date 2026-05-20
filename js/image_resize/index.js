@@ -190,8 +190,9 @@ function applyInlineLabel(panel, mode) {
 // input, and remove the redundant size text under the aspect rectangle.
 function applyWHLayout(panel) {
   panel.querySelector(".pix-li-panel-label")?.classList.add("pix-ir-wh-header");
+  const fields = [...panel.querySelectorAll(".pix-li-wh-field")];
   const tags = ["W", "H"];
-  panel.querySelectorAll(".pix-li-wh-field").forEach((f, i) => {
+  fields.forEach((f, i) => {
     f.querySelector(".pix-li-wh-label")?.remove();
     const num = f.querySelector(".pix-li-numinput");
     if (num && !num.querySelector(".pix-ir-inline-label")) {
@@ -203,6 +204,21 @@ function applyWHLayout(panel) {
     }
   });
   panel.querySelector(".pix-li-wh-rect-label")?.remove();
+
+  // Reflow into two columns: W / H / swap stacked on the left, ratio rect right.
+  const row = panel.querySelector(".pix-li-wh-row");
+  const swap = panel.querySelector(".pix-li-swap");
+  const preview = panel.querySelector(".pix-li-wh-preview");
+  if (row && fields.length === 2 && preview && !panel.querySelector(".pix-ir-wh-grid")) {
+    const grid = document.createElement("div");
+    grid.className = "pix-ir-wh-grid";
+    const col = document.createElement("div");
+    col.className = "pix-ir-wh-col";
+    col.append(fields[0], fields[1]);
+    if (swap) col.append(swap);
+    grid.append(col, preview);
+    row.replaceWith(grid);
+  }
 }
 
 function renderUI(node) {

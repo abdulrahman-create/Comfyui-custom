@@ -66,13 +66,16 @@ export function injectCSS() {
        is removed in JS to save vertical space. */
     .pix-ir-root .pix-ir-inline-label{display:flex;align-items:center;color:${BRAND};font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;padding:0 4px 0 9px;white-space:nowrap;flex:none;}
     .pix-ir-root .pix-ir-num-labeled input{text-align:right !important;padding-right:8px !important;}
-    /* Fit / Crop (W x H) panel: dark swap button, center-aligned row (the
-       above-field labels are removed in JS), centered light-gray title, and a
-       more-visible aspect rectangle. */
+    /* Fit / Crop (W x H) panel: dark swap button, centered light-gray title,
+       more-visible aspect rectangle, and a two-column reflow - W/H stacked in a
+       left column with the swap below them, the ratio rect on the right. */
     .pix-ir-root .pix-li-swap{background:#1d1d1d !important;}
-    .pix-ir-root .pix-li-wh-row{align-items:center;}
     .pix-ir-root .pix-ir-wh-header{text-align:center !important;color:#d6d6d6 !important;}
     .pix-ir-root .pix-li-wh-rect{background:rgba(246,103,68,0.35);border-width:2px;}
+    .pix-ir-root .pix-ir-wh-grid{display:flex;gap:12px;align-items:center;}
+    .pix-ir-root .pix-ir-wh-col{flex:1;display:flex;flex-direction:column;gap:6px;min-width:0;}
+    .pix-ir-root .pix-ir-wh-col .pix-li-swap{width:100%;height:24px;align-self:auto;}
+    .pix-ir-root .pix-ir-wh-grid .pix-li-wh-preview{flex:none;margin-top:0;}
     /* Solid filled triangle arrows (▲▼) like the chosen mockup, replacing the
        shared outline-chevron carets. Drop the internal divider + match the
        spinner fill so the field reads as ONE uniform dark box (no "two
