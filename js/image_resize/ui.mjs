@@ -17,7 +17,7 @@ export function injectCSS() {
     .pix-ir-chip:hover{border-color:#666;}
     .pix-ir-chip.active{background:${BRAND};color:#fff;border-color:${BRAND};}
     .pix-ir-chip.span2{grid-column:span 2;}
-    .pix-ir-foot{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+    .pix-ir-foot{display:flex;align-items:center;justify-content:center;gap:6px;flex-wrap:wrap;}
     .pix-ir-snap{display:inline-flex;align-items:center;gap:5px;}
     .pix-ir-snap-icon{display:inline-block;width:12px;height:12px;background-color:#888;flex:none;
       -webkit-mask:url("/pixaroma/assets/icons/ui/magnet.svg") center/12px 12px no-repeat;
