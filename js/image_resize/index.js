@@ -329,12 +329,14 @@ app.registerExtension({
       const ratioFont = `9px ${fam}`;
       const gap = 7, rectMaxW = 16, rectMaxH = 12;
 
+      // Fixed column widths (sized to reference strings, NOT the live values)
+      // so the panel never grows / shifts when the numbers or ratio change.
       ctx.font = labelFont;
-      const labelW = Math.max(ctx.measureText("INPUT").width, ctx.measureText("OUTPUT").width);
+      const labelW = ctx.measureText("OUTPUT").width;
       ctx.font = dimsFont;
-      const dimsW = Math.max(...rows.map((o) => ctx.measureText(`${o.w}×${o.h}`).width));
+      const dimsW = ctx.measureText("00000×00000").width;
       ctx.font = ratioFont;
-      const ratioW = Math.max(...rows.map((o) => ctx.measureText(ratioLabel(o.w, o.h)).width));
+      const ratioW = ctx.measureText("~1:1.50").width;
 
       const padX = 9, padY = 6, rowH = 17;
       const contentW = labelW + gap + dimsW + gap + rectMaxW + gap + ratioW;
