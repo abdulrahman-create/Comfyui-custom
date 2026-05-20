@@ -166,7 +166,7 @@ function maybeAutoSwitch(node) {
 // input (orange, left), value pushed right next to the arrows. Saves vertical
 // space. Multi-input modes (Fit/Crop/Match ratio) keep their headers.
 const INLINE_LABELS = {
-  max_mp: "Max MP",
+  max_mp: "Max megapixels",
   longest_side: "Longest side",
   scale_factor: "Scale by ×",
 };
