@@ -84,21 +84,40 @@ function ratioLabel(w, h) {
 }
 
 // The size info is painted in the dead space between the input and output
-// columns (onDrawForeground) rather than as a body row — saves height and
-// uses otherwise-empty space. Returns the string to paint.
-function getReadoutText(node) {
+// slot columns (onDrawForeground), not as a body row — saves height and uses
+// empty space. Returns either a two-line INPUT/OUTPUT block or a message.
+function getReadoutInfo(node) {
   const state = readState(node);
   const cached = node.properties?.pixIrDims;       // {in_w,in_h,out_w,out_h} from last run
   const live = getInputDims(node);
   if (live) {
     const { w, h } = previewResize(live.w, live.h, state);
-    return `${live.w}×${live.h} → ${w}×${h} · ${ratioLabel(w, h)}`;
+    return { mode: "dual", inW: live.w, inH: live.h, outW: w, outH: h };
   }
   if (cached) {
-    return `${cached.in_w}×${cached.in_h} → ${cached.out_w}×${cached.out_h} · ${ratioLabel(cached.out_w, cached.out_h)}`;
+    return { mode: "dual", inW: cached.in_w, inH: cached.in_h, outW: cached.out_w, outH: cached.out_h };
   }
-  if (!isWired(node, "image")) return "Connect an image";
-  return "Run once to read size";
+  if (!isWired(node, "image")) return { mode: "msg", text: "Connect an image" };
+  return { mode: "msg", text: "Run once to read size" };
+}
+
+// Rectangle scaled to a w:h aspect inside a max box (the little ratio shape).
+function aspectRectDims(w, h, maxW, maxH) {
+  const a = w / h;
+  let rw, rh;
+  if (a >= maxW / maxH) { rw = maxW; rh = maxW / a; }
+  else { rh = maxH; rw = maxH * a; }
+  return { rw: Math.max(2, Math.round(rw)), rh: Math.max(2, Math.round(rh)) };
+}
+
+function roundRectPath(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
 }
 
 function renderPreviewThumb(node) {
@@ -272,27 +291,95 @@ app.registerExtension({
     };
 
     // Paint the size readout in the empty space between the input and output
-    // slot columns (orange), so it uses dead space and costs no body height.
+    // slot columns, on a dark panel, so it uses dead space and costs no body
+    // height. Vertical center of the 4 slot rows is y=44 (TOP_PAD 4 + 4*20/2).
     const _origDraw = nodeType.prototype.onDrawForeground;
     nodeType.prototype.onDrawForeground = function (ctx) {
       const r = _origDraw?.apply(this, arguments);
       if (this.flags?.collapsed) return r;
-      const text = getReadoutText(this);
-      ctx.save();
+      const info = getReadoutInfo(this);
+      const cx = this.size[0] / 2;
+      const cy = 44;
       const fam = "ui-sans-serif, system-ui, sans-serif";
-      ctx.font = `10px ${fam}`;
-      // Reserve ~75px each side for the slot labels; shrink the font so the
-      // readout never collides with them on a narrow node.
-      const avail = this.size[0] - 150;
-      const tw = ctx.measureText(text).width;
-      if (tw > avail && avail > 30) {
-        ctx.font = `${Math.max(7, Math.floor(10 * avail / tw))}px ${fam}`;
-      }
-      ctx.textAlign = "center";
+      ctx.save();
       ctx.textBaseline = "middle";
-      ctx.fillStyle = BRAND;
-      // Vertical center of the 4 input/output slot rows: TOP_PAD(4) + 4*20/2.
-      ctx.fillText(text, this.size[0] / 2, 44);
+
+      if (info.mode === "msg") {
+        ctx.font = `11px ${fam}`;
+        const tw = ctx.measureText(info.text).width;
+        const padX = 10, padY = 6;
+        const bw = tw + padX * 2, bh = 22;
+        roundRectPath(ctx, cx - bw / 2, cy - bh / 2, bw, bh, 5);
+        ctx.fillStyle = "rgba(0,0,0,0.28)";
+        ctx.fill();
+        ctx.textAlign = "center";
+        ctx.fillStyle = BRAND;
+        ctx.fillText(info.text, cx, cy);
+        ctx.restore();
+        return r;
+      }
+
+      // ── two-row INPUT / OUTPUT block ──
+      const rows = [
+        { label: "INPUT", w: info.inW, h: info.inH },
+        { label: "OUTPUT", w: info.outW, h: info.outH },
+      ];
+      const labelFont = `9px ${fam}`;
+      const dimsFont = `bold 12px ${fam}`;
+      const ratioFont = `9px ${fam}`;
+      const gap = 7, rectMaxW = 16, rectMaxH = 12;
+
+      ctx.font = labelFont;
+      const labelW = Math.max(ctx.measureText("INPUT").width, ctx.measureText("OUTPUT").width);
+      ctx.font = dimsFont;
+      const dimsW = Math.max(...rows.map((o) => ctx.measureText(`${o.w}×${o.h}`).width));
+      ctx.font = ratioFont;
+      const ratioW = Math.max(...rows.map((o) => ctx.measureText(ratioLabel(o.w, o.h)).width));
+
+      const padX = 9, padY = 6, rowH = 17;
+      const contentW = labelW + gap + dimsW + gap + rectMaxW + gap + ratioW;
+      const bw = contentW + padX * 2;
+      const bh = rows.length * rowH + padY * 2;
+
+      // Shrink the whole block uniformly if it would crowd the slot labels.
+      const avail = this.size[0] - 130;
+      const s = Math.min(1, avail / bw);
+      ctx.translate(cx, cy);
+      ctx.scale(s, s);
+
+      const left = -bw / 2, top = -bh / 2;
+      roundRectPath(ctx, left, top, bw, bh, 6);
+      ctx.fillStyle = "rgba(0,0,0,0.28)";
+      ctx.fill();
+
+      const xLabel = left + padX;
+      const xDims = xLabel + labelW + gap;
+      const xRect = xDims + dimsW + gap;
+      const xRatio = xRect + rectMaxW + gap;
+
+      rows.forEach((o, i) => {
+        const y = top + padY + rowH * i + rowH / 2;
+        ctx.textAlign = "left";
+        ctx.font = labelFont;
+        ctx.fillStyle = "#9a9a9a";
+        ctx.fillText(o.label, xLabel, y);
+        ctx.font = dimsFont;
+        ctx.fillStyle = BRAND;
+        ctx.fillText(`${o.w}×${o.h}`, xDims, y);
+        // ratio rectangle
+        const { rw, rh } = aspectRectDims(o.w, o.h, rectMaxW, rectMaxH);
+        ctx.strokeStyle = "rgba(200,200,200,0.7)";
+        ctx.lineWidth = 1;
+        ctx.strokeRect(
+          Math.round(xRect + (rectMaxW - rw) / 2) + 0.5,
+          Math.round(y - rh / 2) + 0.5,
+          rw, rh,
+        );
+        ctx.font = ratioFont;
+        ctx.fillStyle = "#9a9a9a";
+        ctx.fillText(ratioLabel(o.w, o.h), xRatio, y);
+      });
+
       ctx.restore();
       return r;
     };
