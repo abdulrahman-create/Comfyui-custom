@@ -42,13 +42,17 @@ export function injectCSS() {
     .pix-ir-badge{position:absolute;bottom:5px;left:0;right:0;text-align:center;
       font-size:10px;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.8);}
     .pix-ir-hint{font-size:10px;color:#7d7d7d;text-align:center;padding:14px 4px;}
-    /* Image-Resize-only restyle of the shared mode panels: flatten the inner
-       box and make inputs full-width so edges align with the chip grid above.
-       Scoped to .pix-ir-root so Load Image's panels stay untouched (the user
-       will update Load Image to match later). Higher specificity than the
-       shared .pix-li-* rules so these win. */
-    .pix-ir-root .pix-li-panel{background:transparent;border:none;padding:2px 0 0;}
+    /* Image-Resize-only restyle of the shared mode panels (Option A — soft
+       card): a faint borderless raised panel groups the active mode's
+       settings, full-width inputs align with the chip grid, and a wider/bolder
+       spinner. Scoped to .pix-ir-root so Load Image's panels stay untouched
+       (the user will update Load Image to match later). Higher specificity
+       than the shared .pix-li-* rules so these win. */
+    .pix-ir-root .pix-li-panel{background:rgba(255,255,255,.04);border:none;border-radius:6px;padding:9px 10px;}
     .pix-ir-root .pix-li-input-wide{width:100% !important;max-width:none;}
+    .pix-ir-root .pix-li-spin{width:18px;}
+    .pix-ir-root .pix-li-spin-up::before,
+    .pix-ir-root .pix-li-spin-down::before{width:9px;height:9px;border-top-width:1.5px;border-right-width:1.5px;}
   `;
   const s = document.createElement("style");
   s.id = "pix-ir-css";
