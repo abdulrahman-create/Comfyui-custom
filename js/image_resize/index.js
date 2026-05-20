@@ -131,7 +131,11 @@ function maybeAutoSwitch(node) {
 
 function renderUI(node) {
   const root = node._pixIrRoot;
-  if (!root || !root.isConnected) return;
+  // Render even when the root is not yet attached to the document: on a fresh
+  // drop the DOM widget element can still be detached at queueMicrotask time,
+  // and building into a detached node is fine (Vue mounts it moments later).
+  // Bailing on !isConnected here left the body blank until the first wire/edit.
+  if (!root) return;
   const state = readState(node);
   root.innerHTML = "";
 
@@ -213,8 +217,14 @@ app.registerExtension({
       // Fresh-node default size (saved workflows restore their own via configure).
       if (!this.size || this.size[0] < 270) this.size = [276, 340];
       // Deferred initial render so configure() can land the saved state first
-      // (Vue Compat #8). No refit here — load path must not resize.
-      queueMicrotask(() => renderUI(this));
+      // (Vue Compat #8). By microtask time, configure() has already run for a
+      // loaded node, so node.properties[STATE_PROP] is set — we use that to
+      // refit ONLY on a genuine fresh drop, never on load (Vue Compat #18).
+      queueMicrotask(() => {
+        const wasConfigured = this.properties?.[STATE_PROP] !== undefined;
+        renderUI(this);
+        if (!wasConfigured) refit(this);
+      });
       return r;
     };
 
