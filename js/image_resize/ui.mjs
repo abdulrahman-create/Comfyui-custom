@@ -11,21 +11,24 @@ export function injectCSS() {
       border-radius:4px;color:#ddd;font-family:ui-sans-serif,system-ui,sans-serif;
       font-size:11px;display:flex;flex-direction:column;gap:8px;}
     .pix-ir-chips{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;}
-    .pix-ir-chip{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.14);
-      border-radius:4px;padding:6px 3px;font-size:9.5px;color:rgba(255,255,255,.8);
+    .pix-ir-chip{background:#1d1d1d;border:1px solid #444;
+      border-radius:4px;padding:6px 3px;font-size:9.5px;color:#ccc;
       text-align:center;cursor:pointer;user-select:none;transition:background .08s,border-color .08s;}
     .pix-ir-chip:hover{border-color:#666;}
     .pix-ir-chip.active{background:${BRAND};color:#fff;border-color:${BRAND};}
     .pix-ir-chip.span2{grid-column:span 2;}
     .pix-ir-foot{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
-    .pix-ir-snap{display:inline-flex;align-items:center;gap:3px;}
+    .pix-ir-snap{display:inline-flex;align-items:center;gap:5px;}
+    .pix-ir-snap-icon{display:inline-block;width:12px;height:12px;background-color:#888;flex:none;
+      -webkit-mask:url("/pixaroma/assets/icons/ui/magnet.svg") center/12px 12px no-repeat;
+              mask:url("/pixaroma/assets/icons/ui/magnet.svg") center/12px 12px no-repeat;}
     .pix-ir-snap-lbl{font-size:9px;color:#7d7d7d;text-transform:uppercase;letter-spacing:.5px;}
-    .pix-ir-schip{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.14);
-      border-radius:3px;color:rgba(255,255,255,.7);font-size:8.5px;padding:3px 5px;
+    .pix-ir-schip{background:#1d1d1d;border:1px solid #444;
+      border-radius:3px;color:#aaa;font-size:8.5px;padding:3px 5px;
       min-width:16px;text-align:center;cursor:pointer;user-select:none;}
-    .pix-ir-schip:hover{border-color:#666;}
+    .pix-ir-schip:hover{border-color:#666;color:#ddd;}
     .pix-ir-schip.active{background:${BRAND};color:#fff;border-color:${BRAND};}
-    .pix-ir-resample{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.14);
+    .pix-ir-resample{background:#1d1d1d;border:1px solid #444;
       border-radius:4px;color:#ddd;font-size:11px;padding:5px;font-family:inherit;width:100%;}
     .pix-ir-resample:focus{outline:none;border-color:${BRAND};}
     .pix-ir-chk{display:flex;align-items:center;gap:6px;font-size:10.5px;color:#cfcfcf;cursor:pointer;user-select:none;}
@@ -75,6 +78,9 @@ export function buildFooter(state) {
   foot.className = "pix-ir-foot";
   const snap = document.createElement("div");
   snap.className = "pix-ir-snap";
+  const icon = document.createElement("span");
+  icon.className = "pix-ir-snap-icon";
+  snap.appendChild(icon);
   const lbl = document.createElement("span");
   lbl.className = "pix-ir-snap-lbl";
   lbl.textContent = "Snap";
