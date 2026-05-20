@@ -160,13 +160,21 @@ function setupTextOverlayNode(node) {
   // creation (deferred below, after layout settles) and on a real content
   // change (the text-lock hint appearing/disappearing -> _recomputeHeight).
   function panelHeight() {
-    const props = node.properties;
-    if (props && typeof props.textOverlayPanelH === "number" && props.textOverlayPanelH > 0) {
+    const props = node.properties || (node.properties = {});
+    if (typeof props.textOverlayPanelH === "number" && props.textOverlayPanelH > 0) {
       return props.textOverlayPanelH;
     }
-    // Fresh node not yet captured: measure live (transient is fine on a brand
-    // new node; the deferred capture below stores a settled value).
-    return measureContentHeight();
+    // First call (fresh node, or pre-fix workflow with no stored height):
+    // measure ONCE and store SYNCHRONOUSLY, so node.size and the persisted
+    // height come from the SAME measurement and can't diverge. (The earlier
+    // bug stored it later in a requestAnimationFrame, after node.size had
+    // already been computed from a different measurement -> 458 vs 414 ->
+    // dirty on reload.) For a loaded workflow, configure restores the saved
+    // value and overwrites whatever we measured here, so the saved size and
+    // height stay in agreement.
+    const h = measureContentHeight();
+    props.textOverlayPanelH = h;
+    return h;
   }
   node._textOverlayPanelHeight = panelHeight;
   // Recompute + persist after a genuine content change (hint toggle).
@@ -212,24 +220,13 @@ function setupTextOverlayNode(node) {
     return _origOnDrawForeground ? _origOnDrawForeground(ctx) : undefined;
   };
 
-  // Defer panel population past configure() so saved state is restored first
+  // Defer panel population past configure() so saved state is restored first.
+  // No deferred height capture here - panelHeight() stores the height
+  // synchronously the first time it runs (see comment there), which keeps
+  // node.size and the persisted height in agreement.
   queueMicrotask(() => {
     bodyPanel.setLayer(node.properties[STATE_PROP]);
     refreshTextLock(node);
-    // Fresh-node ONLY: once layout + fonts settle, capture the panel height
-    // and persist it so future loads are byte-identical. Loaded workflows
-    // already have textOverlayPanelH restored by configure - never overwrite
-    // it here or the dirty-on-load returns. Double rAF lets the panel settle.
-    requestAnimationFrame(() => requestAnimationFrame(() => {
-      const props = node.properties || (node.properties = {});
-      if (typeof props.textOverlayPanelH !== "number") {
-        props.textOverlayPanelH = node._textOverlayMeasureHeight();
-        if (typeof node.computeSize === "function" && node.size) {
-          node.size[1] = node.computeSize()[1];
-        }
-        node.setDirtyCanvas?.(true, true);
-      }
-    }));
   });
 }
 
