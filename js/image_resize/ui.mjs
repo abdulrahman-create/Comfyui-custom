@@ -58,6 +58,11 @@ export function injectCSS() {
        border + radius, drawing a second box INSIDE the wrapper ("two strokes").
        Strip it so only the wrapper draws the box. */
     .pix-ir-root .pix-li-numinput input{background:transparent !important;border:none !important;border-radius:0 !important;}
+    /* Inline label inside the input (single-input modes): orange name on the
+       left, value pushed to the right next to the arrows. The section header
+       is removed in JS to save vertical space. */
+    .pix-ir-root .pix-ir-inline-label{display:flex;align-items:center;color:${BRAND};font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;padding:0 4px 0 9px;white-space:nowrap;flex:none;}
+    .pix-ir-root .pix-ir-num-labeled input{text-align:right !important;padding-right:8px !important;}
     /* Solid filled triangle arrows (▲▼) like the chosen mockup, replacing the
        shared outline-chevron carets. Drop the internal divider + match the
        spinner fill so the field reads as ONE uniform dark box (no "two
@@ -81,7 +86,7 @@ const MODE_CHIPS = [
   { id: "off", label: "Off" },
   { id: "max_mp", label: "Max MP" },
   { id: "longest_side", label: "Longest" },
-  { id: "scale_factor", label: "Scale×" },
+  { id: "scale_factor", label: "Scale By" },
   { id: "fit_inside", label: "Fit" },
   { id: "cover", label: "Crop" },
   { id: "match_ratio", label: "Match ratio", span2: true },

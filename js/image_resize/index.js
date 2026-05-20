@@ -162,6 +162,27 @@ function maybeAutoSwitch(node) {
   }
 }
 
+// Single-input modes: drop the section header and move its name INTO the
+// input (orange, left), value pushed right next to the arrows. Saves vertical
+// space. Multi-input modes (Fit/Crop/Match ratio) keep their headers.
+const INLINE_LABELS = {
+  max_mp: "Max MP",
+  longest_side: "Longest side",
+  scale_factor: "Scale by ×",
+};
+function applyInlineLabel(panel, mode) {
+  const label = INLINE_LABELS[mode];
+  if (!label) return;
+  panel.querySelector(".pix-li-panel-label")?.remove();
+  const num = panel.querySelector(".pix-li-numinput");
+  if (!num || num.querySelector(".pix-ir-inline-label")) return;
+  const lab = document.createElement("span");
+  lab.className = "pix-ir-inline-label";
+  lab.textContent = label;
+  num.insertBefore(lab, num.firstChild);
+  num.classList.add("pix-ir-num-labeled");
+}
+
 function renderUI(node) {
   const root = node._pixIrRoot;
   // Render even when the root is not yet attached to the document: on a fresh
@@ -177,7 +198,10 @@ function renderUI(node) {
 
   const panel = buildModePanel(state.mode, node, state, writeState,
     () => node.setDirtyCanvas(true, true), STATE_PROP);
-  if (panel) root.appendChild(panel);
+  if (panel) {
+    applyInlineLabel(panel, state.mode);
+    root.appendChild(panel);
+  }
 
   const footer = buildFooter(state);
   root.appendChild(footer);
