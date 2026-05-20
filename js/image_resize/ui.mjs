@@ -50,8 +50,11 @@ export function injectCSS() {
        than the shared .pix-li-* rules so these win. */
     .pix-ir-root .pix-li-panel{background:rgba(255,255,255,.04);border:none;border-radius:6px;padding:9px 10px;}
     .pix-ir-root .pix-li-input-wide{width:100% !important;max-width:none;}
-    /* Dark input fields (#1d1d1d) to match the buttons, not the lighter body gray. */
-    .pix-ir-root .pix-li-numinput{background:#1d1d1d;}
+    /* Dark input fields (#1d1d1d) to match the buttons, not the lighter body
+       gray. !important so it beats the shared .pix-li-numinput rule regardless
+       of stylesheet injection order. */
+    .pix-ir-root .pix-li-numinput{background:#1d1d1d !important;}
+    .pix-ir-root .pix-li-numinput input{background:transparent !important;}
     /* Solid filled triangle arrows (▲▼) like the chosen mockup, replacing the
        shared outline-chevron carets. */
     .pix-ir-root .pix-li-spin{width:16px;}
