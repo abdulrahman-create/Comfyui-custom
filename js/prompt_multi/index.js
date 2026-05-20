@@ -264,6 +264,12 @@ app.registerExtension({
         const { handlers, rerender } = makeHandlers(node, root);
         node._pixPmRoot = root;
         node._pixPmRerender = rerender;
+        // DOM-only render (no auto-grow). Used on workflow load so the saved
+        // node.size is trusted - the grow path rewrites node.size by a few px
+        // (DOM measurement rounding) which would falsely flag the workflow
+        // "modified" on a plain open. Auto-grow stays on user-action paths
+        // (add/delete/toggle/mode pill) where a size change is legitimate.
+        node._pixPmRenderOnly = () => renderRows(node, root, handlers);
 
         node.addDOMWidget("promptmulti", "div", root, {
           serialize: false,
@@ -276,7 +282,7 @@ app.registerExtension({
           node.setDirtyCanvas(true, true);
         };
 
-        rerender();
+        node._pixPmRenderOnly();
         node.setDirtyCanvas(true, true);
       });
     };
@@ -285,7 +291,9 @@ app.registerExtension({
     nodeType.prototype.onConfigure = function (info) {
       const r = origConfigure ? origConfigure.apply(this, arguments) : undefined;
       restoreFromProperties(this);
-      if (this._pixPmRerender) this._pixPmRerender();
+      // DOM-only render on load (no auto-grow) so the saved node.size is
+      // preserved and the workflow isn't falsely flagged "modified".
+      if (this._pixPmRenderOnly) this._pixPmRenderOnly();
       return r;
     };
 
@@ -377,6 +385,7 @@ app.registerExtension({
     nodeType.prototype.onRemoved = function () {
       this._pixPmRoot = null;
       this._pixPmRerender = null;
+      this._pixPmRenderOnly = null;
       this._pixPmGrow = null;
       this._pixPmRefreshClear = null;
       // Hide tooltip if this node was the one being hovered; otherwise it
