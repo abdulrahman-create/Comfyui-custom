@@ -40,9 +40,9 @@ app.registerExtension({
       try {
         const r = origConfigure?.apply(this, arguments);
         ensureValidState(this);
-        // node.properties.textOverlayPanelH was restored by configure above;
-        // panelHeight() returns it verbatim, so node.size stays exactly as
-        // saved on load (no measurement-jitter rewrite, no false "modified").
+        // panelHeight() returns a fixed constant (BASE_H +/- HINT_H), so
+        // node.size is the same on every load and the workflow is never
+        // falsely flagged "modified".
         // After configure, push current state into the body panel UI
         if (this._textOverlayBodyPanel) {
           this._textOverlayBodyPanel.setLayer(this.properties[STATE_PROP]);
@@ -150,38 +150,25 @@ function setupTextOverlayNode(node) {
   }
   node._textOverlayMeasureHeight = measureContentHeight;
 
-  // PERSISTED panel height. measureContentHeight reads the live DOM, which
-  // comes back up to ~14px different at save vs reload (font/layout timing) -
-  // pinning getMinHeight/getMaxHeight to that jitter rewrote node.size on a
-  // plain load and falsely flagged the workflow "modified" (confirmed:
-  // size.1 458 => 472). The fix: store the height in node.properties (which
-  // LiteGraph serializes into the workflow), so it's IDENTICAL on every load
-  // and node.size never changes on reopen. It's (re)captured only on first
-  // creation (deferred below, after layout settles) and on a real content
-  // change (the text-lock hint appearing/disappearing -> _recomputeHeight).
+  // FIXED panel height - the only approach that can't dirty the workflow.
+  // Every measurement-based attempt failed: the live DOM height varies a few
+  // px between save and reload (font/layout timing), AND storing it in
+  // node.properties added a key the saved baseline lacked - either way
+  // node.size differed on load and ComfyUI flagged the workflow "modified"
+  // even when nothing was edited. A constant removes measurement (and any
+  // stored property) from the load path entirely, so node.size is the SAME
+  // value every save and load -> never dirty. The height only depends on
+  // whether the text-lock hint row is shown (text input wired), which is
+  // restored consistently from the saved graph. BASE_H is the panel's content
+  // height with the hint hidden; if the panel layout changes (add/remove a
+  // row), update BASE_H to match (the only maintenance cost of this approach).
+  const BASE_H = 412;   // content height, text input NOT wired
+  const HINT_H = 18;    // extra height when the text input IS wired (lock hint)
   function panelHeight() {
-    const props = node.properties || (node.properties = {});
-    if (typeof props.textOverlayPanelH === "number" && props.textOverlayPanelH > 0) {
-      return props.textOverlayPanelH;
-    }
-    // First call (fresh node, or pre-fix workflow with no stored height):
-    // measure ONCE and store SYNCHRONOUSLY, so node.size and the persisted
-    // height come from the SAME measurement and can't diverge. (The earlier
-    // bug stored it later in a requestAnimationFrame, after node.size had
-    // already been computed from a different measurement -> 458 vs 414 ->
-    // dirty on reload.) For a loaded workflow, configure restores the saved
-    // value and overwrites whatever we measured here, so the saved size and
-    // height stay in agreement.
-    const h = measureContentHeight();
-    props.textOverlayPanelH = h;
-    return h;
+    const wired = node.inputs?.find((i) => i.name === "text")?.link != null;
+    return BASE_H + (wired ? HINT_H : 0);
   }
   node._textOverlayPanelHeight = panelHeight;
-  // Recompute + persist after a genuine content change (hint toggle).
-  node._textOverlayRecomputeHeight = () => {
-    const props = node.properties || (node.properties = {});
-    props.textOverlayPanelH = measureContentHeight();
-  };
 
   node.addDOMWidget("pix_text_overlay_ui", "div", root, {
     canvasOnly: true,
@@ -288,9 +275,8 @@ function refreshTextLock(node, allowResize = false) {
   // total node height (chrome + slots + widgets) so we don't need
   // to guess the chrome offset.
   requestAnimationFrame(() => {
-    // Real content change (hint shown/hidden): refresh the persisted panel
-    // height so computeSize() reflects the new content before we snap size.
-    node._textOverlayRecomputeHeight?.();
+    // Wire state changed -> panelHeight() now returns BASE_H +/- HINT_H, so
+    // computeSize() already reflects the new height; just snap node.size to it.
     if (typeof node.computeSize === "function" && node.size) {
       const min = node.computeSize();
       if (Array.isArray(min) && min.length === 2 && typeof min[1] === "number") {
