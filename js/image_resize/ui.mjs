@@ -17,9 +17,6 @@ export function injectCSS() {
     .pix-ir-chip:hover{border-color:#666;}
     .pix-ir-chip.active{background:${BRAND};color:#fff;border-color:${BRAND};}
     .pix-ir-chip.span2{grid-column:span 2;}
-    .pix-ir-readout{display:flex;align-items:center;justify-content:center;gap:6px;
-      font-size:10px;color:#888;padding:3px 2px;text-align:center;}
-    .pix-ir-readout b{color:${BRAND};font-weight:600;}
     .pix-ir-foot{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
     .pix-ir-snap{display:inline-flex;align-items:center;gap:3px;}
     .pix-ir-snap-lbl{font-size:9px;color:#7d7d7d;text-transform:uppercase;letter-spacing:.5px;}
@@ -114,13 +111,6 @@ export function buildResampleAndUpscale(state) {
   chk.append(box, document.createTextNode("Allow upscaling"));
   wrap.append(sel, chk);
   return { wrap, sel, box };
-}
-
-export function buildReadout() {
-  const ro = document.createElement("div");
-  ro.className = "pix-ir-readout";
-  ro.textContent = "Run once to read size";
-  return ro;
 }
 
 export function buildPreview(state) {

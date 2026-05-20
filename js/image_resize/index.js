@@ -1,10 +1,10 @@
 import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
-import { hideJsonWidget } from "../shared/index.mjs";
+import { hideJsonWidget, BRAND } from "../shared/index.mjs";
 import { buildModePanel, previewResize, injectResizePanelCSS } from "../shared/resize_panel.mjs";
 import {
   injectCSS, buildModeChips, buildFooter, buildResampleAndUpscale,
-  buildReadout, buildPreview,
+  buildPreview,
 } from "./ui.mjs";
 
 injectCSS();
@@ -72,27 +72,33 @@ function getInputDims(node) {
   return null;
 }
 
-function refreshReadout(node) {
-  const ro = node._pixIrEls?.readout;
-  if (!ro) return;
+function gcd(a, b) { a = Math.abs(a); b = Math.abs(b); while (b) { const t = b; b = a % b; a = t; } return a || 1; }
+function ratioLabel(w, h) {
+  const g = gcd(w, h);
+  const rw = w / g, rh = h / g;
+  const known = ["1:1","16:9","9:16","2:1","1:2","3:2","2:3","4:3","3:4","4:5","5:4","21:9"];
+  const s = `${rw}:${rh}`;
+  if (known.includes(s)) return s;
+  const r = w / h;
+  return r >= 1 ? `~${r.toFixed(2)}:1` : `~1:${(1 / r).toFixed(2)}`;
+}
+
+// The size info is painted in the dead space between the input and output
+// columns (onDrawForeground) rather than as a body row — saves height and
+// uses otherwise-empty space. Returns the string to paint.
+function getReadoutText(node) {
   const state = readState(node);
   const cached = node.properties?.pixIrDims;       // {in_w,in_h,out_w,out_h} from last run
   const live = getInputDims(node);
   if (live) {
-    // Upstream image size is known (e.g. a loader feeding in) — predict live.
     const { w, h } = previewResize(live.w, live.h, state);
-    ro.innerHTML = `<b>${live.w}×${live.h}</b> → <b>${w}×${h}</b>`;
-  } else if (cached) {
-    // No live size, but we learned it from the last run.
-    ro.innerHTML = `<b>${cached.in_w}×${cached.in_h}</b> → <b>${cached.out_w}×${cached.out_h}</b>`;
-  } else if (!isWired(node, "image")) {
-    // Nothing connected yet — guide the user.
-    ro.textContent = "Connect an image";
-  } else {
-    // Wired to something whose size isn't known until it runs (e.g. a
-    // mid-workflow image that hasn't been generated yet).
-    ro.textContent = "Run once to read size";
+    return `${live.w}×${live.h} → ${w}×${h} · ${ratioLabel(w, h)}`;
   }
+  if (cached) {
+    return `${cached.in_w}×${cached.in_h} → ${cached.out_w}×${cached.out_h} · ${ratioLabel(cached.out_w, cached.out_h)}`;
+  }
+  if (!isWired(node, "image")) return "Connect an image";
+  return "Run once to read size";
 }
 
 function renderPreviewThumb(node) {
@@ -150,11 +156,8 @@ function renderUI(node) {
   root.appendChild(chips);
 
   const panel = buildModePanel(state.mode, node, state, writeState,
-    () => refreshReadout(node), STATE_PROP);
+    () => node.setDirtyCanvas(true, true), STATE_PROP);
   if (panel) root.appendChild(panel);
-
-  const readout = buildReadout();
-  root.appendChild(readout);
 
   const footer = buildFooter(state);
   root.appendChild(footer);
@@ -165,9 +168,9 @@ function renderUI(node) {
   const { wrap: prevWrap, bar, body } = buildPreview(state);
   root.appendChild(prevWrap);
 
-  node._pixIrEls = { readout, body, bar };
+  node._pixIrEls = { body, bar };
   applyWiredLocks(node, root);
-  refreshReadout(node);
+  node.setDirtyCanvas(true, true); // repaint the canvas-painted size readout
   if (state.preview_open) renderPreviewThumb(node);
 
   // ── wiring ──
@@ -186,15 +189,15 @@ function renderUI(node) {
     for (const el of footer.querySelectorAll(".pix-ir-schip")) {
       el.classList.toggle("active", el === s);
     }
-    refreshReadout(node);
+    node.setDirtyCanvas(true, true);
   });
   sel.addEventListener("change", () => {
     writeState(node, { ...readState(node), resample: sel.value });
-    refreshReadout(node);
+    node.setDirtyCanvas(true, true);
   });
   box.addEventListener("change", () => {
     writeState(node, { ...readState(node), allow_upscale: box.checked });
-    refreshReadout(node);
+    node.setDirtyCanvas(true, true);
   });
   bar.addEventListener("click", () => {
     const s = readState(node);
@@ -256,7 +259,7 @@ app.registerExtension({
         refit(this);
         // Upstream loader may populate its image a tick after the wire lands;
         // re-read the size shortly after so the readout updates without a run.
-        setTimeout(() => refreshReadout(this), 200);
+        setTimeout(() => this.setDirtyCanvas(true, true), 200);
       }
       return r;
     };
@@ -266,6 +269,32 @@ app.registerExtension({
       this._pixIrRoot = null;
       this._pixIrEls = null;
       return _origRemoved?.apply(this, arguments);
+    };
+
+    // Paint the size readout in the empty space between the input and output
+    // slot columns (orange), so it uses dead space and costs no body height.
+    const _origDraw = nodeType.prototype.onDrawForeground;
+    nodeType.prototype.onDrawForeground = function (ctx) {
+      const r = _origDraw?.apply(this, arguments);
+      if (this.flags?.collapsed) return r;
+      const text = getReadoutText(this);
+      ctx.save();
+      const fam = "ui-sans-serif, system-ui, sans-serif";
+      ctx.font = `10px ${fam}`;
+      // Reserve ~75px each side for the slot labels; shrink the font so the
+      // readout never collides with them on a narrow node.
+      const avail = this.size[0] - 150;
+      const tw = ctx.measureText(text).width;
+      if (tw > avail && avail > 30) {
+        ctx.font = `${Math.max(7, Math.floor(10 * avail / tw))}px ${fam}`;
+      }
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillStyle = BRAND;
+      // Vertical center of the 4 input/output slot rows: TOP_PAD(4) + 4*20/2.
+      ctx.fillText(text, this.size[0] / 2, 44);
+      ctx.restore();
+      return r;
     };
   },
 });
@@ -284,7 +313,7 @@ api.addEventListener("executed", ({ detail }) => {
     const url = `/view?filename=${encodeURIComponent(f.filename)}&subfolder=${encodeURIComponent(f.subfolder || "")}&type=${f.type || "temp"}&t=${Date.now()}`;
     node.properties.pixIrPreview = { url, out_w: f.out_w, out_h: f.out_h };
   }
-  refreshReadout(node);
+  node.setDirtyCanvas(true, true);
   if (readState(node).preview_open) renderPreviewThumb(node);
 });
 
