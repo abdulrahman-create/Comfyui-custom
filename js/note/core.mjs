@@ -502,7 +502,15 @@ export class NoteEditor {
       if (execPath && typeof execPath.execute === "function") {
         this._savedCmdExecute = execPath.execute.bind(execPath);
         const orig = this._savedCmdExecute;
+        const ed = this;
         execPath.execute = (id, ...rest) => {
+          // Self-heal (Vue Compat #2): if the overlay was torn down without
+          // _cleanup running, restore the originals and pass through - so
+          // Comfy.Undo/Redo aren't blocked forever after a tab-close.
+          if (!ed._overlayAlive()) {
+            ed._restoreGraphPatches();
+            return execPath.execute(id, ...rest);
+          }
           if (id === "Comfy.Undo" || id === "Comfy.Redo") return;
           return orig(id, ...rest);
         };
@@ -615,6 +623,11 @@ export class NoteEditor {
       if (app.graph) app.graph.configure = this._savedGraphConfigure;
       this._savedGraphConfigure = null;
     }
+    if (this._cmdExecPath && this._savedCmdExecute) {
+      this._cmdExecPath.execute = this._savedCmdExecute;
+      this._cmdExecPath = null;
+      this._savedCmdExecute = null;
+    }
   }
 
   _cleanup() {
@@ -654,11 +667,8 @@ export class NoteEditor {
       document.removeEventListener("dragover", this._dragOverBlock, true);
       this._dragOverBlock = null;
     }
-    if (this._cmdExecPath && this._savedCmdExecute) {
-      this._cmdExecPath.execute = this._savedCmdExecute;
-    }
-    this._cmdExecPath = null;
-    this._savedCmdExecute = null;
+    // Command-exec patch is restored by _restoreGraphPatches() (called above),
+    // which also covers the self-heal path.
     if (this.node && this._origOnRemoved !== undefined) {
       this.node.onRemoved = this._origOnRemoved;
       this._origOnRemoved = undefined;

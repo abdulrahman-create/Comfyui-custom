@@ -482,7 +482,7 @@ function getUpstreamImage(node) {
 // math as the live editor (and the Python renderer). Returns { w, h }.
 let _measureCanvas = null;
 async function measureTextBbox(state) {
-  const variant = await loadFontForLayer(state.font || "Inter", state.weight || 400, !!state.italic);
+  const variant = await loadFontForLayer(state.font || "Roboto", state.weight || 400, !!state.italic);
   const fontStr = canvasFontString(variant, state.fontSize || 96);
   if (!_measureCanvas) {
     _measureCanvas = document.createElement("canvas");

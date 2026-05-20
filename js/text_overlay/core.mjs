@@ -197,12 +197,20 @@ export class TextOverlayEditor {
       this.node._textOverlayBodyPanel?.setTextReadOnly?.(true, "Text input is wired - upstream value is used");
     }
 
-    // First-time auto-center: when a fresh node opens for the first time with
-    // an upstream image, center the text on the canvas so it fits regardless
-    // of aspect ratio. Flag is cleared so subsequent opens respect the saved
-    // position.
-    if (this.state?._autoCenterPending && this.baseImage && this.state.text) {
-      this._autoCenter();
+    // First-run positioning. If the node body queued a "Position on canvas"
+    // intent (_alignPending) while the image dims were unknown, OR this is a
+    // fresh node that has never been centered (_autoCenterPending), resolve it
+    // now that the editor has the image. Clear BOTH flags so a stale pending
+    // value can't override the user's editor edits on the next workflow run
+    // (an explicit align choice wins over auto-center, matching Python +
+    // the graphToPrompt hook).
+    if (this.baseImage && this.state?.text) {
+      if (this.state._alignPending) {
+        this.alignToCanvas(this.state._alignPending);
+      } else if (this.state._autoCenterPending) {
+        this._autoCenter();
+      }
+      delete this.state._alignPending;
       delete this.state._autoCenterPending;
     }
 
