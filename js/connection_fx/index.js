@@ -8,6 +8,9 @@ let cssInjected = false;
 let drawHookInstalled = false;
 let origDrawFront = null;
 let lastLinkIds = null;
+let loadHookInstalled = false;
+let suppressDiff = false;
+let suppressTimer = null;
 
 function injectCSS() {
   if (cssInjected) return;
@@ -284,6 +287,13 @@ function detectNewConnections() {
   if (!enabled) return;
   const current = collectLinkIds();
   if (!current) return;
+  if (suppressDiff) {
+    // A workflow is loading: ComfyUI bulk-restores every saved wire at once.
+    // Keep the baseline in lockstep so none of them are mistaken for a new
+    // user connection (which would spark them all on first load).
+    lastLinkIds = current;
+    return;
+  }
   if (lastLinkIds !== null) {
     for (const id of current) {
       if (!lastLinkIds.has(id)) {
@@ -318,11 +328,47 @@ function installDrawHook() {
   drawHookInstalled = true;
 }
 
+function installLoadHook() {
+  if (loadHookInstalled) return;
+  if (typeof app.loadGraphData !== "function") return;
+  const origLoad = app.loadGraphData.bind(app);
+  app.loadGraphData = function () {
+    // Every workflow-open / tab-restore / Ctrl+Z funnels through here, and
+    // ComfyUI repopulates graph.links with all saved wires. Suppress the
+    // new-connection diff for the duration plus a short trailing window
+    // (link restoration can finish a tick after the promise resolves), then
+    // re-baseline so the loaded wires are treated as pre-existing.
+    suppressDiff = true;
+    if (suppressTimer) {
+      clearTimeout(suppressTimer);
+      suppressTimer = null;
+    }
+    let ret;
+    try {
+      ret = origLoad.apply(app, arguments);
+    } finally {
+      Promise.resolve(ret)
+        .catch(() => {})
+        .finally(() => {
+          if (suppressTimer) clearTimeout(suppressTimer);
+          suppressTimer = setTimeout(() => {
+            suppressTimer = null;
+            suppressDiff = false;
+            lastLinkIds = collectLinkIds();
+          }, 200);
+        });
+    }
+    return ret;
+  };
+  loadHookInstalled = true;
+}
+
 function onSettingChange(v) {
   enabled = !!v;
   if (enabled) {
     injectCSS();
     installDrawHook();
+    installLoadHook();
     lastLinkIds = collectLinkIds();
   } else {
     lastLinkIds = null;
