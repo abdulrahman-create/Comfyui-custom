@@ -1,0 +1,138 @@
+import { BRAND } from "../shared/index.mjs";
+
+// CSS for the Image Resize node body chrome (mode chips, footer, readout,
+// preview). The per-mode resize PANELS are styled by injectResizePanelCSS()
+// in js/shared/resize_panel.mjs (called from index.js). Adaptive surfaces use
+// semi-transparent white per the Pixaroma node UI conventions.
+export function injectCSS() {
+  if (document.getElementById("pix-ir-css")) return;
+  const css = `
+    .pix-ir-root{width:100%;box-sizing:border-box;padding:8px;background:#2a2a2a;
+      border-radius:4px;color:#ddd;font-family:ui-sans-serif,system-ui,sans-serif;
+      font-size:11px;display:flex;flex-direction:column;gap:8px;}
+    .pix-ir-chips{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;}
+    .pix-ir-chip{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.14);
+      border-radius:4px;padding:6px 3px;font-size:9.5px;color:rgba(255,255,255,.8);
+      text-align:center;cursor:pointer;user-select:none;transition:background .08s,border-color .08s;}
+    .pix-ir-chip:hover{border-color:#666;}
+    .pix-ir-chip.active{background:${BRAND};color:#fff;border-color:${BRAND};}
+    .pix-ir-chip.span2{grid-column:span 2;}
+    .pix-ir-readout{display:flex;align-items:center;justify-content:center;gap:6px;
+      font-size:10px;color:#888;padding:3px 2px;text-align:center;}
+    .pix-ir-readout b{color:${BRAND};font-weight:600;}
+    .pix-ir-foot{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+    .pix-ir-snap{display:inline-flex;align-items:center;gap:3px;}
+    .pix-ir-snap-lbl{font-size:9px;color:#7d7d7d;text-transform:uppercase;letter-spacing:.5px;}
+    .pix-ir-schip{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.14);
+      border-radius:3px;color:rgba(255,255,255,.7);font-size:8.5px;padding:3px 5px;
+      min-width:16px;text-align:center;cursor:pointer;user-select:none;}
+    .pix-ir-schip:hover{border-color:#666;}
+    .pix-ir-schip.active{background:${BRAND};color:#fff;border-color:${BRAND};}
+    .pix-ir-resample{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.14);
+      border-radius:4px;color:#ddd;font-size:11px;padding:5px;font-family:inherit;width:100%;}
+    .pix-ir-resample:focus{outline:none;border-color:${BRAND};}
+    .pix-ir-chk{display:flex;align-items:center;gap:6px;font-size:10.5px;color:#cfcfcf;cursor:pointer;user-select:none;}
+    .pix-ir-prevbar{display:flex;align-items:center;justify-content:space-between;
+      font-size:10px;color:#9a9a9a;padding:5px 7px;background:rgba(0,0,0,.22);
+      border-radius:5px;cursor:pointer;user-select:none;}
+    .pix-ir-prevtoggle{color:#777;}
+    .pix-ir-thumb{border-radius:6px;overflow:hidden;background:#1d1d1d;position:relative;
+      min-height:80px;display:flex;align-items:center;justify-content:center;}
+    .pix-ir-thumb img{max-width:100%;max-height:240px;display:block;}
+    .pix-ir-badge{position:absolute;bottom:5px;left:0;right:0;text-align:center;
+      font-size:10px;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.8);}
+    .pix-ir-hint{font-size:10px;color:#7d7d7d;text-align:center;padding:14px 4px;}
+  `;
+  const s = document.createElement("style");
+  s.id = "pix-ir-css";
+  s.textContent = css;
+  document.head.appendChild(s);
+}
+
+const MODE_CHIPS = [
+  { id: "off", label: "Off" },
+  { id: "max_mp", label: "Max MP" },
+  { id: "longest_side", label: "Longest" },
+  { id: "scale_factor", label: "Scale×" },
+  { id: "fit_inside", label: "Fit" },
+  { id: "cover", label: "Crop" },
+  { id: "match_ratio", label: "Match ratio", span2: true },
+];
+
+export function buildModeChips(state) {
+  const wrap = document.createElement("div");
+  wrap.className = "pix-ir-chips";
+  for (const c of MODE_CHIPS) {
+    const el = document.createElement("div");
+    el.className = "pix-ir-chip" + (c.span2 ? " span2" : "") + (state.mode === c.id ? " active" : "");
+    el.dataset.mode = c.id;
+    el.textContent = c.label;
+    wrap.appendChild(el);
+  }
+  return wrap;
+}
+
+const SNAP_OPTS = [0, 8, 16, 32, 64];
+export function buildFooter(state) {
+  const foot = document.createElement("div");
+  foot.className = "pix-ir-foot";
+  const snap = document.createElement("div");
+  snap.className = "pix-ir-snap";
+  const lbl = document.createElement("span");
+  lbl.className = "pix-ir-snap-lbl";
+  lbl.textContent = "Snap";
+  snap.appendChild(lbl);
+  for (const v of SNAP_OPTS) {
+    const b = document.createElement("div");
+    b.className = "pix-ir-schip" + ((state.snap || 0) === v ? " active" : "");
+    b.dataset.snap = String(v);
+    b.textContent = v === 0 ? "Off" : String(v);
+    snap.appendChild(b);
+  }
+  foot.appendChild(snap);
+  return foot;
+}
+
+export function buildResampleAndUpscale(state) {
+  const wrap = document.createElement("div");
+  wrap.style.cssText = "display:flex;flex-direction:column;gap:8px;";
+  const sel = document.createElement("select");
+  sel.className = "pix-ir-resample";
+  for (const o of ["auto", "nearest", "bilinear", "bicubic", "lanczos"]) {
+    const opt = document.createElement("option");
+    opt.value = o;
+    opt.textContent = "Resample: " + o[0].toUpperCase() + o.slice(1);
+    if ((state.resample || "auto") === o) opt.selected = true;
+    sel.appendChild(opt);
+  }
+  const chk = document.createElement("label");
+  chk.className = "pix-ir-chk";
+  const box = document.createElement("input");
+  box.type = "checkbox";
+  box.className = "pix-ir-upscale";
+  box.checked = state.allow_upscale !== false;
+  chk.append(box, document.createTextNode("Allow upscaling"));
+  wrap.append(sel, chk);
+  return { wrap, sel, box };
+}
+
+export function buildReadout() {
+  const ro = document.createElement("div");
+  ro.className = "pix-ir-readout";
+  ro.textContent = "Run once to read size";
+  return ro;
+}
+
+export function buildPreview(state) {
+  const wrap = document.createElement("div");
+  wrap.style.cssText = "display:flex;flex-direction:column;gap:8px;";
+  const bar = document.createElement("div");
+  bar.className = "pix-ir-prevbar";
+  bar.innerHTML = `<span>Preview</span><span class="pix-ir-prevtoggle">${state.preview_open ? "hide ▾" : "show ▸"}</span>`;
+  const body = document.createElement("div");
+  body.className = "pix-ir-thumb";
+  body.style.display = state.preview_open ? "flex" : "none";
+  body.innerHTML = `<div class="pix-ir-hint">Run the workflow to see the result</div>`;
+  wrap.append(bar, body);
+  return { wrap, bar, body };
+}
