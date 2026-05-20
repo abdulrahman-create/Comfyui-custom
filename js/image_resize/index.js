@@ -373,67 +373,50 @@ app.registerExtension({
       const info = getReadoutInfo(this);
       const cx = this.size[0] / 2;
       const fam = "ui-sans-serif, system-ui, sans-serif";
-      const capFont = `8px ${fam}`;          // INPUT / OUTPUT captions
-      const dimsFont = `bold 11px ${fam}`;
+      const capFont = `8px ${fam}`;
+      const dimsFont = `bold 10px ${fam}`;
       const ratioFont = `8px ${fam}`;
-      const gap = 6, rectMaxW = 16, rectMaxH = 12, padX = 12;
+      const midY = 44; // vertical center of the 4 slot rows
       ctx.save();
       ctx.textBaseline = "middle";
 
-      // Rounded rectangle (no stroke) spanning the image-input top to the
-      // height-input bottom. Fixed width via reference column strings so it
-      // never resizes with the values.
-      ctx.font = dimsFont;
-      const dimsW = ctx.measureText("00000×00000").width;
-      ctx.font = ratioFont;
-      const ratioW = ctx.measureText("~1:1.50").width;
-      const dataW = dimsW + gap + rectMaxW + gap + ratioW;
-      const boxW = dataW + padX * 2;
-      const boxLeft = cx - boxW / 2;
-      const BOX_TOP = 4, BOX_BOTTOM = 84;
-      roundRectPath(ctx, boxLeft, BOX_TOP, boxW, BOX_BOTTOM - BOX_TOP, 12);
-      ctx.fillStyle = "#1d1d1d";
-      ctx.fill();
-
       if (info.mode === "msg") {
         ctx.font = `13px ${fam}`;
-        ctx.textAlign = "center";
-        ctx.fillStyle = BRAND;
-        ctx.fillText(info.text, cx, (BOX_TOP + BOX_BOTTOM) / 2);
+        const tw = ctx.measureText(info.text).width;
+        const bw = tw + 26, bh = 28;
+        roundRectPath(ctx, cx - bw / 2, midY - bh / 2, bw, bh, 8);
+        ctx.fillStyle = "#1d1d1d"; ctx.fill();
+        ctx.textAlign = "center"; ctx.fillStyle = BRAND;
+        ctx.fillText(info.text, cx, midY);
         ctx.restore();
         return r;
       }
 
-      // One data row centered at (cx, y): dims (right-aligned) + ratio rect + ratio.
-      const drawData = (y, w, h) => {
-        const startX = cx - dataW / 2;
-        ctx.font = dimsFont;
-        ctx.fillStyle = BRAND;
-        ctx.textAlign = "right";
-        ctx.fillText(`${w}×${h}`, startX + dimsW, y);
-        const { rw, rh } = aspectRectDims(w, h, rectMaxW, rectMaxH);
-        ctx.strokeStyle = "rgba(200,200,200,0.7)";
-        ctx.lineWidth = 1;
-        ctx.strokeRect(
-          Math.round(startX + dimsW + gap + (rectMaxW - rw) / 2) + 0.5,
-          Math.round(y - rh / 2) + 0.5,
-          rw, rh,
-        );
-        ctx.font = ratioFont;
-        ctx.fillStyle = "#9a9a9a";
-        ctx.textAlign = "left";
-        ctx.fillText(ratioLabel(w, h), startX + dimsW + gap + rectMaxW + gap, y);
+      // Two mini cards (INPUT -> OUTPUT) side by side with an arrow between.
+      const cardW = 64, cardH = 54, gap = 6, arrowW = 14;
+      const totalW = cardW * 2 + gap * 2 + arrowW;
+      const startX = cx - totalW / 2;
+      const cardY = midY - cardH / 2;
+
+      const drawCard = (x, label, w, h) => {
+        roundRectPath(ctx, x, cardY, cardW, cardH, 5);
+        ctx.fillStyle = "#1d1d1d"; ctx.fill();
+        roundRectPath(ctx, x + 0.5, cardY + 0.5, cardW - 1, cardH - 1, 5);
+        ctx.strokeStyle = "#444"; ctx.lineWidth = 1; ctx.stroke();
+        const ccx = x + cardW / 2;
+        ctx.textAlign = "center";
+        ctx.font = capFont; ctx.fillStyle = "#9a9a9a";
+        ctx.fillText(label, ccx, cardY + 13);
+        ctx.font = dimsFont; ctx.fillStyle = BRAND;
+        ctx.fillText(`${w}×${h}`, ccx, cardY + 28);
+        ctx.font = ratioFont; ctx.fillStyle = "#9a9a9a";
+        ctx.fillText(ratioLabel(w, h), ccx, cardY + 42);
       };
 
-      ctx.textAlign = "center";
-      ctx.font = capFont; ctx.fillStyle = "#9a9a9a";
-      ctx.fillText("INPUT", cx, 15);
-      drawData(30, info.inW, info.inH);
-      ctx.font = `10px ${fam}`; ctx.fillStyle = "#9a9a9a";
-      ctx.fillText("▾", cx, 44);
-      ctx.font = capFont; ctx.fillStyle = "#9a9a9a";
-      ctx.fillText("OUTPUT", cx, 58);
-      drawData(73, info.outW, info.outH);
+      drawCard(startX, "INPUT", info.inW, info.inH);
+      ctx.font = `13px ${fam}`; ctx.fillStyle = "#9a9a9a"; ctx.textAlign = "center";
+      ctx.fillText("→", startX + cardW + gap + arrowW / 2, midY);
+      drawCard(startX + cardW + gap + arrowW + gap, "OUTPUT", info.outW, info.outH);
 
       ctx.restore();
       return r;
