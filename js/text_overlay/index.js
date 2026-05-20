@@ -40,6 +40,14 @@ app.registerExtension({
       try {
         const r = origConfigure?.apply(this, arguments);
         ensureValidState(this);
+        // Anchor the panel's stable height to the SAVED node height so the
+        // getMinHeight/getMaxHeight measurement (which jitters +/-2px from
+        // font/layout timing) returns the saved value and doesn't rewrite
+        // node.size on load (the 470 => 472 dirty). Real content changes still
+        // update it via the HEIGHT_TOL check in panelHeight().
+        if (this.size && typeof this.size[1] === "number") {
+          this._textOverlayStableH = this.size[1];
+        }
         // After configure, push current state into the body panel UI
         if (this._textOverlayBodyPanel) {
           this._textOverlayBodyPanel.setLayer(this.properties[STATE_PROP]);
@@ -147,16 +155,37 @@ function setupTextOverlayNode(node) {
   }
   node._textOverlayMeasureHeight = measureContentHeight;
 
+  // Stable panel height. measureContentHeight reads the live DOM, which can
+  // come back 1-2px different at save vs reload (font/layout sub-pixel
+  // rounding) - e.g. 470 saved, 472 measured on reopen. Pinning getMinHeight/
+  // getMaxHeight straight to that jitter rewrites node.size on a plain load
+  // and falsely flags the workflow "modified" (confirmed: size.1 470 => 472).
+  // So we hold a sticky value (anchored to the saved size in onConfigure) and
+  // only adopt a new measurement when it moves by more than a few px (a real
+  // content change like the text-lock hint appearing). HEIGHT_TOL absorbs the
+  // jitter without masking genuine resizes.
+  const HEIGHT_TOL = 8;
+  function panelHeight() {
+    const measured = measureContentHeight();
+    if (node._textOverlayStableH == null) {
+      node._textOverlayStableH = measured;
+    } else if (Math.abs(measured - node._textOverlayStableH) > HEIGHT_TOL) {
+      node._textOverlayStableH = measured;
+    }
+    return node._textOverlayStableH;
+  }
+  node._textOverlayPanelHeight = panelHeight;
+
   node.addDOMWidget("pix_text_overlay_ui", "div", root, {
     canvasOnly: true,
     serialize: false,
-    getMinHeight: measureContentHeight,
+    getMinHeight: panelHeight,
     // Cap height at content size so manual node resize gives the slack to
     // ComfyUI's input slot area / blank space, not stretches this panel.
     // Without getMaxHeight the layout engine treats this widget as
     // stretchable and the bottom of the panel sits below where the
     // background ends, leaving the Reset button visually outside the node.
-    getMaxHeight: measureContentHeight,
+    getMaxHeight: panelHeight,
   });
 
   // Default size for new nodes; LiteGraph restores saved sizes via configure.
