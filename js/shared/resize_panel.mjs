@@ -803,8 +803,8 @@ function buildWHPanel(node, state, writeState, onChange, opts, stateKey) {
   previewWrap.append(previewRect, previewLabel);
   panel.appendChild(previewWrap);
 
-  const PREVIEW_MAX_W = 90;
-  const PREVIEW_MAX_H = 40;
+  const PREVIEW_MAX_W = opts.previewMaxW ?? 90;
+  const PREVIEW_MAX_H = opts.previewMaxH ?? 40;
   function refreshPreview() {
     const w = wh[opts.wKey] || 1, h = wh[opts.hKey] || 1;
     const a = w / h;
@@ -1010,27 +1010,31 @@ function buildMatchRatioPanel(node, state, writeState, onChange, stateKey) {
   return panel;
 }
 
-function buildFitInsidePanel(node, state, writeState, onChange, stateKey) {
+function buildFitInsidePanel(node, state, writeState, onChange, stateKey, extra) {
   return buildWHPanel(node, state, writeState, onChange, {
     headerLabel: "Fit Inside (no crop)",
     wKey: "fit_w", hKey: "fit_h",
+    previewMaxW: extra?.previewMaxW, previewMaxH: extra?.previewMaxH,
   }, stateKey);
 }
 
-function buildCoverPanel(node, state, writeState, onChange, stateKey) {
+function buildCoverPanel(node, state, writeState, onChange, stateKey, extra) {
   return buildWHPanel(node, state, writeState, onChange, {
     headerLabel: "Crop to Fill",
     wKey: "cover_w", hKey: "cover_h",
+    previewMaxW: extra?.previewMaxW, previewMaxH: extra?.previewMaxH,
   }, stateKey);
 }
 
-export function buildModePanel(mode, node, state, writeState, onChange, stateKey = "loadImagePixState") {
+// `extra` (optional): { previewMaxW, previewMaxH } lets a node enlarge the Fit/
+// Crop aspect rectangle. Defaults (90x40) keep Load Image unchanged.
+export function buildModePanel(mode, node, state, writeState, onChange, stateKey = "loadImagePixState", extra = {}) {
   if (mode === "off") return null;
   if (mode === "max_mp") return buildMaxMPPanel(node, state, writeState, onChange, stateKey);
   if (mode === "longest_side") return buildLongestSidePanel(node, state, writeState, onChange, stateKey);
   if (mode === "scale_factor") return buildScalePanel(node, state, writeState, onChange, stateKey);
-  if (mode === "fit_inside") return buildFitInsidePanel(node, state, writeState, onChange, stateKey);
-  if (mode === "cover") return buildCoverPanel(node, state, writeState, onChange, stateKey);
+  if (mode === "fit_inside") return buildFitInsidePanel(node, state, writeState, onChange, stateKey, extra);
+  if (mode === "cover") return buildCoverPanel(node, state, writeState, onChange, stateKey, extra);
   if (mode === "match_ratio") return buildMatchRatioPanel(node, state, writeState, onChange, stateKey);
   return null;
 }
