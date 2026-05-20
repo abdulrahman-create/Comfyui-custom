@@ -356,9 +356,22 @@ app.registerExtension({
       const boxW = labelW + gap + dimsW + gap + rectMaxW + gap + ratioW + padX * 2;
       const boxLeft = cx - boxW / 2;
       const BOX_TOP = 0, BOX_BOTTOM = 86;
-      bottomRoundedPath(ctx, boxLeft, BOX_TOP, boxW, BOX_BOTTOM - BOX_TOP, 12);
+      const boxH = BOX_BOTTOM - BOX_TOP, boxR = 12;
+      bottomRoundedPath(ctx, boxLeft, BOX_TOP, boxW, boxH, boxR);
       ctx.fillStyle = "#1d1d1d";
       ctx.fill();
+      // Subtle #444 outline like the buttons — sides + rounded bottom only, top
+      // left open so the tab merges seamlessly into the title bar.
+      ctx.beginPath();
+      ctx.moveTo(boxLeft + 0.5, BOX_TOP);
+      ctx.lineTo(boxLeft + 0.5, BOX_BOTTOM - boxR);
+      ctx.arcTo(boxLeft + 0.5, BOX_BOTTOM - 0.5, boxLeft + boxR, BOX_BOTTOM - 0.5, boxR);
+      ctx.lineTo(boxLeft + boxW - boxR, BOX_BOTTOM - 0.5);
+      ctx.arcTo(boxLeft + boxW - 0.5, BOX_BOTTOM - 0.5, boxLeft + boxW - 0.5, BOX_BOTTOM - boxR, boxR);
+      ctx.lineTo(boxLeft + boxW - 0.5, BOX_TOP);
+      ctx.strokeStyle = "#444";
+      ctx.lineWidth = 1;
+      ctx.stroke();
       const midY = (BOX_TOP + BOX_BOTTOM) / 2;
 
       if (info.mode === "msg") {
