@@ -20,7 +20,7 @@ const DEFAULT_STATE = {
   preview_open: false,
 };
 const WH_MODES = new Set(["fit_inside", "cover"]);
-const MIN_W = 334; // minimum node width (user-chosen via the console sizer)
+const MIN_W = 360; // minimum node width (the two IN/OUT cards need the room)
 
 function readState(node) {
   const v = node.properties?.[STATE_PROP];
@@ -396,13 +396,13 @@ app.registerExtension({
       // Tall (span the slot rows) + grow with node width to use the middle
       // space, clamped so they never crowd the slot labels. Each card stacks
       // label / dims / aspect rect / ratio.
-      const arrowW = 16, gap = 8, cardH = 72;
+      const arrowW = 16, gap = 8, cardH = 76;
       let cardW = (this.size[0] - 184 - arrowW - gap * 2) / 2;
-      cardW = Math.max(56, Math.min(cardW, 120));
+      cardW = Math.max(66, Math.min(cardW, 120));
       const totalW = cardW * 2 + gap * 2 + arrowW;
       const startX = cx - totalW / 2;
       const cardY = midY - cardH / 2;
-      const rectMaxW = 28, rectMaxH = 18;
+      const rectMaxW = 40, rectMaxH = 18;
 
       const drawCard = (x, label, w, h) => {
         roundRectPath(ctx, x, cardY, cardW, cardH, 6);
@@ -414,12 +414,12 @@ app.registerExtension({
         ctx.font = capFont; ctx.fillStyle = "#9a9a9a";
         ctx.fillText(label, ccx, cardY + 13);
         ctx.font = dimsFont; ctx.fillStyle = BRAND;
-        ctx.fillText(`${w}×${h}`, ccx, cardY + 29);
+        ctx.fillText(`${w}×${h}`, ccx, cardY + 27);
         const { rw, rh } = aspectRectDims(w, h, rectMaxW, rectMaxH);
         ctx.strokeStyle = "rgba(200,200,200,0.7)"; ctx.lineWidth = 1;
         ctx.strokeRect(Math.round(ccx - rw / 2) + 0.5, Math.round(cardY + 47 - rh / 2) + 0.5, rw, rh);
         ctx.font = ratioFont; ctx.fillStyle = "#9a9a9a";
-        ctx.fillText(ratioLabel(w, h), ccx, cardY + 63);
+        ctx.fillText(ratioLabel(w, h), ccx, cardY + 67);
       };
 
       drawCard(startX, "INPUT", info.inW, info.inH);
