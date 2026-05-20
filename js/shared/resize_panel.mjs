@@ -3,6 +3,280 @@
 // node.properties[...] state. Load Image keeps importing via the thin shim at
 // js/load_image/resize_modes.mjs.
 import { openPixaromaColorPickerModal } from "./color_picker.mjs";
+import { BRAND } from "./utils.mjs";
+
+// The per-mode panels use `pix-li-*` class names. Load Image injects these in
+// its own ui.mjs; any OTHER node reusing buildModePanel must call
+// injectResizePanelCSS() so the panels are styled. Guarded by a unique id so
+// it is a no-op when Load Image (or a previous call) already added equivalent
+// rules — the panel CSS is presentational, so the small overlap with Load
+// Image's stylesheet is intentional and harmless. If you restyle the panels,
+// update BOTH this block and js/load_image/ui.mjs.
+let _resizePanelCSSInjected = false;
+export function injectResizePanelCSS() {
+  if (_resizePanelCSSInjected || document.getElementById("pix-resize-panel-css")) return;
+  _resizePanelCSSInjected = true;
+  const css = `
+    .pix-li-panel {
+      background: #1d1d1d;
+      border: 1px solid #444;
+      border-radius: 4px;
+      padding: 8px 10px;
+    }
+    .pix-li-panel-row { display: flex; align-items: center; gap: 8px; }
+    .pix-li-panel-label {
+      font-size: 9px;
+      color: ${BRAND};
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 6px;
+    }
+    .pix-li-panel input[type="range"] { flex: 1; accent-color: ${BRAND}; }
+    .pix-li-panel input[type="text"], .pix-li-panel input[type="number"] {
+      background: #2a2a2a;
+      border: 1px solid #444;
+      border-radius: 3px;
+      padding: 4px 6px;
+      color: ${BRAND};
+      font-size: 12px;
+      font-weight: 600;
+      text-align: center;
+      font-family: inherit;
+      box-sizing: border-box;
+    }
+    .pix-li-panel input[type="text"]:focus, .pix-li-panel input[type="number"]:focus {
+      outline: none;
+      border-color: ${BRAND};
+    }
+    .pix-li-panel-readout {
+      font-size: 9px;
+      color: #888;
+      font-family: inherit;
+      text-align: center;
+      margin-top: 6px;
+    }
+    .pix-li-quickpicks { display: grid; gap: 3px; margin-bottom: 8px; }
+    .pix-li-quickpick {
+      background: #1d1d1d;
+      border: 1px solid #444;
+      border-radius: 3px;
+      color: #aaa;
+      padding: 4px 0;
+      text-align: center;
+      font-size: 10px;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .pix-li-quickpick:hover { border-color: #666; color: #ddd; }
+    .pix-li-quickpick.active { background: ${BRAND}; color: #fff; border-color: ${BRAND}; }
+    .pix-li-ratio-chips {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 3px;
+      margin-bottom: 8px;
+    }
+    .pix-li-ratio-chip {
+      background: #1d1d1d;
+      border: 1px solid #444;
+      border-radius: 3px;
+      padding: 4px 0;
+      text-align: center;
+      font-size: 9px;
+      color: #aaa;
+      cursor: pointer;
+      font-family: inherit;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+    }
+    .pix-li-ratio-chip:hover { border-color: #666; color: #ddd; }
+    .pix-li-ratio-chip.active { background: ${BRAND}; color: #fff; border-color: ${BRAND}; }
+    .pix-li-cropped {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0;
+      background: #1d1d1d;
+      border: 1px solid #444;
+      border-radius: 3px;
+      overflow: hidden;
+      margin-bottom: 6px;
+    }
+    .pix-li-cropped > div {
+      text-align: center;
+      font-size: 10px;
+      padding: 5px 0;
+      color: #aaa;
+      cursor: pointer;
+      user-select: none;
+    }
+    .pix-li-cropped > div.active { background: ${BRAND}; color: #fff; }
+    .pix-li-pad-row { display: flex; align-items: center; gap: 6px; font-size: 10px; color: #888; }
+    .pix-li-pad-swatch {
+      width: 22px; height: 22px;
+      border-radius: 3px;
+      border: 1px solid #444;
+      cursor: pointer;
+    }
+    .pix-li-custom-ratio-row {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      margin-bottom: 6px;
+    }
+    .pix-li-custom-ratio-input-wrap { width: 64px; }
+    .pix-li-custom-ratio-swap {
+      width: 24px;
+      height: 22px;
+      background: #2a2a2a;
+      border: 1px solid #444;
+      border-radius: 3px;
+      color: #aaa;
+      cursor: pointer;
+      position: relative;
+      padding: 0;
+      display: inline-block;
+    }
+    .pix-li-custom-ratio-swap::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background-color: currentColor;
+      -webkit-mask: url("/pixaroma/assets/icons/ui/swap.svg") center/14px 14px no-repeat;
+              mask: url("/pixaroma/assets/icons/ui/swap.svg") center/14px 14px no-repeat;
+      pointer-events: none;
+    }
+    .pix-li-custom-ratio-swap:hover { color: ${BRAND}; border-color: ${BRAND}; }
+    .pix-li-panel-row.pix-li-centered { justify-content: center; }
+    .pix-li-input-wide { width: 70% !important; max-width: 200px; }
+    .pix-li-numinput {
+      display: inline-flex;
+      align-items: stretch;
+      background: #2a2a2a;
+      border: 1px solid #444;
+      border-radius: 4px;
+      overflow: hidden;
+      box-sizing: border-box;
+    }
+    .pix-li-numinput:focus-within { border-color: ${BRAND}; }
+    .pix-li-numinput input {
+      flex: 1;
+      background: transparent;
+      border: none;
+      outline: none;
+      padding: 2px 6px;
+      color: ${BRAND};
+      font-size: 11px;
+      font-weight: 600;
+      text-align: center;
+      font-family: inherit;
+      width: 100%;
+      min-width: 0;
+    }
+    .pix-li-spin {
+      display: flex;
+      flex-direction: column;
+      width: 12px;
+      border-left: 1px solid #444;
+    }
+    .pix-li-spin > button {
+      flex: 1;
+      background: #232323;
+      border: none;
+      padding: 0;
+      cursor: pointer;
+      color: #aaa;
+      font-size: 8px;
+      line-height: 1;
+      position: relative;
+    }
+    .pix-li-spin > button:hover { background: #333; color: ${BRAND}; }
+    .pix-li-spin-up { border-bottom: 1px solid #444; }
+    .pix-li-spin-up::before,
+    .pix-li-spin-down::before {
+      content: "";
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: 6px;
+      height: 6px;
+      transform: translate(-50%, -50%) rotate(-45deg);
+      border-top: 1px solid currentColor;
+      border-right: 1px solid currentColor;
+    }
+    .pix-li-spin-up::before { transform: translate(-50%, -25%) rotate(-45deg); }
+    .pix-li-spin-down::before { transform: translate(-50%, -75%) rotate(135deg); }
+    .pix-li-wh-row {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      gap: 6px;
+      align-items: end;
+    }
+    .pix-li-wh-field { display: flex; flex-direction: column; gap: 3px; }
+    .pix-li-wh-label {
+      font-size: 9px;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      text-align: center;
+    }
+    .pix-li-wh-input-wrap { width: 100%; }
+    .pix-li-swap {
+      width: 26px;
+      height: 22px;
+      background: #2a2a2a;
+      border: 1px solid #444;
+      border-radius: 4px;
+      color: #aaa;
+      cursor: pointer;
+      padding: 0;
+      position: relative;
+      align-self: end;
+    }
+    .pix-li-swap::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background-color: currentColor;
+      -webkit-mask: url("/pixaroma/assets/icons/ui/swap.svg") center/12px 12px no-repeat;
+              mask: url("/pixaroma/assets/icons/ui/swap.svg") center/12px 12px no-repeat;
+      pointer-events: none;
+    }
+    .pix-li-swap:hover { color: ${BRAND}; border-color: ${BRAND}; }
+    .pix-li-wh-preview {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      margin-top: 8px;
+    }
+    .pix-li-wh-rect {
+      background: rgba(246,103,68,0.18);
+      border: 1px solid ${BRAND};
+      border-radius: 2px;
+      transition: width 0.12s ease, height 0.12s ease;
+    }
+    .pix-li-wh-rect-label { font-size: 9px; color: #999; font-family: inherit; }
+    .pix-li-shape {
+      display: inline-block;
+      background: rgba(180,180,180,0.25);
+      border: 1px solid #888;
+      border-radius: 1px;
+      box-sizing: border-box;
+      flex-shrink: 0;
+    }
+    .pix-li-ratio-chip.active .pix-li-shape {
+      background: rgba(255,255,255,0.4);
+      border-color: rgba(255,255,255,0.85);
+    }
+    .pix-li-ratio-chip.pix-li-ratio-custom-chip { display: block; }
+  `;
+  const s = document.createElement("style");
+  s.id = "pix-resize-panel-css";
+  s.textContent = css;
+  document.head.appendChild(s);
+}
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
