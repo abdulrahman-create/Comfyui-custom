@@ -104,6 +104,11 @@ function setupTextOverlayNode(node) {
     // editor sidebar point at the same restored object. We mutate keys
     // rather than replace the object so existing references stay valid.
     onReset: (layer) => resetStateInPlace(layer),
+    // "Position on canvas" buttons on the node body. Moves the whole text
+    // block to a canvas edge / center. The editor sidebar panel does NOT
+    // get this callback (the editor has its own top align toolbar), so the
+    // row only appears on the node body where there's no canvas to drag.
+    onAlignCanvas: (mode) => alignOnCanvasFromBody(node, mode),
   });
   node._textOverlayBodyPanel = bodyPanel;
   node._textOverlayBodyRoot = root;
@@ -144,11 +149,12 @@ function setupTextOverlayNode(node) {
   });
 
   // Default size for new nodes; LiteGraph restores saved sizes via configure.
-  // The compact layout (after collapsing Rotate/X/Y into one row) fits
-  // in roughly 380 px including title + slots; pick 390 so there is a
-  // touch of breathing room.
+  // The compact layout plus the "Text align" + "Position on canvas" rows
+  // fits in roughly 450 px including title + slots; pick 455 so there is a
+  // touch of breathing room. (getMinHeight enforces the true content height
+  // anyway, but a matching default avoids an initial resize jump.)
   if (!node.size || node.size[0] < 320) {
-    node.size = [340, 390];
+    node.size = [340, 455];
   }
 
   // Enforce a minimum node width so the user can't drag-shrink so narrow
@@ -299,10 +305,11 @@ api.addEventListener("executed", (e) => {
       executedNode._textOverlayBaseImageURL =
         `/view?filename=${encodeURIComponent(base.filename)}${subfolder}&type=${encodeURIComponent(type)}&t=${Date.now()}`;
     }
-    // Python auto-centered the text on this run (first-run path for
-    // generative chains where the JS hook couldn't center pre-submit).
-    // Persist the centered x/y on the node and clear the pending flag
-    // so subsequent runs respect the position.
+    // Python resolved the text position on this run (first-run path for
+    // generative chains where the JS hook couldn't position pre-submit -
+    // covers both auto-center and an explicit "Position on canvas" choice).
+    // Persist the x/y on the node and clear both pending flags so
+    // subsequent runs respect the position.
     const ac = detail.output?.pixaroma_text_overlay_autocentered?.[0];
     if (ac && Number.isFinite(ac.x) && Number.isFinite(ac.y)) {
       const state = executedNode.properties?.[STATE_PROP];
@@ -310,6 +317,7 @@ api.addEventListener("executed", (e) => {
         state.x = ac.x;
         state.y = ac.y;
         delete state._autoCenterPending;
+        delete state._alignPending;
         if (executedNode._textOverlayBodyPanel) {
           executedNode._textOverlayBodyPanel.setLayer(state);
         }
@@ -375,25 +383,32 @@ app.graphToPrompt = async function (...args) {
       const node = findPixNode(index, id);
       const state = node?.properties?.[STATE_PROP] || DEFAULT_STATE;
 
-      // First-run auto-center: if the node has never been centered (fresh
-      // node, _autoCenterPending flag still set) and the upstream image is
-      // available, compute centered x/y now so the first workflow render
-      // shows the text in the middle of the image instead of top-left.
-      // Mirrors the same logic the editor's _autoCenter() runs on open.
-      if (state._autoCenterPending && state.text && node) {
+      // First-run positioning. Two pending intents resolve here when the
+      // upstream image is available at submit time (Load Image case):
+      //   _alignPending     - user clicked a "Position on canvas" button on
+      //                        the node body before dims were known.
+      //   _autoCenterPending- fresh node that has never been centered.
+      // An explicit align choice wins over the default auto-center. If the
+      // image isn't available yet (generative chain), Python resolves it.
+      if ((state._alignPending || state._autoCenterPending) && state.text && node) {
         try {
           const img = getUpstreamImage(node);
           if (img && img.naturalWidth && img.naturalHeight) {
             const bbox = await measureTextBbox(state);
-            state.x = Math.max(0, Math.round((img.naturalWidth - bbox.w) / 2));
-            state.y = Math.max(0, Math.round((img.naturalHeight - bbox.h) / 2));
+            if (state._alignPending) {
+              applyAlignMode(state, state._alignPending, img.naturalWidth, img.naturalHeight, bbox);
+            } else {
+              state.x = Math.max(0, Math.round((img.naturalWidth - bbox.w) / 2));
+              state.y = Math.max(0, Math.round((img.naturalHeight - bbox.h) / 2));
+            }
+            delete state._alignPending;
             delete state._autoCenterPending;
             // Sync body panel + repaint so user sees the new position
             if (node._textOverlayBodyPanel) node._textOverlayBodyPanel.setLayer(state);
             node.setDirtyCanvas?.(true, true);
           }
         } catch (e) {
-          console.warn("[Text Overlay] auto-center on submit failed", e);
+          console.warn("[Text Overlay] position on submit failed", e);
         }
       }
 
@@ -449,4 +464,108 @@ async function measureTextBbox(state) {
     w: Math.ceil(maxLineW + 2 * padX),
     h: Math.ceil(ascender + descender + Math.max(0, lines.length - 1) * lineHeightPx + 2 * padY),
   };
+}
+
+// ── "Position on canvas" from the node body ──────────────────────────────
+// Mirrors the editor's core.mjs::alignToCanvas so a user gets the same
+// result whether they click the buttons on the node body or in the editor.
+
+// Snap the whole text block to a canvas edge / center. Same formulas as
+// core.mjs::alignToCanvas (no clamping, so right/bottom align edges even
+// when the text is wider/taller than the canvas).
+function applyAlignMode(s, mode, W, H, bbox) {
+  switch (mode) {
+    case "left":    s.x = 0; break;
+    case "centerH": s.x = Math.round((W - bbox.w) / 2); break;
+    case "right":   s.x = Math.round(W - bbox.w); break;
+    case "top":     s.y = 0; break;
+    case "centerV": s.y = Math.round((H - bbox.h) / 2); break;
+    case "bottom":  s.y = Math.round(H - bbox.h); break;
+  }
+}
+
+// Resolve the canvas (= upstream image) dimensions for the node body.
+// Two sources: the upstream node's imgs[0] (Load Image case, instant), or
+// the stashed base-image PNG the Python node writes for generative chains
+// (loaded once and cached). Returns { w, h } or null when dims are unknown.
+async function resolveCanvasDims(node) {
+  const img = getUpstreamImage(node);
+  if (img && img.naturalWidth > 0 && img.naturalHeight > 0) {
+    return { w: img.naturalWidth, h: img.naturalHeight };
+  }
+  const url = node._textOverlayBaseImageURL;
+  if (url) {
+    try {
+      const baseImg = await loadBaseImage(node, url);
+      if (baseImg && baseImg.naturalWidth > 0) {
+        return { w: baseImg.naturalWidth, h: baseImg.naturalHeight };
+      }
+    } catch { /* fall through to null */ }
+  }
+  return null;
+}
+
+// Load + cache the stashed base image so repeated align clicks don't refetch.
+function loadBaseImage(node, url) {
+  if (node._textOverlayBaseImageEl && node._textOverlayBaseImageEl._srcUrl === url) {
+    return Promise.resolve(node._textOverlayBaseImageEl);
+  }
+  return new Promise((resolve, reject) => {
+    const im = new Image();
+    im.crossOrigin = "anonymous";
+    im.onload = () => { im._srcUrl = url; node._textOverlayBaseImageEl = im; resolve(im); };
+    im.onerror = reject;
+    im.src = url;
+  });
+}
+
+async function alignOnCanvasFromBody(node, mode) {
+  const state = node.properties?.[STATE_PROP];
+  if (!state || !state.text) return;
+  const dims = await resolveCanvasDims(node);
+  if (!dims) {
+    // Dimensions unknown yet (generative chain not run). Record the intent
+    // and let Python resolve it on the next run (the auto-center round-trip).
+    state._alignPending = mode;
+    delete state._autoCenterPending; // explicit choice wins over auto-center
+    node.setDirtyCanvas?.(true, true);
+    showTextOverlayToast("Position will apply on the next run (image size not known yet).");
+    return;
+  }
+  try {
+    const bbox = await measureTextBbox(state);
+    applyAlignMode(state, mode, dims.w, dims.h, bbox);
+    delete state._alignPending;
+    syncTextOverlayPanels(node, state);
+  } catch (e) {
+    console.warn("[Text Overlay] align-on-canvas failed", e);
+  }
+}
+
+// Push state into the body panel + (if open) the editor sidebar panel and
+// repaint the editor canvas, so the node body and editor stay in lockstep.
+function syncTextOverlayPanels(node, state) {
+  node._textOverlayBodyPanel?.setLayer(state);
+  if (node._textOverlayEditor && node._textOverlayEditor.layout?.overlay?.isConnected) {
+    node._textOverlayEditor.editorPanel?.setLayer?.(state);
+    node._textOverlayEditor.requestRender?.();
+  }
+  node.setDirtyCanvas?.(true, true);
+}
+
+// Brief toast (modern toast API with a hand-rolled banner fallback for older
+// ComfyUI builds, same pattern as Prompt Multi).
+function showTextOverlayToast(msg) {
+  const tm = app.extensionManager?.toast;
+  if (tm && typeof tm.add === "function") {
+    try { tm.add({ severity: "info", summary: "Text Overlay", detail: msg, life: 3500 }); return; }
+    catch { /* fall through */ }
+  }
+  try {
+    const banner = document.createElement("div");
+    banner.textContent = msg;
+    banner.style.cssText = "position:fixed;top:60px;right:20px;background:#1d1d1d;color:#fff;font:14px sans-serif;padding:10px 14px;border-radius:6px;border:2px solid #f66744;z-index:99999;";
+    document.body.appendChild(banner);
+    setTimeout(() => banner.remove(), 3500);
+  } catch { /* no-op */ }
 }
