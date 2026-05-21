@@ -261,6 +261,19 @@ export function injectResizePanelCSS() {
       transition: width 0.12s ease, height 0.12s ease;
     }
     .pix-li-wh-rect-label { font-size: 9px; color: #999; font-family: inherit; }
+    /* Fit-inside nested preview: gray target-box frame + orange actual output. */
+    .pix-li-wh-frame {
+      border: 1px solid rgba(200,200,200,0.45);
+      border-radius: 2px;
+      display: flex; align-items: center; justify-content: center;
+      transition: width 0.12s ease, height 0.12s ease;
+    }
+    .pix-li-wh-out {
+      background: rgba(246,103,68,0.35);
+      border: 1px solid ${BRAND};
+      border-radius: 1px;
+      transition: width 0.12s ease, height 0.12s ease;
+    }
     .pix-li-shape {
       display: inline-block;
       background: rgba(180,180,180,0.25);
@@ -842,11 +855,25 @@ function buildWHPanel(node, state, writeState, onChange, opts, stateKey) {
   row.append(wField.wrap, swap, hField.wrap);
   panel.appendChild(row);
 
-  // Aspect-ratio preview rectangle + readout
+  // Aspect-ratio preview. For Fit inside (nestedFit + a known input aspect) the
+  // target box is a GRAY frame and the ACTUAL output (input aspect, fitted
+  // inside) is an orange rect within it — so the user sees the real result is
+  // smaller than the box on one axis. Other panels keep the single orange rect
+  // (their output equals the box).
+  const nested = !!(opts.nestedFit && opts.inputAspect && opts.inputAspect.w && opts.inputAspect.h);
   const previewWrap = document.createElement("div");
   previewWrap.className = "pix-li-wh-preview";
-  const previewRect = document.createElement("div");
-  previewRect.className = "pix-li-wh-rect";
+  let previewRect, innerRect = null;
+  if (nested) {
+    previewRect = document.createElement("div");
+    previewRect.className = "pix-li-wh-frame";
+    innerRect = document.createElement("div");
+    innerRect.className = "pix-li-wh-out";
+    previewRect.appendChild(innerRect);
+  } else {
+    previewRect = document.createElement("div");
+    previewRect.className = "pix-li-wh-rect";
+  }
   const previewLabel = document.createElement("div");
   previewLabel.className = "pix-li-wh-rect-label";
   previewWrap.append(previewRect, previewLabel);
@@ -863,9 +890,18 @@ function buildWHPanel(node, state, writeState, onChange, opts, stateKey) {
     } else {
       ph = PREVIEW_MAX_H; pw = PREVIEW_MAX_H * a;
     }
-    previewRect.style.width = `${Math.max(2, Math.round(pw))}px`;
-    previewRect.style.height = `${Math.max(2, Math.round(ph))}px`;
+    pw = Math.max(2, Math.round(pw)); ph = Math.max(2, Math.round(ph));
+    previewRect.style.width = `${pw}px`;
+    previewRect.style.height = `${ph}px`;
     previewLabel.textContent = `${w} × ${h}`;
+    if (nested) {
+      const ia = opts.inputAspect.w / opts.inputAspect.h;
+      let iw, ih;
+      if (ia >= pw / ph) { iw = pw; ih = pw / ia; }
+      else { ih = ph; iw = ph * ia; }
+      innerRect.style.width = `${Math.max(2, Math.round(iw))}px`;
+      innerRect.style.height = `${Math.max(2, Math.round(ih))}px`;
+    }
   }
   refreshPreview();
 
@@ -1157,6 +1193,8 @@ function buildFitInsidePanel(node, state, writeState, onChange, stateKey, extra)
     headerLabel: "Fit Inside (no crop)",
     wKey: "fit_w", hKey: "fit_h",
     previewMaxW: extra?.previewMaxW, previewMaxH: extra?.previewMaxH,
+    nestedFit: true,
+    inputAspect: extra?.inputDims || null,
   }, stateKey);
 }
 

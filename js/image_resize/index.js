@@ -487,7 +487,7 @@ app.registerExtension({
       const cardY = midY - cardH / 2;
       const rectMaxW = 40, rectMaxH = 18;
 
-      const drawCard = (x, label, w, h) => {
+      const drawCard = (x, label, w, h, accent) => {
         roundRectPath(ctx, x, cardY, cardW, cardH, 6);
         ctx.fillStyle = "#1d1d1d"; ctx.fill();
         roundRectPath(ctx, x + 0.5, cardY + 0.5, cardW - 1, cardH - 1, 6);
@@ -499,16 +499,21 @@ app.registerExtension({
         ctx.font = dimsFont; ctx.fillStyle = BRAND;
         ctx.fillText(`${w}×${h}`, ccx, cardY + 27);
         const { rw, rh } = aspectRectDims(w, h, rectMaxW, rectMaxH);
-        ctx.strokeStyle = "rgba(200,200,200,0.7)"; ctx.lineWidth = 1;
-        ctx.strokeRect(Math.round(ccx - rw / 2) + 0.5, Math.round(cardY + 47 - rh / 2) + 0.5, rw, rh);
+        const rx = Math.round(ccx - rw / 2) + 0.5, ry = Math.round(cardY + 47 - rh / 2) + 0.5;
+        if (accent) { ctx.fillStyle = "rgba(246,103,68,0.20)"; ctx.fillRect(rx, ry, rw, rh); }
+        ctx.strokeStyle = accent ? BRAND : "rgba(200,200,200,0.7)"; ctx.lineWidth = 1;
+        ctx.strokeRect(rx, ry, rw, rh);
         ctx.font = ratioFont; ctx.fillStyle = "#9a9a9a";
         ctx.fillText(ratioLabel(w, h), ccx, cardY + 67);
       };
 
-      drawCard(startX, "INPUT", info.inW, info.inH);
+      // Output rect goes orange only when the size actually changed; if input
+      // and output match it stays gray like the input (nothing happened).
+      const changed = info.inW !== info.outW || info.inH !== info.outH;
+      drawCard(startX, "INPUT", info.inW, info.inH, false);
       ctx.font = `14px ${fam}`; ctx.fillStyle = "#9a9a9a"; ctx.textAlign = "center";
       ctx.fillText("→", startX + cardW + gap + arrowW / 2, midY);
-      drawCard(startX + cardW + gap + arrowW + gap, "OUTPUT", info.outW, info.outH);
+      drawCard(startX + cardW + gap + arrowW + gap, "OUTPUT", info.outW, info.outH, changed);
 
       ctx.restore();
       return r;
