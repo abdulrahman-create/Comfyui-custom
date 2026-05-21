@@ -68,6 +68,13 @@ export function injectCSS() {
        (the user will update Load Image to match later). Higher specificity
        than the shared .pix-li-* rules so these win. */
     .pix-ir-root .pix-li-panel{background:rgba(255,255,255,.04);border:none;border-radius:6px;padding:9px 10px;}
+    /* Balance panel rhythm: the empty readout div left a phantom gap and the
+       ratio-chip grid's bottom margin made Match ratio bottom-heavy. Hide the
+       readout, drop the chip grid's bottom margin, and give the custom ratio
+       row its own top gap so top/bottom padding match. */
+    .pix-ir-root .pix-li-panel-readout{display:none;}
+    .pix-ir-root .pix-li-ratio-chips{margin-bottom:0;}
+    .pix-ir-root .pix-li-custom-ratio-row{margin:8px 0 0;}
     .pix-ir-root .pix-li-input-wide{width:100% !important;max-width:none;}
     /* Dark input fields (#1d1d1d) to match the buttons, not the lighter body
        gray. !important so it beats the shared .pix-li-numinput rule regardless
