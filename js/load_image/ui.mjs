@@ -936,13 +936,14 @@ export function openImageDropdown(node, anchorEl, onPick) {
 }
 
 const MODE_CHIPS = [
-  { id: "off",            label: "Off" },
-  { id: "max_mp",         label: "Max megapixels" },
-  { id: "longest_side",   label: "Longest side" },
-  { id: "scale_factor",   label: "Scale by ×" },
-  { id: "fit_inside",     label: "Fit inside" },
-  { id: "cover",          label: "Crop to fill" },
-  { id: "match_ratio",    label: "Match aspect ratio", spanFull: true },
+  { id: "off",          label: "Off",          title: "No resize. (Snap still applies if set.)" },
+  { id: "max_mp",       label: "Max MP",       title: "Scale so the total pixel count stays under a megapixel cap. Keeps aspect ratio." },
+  { id: "longest_side", label: "Longest side", title: "Scale so the longest side equals this many pixels. Keeps aspect ratio." },
+  { id: "scale_factor", label: "Scale by ×",   title: "Multiply both dimensions by a factor. Keeps aspect ratio." },
+  { id: "fit_inside",   label: "Fit inside",   title: "Scale to fit entirely within W×H without cropping. Keeps aspect ratio." },
+  { id: "cover",        label: "Crop to fill", title: "Resize to exactly W×H. Fill scales then crops the overflow; Crop cuts a 1:1-pixel piece. The anchor picks which part is kept." },
+  { id: "match_ratio",  label: "Match ratio",  title: "Crop the image to a target aspect ratio (no scaling)." },
+  { id: "pad",          label: "Pad",          title: "Add a pixel border on chosen sides. The new area becomes the white inpaint-mask region." },
 ];
 
 export function renderChips(state) {
@@ -950,10 +951,10 @@ export function renderChips(state) {
   wrap.className = "pix-li-chips";
   for (const c of MODE_CHIPS) {
     const el = document.createElement("div");
-    el.className = "pix-li-chip" + (c.spanFull ? " span-full" : "");
-    if (state.mode === c.id) el.classList.add("active");
+    el.className = "pix-li-chip" + (state.mode === c.id ? " active" : "");
     el.dataset.modeId = c.id;
     el.textContent = c.label;
+    el.title = c.title || "";
     wrap.appendChild(el);
   }
   return wrap;
