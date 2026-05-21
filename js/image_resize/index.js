@@ -148,6 +148,23 @@ function isWired(node, name) {
   return !!(inp && inp.link != null);
 }
 
+// Small toast (Image Resize). Silent no-op if the toast API isn't present
+// (older Easy Install builds) — never throws on a connect.
+function toast(msg) {
+  const t = app?.extensionManager?.toast;
+  if (t?.add) t.add({ severity: "info", summary: "Image Resize Pixaroma", detail: msg, life: 2500 });
+}
+
+// Disconnect a named input if it currently has a wire. Returns true if it did.
+function disconnectInputByName(node, name) {
+  const i = node.inputs?.findIndex((inp) => inp?.name === name);
+  if (i != null && i >= 0 && node.inputs[i]?.link != null) {
+    node.disconnectInput(i);
+    return true;
+  }
+  return false;
+}
+
 // Best-effort read of a wired INT input's value at edit time. Works for
 // Resolution Pixaroma (value lives in properties.resolutionState; the link's
 // origin_slot picks w vs h) and plain INT widget nodes. Returns null for
@@ -573,10 +590,33 @@ app.registerExtension({
       }
     };
 
+    const INPUT_TYPE = (typeof LiteGraph !== "undefined" && LiteGraph.INPUT != null) ? LiteGraph.INPUT : 1;
     const _origConn = nodeType.prototype.onConnectionsChange;
     nodeType.prototype.onConnectionsChange = function (type, idx, connected, link, ioSlot) {
       const r = _origConn?.apply(this, arguments);
-      if (!this._pixIrConfiguring && this._pixIrRoot) {
+      // Auto-swap sizing sources: longest_side and width/height are competing
+      // ways to set the size, so connecting one drops the other(s). width and
+      // height may coexist (exact box) - only longest_side is exclusive vs them.
+      // Only on a genuine user connect; never during configure/load (Vue Compat
+      // #18: mutating wires on load would falsely flag the workflow modified).
+      // _pixIrAutoSwapping guards re-entrancy from the disconnectInput calls.
+      if (type === INPUT_TYPE && connected && !this._pixIrConfiguring && !this._pixIrAutoSwapping) {
+        const name = this.inputs?.[idx]?.name || ioSlot?.name;
+        this._pixIrAutoSwapping = true;
+        try {
+          if (name === "longest_side") {
+            const dW = disconnectInputByName(this, "width");
+            const dH = disconnectInputByName(this, "height");
+            if (dW || dH) toast("longest_side now drives the size — width/height disconnected.");
+          } else if (name === "width" || name === "height") {
+            if (disconnectInputByName(this, "longest_side"))
+              toast("width/height now drive the size — longest_side disconnected.");
+          }
+        } finally {
+          this._pixIrAutoSwapping = false;
+        }
+      }
+      if (!this._pixIrConfiguring && !this._pixIrAutoSwapping && this._pixIrRoot) {
         renderUI(this); // re-render for the new wire count (no state mutation)
         refit(this);
         // Upstream loader may populate its image a tick after the wire lands;
