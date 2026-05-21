@@ -27,8 +27,8 @@ class PixaromaRemoveBackground:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "image": ("IMAGE",),
-                "model": (_list_models(),),
+                "image": ("IMAGE", {"tooltip": "The image to remove the background from."}),
+                "model": (_list_models(), {"tooltip": "Which BiRefNet model to use. Filenames containing 'matt' or 'hr' run at 2048px (better for hair / fine edges); all others run at 1024px. Models live in ComfyUI/models/background_removal/."}),
             }
         }
 

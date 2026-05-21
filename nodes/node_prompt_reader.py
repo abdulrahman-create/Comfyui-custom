@@ -52,7 +52,7 @@ class PixaromaPromptReader:
             files = []
         return {
             "required": {
-                "image": (sorted(files), {"image_upload": True}),
+                "image": (sorted(files), {"image_upload": True, "tooltip": "The image to read the prompt from. Upload, drag-drop, or pick a PNG made with ComfyUI / Automatic1111 / Forge so its embedded prompt can be recovered. The readout updates as soon as you pick a file."}),
             },
         }
 

@@ -34,7 +34,7 @@ class PixaromaSwitch:
     @classmethod
     def INPUT_TYPES(cls):
         optional = {
-            f"input_{i}": (ANY, {"forceInput": True})
+            f"input_{i}": (ANY, {"forceInput": True, "tooltip": "An input to route. Wire any node here; click a row's toggle on the node to make it the active one, and that row's value flows out unchanged."})
             for i in range(1, MAX_INPUTS + 1)
         }
         return {
