@@ -206,9 +206,12 @@ function applyWiredLocks(node, root) {
 }
 function lockField(inp, val) {
   inp.readOnly = true;
-  inp.style.opacity = "0.55";
   inp.title = "Driven by wired input";
   if (val != null) inp.value = String(val); // show the actual wired number
+  // Dim the whole field (input + spinner arrows) so it reads as disabled; the
+  // arrows are also made inert by the readOnly guard in makeNumericInput.step1.
+  const wrap = inp.closest(".pix-li-numinput");
+  if (wrap) { wrap.style.opacity = "0.55"; wrap.title = "Driven by wired input"; }
 }
 
 // On connecting the SECOND of width/height while NOT already in a W×H mode,

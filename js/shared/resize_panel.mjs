@@ -472,6 +472,7 @@ function makeNumericInput(opts) {
   const step = opts.step ?? 1;
 
   function step1(dir, mult = 1) {
+    if (inp.readOnly) return; // locked field (wire-driven) — arrows/keys inert
     const raw = parse(inp.value);
     const base = Number.isFinite(raw) ? raw : opts.value;
     const next = clamp(roundToStep(base + dir * step * mult, step));
