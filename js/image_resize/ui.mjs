@@ -50,6 +50,7 @@ export function injectCSS() {
     .pix-ir-rs-item-label{font-size:13px;color:#ddd;white-space:nowrap;}
     .pix-ir-rs-item-hint{font-size:11px;color:#888;text-align:right;}
     .pix-ir-chk{display:flex;align-items:center;gap:6px;font-size:10.5px;color:#cfcfcf;cursor:pointer;user-select:none;}
+    .pix-ir-chk input{accent-color:${BRAND};cursor:pointer;}
     .pix-ir-prevbar{display:flex;align-items:center;justify-content:space-between;
       font-size:10px;color:#9a9a9a;padding:5px 7px;background:rgba(0,0,0,.22);
       border-radius:5px;cursor:pointer;user-select:none;}
