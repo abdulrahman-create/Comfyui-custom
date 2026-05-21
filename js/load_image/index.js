@@ -1,5 +1,6 @@
 import { app } from "/scripts/app.js";
 import { hideJsonWidget, BRAND } from "../shared/index.mjs";
+import { isGraphLoading } from "../shared/graph_loading.mjs";
 import {
   injectCSS, buildRoot, hideNativeImageCombo, openImageDropdown,
   renderChips, renderGlobalControls,
@@ -54,6 +55,22 @@ function pickByOffset(node, offset) {
 }
 
 const MIN_W = 360; // node needs room for the two IN/OUT cards
+
+// Load Image loads from disk and takes NO inputs. The Vue frontend's
+// "widget-is-a-socket" model (1.43+) auto-creates connectable input slots for
+// the hidden `image` / `upload` combo widgets, leaving a dangling dot you can
+// wire any COMBO/* output into (it re-converts the combo widget to an input on
+// drop). We never want that. Remove every input slot. Returns true if it
+// removed anything. See Load Image Pixaroma Pattern #17.
+function stripInputs(node) {
+  if (!node?.inputs || node.inputs.length === 0) return false;
+  for (let i = node.inputs.length - 1; i >= 0; i--) {
+    if (node.inputs[i]?.link != null) { try { node.disconnectInput(i); } catch (_e) { /* ignore */ } }
+    node.removeInput(i);
+  }
+  node.setDirtyCanvas?.(true, true);
+  return true;
+}
 
 function gcdLi(a, b) { a = Math.abs(a); b = Math.abs(b); while (b) { const t = b; b = a % b; a = t; } return a || 1; }
 function ratioLabelLi(w, h) {
@@ -259,6 +276,10 @@ function setupLoadImageNode(node) {
   // but reads/writes through its `.value`.
   const imageWidget = hideNativeImageCombo(node);
   node._pixLiImageWidget = imageWidget;
+
+  // Remove the auto-created widget-input slots (image / upload) so the node
+  // shows no connectable input dot (Load Image Pixaroma Pattern #17).
+  stripInputs(node);
 
   // Brand default colors applied globally by js/brand/index.js.
 
@@ -478,6 +499,23 @@ app.registerExtension({
   beforeRegisterNodeDef(nodeType, nodeData) {
     if (nodeData.name !== "PixaromaLoadImage") return;
 
+    // Reject ALL input connections — the node has no inputs we want, and the
+    // hidden image/upload combo widgets must not be drivable from outside
+    // (Load Image Pixaroma Pattern #17).
+    nodeType.prototype.onConnectInput = function () { return false; };
+
+    // Belt-and-braces: if a connection still slips in via the frontend's
+    // "connect to widget input" path, strip every input slot. Gated on
+    // !isGraphLoading so it never mutates serialized state during a workflow
+    // load (Vue Compat #19) — load-time cleanup is handled by onConfigure.
+    const _origConn = nodeType.prototype.onConnectionsChange;
+    const INPUT_T = (typeof LiteGraph !== "undefined" && LiteGraph.INPUT != null) ? LiteGraph.INPUT : 1;
+    nodeType.prototype.onConnectionsChange = function (type) {
+      const r = _origConn?.apply(this, arguments);
+      if (type === INPUT_T && !isGraphLoading()) stripInputs(this);
+      return r;
+    };
+
     const _origResize = nodeType.prototype.onResize;
     nodeType.prototype.onResize = function (size) {
       if (this.size[0] < MIN_W) this.size[0] = MIN_W;
@@ -592,6 +630,9 @@ app.registerExtension({
     const _origConfigure = nodeType.prototype.onConfigure;
     nodeType.prototype.onConfigure = function (info) {
       const r = _origConfigure?.apply(this, arguments);
+      // Drop any saved widget-input slots on load (Pattern #17). Synchronous so
+      // it lands before the change-tracker snapshots the loaded graph.
+      stripInputs(this);
       // Wait a microtask so widget values are settled.
       queueMicrotask(() => {
         refreshDropdown(this);
