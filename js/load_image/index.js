@@ -1,5 +1,5 @@
 import { app } from "/scripts/app.js";
-import { hideJsonWidget } from "../shared/index.mjs";
+import { hideJsonWidget, BRAND } from "../shared/index.mjs";
 import {
   injectCSS, buildRoot, hideNativeImageCombo, openImageDropdown,
   renderChips, renderGlobalControls,
@@ -53,99 +53,50 @@ function pickByOffset(node, offset) {
   setSelectedImage(node, values[next]);
 }
 
-// Reduce a w:h ratio to its simplest integer form when there's a clean
-// gcd match (e.g. 1920:1080 → 16:9). For non-clean ratios, return a
-// rounded decimal label (~1.78:1 / ~1:1.78) so the user still sees
-// something meaningful.
-function simplifyRatio(w, h) {
-  if (!w || !h) return "";
-  const gcd = (a, b) => b ? gcd(b, a % b) : a;
-  const g = gcd(Math.abs(w), Math.abs(h)) || 1;
-  const rw = w / g, rh = h / g;
-  // Cap at small integer pairs — bigger ratios mean the gcd reduction
-  // didn't land on a recognisable common form (1920:1081 etc).
-  if (rw <= 64 && rh <= 64) return `${rw}:${rh}`;
+const MIN_W = 360; // node needs room for the two IN/OUT cards
+
+function gcdLi(a, b) { a = Math.abs(a); b = Math.abs(b); while (b) { const t = b; b = a % b; a = t; } return a || 1; }
+function ratioLabelLi(w, h) {
+  const g = gcdLi(w, h); const rw = w / g, rh = h / g;
+  const known = ["1:1","16:9","9:16","2:1","1:2","3:2","2:3","4:3","3:4","4:5","5:4","21:9"];
+  const s = `${rw}:${rh}`;
+  if (known.includes(s)) return s;
   const r = w / h;
   return r >= 1 ? `~${r.toFixed(2)}:1` : `~1:${(1 / r).toFixed(2)}`;
 }
-
-// Build a small aspect-ratio rectangle (~14×11 px max). Mirrors the
-// helper inside resize_modes.mjs but stays local so we don't have to
-// re-export it through index.mjs.
-function makeAspectRect(w, h, maxW = 14, maxH = 11) {
-  const el = document.createElement("span");
-  el.className = "pix-li-shape";
-  const a = w / h;
-  let pw, ph;
-  if (a >= maxW / maxH) { pw = maxW; ph = maxW / a; }
-  else                   { ph = maxH; pw = maxH * a; }
-  el.style.width = `${Math.max(1, Math.round(pw))}px`;
-  el.style.height = `${Math.max(1, Math.round(ph))}px`;
-  return el;
+function aspectRectDimsLi(w, h, maxW, maxH) {
+  const a = w / h; let rw, rh;
+  if (a >= maxW / maxH) { rw = maxW; rh = maxW / a; } else { rh = maxH; rw = maxH * a; }
+  return { rw: Math.max(2, Math.round(rw)), rh: Math.max(2, Math.round(rh)) };
+}
+function roundRectPathLi(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
 }
 
-// Update the input/output dimensions info bar. Hides the upload hint
-// when an image is loaded. Shows: original dims + ratio (always when
-// loaded), and final dims + ratio when resize mode != Off.
-function updateInfoBar(node) {
-  const root = node._pixLiRoot;
-  if (!root) return;
-  const hint = root.querySelector('[data-role="hint"]');
-  const info = root.querySelector('[data-role="diminfo"]');
-  if (!info) return;
-
+// What the painter should show: dual cards (image loaded) or a message.
+function getCardInfo(node) {
   const img = node.imgs?.[0];
   const W = img?.naturalWidth || 0;
   const H = img?.naturalHeight || 0;
-
-  if (!W || !H) {
-    if (hint) hint.style.display = "";
-    info.style.display = "none";
-    info.innerHTML = "";
-    return;
-  }
-
-  if (hint) hint.style.display = "none";
-  info.style.display = "flex";
-  info.innerHTML = "";
-
+  if (!W || !H) return { mode: "msg", text: "Upload or pick an image" };
   const state = readState(node);
   const { w: outW, h: outH } = previewResize(W, H, state);
-  // Show the Output row whenever a resize mode is active, even if the
-  // computed dims happen to equal the input. Keeps the panel layout
-  // stable while the user is stepping a W/H input by 1 — otherwise
-  // every odd-numbered value would add/remove the Output row and the
-  // +/- spinner arrows would jump under the cursor.
-  const resizeActive = state.mode !== "off";
+  return { mode: "dual", inW: W, inH: H, outW, outH };
+}
 
-  function makeRow(tag, w, h, isOut) {
-    const row = document.createElement("div");
-    row.className = "pix-li-diminfo-row" + (isOut ? " out" : "");
-    const tagEl = document.createElement("span");
-    tagEl.className = "pix-li-diminfo-tag";
-    tagEl.textContent = tag;
-    const rectEl = makeAspectRect(w, h);
-    const dimsEl = document.createElement("span");
-    dimsEl.className = "pix-li-diminfo-dims";
-    dimsEl.textContent = `${w} × ${h}`;
-    const ratioEl = document.createElement("span");
-    ratioEl.className = "pix-li-diminfo-ratio";
-    ratioEl.textContent = simplifyRatio(w, h);
-    row.append(tagEl, rectEl, dimsEl, ratioEl);
-    return row;
-  }
-
-  // Horizontal layout: [Input row] → [Output row] on the same line. Saves
-  // a row of vertical space when a resize mode is active. When Off, only
-  // the Input half is rendered.
-  info.appendChild(makeRow("Input", W, H, false));
-  if (resizeActive) {
-    const arrow = document.createElement("div");
-    arrow.className = "pix-li-diminfo-arrow";
-    arrow.textContent = "→";
-    info.appendChild(arrow);
-    info.appendChild(makeRow("Output", outW, outH, true));
-  }
+// The size readout is now painted by onDrawForeground (INPUT → OUTPUT cards),
+// not a DOM bar. Toggle the upload hint by image presence, then request a
+// repaint so the painted cards reflect the latest state.
+function updateInfoBar(node) {
+  const hint = node._pixLiRoot?.querySelector('[data-role="hint"]');
+  if (hint) hint.style.display = node.imgs?.[0]?.naturalWidth ? "none" : "";
+  node.setDirtyCanvas?.(true, true);
 }
 
 function renderUI(node) {
@@ -354,7 +305,7 @@ function setupLoadImageNode(node) {
   // chip grid fit comfortably side-by-side. LiteGraph's configure runs
   // AFTER nodeCreated and overwrites with the saved value, so existing
   // workflows keep whatever width the user had.
-  if (!node.size || node.size[0] < 380) node.size[0] = 380;
+  if (!node.size || node.size[0] < MIN_W) node.size[0] = MIN_W;
 
   // Track the currently-focused load-image node for Ctrl+V routing.
   // (One global listener; nodes register/unregister themselves on selection.)
@@ -518,6 +469,108 @@ app.registerExtension({
 
   beforeRegisterNodeDef(nodeType, nodeData) {
     if (nodeData.name !== "PixaromaLoadImage") return;
+
+    const _origResize = nodeType.prototype.onResize;
+    nodeType.prototype.onResize = function (size) {
+      if (this.size[0] < MIN_W) this.size[0] = MIN_W;
+      return _origResize?.apply(this, arguments);
+    };
+
+    // Paint INPUT → OUTPUT size cards in the empty space left of the 7 output
+    // dots (same technique as Image Resize). Read-only re: serialized state
+    // except the min-width self-heal (Vue Compat #18); setDirtyCanvas is only a
+    // redraw flag, not a dirty-tracker trip.
+    const _origDraw = nodeType.prototype.onDrawForeground;
+    nodeType.prototype.onDrawForeground = function (ctx) {
+      const r = _origDraw?.apply(this, arguments);
+      if (this.flags?.collapsed) return r;
+      if (this.size[0] < MIN_W) { this.size[0] = MIN_W; this.setDirtyCanvas(true, true); }
+
+      const info = getCardInfo(this);
+      const fam = "ui-sans-serif, system-ui, sans-serif";
+      // Vertical center of the 7 output slot rows: TOP_PAD(4) + 7*20/2 = 74.
+      const midY = 74;
+      ctx.save();
+      ctx.textBaseline = "middle";
+
+      if (info.mode === "msg") {
+        ctx.font = `12px ${fam}`;
+        const tw = ctx.measureText(info.text).width;
+        const bw = tw + 24, bh = 26;
+        const bx = 12, by = midY - bh / 2;
+        roundRectPathLi(ctx, bx, by, bw, bh, 8);
+        ctx.fillStyle = "#1d1d1d"; ctx.fill();
+        ctx.textAlign = "left"; ctx.fillStyle = BRAND;
+        ctx.fillText(info.text, bx + 12, midY);
+        ctx.restore();
+        return r;
+      }
+
+      // Two joined cards in the LEFT dead space; right edge stops clear of the
+      // longest output label ("original_height"). LABEL_RESERVE is the px kept
+      // free on the right for the output names.
+      const LEFT_PAD = 12, LABEL_RESERVE = 120, NECK_INSET = 3, COL_GAP = 6;
+      const pairW = Math.max(120, this.size[0] - LEFT_PAD - LABEL_RESERVE);
+      const cardW = (pairW - COL_GAP) / 2 - NECK_INSET / 2;
+      const cardH = 90;
+      const L1 = LEFT_PAD;                 // INPUT left
+      const R1 = L1 + cardW;               // INPUT right
+      const R2 = LEFT_PAD + pairW;         // OUTPUT right
+      const L2 = R2 - cardW;               // OUTPUT left
+      const arrowCx = (R1 + L2) / 2;
+      const cardY = midY - cardH / 2, T = cardY, Bm = cardY + cardH;
+      const R = 6, bridgeH = 22, bT = midY - bridgeH / 2, bB = midY + bridgeH / 2;
+      const rectMaxW = 46, rectMaxH = 30;
+
+      // Single joined outline (two rounded cards + center bridge).
+      ctx.beginPath();
+      ctx.moveTo(L1 + R, T);
+      ctx.lineTo(R1 - R, T); ctx.arcTo(R1, T, R1, T + R, R);
+      ctx.lineTo(R1, bT); ctx.lineTo(L2, bT); ctx.lineTo(L2, T + R);
+      ctx.arcTo(L2, T, L2 + R, T, R);
+      ctx.lineTo(R2 - R, T); ctx.arcTo(R2, T, R2, T + R, R);
+      ctx.lineTo(R2, Bm - R); ctx.arcTo(R2, Bm, R2 - R, Bm, R);
+      ctx.lineTo(L2 + R, Bm); ctx.arcTo(L2, Bm, L2, Bm - R, R);
+      ctx.lineTo(L2, bB); ctx.lineTo(R1, bB); ctx.lineTo(R1, Bm - R);
+      ctx.arcTo(R1, Bm, R1 - R, Bm, R);
+      ctx.lineTo(L1 + R, Bm); ctx.arcTo(L1, Bm, L1, Bm - R, R);
+      ctx.lineTo(L1, T + R); ctx.arcTo(L1, T, L1 + R, T, R);
+      ctx.closePath();
+      ctx.fillStyle = "#1d1d1d"; ctx.fill();
+      ctx.strokeStyle = "#444"; ctx.lineWidth = 1; ctx.stroke();
+
+      const drawContent = (x, label, w, h, accent) => {
+        const ccx = x + cardW / 2;
+        ctx.textAlign = "center";
+        const maxTxt = cardW - 8;
+        ctx.font = `8px ${fam}`; ctx.fillStyle = "#9a9a9a";
+        ctx.fillText(label, ccx, cardY + 15, maxTxt);
+        ctx.font = `bold 10px ${fam}`; ctx.fillStyle = BRAND;
+        ctx.fillText(`${w}×${h}`, ccx, cardY + 27, maxTxt);
+        const { rw, rh } = aspectRectDimsLi(w, h, rectMaxW, rectMaxH);
+        const rx = Math.round(ccx - rw / 2) + 0.5, ry = Math.round(cardY + 53 - rh / 2) + 0.5;
+        if (accent) { ctx.fillStyle = "rgba(246,103,68,0.20)"; ctx.fillRect(rx, ry, rw, rh); }
+        ctx.strokeStyle = accent ? BRAND : "rgba(200,200,200,0.7)"; ctx.lineWidth = 1;
+        ctx.strokeRect(rx, ry, rw, rh);
+        ctx.font = `8px ${fam}`; ctx.fillStyle = "#9a9a9a";
+        ctx.fillText(ratioLabelLi(w, h), ccx, cardY + 77, maxTxt);
+      };
+
+      const changed = info.inW !== info.outW || info.inH !== info.outH;
+      drawContent(L1, "INPUT", info.inW, info.inH, false);
+      drawContent(L2, "OUTPUT", info.outW, info.outH, changed);
+
+      ctx.strokeStyle = "#9a9a9a"; ctx.lineWidth = 1;
+      ctx.lineCap = "round"; ctx.lineJoin = "round";
+      ctx.beginPath();
+      ctx.moveTo(arrowCx - 2.5, midY - 4);
+      ctx.lineTo(arrowCx + 2.5, midY);
+      ctx.lineTo(arrowCx - 2.5, midY + 4);
+      ctx.stroke();
+      ctx.restore();
+      return r;
+    };
+
     const _origSel = nodeType.prototype.onSelected;
     const _origDes = nodeType.prototype.onDeselected;
     nodeType.prototype.onSelected = function () {

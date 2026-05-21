@@ -118,54 +118,6 @@ export function injectCSS() {
       user-select: none;
     }
     .pix-li-popup-section:not(:first-child) { border-top: 1px solid #2a2a2a; }
-    /* Dimensions info bar — replaces the "drag/paste" hint once an image
-       is loaded. Horizontal layout: [INPUT  dims  ratio] → [OUTPUT  dims
-       ratio], both halves on the same line so we save vertical space
-       when a resize mode is active. When resize is Off, only the Input
-       half is rendered. */
-    .pix-li-diminfo {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      background: #1d1d1d;
-      border: 1px solid #333;
-      border-radius: 4px;
-      padding: 6px 8px;
-      font-size: 10px;
-    }
-    .pix-li-diminfo-row {
-      display: flex;
-      align-items: center;
-      gap: 5px;
-      flex: 1;
-      min-width: 0; /* allow shrinking when both halves visible */
-    }
-    .pix-li-diminfo-tag {
-      font-size: 8px;
-      color: #777;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-    .pix-li-diminfo-dims {
-      color: #ddd;
-      flex: 1;
-      white-space: nowrap;
-    }
-    .pix-li-diminfo-ratio {
-      color: #888;
-      flex-shrink: 0;
-    }
-    .pix-li-diminfo-arrow {
-      color: ${BRAND};
-      font-size: 11px;
-      line-height: 1;
-      flex-shrink: 0;
-    }
-    .pix-li-diminfo .pix-li-shape {
-      flex-shrink: 0;
-    }
-    /* Highlight the OUTPUT half by tinting the dims orange when resize active. */
-    .pix-li-diminfo-row.out .pix-li-diminfo-dims { color: ${BRAND}; font-weight: 600; }
     .pix-li-chips {
       display: grid;
       grid-template-columns: repeat(4, 1fr);
@@ -744,15 +696,8 @@ export function buildRoot() {
   fileRow.append(prev, dd, next);
   root.appendChild(fileRow);
 
-  // Dimensions info bar — shows once an image is loaded. Replaces the
-  // hint text. Two rows when a resize is active (original → final), one
-  // row when mode = Off (only original). Each row has the dims, ratio
-  // label, and a tiny aspect rectangle.
-  const info = document.createElement("div");
-  info.className = "pix-li-diminfo";
-  info.dataset.role = "diminfo";
-  info.style.display = "none";
-  root.appendChild(info);
+  // The input/output size readout is no longer a DOM bar here — it is painted
+  // by onDrawForeground (INPUT → OUTPUT cards in the output-slot dead space).
 
   return root;
 }
