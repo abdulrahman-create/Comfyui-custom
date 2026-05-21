@@ -759,7 +759,7 @@ function buildScalePanel(node, state, writeState, onChange, stateKey, extra = {}
 
   const quickWrap = document.createElement("div");
   quickWrap.className = "pix-li-quickpicks";
-  const QUICK = extra.oneLine ? [0.25, 0.5, 1, 2, 4] : [0.25, 0.5, 2, 4];
+  const QUICK = extra.oneLine ? [0.25, 0.5, 1, 2, 3, 4] : [0.25, 0.5, 2, 4];
   quickWrap.style.gridTemplateColumns = `repeat(${QUICK.length}, 1fr)`;
   const cur = +state.scale_factor || 1.0;
   const qpEls = [];
