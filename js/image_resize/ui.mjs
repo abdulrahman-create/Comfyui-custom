@@ -39,16 +39,16 @@ export function injectCSS() {
       background:#1d1d1d;border:1px solid #444;border-radius:4px;padding:6px 10px;cursor:pointer;user-select:none;}
     .pix-ir-rs-dd:hover{border-color:#666;}
     .pix-ir-rs-value{color:#ddd;font-size:11px;}
-    .pix-ir-rs-arrow{color:${BRAND};font-size:10px;margin-left:6px;}
+    .pix-ir-rs-arrow{color:${BRAND};font-size:13px;margin-left:6px;line-height:1;}
     /* Popup is appended to document.body, so these are NOT scoped to .pix-ir-root. */
     .pix-ir-rs-popup{position:fixed;z-index:99999;background:#181818;border:1px solid #555;
       border-radius:6px;box-shadow:0 8px 24px rgba(0,0,0,.5);overflow:hidden;}
-    .pix-ir-rs-item{padding:6px 10px;cursor:pointer;display:flex;flex-direction:column;gap:1px;border-bottom:1px solid #2a2a2a;}
+    .pix-ir-rs-item{padding:9px 14px;cursor:pointer;display:flex;align-items:baseline;justify-content:space-between;gap:14px;border-bottom:1px solid #2a2a2a;}
     .pix-ir-rs-item:last-child{border-bottom:none;}
     .pix-ir-rs-item:hover{background:#2a2a2a;}
     .pix-ir-rs-item.active .pix-ir-rs-item-label{color:${BRAND};font-weight:600;}
-    .pix-ir-rs-item-label{font-size:11px;color:#ddd;}
-    .pix-ir-rs-item-hint{font-size:9px;color:#777;}
+    .pix-ir-rs-item-label{font-size:13px;color:#ddd;white-space:nowrap;}
+    .pix-ir-rs-item-hint{font-size:11px;color:#888;text-align:right;}
     .pix-ir-chk{display:flex;align-items:center;gap:6px;font-size:10.5px;color:#cfcfcf;cursor:pointer;user-select:none;}
     .pix-ir-prevbar{display:flex;align-items:center;justify-content:space-between;
       font-size:10px;color:#9a9a9a;padding:5px 7px;background:rgba(0,0,0,.22);
@@ -204,7 +204,7 @@ export function buildResampleAndUpscale(state) {
   valueEl.className = "pix-ir-rs-value";
   valueEl.textContent = "Resample: " + resampleLabel(state.resample || "auto");
   const arrow = document.createElement("span");
-  arrow.className = "pix-ir-rs-arrow"; arrow.textContent = "▾";
+  arrow.className = "pix-ir-rs-arrow"; arrow.textContent = "▼";
   dd.append(valueEl, arrow);
   const next = document.createElement("button");
   next.type = "button"; next.className = "pix-ir-rs-nav"; next.title = "Next"; next.textContent = "▶";
