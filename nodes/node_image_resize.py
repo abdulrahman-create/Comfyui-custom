@@ -82,22 +82,24 @@ class PixaromaImageResize:
     DESCRIPTION = (
         "Image Resize Pixaroma - resize any image mid-workflow with one compact "
         "node. Modes: Off, Max megapixels, Longest side, Scale by, Fit inside, "
-        "Crop to fill, Match aspect ratio. Resizes an optional mask alongside "
-        "(crisp). Wire a width/height in (e.g. from Resolution Pixaroma) to "
-        "resize to an exact size. Foldable result preview. Outputs image, mask, "
-        "width, height."
+        "Crop to fill, Match aspect ratio, and Pad (add a pixel border for "
+        "outpainting / inpainting). Crop to fill has a 9-point anchor plus a "
+        "Fill/Crop toggle (scale-and-crop vs cut a 1:1-pixel piece). Resizes an "
+        "optional mask alongside with crisp edges. Wire a width/height (e.g. "
+        "from Resolution Pixaroma): one wire scales keeping aspect, both wires "
+        "set an exact size. Outputs image, mask, width, height."
     )
 
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "image": ("IMAGE",),
+                "image": ("IMAGE", {"tooltip": "The image to resize."}),
             },
             "optional": {
-                "mask": ("MASK",),
-                "width": ("INT", {"forceInput": True}),
-                "height": ("INT", {"forceInput": True}),
+                "mask": ("MASK", {"tooltip": "Optional mask. Resized alongside the image with crisp (nearest) edges. In Pad mode the added border becomes white (the inpaint region)."}),
+                "width": ("INT", {"forceInput": True, "tooltip": "Optional target width (e.g. from Resolution Pixaroma). Wire only width OR only height to scale keeping aspect ratio; wire both for an exact size. While wired, the matching field is locked."}),
+                "height": ("INT", {"forceInput": True, "tooltip": "Optional target height (e.g. from Resolution Pixaroma). Wire only width OR only height to scale keeping aspect ratio; wire both for an exact size. While wired, the matching field is locked."}),
             },
             "hidden": {
                 "ImageResizeState": ("STRING", {"default": json.dumps(DEFAULT_STATE)}),
@@ -107,6 +109,12 @@ class PixaromaImageResize:
     CATEGORY = "👑 Pixaroma"
     RETURN_TYPES = ("IMAGE", "MASK", "INT", "INT")
     RETURN_NAMES = ("image", "mask", "width", "height")
+    OUTPUT_TOOLTIPS = (
+        "The resized image.",
+        "The resized mask (white = the padded / inpaint area when using Pad).",
+        "Final output width in pixels.",
+        "Final output height in pixels.",
+    )
     FUNCTION = "resize"
 
     def resize(self, image, mask=None, width=None, height=None, ImageResizeState=""):
