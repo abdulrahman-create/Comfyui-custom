@@ -319,8 +319,22 @@ export function injectResizePanelCSS() {
     .pix-li-pad-labeled input { text-align: right !important; padding-right: 6px !important; }
     .pix-li-pad-outdims { font-size: 11px; font-weight: 600; color: ${BRAND}; }
     .pix-li-pad-outhint { font-size: 8px; color: #777; text-transform: uppercase; letter-spacing: 0.5px; line-height: 1.3; }
-    .pix-li-pad-colorcell { grid-column: 3; grid-row: 3; display: flex; align-items: center; justify-content: center; }
-    .pix-li-pad-colorcell .pix-li-pad-swatch { width: 26px; height: 26px; }
+    .pix-li-pad-resetcell { grid-column: 1; grid-row: 3; display: flex; align-items: center; justify-content: center; }
+    .pix-li-pad-reset {
+      background: #1d1d1d; border: 1px solid #444; border-radius: 4px;
+      color: #aaa; font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px;
+      padding: 6px 9px; cursor: pointer; white-space: nowrap;
+    }
+    .pix-li-pad-reset:hover { border-color: ${BRAND}; color: ${BRAND}; }
+    .pix-li-pad-colorcell {
+      grid-column: 3; grid-row: 3;
+      display: flex; align-items: center; justify-content: center; gap: 6px;
+      background: #1d1d1d; border: 1px solid #444; border-radius: 4px;
+      padding: 5px 9px; cursor: pointer;
+    }
+    .pix-li-pad-colorcell:hover { border-color: ${BRAND}; }
+    .pix-li-pad-colorcell .pix-li-pad-swatch { width: 16px; height: 16px; }
+    .pix-li-pad-colorlbl { font-size: 9px; color: #999; text-transform: uppercase; letter-spacing: 0.5px; }
   `;
   const s = document.createElement("style");
   s.id = "pix-resize-panel-css";
@@ -1124,6 +1138,8 @@ function buildPadPanel(node, state, writeState, onChange, stateKey, extra = {}) 
     }
   }
 
+  // Per-side inputs keyed by state key so the Reset button can zero them out.
+  const padInputs = {};
   // Letter label sits INSIDE each input (T/L/R/B) to save node height; the
   // cross position reinforces which side. Full name in the hover title.
   function makePadField(letter, title, key, placeClass) {
@@ -1145,6 +1161,7 @@ function buildPadPanel(node, state, writeState, onChange, stateKey, extra = {}) 
     lab.className = "pix-li-pad-inlabel";
     lab.textContent = letter;
     wrap.insertBefore(lab, wrap.firstChild);
+    padInputs[key] = input;
     return wrap;
   }
 
@@ -1153,20 +1170,44 @@ function buildPadPanel(node, state, writeState, onChange, stateKey, extra = {}) 
   const rightW = makePadField("R", "Right padding (px)", "pad_right", "pix-li-pad-right");
   const botW = makePadField("B", "Bottom padding (px)", "pad_bottom", "pix-li-pad-bottom");
 
-  // Pad color lives in the otherwise-empty bottom-right cell.
+  // Bottom-left: Reset zeroes all four pads. Bottom-right: labeled pad-color
+  // chip (a lone swatch wasn't obvious). Both flank the B input in row 3.
+  const resetCell = document.createElement("div");
+  resetCell.className = "pix-li-pad-resetcell";
+  const resetBtn = document.createElement("button");
+  resetBtn.type = "button";
+  resetBtn.className = "pix-li-pad-reset";
+  resetBtn.title = "Reset padding to 0";
+  resetBtn.textContent = "↺ Reset";
+  resetCell.appendChild(resetBtn);
+
   const colorCell = document.createElement("div");
   colorCell.className = "pix-li-pad-colorcell";
+  colorCell.title = "Pad fill color";
   const swatch = document.createElement("div");
   swatch.className = "pix-li-pad-swatch";
-  swatch.title = "Pad color";
   swatch.style.background = state.pad_color || "#000000";
-  colorCell.appendChild(swatch);
+  const colorLbl = document.createElement("span");
+  colorLbl.className = "pix-li-pad-colorlbl";
+  colorLbl.textContent = "Color";
+  colorCell.append(swatch, colorLbl);
 
-  grid.append(topW, leftW, center, rightW, botW, colorCell);
+  grid.append(topW, leftW, center, rightW, botW, resetCell, colorCell);
   panel.appendChild(grid);
   updateCenter();
 
-  swatch.addEventListener("click", (e) => {
+  resetBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const s = JSON.parse(node.properties?.[stateKey] || "{}");
+    writeState(node, { ...s, pad_top: 0, pad_bottom: 0, pad_left: 0, pad_right: 0 });
+    for (const k of ["pad_top", "pad_bottom", "pad_left", "pad_right"]) {
+      if (padInputs[k]) padInputs[k].value = "0";
+    }
+    updateCenter();
+    onChange?.();
+  });
+
+  colorCell.addEventListener("click", (e) => {
     e.stopPropagation();
     const cur = (node.properties?.[stateKey]
       ? JSON.parse(node.properties[stateKey]).pad_color : null)
