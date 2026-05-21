@@ -51,6 +51,7 @@ function pickByOffset(node, offset) {
   let next;
   if (cur < 0) next = offset > 0 ? 0 : values.length - 1;
   else next = ((cur + offset) % values.length + values.length) % values.length;
+  node._pixLiFitPending = true; // user pick → re-fit preview to the new image's aspect
   setSelectedImage(node, values[next]);
 }
 
@@ -185,22 +186,36 @@ function renderUI(node) {
 }
 
 // Auto-fit the node height so the native image preview hugs the controls with
-// a small, consistent gap in every mode (the "Hug the controls" choice). Snaps
-// node.size[1] to the content minimum (controls + preview min), both growing
-// and shrinking — that's what removes the big float left over when a tall mode
-// panel grew the node and a shorter mode didn't shrink it back. The user can
-// still drag the node taller for a bigger preview; it re-snugs on the next
-// mode change. Deferred to rAF so the freshly-rendered panel has laid out
-// before measuring. Gated on !isGraphLoading so it never resizes during a
-// workflow load (Vue Compat #18 / #19).
+// a small, consistent gap in every mode (the "Hug the controls" choice). The
+// native preview reserves a FIXED minimum (~220px), so a square/landscape image
+// floats inside it. Instead we size the node so the preview area matches the
+// image's ASPECT (previewTop + width x aspect), so the picture fills the area
+// in every shape — square, portrait, landscape. Deterministic (same image +
+// mode + node width => same height) so a reload recomputes the saved height and
+// never dirties (Vue Compat #18). Layout (measured): slot area above the
+// controls widget = outputs * NODE_SLOT_HEIGHT + 6; controls height =
+// measureContentHeight; preview area = the rest. Deferred to rAF so the
+// freshly-rendered panel has laid out before measuring; gated on
+// !isGraphLoading so it never resizes during a workflow load (Vue Compat #19).
 function fitPreview(node) {
   if (isGraphLoading()) return;
   requestAnimationFrame(() => {
     if (!node._pixLiRoot || isGraphLoading()) return;
-    if (typeof node.computeSize !== "function") return;
-    const min = node.computeSize();
-    if (Array.isArray(min) && min.length === 2 && Math.abs((node.size?.[1] || 0) - min[1]) > 0.5) {
-      node.size[1] = min[1];
+    const SLOT_H = (typeof LiteGraph !== "undefined" && LiteGraph.NODE_SLOT_HEIGHT) || 20;
+    const aboveControls = (node.outputs?.length || 7) * SLOT_H + 6; // slot area above the controls
+    const controlsH = node._pixLiMeasureHeight?.() || 280;
+    const img = node.imgs?.[0];
+    let previewH;
+    if (img?.naturalWidth) {
+      const innerW = Math.max(40, (node.size[0] || 360) - 16); // preview spans node width minus side margin
+      previewH = Math.round(innerW * img.naturalHeight / img.naturalWidth) + 22; // + dims label row
+      previewH = Math.max(90, Math.min(previewH, 1400));
+    } else {
+      previewH = 180; // no image yet — modest default
+    }
+    const target = aboveControls + controlsH + previewH;
+    if (Math.abs((node.size?.[1] || 0) - target) > 1) {
+      node.size[1] = target;
       node.setDirtyCanvas?.(true, true);
     }
   });
@@ -216,6 +231,7 @@ window.addEventListener("keydown", async (e) => {
   e.preventDefault();
   e.stopPropagation();
   try {
+    _activeLoadImageNode._pixLiFitPending = true;
     const saved = await pasteFromClipboard(_activeLoadImageNode);
     if (saved) refreshDropdown(_activeLoadImageNode);
   } catch (err) {
@@ -362,13 +378,25 @@ function setupLoadImageNode(node) {
   // area drop also fetches asynchronously). Reuses node._pixLiImgPoll
   // so a new call cancels any in-flight poll, and the existing onRemoved
   // cleanup picks up the same handle.
+  // When the image is ready, refresh the readout and — only if a fit was
+  // requested by a user action (fresh drop / pick / upload / paste / drop), not
+  // a workflow restore — auto-fit the node so the preview hugs the controls at
+  // the image's aspect. _pixLiFitPending guards against firing on restore (the
+  // saved height is trusted then; Vue Compat #18).
+  function onImageReady() {
+    updateInfoBar(node);
+    if (node._pixLiFitPending) {
+      node._pixLiFitPending = false;
+      fitPreview(node);
+    }
+  }
   function refreshAfterImageReady() {
     if (node._pixLiImgPoll) {
       clearInterval(node._pixLiImgPoll);
       node._pixLiImgPoll = null;
     }
     if (node.imgs?.[0]?.naturalWidth) {
-      updateInfoBar(node);
+      onImageReady();
       return;
     }
     let ticks = 0;
@@ -376,7 +404,7 @@ function setupLoadImageNode(node) {
       if (node.imgs?.[0]?.naturalWidth) {
         clearInterval(poll);
         node._pixLiImgPoll = null;
-        updateInfoBar(node);
+        onImageReady();
       } else if (++ticks > 30) {
         clearInterval(poll);
         node._pixLiImgPoll = null;
@@ -416,7 +444,7 @@ function setupLoadImageNode(node) {
     e.stopPropagation();
     try {
       const saved = await pickAndUploadFile(node);
-      if (saved) refreshDropdown(node);
+      if (saved) { node._pixLiFitPending = true; refreshDropdown(node); }
     } catch (err) {
       console.error("[PixaromaLoadImage] upload failed", err);
       alert("Upload failed: " + err.message);
@@ -443,6 +471,7 @@ function setupLoadImageNode(node) {
     const file = e.dataTransfer?.files?.[0];
     if (!file || !file.type.startsWith("image/")) return;
     try {
+      node._pixLiFitPending = true;
       await uploadImageToInput(node, file);
       refreshDropdown(node);
     } catch (err) {
@@ -455,7 +484,7 @@ function setupLoadImageNode(node) {
   const dd = root.querySelector('[data-role="dropdown"]');
   dd?.addEventListener("click", (e) => {
     e.stopPropagation();
-    openImageDropdown(node, dd, () => refreshDropdown(node));
+    openImageDropdown(node, dd, () => { node._pixLiFitPending = true; refreshDropdown(node); });
   });
 
   // Prev / Next arrow buttons - flip through the image list visually,
@@ -503,7 +532,9 @@ function setupLoadImageNode(node) {
   queueMicrotask(() => {
     const wasConfigured = node.properties?.[STATE_PROP] !== undefined;
     renderUI(node);
-    if (!wasConfigured) fitPreview(node);
+    // Fresh drop: fit once the default image loads (the image-ready path reads
+    // this flag). A restored workflow keeps its saved size (Vue Compat #18).
+    if (!wasConfigured) node._pixLiFitPending = true;
   });
 }
 
