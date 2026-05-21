@@ -367,9 +367,12 @@ function setupLoadImageNode(node) {
   };
 
   // Called by api.mjs updateNativePreview() once a freshly-loaded image has
-  // its naturalWidth/naturalHeight available. Refreshes the dims info bar
-  // so input + output rows reflect the new source dimensions.
-  node._pixLiOnImageLoaded = () => updateInfoBar(node);
+  // its naturalWidth/naturalHeight available (arrow / dropdown / upload / paste
+  // picks all route through here). Refreshes the dims readout AND runs the
+  // pending auto-fit so the preview re-sizes to the NEW image's aspect — this
+  // is the path that was missing the fit, so a portrait picked after a square
+  // stayed squeezed (onImageReady consumes _pixLiFitPending).
+  node._pixLiOnImageLoaded = () => onImageReady();
 
   // Refresh info bar once node.imgs[0] is loaded — covers both the
   // workflow-restore path (image_upload hook fetches the saved image
@@ -429,6 +432,9 @@ function setupLoadImageNode(node) {
     imageWidget.callback = function () {
       const ret = origCallback?.apply(this, arguments);
       if (imageWidget.value) node._pixLiSelectedFilename = imageWidget.value;
+      // Native drag-drop onto the bottom preview is a user pick → re-fit. Gated
+      // so it never fires during a workflow load (Vue Compat #18).
+      if (!isGraphLoading()) node._pixLiFitPending = true;
       refreshAfterImageReady();
       refreshDropdown(node);
       return ret;
