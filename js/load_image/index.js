@@ -124,7 +124,15 @@ function renderUI(node) {
   // Arrow / Tab break (the focused input would disappear).
   const oldPanel = root.querySelector(".pix-li-panel");
   if (oldPanel) oldPanel.remove();
-  const panel = buildModePanel(state.mode, node, state, writeState, () => updateInfoBar(node));
+  // Match Image Resize's panel options so the quick-pick rows render one-line
+  // (oneLine), Match ratio is crop-only (Pad is its own mode), and the Fit/Crop
+  // + Pad previews use the same sizes + live input dims.
+  const live = node.imgs?.[0]?.naturalWidth
+    ? { w: node.imgs[0].naturalWidth, h: node.imgs[0].naturalHeight }
+    : null;
+  const panel = buildModePanel(state.mode, node, state, writeState, () => updateInfoBar(node),
+    "loadImagePixState",
+    { previewMaxW: 134, previewMaxH: 96, cropOnly: true, inputDims: live, oneLine: true });
   if (panel) {
     applyInlineLabel(panel, state.mode);
     if (state.mode === "fit_inside" || state.mode === "cover") applyWHLayout(panel);
