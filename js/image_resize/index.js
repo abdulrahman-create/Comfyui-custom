@@ -249,10 +249,15 @@ function buildSingleWirePanel(node, info, live) {
     const v = document.createElement("span"); v.className = "pix-ir-wireval"; v.textContent = val == null ? "—" : String(val);
     const t = document.createElement("span"); t.className = "pix-ir-wiretag"; t.textContent = tag;
     r.append(l, v, t);
-    return r;
+    return { row: r, valEl: v };
   };
-  panel.appendChild(mkRow("W", aw, info.wiredW ? "from wire" : "auto · keeps aspect"));
-  panel.appendChild(mkRow("H", ah, info.wiredW ? "auto · keeps aspect" : "from wire"));
+  const wRow = mkRow("W", aw, info.wiredW ? "from wire" : "auto · keeps aspect");
+  const hRow = mkRow("H", ah, info.wiredW ? "auto · keeps aspect" : "from wire");
+  panel.append(wRow.row, hRow.row);
+  // Cache the value cells so onDrawForeground can refresh them live when the
+  // upstream wired value changes (DOM has no event for that; the draw loop is
+  // the only signal, same one the OUTPUT card already rides).
+  node._pixIrWireCells = { wEl: wRow.valEl, hEl: hRow.valEl };
   return panel;
 }
 
@@ -387,6 +392,7 @@ function renderUI(node) {
   if (!root) return;
   const state = readState(node);
   root.innerHTML = "";
+  node._pixIrWireCells = null; // detached on rebuild; re-set by the single-wire panel
 
   const info = wireInfo(node);
   const live = getInputDims(node);
@@ -561,6 +567,14 @@ app.registerExtension({
       if (this.flags?.collapsed) return r;
       if (this.size[0] < MIN_W) { this.size[0] = MIN_W; this.setDirtyCanvas(true, true); }
       const info = getReadoutInfo(this);
+      // Keep the single-wire summary panel's numbers live: the draw loop re-reads
+      // the wired value every repaint, so mirror the result into the cells when
+      // it changes (DOM has no event for an upstream widget value change).
+      if (this._pixIrWireCells && info.mode === "dual") {
+        const c = this._pixIrWireCells, w = String(info.outW), h = String(info.outH);
+        if (c.wEl.textContent !== w) c.wEl.textContent = w;
+        if (c.hEl.textContent !== h) c.hEl.textContent = h;
+      }
       const cx = this.size[0] / 2;
       const fam = "ui-sans-serif, system-ui, sans-serif";
       const capFont = `8px ${fam}`;
