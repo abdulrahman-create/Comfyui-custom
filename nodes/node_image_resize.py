@@ -74,11 +74,11 @@ def _apply_wired_size(state: dict, width, height, longest_side, orig_w: int, ori
     else is forced to Crop to fill). Mirrored in JS `effectiveWiredState` -
     keep the two in lockstep."""
     if longest_side is not None:
-        # Force allow_upscale so an explicit wired target is hit exactly, same
-        # rule as the one-wired width/height path below.
+        # Scale the LONGER side to the wired target. Respect the Upscaling
+        # toggle (state["allow_upscale"]) exactly like the typed Longest side
+        # mode, so a wired value and a typed value behave identically.
         state["mode"] = "longest_side"
         state["longest_side"] = int(longest_side)
-        state["allow_upscale"] = True
         return state
 
     has_w = width is not None
@@ -87,16 +87,15 @@ def _apply_wired_size(state: dict, width, height, longest_side, orig_w: int, ori
         return state
 
     if has_w != has_h:
-        # Exactly one wired -> aspect-preserving scale to that dimension. Reuse
-        # the scale_factor path; force allow_upscale since the wire is an
-        # explicit target the user asked to hit exactly.
+        # Exactly one wired -> aspect-preserving scale to that dimension via the
+        # scale_factor path. Respects the Upscaling toggle (allow_upscale) like
+        # the typed modes, so the toggle is never silently overridden.
         if has_w:
             factor = (int(width) / orig_w) if orig_w else 1.0
         else:
             factor = (int(height) / orig_h) if orig_h else 1.0
         state["mode"] = "scale_factor"
         state["scale_factor"] = factor
-        state["allow_upscale"] = True
         return state
 
     # Both wired -> exact box.
