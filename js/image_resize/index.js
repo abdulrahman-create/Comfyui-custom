@@ -281,7 +281,7 @@ function buildLongestWirePanel(node, info) {
   panel.className = "pix-li-panel pix-ir-wirepanel";
   const row = document.createElement("div");
   row.className = "pix-ir-wirerow";
-  const l = document.createElement("span"); l.className = "pix-ir-wirelbl"; l.textContent = "LONGEST SIDE";
+  const l = document.createElement("span"); l.className = "pix-ir-wirelbl is-wide"; l.textContent = "LONGEST SIDE";
   const v = document.createElement("span"); v.className = "pix-ir-wireval";
   v.textContent = info.valLongest == null ? "—" : String(info.valLongest);
   const t = document.createElement("span"); t.className = "pix-ir-wiretag"; t.textContent = "from wire";
