@@ -14,7 +14,7 @@ export function injectCSS() {
     .pix-ir-chip{background:#1d1d1d;border:1px solid #444;
       border-radius:4px;padding:6px 3px;font-size:9.5px;color:#ccc;
       text-align:center;cursor:pointer;user-select:none;transition:background .08s,border-color .08s;}
-    .pix-ir-chip:hover{border-color:#666;}
+    .pix-ir-chip:hover{border-color:${BRAND};color:#ddd;}
     .pix-ir-chip.active{background:${BRAND};color:#fff;border-color:${BRAND};}
     .pix-ir-chip.span2{grid-column:span 2;}
     .pix-ir-foot{display:flex;align-items:center;justify-content:center;gap:6px;flex-wrap:wrap;}
@@ -26,7 +26,7 @@ export function injectCSS() {
     .pix-ir-schip{background:#1d1d1d;border:1px solid #444;
       border-radius:3px;color:#aaa;font-size:8.5px;padding:3px 5px;
       min-width:16px;text-align:center;cursor:pointer;user-select:none;}
-    .pix-ir-schip:hover{border-color:#666;color:#ddd;}
+    .pix-ir-schip:hover{border-color:${BRAND};color:#ddd;}
     .pix-ir-schip.active{background:${BRAND};color:#fff;border-color:${BRAND};}
     /* Custom resample picker: [◀] [ Resample: Auto ▾ ] [▶] — native <select>
        renders with OS chrome (blue highlight etc), so we use our own dark
@@ -34,10 +34,10 @@ export function injectCSS() {
     .pix-ir-rs-row{display:flex;align-items:stretch;gap:6px;}
     .pix-ir-rs-nav{flex:0 0 30px;background:#1d1d1d;border:1px solid #444;border-radius:4px;
       color:${BRAND};font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;}
-    .pix-ir-rs-nav:hover{border-color:${BRAND};background:rgba(246,103,68,.12);}
+    .pix-ir-rs-nav:hover{border-color:${BRAND};}
     .pix-ir-rs-dd{flex:1;display:flex;align-items:center;justify-content:space-between;
       background:#1d1d1d;border:1px solid #444;border-radius:4px;padding:6px 10px;cursor:pointer;user-select:none;}
-    .pix-ir-rs-dd:hover{border-color:#666;}
+    .pix-ir-rs-dd:hover{border-color:${BRAND};}
     .pix-ir-rs-value{color:#ddd;font-size:11px;}
     .pix-ir-rs-arrow{color:${BRAND};font-size:13px;margin-left:6px;line-height:1;}
     /* Popup is appended to document.body, so these are NOT scoped to .pix-ir-root. */
@@ -52,7 +52,7 @@ export function injectCSS() {
     /* Allow-upscaling toggle button: orange "On", gray "Off". Centered. */
     .pix-ir-upbtn{align-self:center;background:#1d1d1d;border:1px solid #444;border-radius:5px;
       color:#aaa;font-size:11px;padding:7px 18px;cursor:pointer;user-select:none;transition:background .08s,border-color .08s;}
-    .pix-ir-upbtn:hover{border-color:#666;color:#ddd;}
+    .pix-ir-upbtn:hover{border-color:${BRAND};color:#ddd;}
     .pix-ir-upbtn.is-on{background:${BRAND};border-color:${BRAND};color:#fff;}
     .pix-ir-upbtn.is-on:hover{background:${BRAND};border-color:${BRAND};color:#fff;}
     /* Image-Resize-only restyle of the shared mode panels (Option A — soft
@@ -118,12 +118,19 @@ export function injectCSS() {
     .pix-ir-root .pix-ir-wh-col .pix-ir-swaprow .pix-li-swap{flex:0 0 46px;width:auto;height:auto;align-self:stretch;}
     .pix-ir-root .pix-ir-fillcrop{flex:1;display:grid;grid-template-columns:1fr 1fr;background:#1d1d1d;border:1px solid #444;border-radius:4px;overflow:hidden;}
     .pix-ir-root .pix-ir-fillcrop>div{display:flex;align-items:center;justify-content:center;font-size:9.5px;padding:5px 0;color:#aaa;cursor:pointer;user-select:none;}
-    .pix-ir-root .pix-ir-fillcrop>div:hover{color:#ddd;}
+    .pix-ir-root .pix-ir-fillcrop>div:hover{color:#ddd;background:rgba(255,255,255,.08);}
     .pix-ir-root .pix-ir-fillcrop>div.active{background:${BRAND};color:#fff;}
     .pix-ir-root .pix-ir-anchor{display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);gap:3px;width:100%;max-width:96px;aspect-ratio:1;margin:0 auto;background:#1d1d1d;border:1px solid #444;border-radius:5px;padding:5px;box-sizing:border-box;}
     .pix-ir-root .pix-ir-anchor-cell{background:rgba(255,255,255,.07);border-radius:2px;cursor:pointer;transition:background .08s;}
     .pix-ir-root .pix-ir-anchor-cell:hover{background:rgba(255,255,255,.18);}
     .pix-ir-root .pix-ir-anchor-cell.active{background:${BRAND};}
+    /* Consistent interaction system across the node: bordered controls hover to
+       an ORANGE border (brand cue) and fill orange when selected/active;
+       borderless cells (anchor, Fill/Crop) use a white bg-tint on hover and
+       orange fill when active; inputs go orange on focus. These two overrides
+       bring the shared quick-pick + ratio chips in line (they hovered gray). */
+    .pix-ir-root .pix-li-quickpick:hover{border-color:${BRAND};color:#ddd;}
+    .pix-ir-root .pix-li-ratio-chip:hover{border-color:${BRAND};color:#ddd;}
   `;
   const s = document.createElement("style");
   s.id = "pix-ir-css";
