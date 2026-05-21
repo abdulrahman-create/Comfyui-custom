@@ -732,42 +732,87 @@ app.registerExtension({
       // Tall (span the slot rows) + grow with node width to use the middle
       // space, clamped so they never crowd the slot labels. Each card stacks
       // label / dims / aspect rect / ratio.
-      const arrowW = 16, gap = 8, cardH = 76;
-      let cardW = (this.size[0] - 184 - arrowW - gap * 2) / 2;
-      cardW = Math.max(66, Math.min(cardW, 120));
-      const totalW = cardW * 2 + gap * 2 + arrowW;
-      const startX = cx - totalW / 2;
-      const cardY = midY - cardH / 2;
-      const rectMaxW = 40, rectMaxH = 18;
+      // Two cards aligned with the mode-chip grid below (INPUT over column 2,
+      // OUTPUT over column 3 of the 4-column grid: repeat(4,1fr), 5px gap, inside
+      // the root's 8px padding) and JOINED by a center bridge with notches above
+      // and below it. GRID_PAD = root padding (8) + DOM widget body inset (~8);
+      // tweak if the cards don't sit over columns 2/3. NECK_INSET pulls the inner
+      // edges in a few px so the bridge has room for the chevron (outer edges
+      // stay on the column boundaries).
+      const GRID_PAD = 16, COL_GAP = 5, NECK_INSET = 3;
+      const gridW = Math.max(40, this.size[0] - GRID_PAD * 2);
+      const colW = (gridW - COL_GAP * 3) / 4;
+      const cardW = colW - NECK_INSET, cardH = 90;
+      const L1 = GRID_PAD + colW + COL_GAP;          // INPUT left  (column 2 left)
+      const R1 = L1 + cardW;                          // INPUT right (inset)
+      const R2 = GRID_PAD + 3 * colW + 2 * COL_GAP;   // OUTPUT right (column 3 right)
+      const L2 = R2 - cardW;                          // OUTPUT left (inset)
+      const arrowCx = (R1 + L2) / 2;                  // bridge center
+      const cardY = midY - cardH / 2, T = cardY, Bm = cardY + cardH;
+      const R = 6, bridgeH = 22, bT = midY - bridgeH / 2, bB = midY + bridgeH / 2;
+      const rectMaxW = 46, rectMaxH = 30;
 
-      const drawCard = (x, label, w, h, accent) => {
-        roundRectPath(ctx, x, cardY, cardW, cardH, 6);
-        ctx.fillStyle = "#1d1d1d"; ctx.fill();
-        roundRectPath(ctx, x + 0.5, cardY + 0.5, cardW - 1, cardH - 1, 6);
-        ctx.strokeStyle = "#444"; ctx.lineWidth = 1; ctx.stroke();
+      // Single connected outline: rounded OUTER corners on both cards, joined by
+      // a center bridge (square inner junctions), with the gap above and below
+      // the bridge left open. One fill + one 1px stroke so the border flows as
+      // one shape (matches the 1px button borders).
+      ctx.beginPath();
+      ctx.moveTo(L1 + R, T);
+      ctx.lineTo(R1 - R, T);
+      ctx.arcTo(R1, T, R1, T + R, R);          // INPUT top-right
+      ctx.lineTo(R1, bT);                       // down to bridge top
+      ctx.lineTo(L2, bT);                       // bridge top across
+      ctx.lineTo(L2, T + R);                    // up OUTPUT inner edge
+      ctx.arcTo(L2, T, L2 + R, T, R);          // OUTPUT top-left
+      ctx.lineTo(R2 - R, T);
+      ctx.arcTo(R2, T, R2, T + R, R);          // OUTPUT top-right
+      ctx.lineTo(R2, Bm - R);
+      ctx.arcTo(R2, Bm, R2 - R, Bm, R);        // OUTPUT bottom-right
+      ctx.lineTo(L2 + R, Bm);
+      ctx.arcTo(L2, Bm, L2, Bm - R, R);        // OUTPUT bottom-left
+      ctx.lineTo(L2, bB);                       // up to bridge bottom
+      ctx.lineTo(R1, bB);                       // bridge bottom across
+      ctx.lineTo(R1, Bm - R);                   // down INPUT inner edge
+      ctx.arcTo(R1, Bm, R1 - R, Bm, R);        // INPUT bottom-right
+      ctx.lineTo(L1 + R, Bm);
+      ctx.arcTo(L1, Bm, L1, Bm - R, R);        // INPUT bottom-left
+      ctx.lineTo(L1, T + R);
+      ctx.arcTo(L1, T, L1 + R, T, R);          // INPUT top-left
+      ctx.closePath();
+      ctx.fillStyle = "#1d1d1d"; ctx.fill();
+      ctx.strokeStyle = "#444"; ctx.lineWidth = 1; ctx.stroke();
+
+      // Per-card content (caption / dims / aspect square / ratio). The square's
+      // border turns orange only when the output size actually changed.
+      const drawContent = (x, label, w, h, accent) => {
         const ccx = x + cardW / 2;
         ctx.textAlign = "center";
         const maxTxt = cardW - 8; // keep text inside the card (5-digit dims, etc.)
         ctx.font = capFont; ctx.fillStyle = "#9a9a9a";
-        ctx.fillText(label, ccx, cardY + 13, maxTxt);
+        ctx.fillText(label, ccx, cardY + 15, maxTxt);
         ctx.font = dimsFont; ctx.fillStyle = BRAND;
         ctx.fillText(`${w}×${h}`, ccx, cardY + 27, maxTxt);
         const { rw, rh } = aspectRectDims(w, h, rectMaxW, rectMaxH);
-        const rx = Math.round(ccx - rw / 2) + 0.5, ry = Math.round(cardY + 47 - rh / 2) + 0.5;
+        const rx = Math.round(ccx - rw / 2) + 0.5, ry = Math.round(cardY + 53 - rh / 2) + 0.5;
         if (accent) { ctx.fillStyle = "rgba(246,103,68,0.20)"; ctx.fillRect(rx, ry, rw, rh); }
         ctx.strokeStyle = accent ? BRAND : "rgba(200,200,200,0.7)"; ctx.lineWidth = 1;
         ctx.strokeRect(rx, ry, rw, rh);
         ctx.font = ratioFont; ctx.fillStyle = "#9a9a9a";
-        ctx.fillText(ratioLabel(w, h), ccx, cardY + 67, maxTxt);
+        ctx.fillText(ratioLabel(w, h), ccx, cardY + 77, maxTxt);
       };
 
-      // Output rect goes orange only when the size actually changed; if input
-      // and output match it stays gray like the input (nothing happened).
       const changed = info.inW !== info.outW || info.inH !== info.outH;
-      drawCard(startX, "INPUT", info.inW, info.inH, false);
-      ctx.font = `14px ${fam}`; ctx.fillStyle = "#9a9a9a"; ctx.textAlign = "center";
-      ctx.fillText("→", startX + cardW + gap + arrowW / 2, midY);
-      drawCard(startX + cardW + gap + arrowW + gap, "OUTPUT", info.outW, info.outH, changed);
+      drawContent(L1, "INPUT", info.inW, info.inH, false);
+      drawContent(L2, "OUTPUT", info.outW, info.outH, changed);
+
+      // Compact ">" chevron centered on the bridge, 1px to match the buttons.
+      ctx.strokeStyle = "#9a9a9a"; ctx.lineWidth = 1;
+      ctx.lineCap = "round"; ctx.lineJoin = "round";
+      ctx.beginPath();
+      ctx.moveTo(arrowCx - 2.5, midY - 4);
+      ctx.lineTo(arrowCx + 2.5, midY);
+      ctx.lineTo(arrowCx - 2.5, midY + 4);
+      ctx.stroke();
 
       ctx.restore();
       return r;

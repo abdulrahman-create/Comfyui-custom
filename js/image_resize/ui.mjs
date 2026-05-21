@@ -7,7 +7,7 @@ import { BRAND } from "../shared/index.mjs";
 export function injectCSS() {
   if (document.getElementById("pix-ir-css")) return;
   const css = `
-    .pix-ir-root{width:100%;box-sizing:border-box;padding:8px;background:#2a2a2a;
+    .pix-ir-root{width:100%;box-sizing:border-box;padding:2px 8px 8px;background:#2a2a2a;
       border-radius:4px;color:#ddd;font-family:ui-sans-serif,system-ui,sans-serif;
       font-size:11px;display:flex;flex-direction:column;gap:8px;}
     .pix-ir-chips{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;}
