@@ -449,31 +449,49 @@ js/
 │                       #  on empty value so a cleared label reverts to the
 │                       #  type-name placeholder.
 │
-├── load_image/         # Load Image Pixaroma (4 files, ~1500 lines)
+├── load_image/         # Load Image Pixaroma (5 files, ~1700 lines).
+    │                   #  Uses the Image Resize design language, applied
+    │                   #  scoped to .pix-li-root so Image Resize is untouched:
+    │                   #  4-col mode chips incl. Pad, painted INPUT->OUTPUT
+    │                   #  cards in the output-slot dead space, centered snap
+    │                   #  footer, resample picker with prev/next arrows,
+    │                   #  "Upscaling: On/Off" toggle button, full mode-panel
+    │                   #  polish (see Load Image Pixaroma Pattern #15).
     ├── index.js        # Entry: extension registration, lifecycle,
     │                   #  app.graphToPrompt hook (subgraph-safe injection of
     │                   #  loadImagePixState into hidden LoadImagePixState
     │                   #  Python input). Owns renderUI which rebuilds chips +
-    │                   #  mode panel + global controls. updateInfoBar refreshes
-    │                   #  the input/output dims bar non-destructively (so leaf
-    │                   #  events don't destroy the focused input).
-    ├── ui.mjs          # All CSS via injectCSS(); buildRoot constructs the
-    │                   #  fixed structure (upload btn, hint, dropdown, info
-    │                   #  bar, then chip grid / mode panel / global controls
-    │                   #  appended by renderUI). hideNativeImageCombo hides
-    │                   #  EVERY auto-created widget — image_upload: True
-    │                   #  creates two of them (image combo + upload button),
-    │                   #  see Load Image Pixaroma Pattern #1. renderChips,
-    │                   #  renderGlobalControls, openImageDropdown,
-    │                   #  openResamplePopup.
-    ├── resize_modes.mjs # previewResize (JS mirror of Python _resize_frame),
-    │                   #  formatMP, safeMathEval, makeNumericInput (text-type
-    │                   #  input + custom +/- spinners + Arrow stepping +
-    │                   #  stopImmediatePropagation), per-mode panel builders
-    │                   #  for Max MP / Longest side / Scale by × / Fit inside
-    │                   #  / Crop to fill / Match aspect ratio. RATIO_PRESETS
-    │                   #  matches Resolution Pixaroma's 9 + adds 21:9 and 5:4
-    │                   #  + Custom (12 total).
+    │                   #  mode panel + global controls. onDrawForeground paints
+    │                   #  the INPUT->OUTPUT cards (Pattern #15). updateInfoBar
+    │                   #  now just toggles the upload hint + setDirtyCanvas
+    │                   #  (the old DOM dims bar was removed in favour of the
+    │                   #  painted cards). MIN_W (360) self-healed in onResize +
+    │                   #  onDrawForeground (Pixaroma UI convention #7).
+    ├── ui.mjs          # All CSS via injectCSS() (base .pix-li-* + the
+    │                   #  .pix-li-root scoped Image Resize restyle); buildRoot
+    │                   #  constructs upload btn + hint + file row (no dims bar).
+    │                   #  hideNativeImageCombo hides EVERY auto-created widget —
+    │                   #  image_upload: True creates two (image combo + upload
+    │                   #  button), see Load Image Pixaroma Pattern #1. renderChips
+    │                   #  (4-col, Pad), renderGlobalControls (snap footer +
+    │                   #  resample picker arrows + upscale toggle),
+    │                   #  openImageDropdown (collapsible subfolders: loose files
+    │                   #  pinned at top, subfolders collapsed by default, the
+    │                   #  current image's folder auto-expands + scrolls into
+    │                   #  view), openResamplePopup.
+    ├── panel_polish.mjs # applyInlineLabel / applyWHLayout / applyCoverControls —
+    │                   #  the three per-mode panel post-processors adapted from
+    │                   #  Image Resize, rewritten to the .pix-li-* class family
+    │                   #  the scoped CSS targets (inline-labeled inputs, the
+    │                   #  two-column Fit/Crop layout, the Fill/Crop toggle + 3x3
+    │                   #  crop-anchor grid). Wired into renderUI.
+    ├── resize_modes.mjs # Re-exports previewResize, formatMP, buildModePanel
+    │                   #  from the shared js/shared/resize_panel.mjs (which now
+    │                   #  drives all 8 modes incl. Pad). makeNumericInput
+    │                   #  (text-type input + custom +/- spinners + Arrow stepping
+    │                   #  + stopImmediatePropagation) lives in the shared module.
+    │                   #  RATIO_PRESETS matches Resolution Pixaroma's 9 + 21:9
+    │                   #  and 5:4 + Custom (12 total).
     └── api.mjs         # uploadImageToInput (multipart POST to /upload/image),
                         #  pickAndUploadFile (hidden <input type="file">),
                         #  pasteFromClipboard (Ctrl+V handler), and
@@ -1115,6 +1133,8 @@ These patterns were hard-won during the May-2026 implementation. Re-read before 
 14. **Custom dropdowns (file picker + resample) close on mousedown / pointerdown / wheel / Escape, ALL with capture phase. mousedown AND wheel listeners must skip events INSIDE the popup.** A single `mousedown` capture listener isn't enough — LiteGraph's drag uses pointer events on the canvas, the user might scroll mid-popup (canvas pan), and Escape is a keyboard convenience. The shared close-popup pattern in `js/load_image/ui.mjs` (`openImageDropdown`, `openResamplePopup`) attaches all four listeners via `setTimeout(() => addEventListener(..., true), 0)` (the setTimeout lets the opening click finish before the close-listener registers, otherwise the same click would close the popup immediately). **Critical wheel rule: gate the wheel handler on `!popup.contains(e.target)`** — without this, wheel-scrolling INSIDE a scrollable popup (file picker has `overflowY: auto + maxHeight: 300px`) closes the popup, so users can't navigate long lists. The mousedown handler already has the same gate; the wheel handler must mirror it. **Any new dropdown / popup added to the project must follow this rule** — copy from `openImageDropdown` as the template, do not invent a fresh close-handler set.
 
 15. **`allow_upscale = true` by default — match user expectation, not safety.** Initially defaulted to `false` ("don't surprise the user with a quality-loss upscale"). User feedback: when picking "Max megapixels = 2 MP" on a 1 MP source, they expect the output to GROW to 2 MP. With `allow_upscale = false` the math clamped the factor to 1.0 and the output stayed at the original size — looked broken. Flipped the default in both `DEFAULT_STATE` (`index.js`) and `DEFAULT_STATE` (`node_load_image.py`). Keep them in sync per CLAUDE.md Pattern #3 (the canon for "JS + Python defaults must move together").
+
+16. **The INPUT->OUTPUT size readout is canvas-painted in `onDrawForeground`, not a DOM bar (May-2026 Image Resize reskin).** The node adopted the Image Resize design language scoped to `.pix-li-root` (Image Resize itself is never touched). The old `.pix-li-diminfo` DOM bar was removed; `onDrawForeground` now paints the joined INPUT/OUTPUT card pair in the empty space to the LEFT of the 7 output dots — `midY = 74` (TOP_PAD 4 + 7*NODE_SLOT_HEIGHT 20 / 2), card height 90, and a `LABEL_RESERVE = 120` px gap kept on the right so the cards never overlap the longest output name (`original_height`). INPUT = `node.imgs[0]` natural dims; OUTPUT = `previewResize(W, H, state)`; the OUTPUT rect goes orange only when the size changes; no image yet shows an "Upload or pick an image" message card. The painter is READ-ONLY re: serialized state except the `MIN_W` (360) self-heal clamp (Vue Compat #18; `setDirtyCanvas` is a redraw flag, not a dirty-tracker trip) — so opening then closing a saved workflow must NOT pop "Save Changes?". `updateInfoBar(node)` is now just "toggle the upload hint by image presence + `setDirtyCanvas`". The three mode-panel post-processors (`applyInlineLabel` / `applyWHLayout` / `applyCoverControls`) live in `js/load_image/panel_polish.mjs` (adapted from Image Resize to the `.pix-li-*` class family the scoped CSS targets). Pad is now a first-class mode (the 8th chip) — the engine already supported it via the shared `nodes/_resize_helpers.py`; only the chip + the `pad_top/bottom/left/right` default keys were added. The file dropdown groups files into collapsible subfolders (loose root files pinned at the top always-visible, subfolders collapsed by default, the current image's folder auto-expands + scrolls into view).
 
 ### Prompt Reader Pixaroma Patterns (do not regress)
 
