@@ -803,44 +803,78 @@ export function openImageDropdown(node, anchorEl, onPick) {
     empty.textContent = "(no images uploaded yet)";
     popup.appendChild(empty);
   } else {
-    const groups = groupValuesByFolder(values);
-    const showHeaders = groups.length > 1 || (groups.length === 1 && groups[0].folder !== "");
+    const groups = groupValuesByFolder(values); // root first, then alpha
+    const curVal = imageWidget.value;
     let scrollTarget = null;
+
+    const makeItem = (entry) => {
+      const item = document.createElement("div");
+      item.style.padding = "6px 10px";
+      item.style.cursor = "pointer";
+      item.style.borderBottom = "1px solid #2a2a2a";
+      if (entry.full === curVal) {
+        item.style.color = "#f66744";
+        item.style.fontWeight = "600";
+        scrollTarget = item;
+      }
+      item.textContent = entry.name;
+      item.title = entry.full; // hover shows full path so it stays discoverable
+      item.addEventListener("mouseenter", () => { item.style.background = "#2a2a2a"; });
+      item.addEventListener("mouseleave", () => { item.style.background = ""; });
+      item.addEventListener("click", (e) => {
+        e.stopPropagation();
+        setSelectedImage(node, entry.full);
+        closePopup();
+        if (onPick) onPick(entry.full);
+      });
+      return item;
+    };
+
+    // Small total-count header so users know how many images there are.
+    const total = values.length;
+    const totalEl = document.createElement("div");
+    totalEl.className = "pix-li-pop-folder";
+    totalEl.style.cursor = "default";
+    totalEl.innerHTML = `<span class="pix-li-pop-foldername">${total} image${total === 1 ? "" : "s"}</span>`;
+    popup.appendChild(totalEl);
+
     for (const group of groups) {
-      if (showHeaders) {
-        const head = document.createElement("div");
-        head.className = "pix-li-popup-section";
-        head.textContent = group.folder === "" ? "root" : group.folder;
-        popup.appendChild(head);
+      if (group.folder === "") {
+        // Loose (root) files — always visible at the top, no collapse.
+        for (const entry of group.files) popup.appendChild(makeItem(entry));
+        continue;
       }
-      for (const entry of group.files) {
-        const item = document.createElement("div");
-        item.style.padding = "6px 10px";
-        item.style.cursor = "pointer";
-        item.style.borderBottom = "1px solid #2a2a2a";
-        if (entry.full === imageWidget.value) {
-          item.style.color = "#f66744";
-          item.style.fontWeight = "600";
-          scrollTarget = item;
-        }
-        item.textContent = entry.name;
-        item.title = entry.full; // hover shows full path so it stays discoverable
-        item.addEventListener("mouseenter", () => { item.style.background = "#2a2a2a"; });
-        item.addEventListener("mouseleave", () => { item.style.background = ""; });
-        item.addEventListener("click", (e) => {
-          e.stopPropagation();
-          setSelectedImage(node, entry.full);
-          closePopup();
-          if (onPick) onPick(entry.full);
-        });
-        popup.appendChild(item);
-      }
+      // Subfolder: collapsible header + (collapsed) file list.
+      const isCurrentFolder = group.files.some((f) => f.full === curVal);
+      const header = document.createElement("div");
+      header.className = "pix-li-pop-folder";
+      const caret = document.createElement("span");
+      caret.className = "pix-li-pop-caret";
+      caret.textContent = isCurrentFolder ? "▾" : "▸";
+      const nameEl = document.createElement("span");
+      nameEl.className = "pix-li-pop-foldername";
+      nameEl.textContent = group.folder;
+      const countEl = document.createElement("span");
+      countEl.className = "pix-li-pop-count";
+      countEl.textContent = String(group.files.length);
+      header.append(caret, nameEl, countEl);
+      popup.appendChild(header);
+
+      const filesWrap = document.createElement("div");
+      filesWrap.className = "pix-li-pop-files" + (isCurrentFolder ? "" : " collapsed");
+      for (const entry of group.files) filesWrap.appendChild(makeItem(entry));
+      popup.appendChild(filesWrap);
+
+      header.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const collapsed = filesWrap.classList.toggle("collapsed");
+        caret.textContent = collapsed ? "▸" : "▾";
+      });
     }
-    // Defer until popup is in DOM so scrollTop math is valid
+
+    // Defer until popup is in DOM so scrollTop math is valid.
     if (scrollTarget) queueMicrotask(() => {
-      try {
-        scrollTarget.scrollIntoView({ block: "nearest" });
-      } catch (_e) { /* ignore */ }
+      try { scrollTarget.scrollIntoView({ block: "nearest" }); } catch (_e) { /* ignore */ }
     });
   }
 
