@@ -9,7 +9,9 @@ export function injectCSS() {
     .pix-li-root {
       width: 100%;
       box-sizing: border-box;
-      padding: 8px;
+      /* Small top padding pulls the Upload button up tight under the output
+         dots (the body can't sit higher than the slot area). */
+      padding: 2px 8px 8px;
       background: #2a2a2a;
       border-radius: 4px;
       color: #ddd;
@@ -17,14 +19,14 @@ export function injectCSS() {
       font-size: 11px;
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: 7px;
     }
     .pix-li-upload-btn {
       width: 100%;
       background: ${BRAND};
       border: none;
       border-radius: 4px;
-      padding: 9px 8px;
+      padding: 7px 8px;
       font-size: 11px;
       color: #fff;
       font-weight: 600;
