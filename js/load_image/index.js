@@ -6,6 +6,7 @@ import {
 } from "./ui.mjs";
 import { pickAndUploadFile, pasteFromClipboard, uploadImageToInput, setSelectedImage } from "./api.mjs";
 import { buildModePanel, previewResize } from "./resize_modes.mjs";
+import { applyInlineLabel, applyWHLayout, applyCoverControls } from "./panel_polish.mjs";
 
 let _activeLoadImageNode = null;
 
@@ -174,6 +175,13 @@ function renderUI(node) {
   if (oldPanel) oldPanel.remove();
   const panel = buildModePanel(state.mode, node, state, writeState, () => updateInfoBar(node));
   if (panel) {
+    applyInlineLabel(panel, state.mode);
+    if (state.mode === "fit_inside" || state.mode === "cover") applyWHLayout(panel);
+    if (state.mode === "cover") {
+      applyCoverControls(node, panel, readState, writeState, () => updateInfoBar(node));
+    }
+    // No redundant title row — the highlighted button names the mode.
+    panel.querySelector(".pix-li-panel-label")?.remove();
     // Insert AFTER the chip grid.
     const chips = root.querySelector(".pix-li-chips");
     chips.after(panel);
