@@ -149,7 +149,7 @@ function isWired(node, name) {
 }
 
 // Small toast (Image Resize). Silent no-op if the toast API isn't present
-// (older Easy Install builds) — never throws on a connect.
+// (older Easy Install builds), so it never throws on a connect.
 function toast(msg) {
   const t = app?.extensionManager?.toast;
   if (t?.add) t.add({ severity: "info", summary: "Image Resize Pixaroma", detail: msg, life: 2500 });
@@ -607,10 +607,10 @@ app.registerExtension({
           if (name === "longest_side") {
             const dW = disconnectInputByName(this, "width");
             const dH = disconnectInputByName(this, "height");
-            if (dW || dH) toast("longest_side now drives the size — width/height disconnected.");
+            if (dW || dH) toast("longest_side now drives the size, so width/height was disconnected.");
           } else if (name === "width" || name === "height") {
             if (disconnectInputByName(this, "longest_side"))
-              toast("width/height now drive the size — longest_side disconnected.");
+              toast("width/height now drive the size, so longest_side was disconnected.");
           }
         } finally {
           this._pixIrAutoSwapping = false;
