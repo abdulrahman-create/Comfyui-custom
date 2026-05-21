@@ -529,12 +529,17 @@ export function previewResize(W, H, state) {
     ({ w: nw, h: nh } = applyFactor(f));
   } else if (mode === "cover") {
     const tw = +state.cover_w || 1024, th = +state.cover_h || 1024;
-    const f = Math.max(tw / W, th / H);
-    if (!allowUp && f > 1) {
-      const f2 = Math.min(tw / W, th / H, 1.0);
-      ({ w: nw, h: nh } = applyFactor(f2));
+    if (state.crop_scale === false) {
+      // Normal crop, no scaling — output clamps to the image size.
+      nw = Math.min(tw, W); nh = Math.min(th, H);
     } else {
-      nw = tw; nh = th;
+      const f = Math.max(tw / W, th / H);
+      if (!allowUp && f > 1) {
+        const f2 = Math.min(tw / W, th / H, 1.0);
+        ({ w: nw, h: nh } = applyFactor(f2));
+      } else {
+        nw = tw; nh = th;
+      }
     }
   } else if (mode === "match_ratio") {
     const rw = Math.max(1, +state.ratio_w || 1);

@@ -17,6 +17,7 @@ const DEFAULT_STATE = {
   fit_w: 1024, fit_h: 1024, cover_w: 1024, cover_h: 1024,
   ratio_preset: "1:1", ratio_w: 1, ratio_h: 1, ratio_action: "crop",
   pad_color: "#000000", pad_top: 0, pad_bottom: 0, pad_left: 0, pad_right: 0,
+  crop_anchor: "center", crop_scale: true,
   snap: 0, resample: "auto", allow_upscale: true,
   preview_open: false,
 };
@@ -220,6 +221,72 @@ function applyWHLayout(panel) {
   }
 }
 
+// Crop-to-fill extras (cover mode only): a Fill/Crop scale toggle next to a
+// shrunk swap button, and a 3×3 anchor picker replacing the aspect-rect
+// preview. Anchor sets WHICH part is kept (works for both Fill and Crop);
+// Fill scales then trims, Crop cuts a 1:1-pixel piece (no scaling).
+function applyCoverControls(node, panel) {
+  const state = readState(node);
+
+  const swap = panel.querySelector(".pix-li-swap");
+  if (swap && !panel.querySelector(".pix-ir-fillcrop")) {
+    const row = document.createElement("div");
+    row.className = "pix-ir-swaprow";
+    const toggle = document.createElement("div");
+    toggle.className = "pix-ir-fillcrop";
+    const fillOpt = document.createElement("div");
+    fillOpt.textContent = "Fill";
+    fillOpt.dataset.cropScale = "1";
+    fillOpt.title = "Scale to fill exactly, trim overflow";
+    const cropOpt = document.createElement("div");
+    cropOpt.textContent = "Crop";
+    cropOpt.dataset.cropScale = "0";
+    cropOpt.title = "Cut a 1:1-pixel piece, no scaling";
+    const scaleOn = state.crop_scale !== false;
+    fillOpt.classList.toggle("active", scaleOn);
+    cropOpt.classList.toggle("active", !scaleOn);
+    toggle.append(fillOpt, cropOpt);
+    swap.replaceWith(row);
+    row.append(swap, toggle);
+    toggle.addEventListener("click", (e) => {
+      const opt = e.target.closest("[data-crop-scale]");
+      if (!opt) return;
+      const on = opt.dataset.cropScale === "1";
+      writeState(node, { ...readState(node), crop_scale: on });
+      fillOpt.classList.toggle("active", on);
+      cropOpt.classList.toggle("active", !on);
+      node.setDirtyCanvas(true, true); // OUTPUT card reflects the new size
+    });
+  }
+
+  const preview = panel.querySelector(".pix-li-wh-preview");
+  if (preview && !panel.querySelector(".pix-ir-anchor")) {
+    const ANCHORS = [
+      "top-left", "top", "top-right",
+      "left", "center", "right",
+      "bottom-left", "bottom", "bottom-right",
+    ];
+    const cur = state.crop_anchor || "center";
+    const grid = document.createElement("div");
+    grid.className = "pix-ir-anchor";
+    grid.title = "Where to crop from";
+    for (const a of ANCHORS) {
+      const cell = document.createElement("div");
+      cell.className = "pix-ir-anchor-cell" + (a === cur ? " active" : "");
+      cell.dataset.anchor = a;
+      cell.title = a.replace("-", " ");
+      grid.appendChild(cell);
+    }
+    preview.replaceWith(grid);
+    grid.addEventListener("click", (e) => {
+      const cell = e.target.closest(".pix-ir-anchor-cell");
+      if (!cell) return;
+      writeState(node, { ...readState(node), crop_anchor: cell.dataset.anchor });
+      for (const c of grid.children) c.classList.toggle("active", c === cell);
+    });
+  }
+}
+
 function renderUI(node) {
   const root = node._pixIrRoot;
   // Render even when the root is not yet attached to the document: on a fresh
@@ -239,6 +306,7 @@ function renderUI(node) {
   if (panel) {
     applyInlineLabel(panel, state.mode);
     if (state.mode === "fit_inside" || state.mode === "cover") applyWHLayout(panel);
+    if (state.mode === "cover") applyCoverControls(node, panel);
     // No redundant title row — the highlighted button names the mode. Saves a
     // row of height; matches the Pad panel which never had a title.
     panel.querySelector(".pix-li-panel-label")?.remove();

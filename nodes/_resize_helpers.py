@@ -27,6 +27,8 @@ RESIZE_DEFAULTS = {
     "ratio_action": "crop",
     "pad_color": "#000000",
     "pad_top": 0, "pad_bottom": 0, "pad_left": 0, "pad_right": 0,
+    "crop_anchor": "center",
+    "crop_scale": True,
     "snap": 0,
     "resample": "auto",
     "allow_upscale": True,
@@ -103,6 +105,26 @@ def _apply_snap(w: int, h: int, snap: int) -> Tuple[int, int]:
     if not snap or snap <= 0:
         return (w, h)
     return (max(8, (int(w) // snap) * snap), max(8, (int(h) // snap) * snap))
+
+
+def _anchor_offsets(anchor, outer_w, inner_w, outer_h, inner_h):
+    """Top-left offset for placing an inner box inside an outer box per a
+    9-position anchor string ('top-left', 'top', 'center', 'bottom-right', ...).
+    'left'/'right' set X, 'top'/'bottom' set Y; a missing axis is centered."""
+    a = (anchor or "center").lower()
+    if "left" in a:
+        x = 0
+    elif "right" in a:
+        x = outer_w - inner_w
+    else:
+        x = (outer_w - inner_w) // 2
+    if "top" in a:
+        y = 0
+    elif "bottom" in a:
+        y = outer_h - inner_h
+    else:
+        y = (outer_h - inner_h) // 2
+    return max(0, x), max(0, y)
 
 
 # ── Per-mode resize functions ────────────────────────────────────────────────
@@ -259,6 +281,26 @@ def _apply_cover(pil_rgb, pil_mask, state, orig_w, orig_h):
     th = int(state.get("cover_h", 1024))
     tw = max(8, min(tw, 16384))
     th = max(8, min(th, 16384))
+    anchor = state.get("crop_anchor", "center")
+
+    # Normal crop (no scaling): cut a tw×th piece from the original at the
+    # anchor, clamped to the image (can't cut more pixels than exist).
+    if not state.get("crop_scale", True):
+        cw = min(tw, orig_w)
+        ch = min(th, orig_h)
+        cw, ch = _apply_snap(cw, ch, state.get("snap", 0))
+        cw = max(1, min(cw, orig_w))
+        ch = max(1, min(ch, orig_h))
+        x, y = _anchor_offsets(anchor, orig_w, cw, orig_h, ch)
+        rgb_out = pil_rgb.crop((x, y, x + cw, y + ch))
+        mask_out = pil_mask.crop((x, y, x + cw, y + ch))
+        fw, fh = _clamp_dims(cw, ch)
+        if (fw, fh) != (cw, ch):
+            factor = fw / cw
+            resample = _pick_resample(state.get("resample", "auto"), factor)
+            rgb_out = rgb_out.resize((fw, fh), resample)
+            mask_out = mask_out.resize((fw, fh), Image.NEAREST)
+        return rgb_out, mask_out, fw, fh
 
     factor = max(tw / orig_w, th / orig_h)
     allow_upscale = state.get("allow_upscale", False)
@@ -284,13 +326,10 @@ def _apply_cover(pil_rgb, pil_mask, state, orig_w, orig_h):
     rgb_scaled = pil_rgb.resize((scaled_w, scaled_h), resample)
     mask_scaled = pil_mask.resize((scaled_w, scaled_h), Image.NEAREST)
 
-    # Step 2: center-crop scaled image to (tw, th).
-    left = (scaled_w - tw) // 2
-    top = (scaled_h - th) // 2
-    right = left + tw
-    bottom = top + th
-    rgb_cropped = rgb_scaled.crop((left, top, right, bottom))
-    mask_cropped = mask_scaled.crop((left, top, right, bottom))
+    # Step 2: crop the scaled image to (tw, th) at the anchor.
+    left, top = _anchor_offsets(anchor, scaled_w, tw, scaled_h, th)
+    rgb_cropped = rgb_scaled.crop((left, top, left + tw, top + th))
+    mask_cropped = mask_scaled.crop((left, top, left + tw, top + th))
 
     # Snap on final dims (post-crop). Snap may further resize.
     final_w, final_h = _apply_snap(tw, th, state.get("snap", 0))
