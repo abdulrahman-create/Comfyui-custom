@@ -88,11 +88,11 @@ function ratioLabel(w, h) {
 // The size info is painted in the dead space between the input and output
 // slot columns (onDrawForeground), not as a body row — saves height and uses
 // empty space. Returns either a two-line INPUT/OUTPUT block or a message.
-function getReadoutInfo(node) {
+function getReadoutInfo(node, wi) {
   const state = readState(node);
   const cached = node.properties?.pixIrDims;       // {in_w,in_h,out_w,out_h} from last run
   const live = getInputDims(node);
-  const info = wireInfo(node);
+  const info = wi || wireInfo(node);
 
   // Width/height wired: predict via the wired mirror so the card matches Python.
   if (info.count > 0 && live) {
@@ -549,6 +549,8 @@ app.registerExtension({
     const _origRemoved = nodeType.prototype.onRemoved;
     nodeType.prototype.onRemoved = function () {
       this._pixIrRoot = null;
+      this._pixIrWireCells = null;
+      this._pixIrLockedInputs = null;
       closeResamplePopup(); // tear down popup + its document listeners if open
       return _origRemoved?.apply(this, arguments);
     };
@@ -570,7 +572,10 @@ app.registerExtension({
       const r = _origDraw?.apply(this, arguments);
       if (this.flags?.collapsed) return r;
       if (this.size[0] < MIN_W) { this.size[0] = MIN_W; this.setDirtyCanvas(true, true); }
-      const info = getReadoutInfo(this);
+      // Compute wire info ONCE per repaint (readWiredInt parses upstream JSON);
+      // reuse it for the readout and the live field refreshes below.
+      const wi = wireInfo(this);
+      const info = getReadoutInfo(this, wi);
       // Keep the single-wire summary panel's numbers live: the draw loop re-reads
       // the wired value every repaint, so mirror the result into the cells when
       // it changes (DOM has no event for an upstream widget value change).
@@ -582,7 +587,7 @@ app.registerExtension({
       // Locked W/H fields (both-wired): keep the shown value in sync with the
       // live upstream value (it can change after render).
       if (this._pixIrLockedInputs) {
-        const wi = wireInfo(this), li = this._pixIrLockedInputs;
+        const li = this._pixIrLockedInputs;
         if (li.wInp && wi.valW != null && li.wInp.value !== String(wi.valW)) li.wInp.value = String(wi.valW);
         if (li.hInp && wi.valH != null && li.hInp.value !== String(wi.valH)) li.hInp.value = String(wi.valH);
       }
@@ -626,17 +631,18 @@ app.registerExtension({
         ctx.strokeStyle = "#444"; ctx.lineWidth = 1; ctx.stroke();
         const ccx = x + cardW / 2;
         ctx.textAlign = "center";
+        const maxTxt = cardW - 8; // keep text inside the card (5-digit dims, etc.)
         ctx.font = capFont; ctx.fillStyle = "#9a9a9a";
-        ctx.fillText(label, ccx, cardY + 13);
+        ctx.fillText(label, ccx, cardY + 13, maxTxt);
         ctx.font = dimsFont; ctx.fillStyle = BRAND;
-        ctx.fillText(`${w}×${h}`, ccx, cardY + 27);
+        ctx.fillText(`${w}×${h}`, ccx, cardY + 27, maxTxt);
         const { rw, rh } = aspectRectDims(w, h, rectMaxW, rectMaxH);
         const rx = Math.round(ccx - rw / 2) + 0.5, ry = Math.round(cardY + 47 - rh / 2) + 0.5;
         if (accent) { ctx.fillStyle = "rgba(246,103,68,0.20)"; ctx.fillRect(rx, ry, rw, rh); }
         ctx.strokeStyle = accent ? BRAND : "rgba(200,200,200,0.7)"; ctx.lineWidth = 1;
         ctx.strokeRect(rx, ry, rw, rh);
         ctx.font = ratioFont; ctx.fillStyle = "#9a9a9a";
-        ctx.fillText(ratioLabel(w, h), ccx, cardY + 67);
+        ctx.fillText(ratioLabel(w, h), ccx, cardY + 67, maxTxt);
       };
 
       // Output rect goes orange only when the size actually changed; if input

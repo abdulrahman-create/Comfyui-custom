@@ -34,12 +34,12 @@ def _tensor_to_pils(image_t):
     arr = (image_t.clamp(0, 1).cpu().numpy() * 255.0).round().astype(np.uint8)
     out = []
     for frame in arr:
-        if frame.ndim == 2:
+        if frame.ndim == 2:                       # (H,W) grayscale
             frame = np.stack([frame] * 3, axis=-1)
-        elif frame.shape[-1] == 1:
-            frame = np.repeat(frame, 3, axis=-1)
-        elif frame.shape[-1] >= 4:
+        elif frame.shape[-1] >= 3:                 # RGB / RGBA (drop alpha)
             frame = frame[..., :3]
+        else:                                      # 1- or 2-channel -> grayscale
+            frame = np.repeat(frame[..., :1], 3, axis=-1)
         out.append(Image.fromarray(frame, "RGB"))
     return out
 

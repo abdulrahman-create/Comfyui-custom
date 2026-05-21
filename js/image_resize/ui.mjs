@@ -24,7 +24,10 @@ export function injectCSS() {
     .pix-ir-root .pix-ir-wirelbl{color:${BRAND};font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;width:14px;flex:none;}
     .pix-ir-root .pix-ir-wireval{color:#e0e0e0;font-size:13px;font-weight:600;flex:1;}
     .pix-ir-root .pix-ir-wiretag{color:#888;font-size:9px;text-transform:uppercase;letter-spacing:.5px;}
-    .pix-ir-chip.span2{grid-column:span 2;}
+    /* Shared chips render in a 1fr grid with a 1px border — border-box so the
+       border can't push the last column to clip (scoped; Load Image untouched). */
+    .pix-ir-root .pix-li-quickpick,
+    .pix-ir-root .pix-li-ratio-chip{box-sizing:border-box;}
     .pix-ir-foot{display:flex;align-items:center;justify-content:center;gap:6px;flex-wrap:wrap;}
     .pix-ir-snap{display:inline-flex;align-items:center;gap:5px;}
     .pix-ir-snap-icon{display:inline-block;width:12px;height:12px;background-color:#888;flex:none;
@@ -162,7 +165,7 @@ export function buildModeChips(state) {
   wrap.className = "pix-ir-chips";
   for (const c of MODE_CHIPS) {
     const el = document.createElement("div");
-    el.className = "pix-ir-chip" + (c.span2 ? " span2" : "") + (state.mode === c.id ? " active" : "");
+    el.className = "pix-ir-chip" + (state.mode === c.id ? " active" : "");
     el.dataset.mode = c.id;
     el.textContent = c.label;
     el.title = c.title || "";
@@ -274,6 +277,11 @@ export function openResamplePopup(anchorEl, currentValue, onPick) {
     popup.appendChild(item);
   }
   document.body.appendChild(popup);
+  // Flip above the row if it would overflow the bottom of the viewport.
+  const ph = popup.offsetHeight;
+  if (rect.bottom + 2 + ph > window.innerHeight && rect.top - ph - 2 > 0) {
+    popup.style.top = `${rect.top - ph - 2}px`;
+  }
   function close() {
     popup.remove();
     document.removeEventListener("mousedown", onDocDown, true);
