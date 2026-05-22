@@ -812,9 +812,6 @@ function groupValuesByFolder(values) {
   return folders.map((folder) => ({ folder, files: map.get(folder) }));
 }
 
-// Open a popup listing the underlying combo's options grouped by subfolder.
-// Clicking an item sets the combo value to the FULL path (e.g.
-// "Studio1/bunny.png") and the dropdown's label.
 // Build a same-origin /view URL for a combo value like "3d/cat.png".
 // Relative path → works on whatever host/port ComfyUI runs on. No cache-buster
 // so the browser caches thumbnails across re-opens.
@@ -835,124 +832,33 @@ function setThumbSize(v) {
   try { app.ui.settings.setSettingValue("Pixaroma.LoadImage.ThumbSize", v); } catch (_e) { /* ignore */ }
 }
 
+// Open a thumbnail picker popup anchored below the file row.
+//  - Search box filters across ALL folders while it has text.
+//  - Left sidebar (only when subfolders exist) lists All + each folder.
+//  - Right pane shows thumbnail rows; opens to "All" grouped by folder.
+//  - Small/Large thumbnail size toggle, persisted via the ThumbSize setting.
+// Reuses groupValuesByFolder, splitFilenameSubfolder, setSelectedImage.
 export function openImageDropdown(node, anchorEl, onPick) {
   const imageWidget = node._pixLiImageWidget;
   if (!imageWidget) return;
   const values = imageWidget.options?.values || [];
 
-  // Close any existing popup
+  // Close any existing popup.
   document.querySelector(".pix-li-popup")?.remove();
 
   const popup = document.createElement("div");
   popup.className = "pix-li-popup";
+  const rect = anchorEl.getBoundingClientRect();
+  const width = Math.max(rect.width, 360); // widen so sidebar + thumbs fit
   Object.assign(popup.style, {
     position: "fixed",
     zIndex: 99999,
-    background: "#1d1d1d",
-    border: `1px solid #444`,
-    borderRadius: "4px",
-    boxShadow: "0 4px 16px rgba(0,0,0,0.4)",
-    maxHeight: "300px",
-    overflowY: "auto",
-    fontSize: "11px",
-    fontFamily: "ui-sans-serif, system-ui, sans-serif",
-    color: "#ccc",
-    minWidth: "200px",
+    left: `${rect.left}px`,
+    top: `${rect.bottom + 2}px`,
+    width: `${width}px`,
   });
 
-  const rect = anchorEl.getBoundingClientRect();
-  popup.style.left = `${rect.left}px`;
-  popup.style.top = `${rect.bottom + 2}px`;
-  popup.style.width = `${rect.width}px`;
-
-  if (values.length === 0) {
-    const empty = document.createElement("div");
-    empty.style.padding = "8px";
-    empty.style.color = "#666";
-    empty.textContent = "(no images uploaded yet)";
-    popup.appendChild(empty);
-  } else {
-    const groups = groupValuesByFolder(values); // root first, then alpha
-    const curVal = imageWidget.value;
-    let scrollTarget = null;
-
-    const makeItem = (entry) => {
-      const item = document.createElement("div");
-      item.style.padding = "6px 10px";
-      item.style.cursor = "pointer";
-      item.style.borderBottom = "1px solid #2a2a2a";
-      if (entry.full === curVal) {
-        item.style.color = "#f66744";
-        item.style.fontWeight = "600";
-        scrollTarget = item;
-      }
-      item.textContent = entry.name;
-      item.title = entry.full; // hover shows full path so it stays discoverable
-      item.addEventListener("mouseenter", () => { item.style.background = "#2a2a2a"; });
-      item.addEventListener("mouseleave", () => { item.style.background = ""; });
-      item.addEventListener("click", (e) => {
-        e.stopPropagation();
-        setSelectedImage(node, entry.full);
-        closePopup();
-        if (onPick) onPick(entry.full);
-      });
-      return item;
-    };
-
-    // Small total-count header so users know how many images there are.
-    const total = values.length;
-    const totalEl = document.createElement("div");
-    totalEl.className = "pix-li-pop-folder";
-    totalEl.style.cursor = "default";
-    totalEl.innerHTML = `<span class="pix-li-pop-foldername">${total} image${total === 1 ? "" : "s"}</span>`;
-    popup.appendChild(totalEl);
-
-    for (const group of groups) {
-      if (group.folder === "") {
-        // Loose (root) files — always visible at the top, no collapse.
-        for (const entry of group.files) popup.appendChild(makeItem(entry));
-        continue;
-      }
-      // Subfolder: collapsible header + (collapsed) file list.
-      const isCurrentFolder = group.files.some((f) => f.full === curVal);
-      const header = document.createElement("div");
-      header.className = "pix-li-pop-folder";
-      const caret = document.createElement("span");
-      caret.className = "pix-li-pop-caret";
-      caret.textContent = isCurrentFolder ? "▾" : "▸";
-      const nameEl = document.createElement("span");
-      nameEl.className = "pix-li-pop-foldername";
-      nameEl.textContent = group.folder;
-      const countEl = document.createElement("span");
-      countEl.className = "pix-li-pop-count";
-      countEl.textContent = String(group.files.length);
-      header.append(caret, nameEl, countEl);
-      popup.appendChild(header);
-
-      const filesWrap = document.createElement("div");
-      filesWrap.className = "pix-li-pop-files" + (isCurrentFolder ? "" : " collapsed");
-      for (const entry of group.files) filesWrap.appendChild(makeItem(entry));
-      popup.appendChild(filesWrap);
-
-      header.addEventListener("click", (e) => {
-        e.stopPropagation();
-        const collapsed = filesWrap.classList.toggle("collapsed");
-        caret.textContent = collapsed ? "▸" : "▾";
-      });
-    }
-
-    // Defer until popup is in DOM so scrollTop math is valid.
-    if (scrollTarget) queueMicrotask(() => {
-      try { scrollTarget.scrollIntoView({ block: "nearest" }); } catch (_e) { /* ignore */ }
-    });
-  }
-
-  document.body.appendChild(popup);
-
-  // Close the popup AND detach every listener. Captured in a single helper
-  // so all close paths (click outside, scroll, Escape, canvas pointerdown,
-  // node move) go through the same cleanup. Without centralised cleanup,
-  // detached listeners would leak and re-close zombie popups on the next open.
+  // ── close handling (defined early so row click handlers can call it) ──
   function closePopup() {
     popup.remove();
     document.removeEventListener("mousedown", onDocDown, true);
@@ -960,21 +866,218 @@ export function openImageDropdown(node, anchorEl, onPick) {
     document.removeEventListener("wheel", onWheel, true);
     document.removeEventListener("keydown", onKey, true);
   }
-  const onDocDown = (e) => {
-    if (!popup.contains(e.target)) closePopup();
+  const onDocDown = (e) => { if (!popup.contains(e.target)) closePopup(); };
+  const onWheel = (e) => { if (!popup.contains(e.target)) closePopup(); };
+  const onKey = (e) => { if (e.key === "Escape") closePopup(); };
+
+  if (values.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "pix-li-pop-empty";
+    empty.textContent = "(no images uploaded yet)";
+    popup.appendChild(empty);
+    document.body.appendChild(popup);
+    setTimeout(() => {
+      document.addEventListener("mousedown", onDocDown, true);
+      document.addEventListener("pointerdown", onDocDown, true);
+      document.addEventListener("wheel", onWheel, true);
+      document.addEventListener("keydown", onKey, true);
+    }, 0);
+    return;
+  }
+
+  const groups = groupValuesByFolder(values); // [{folder, files:[{full,name}]}], root first
+  const curVal = imageWidget.value;
+  const hasSubfolders = groups.some((g) => g.folder !== "");
+
+  // ── state ──
+  let activeFolder = "__all"; // "__all" | "" (root) | "<FolderName>"
+  let query = "";
+  let thumbSize = getThumbSize();
+  let scrollTarget = null;
+
+  // ── search row (filter + size toggle) ──
+  const searchRow = document.createElement("div");
+  searchRow.className = "pix-li-pop-search";
+  const mag = document.createElement("span");
+  mag.className = "pix-li-pop-mag";
+  const input = document.createElement("input");
+  input.type = "text";
+  input.placeholder = "Filter images…";
+  const sizeToggle = document.createElement("div");
+  sizeToggle.className = "pix-li-pop-sizetoggle";
+  const segS = document.createElement("span"); segS.textContent = "S"; segS.title = "Small thumbnails";
+  const segL = document.createElement("span"); segL.textContent = "L"; segL.title = "Large thumbnails";
+  sizeToggle.append(segS, segL);
+  searchRow.append(mag, input, sizeToggle);
+  popup.appendChild(searchRow);
+
+  // ── body: sidebar (optional) + scrollable pane ──
+  const body = document.createElement("div");
+  body.className = "pix-li-bsplit";
+  const sidebar = document.createElement("div");
+  sidebar.className = "pix-li-bfolders";
+  const pane = document.createElement("div");
+  pane.className = "pix-li-bpane";
+  if (hasSubfolders) body.append(sidebar, pane);
+  else body.append(pane);
+  popup.appendChild(body);
+
+  // ── footer ──
+  const footer = document.createElement("div");
+  footer.className = "pix-li-pop-foot";
+  popup.appendChild(footer);
+
+  // ── element builders ──
+  const makeRow = (entry) => {
+    const row = document.createElement("div");
+    row.className = "pix-li-imgrow" + (entry.full === curVal ? " cur" : "");
+    const th = document.createElement("span");
+    th.className = "pix-li-pop-thumb";
+    const glyph = document.createElement("span");
+    glyph.className = "pix-li-pop-glyph";
+    glyph.textContent = "▣";
+    const img = document.createElement("img");
+    img.loading = "lazy";
+    img.onerror = () => { img.style.display = "none"; };
+    img.src = thumbURL(entry.full);
+    th.append(glyph, img);
+    const lbl = document.createElement("span");
+    lbl.className = "pix-li-imgrow-lbl";
+    lbl.textContent = entry.name;
+    lbl.title = entry.full;
+    row.append(th, lbl);
+    if (entry.full === curVal) scrollTarget = row;
+    row.addEventListener("click", (e) => {
+      e.stopPropagation();
+      setSelectedImage(node, entry.full);
+      closePopup();
+      if (onPick) onPick(entry.full);
+    });
+    return row;
   };
-  // Only close on wheel OUTSIDE the popup — the popup itself is scrollable
-  // (overflowY: auto + maxHeight), users need wheel to navigate the list.
-  const onWheel = (e) => {
-    if (!popup.contains(e.target)) closePopup();
+  const makeSec = (label, count) => {
+    const s = document.createElement("div");
+    s.className = "pix-li-pop-sec";
+    s.textContent = label;
+    const c = document.createElement("span");
+    c.className = "pix-li-pop-sec-c";
+    c.textContent = String(count);
+    s.appendChild(c);
+    return s;
   };
-  const onKey = (e) => {
-    if (e.key === "Escape") closePopup();
+  const folderLabel = (key) => (key === "" ? "root" : key);
+
+  // ── renderers ──
+  const renderSidebar = () => {
+    if (!hasSubfolders) return;
+    sidebar.replaceChildren();
+    const entries = [["__all", "All", values.length]];
+    for (const g of groups) entries.push([g.folder, folderLabel(g.folder), g.files.length]);
+    for (const [key, label, count] of entries) {
+      const f = document.createElement("div");
+      f.className = "pix-li-bfolder"
+        + (key === "__all" ? " all" : "")
+        + (key === activeFolder && !query.trim() ? " on" : "");
+      const t = document.createElement("span");
+      t.textContent = label;
+      const n = document.createElement("span");
+      n.className = "pix-li-bfolder-n";
+      n.textContent = String(count);
+      f.append(t, n);
+      f.addEventListener("click", (e) => {
+        e.stopPropagation();
+        activeFolder = key;
+        input.value = "";
+        query = "";
+        renderSidebar();
+        renderPane();
+      });
+      sidebar.appendChild(f);
+    }
   };
-  // Capture phase so we preempt LiteGraph's canvas handlers, with a
-  // setTimeout so the opening click doesn't immediately close. mousedown +
-  // pointerdown both — LiteGraph's drag uses pointer events on the canvas,
-  // and not every browser fires both reliably in capture phase.
+
+  const renderPane = () => {
+    pane.replaceChildren();
+    scrollTarget = null;
+    const q = query.trim().toLowerCase();
+
+    if (q) {
+      // Search across ALL folders; show only matches, grouped by folder.
+      let matches = 0;
+      for (const g of groups) {
+        const hit = g.files.filter((f) => f.name.toLowerCase().includes(q));
+        if (hit.length === 0) continue;
+        matches += hit.length;
+        pane.appendChild(makeSec(folderLabel(g.folder), hit.length));
+        for (const entry of hit) pane.appendChild(makeRow(entry));
+      }
+      if (matches === 0) {
+        const none = document.createElement("div");
+        none.className = "pix-li-pop-empty";
+        none.textContent = "(no matches)";
+        pane.appendChild(none);
+      }
+      footer.textContent = `${matches} match${matches === 1 ? "" : "es"}`;
+      return;
+    }
+
+    if (!hasSubfolders) {
+      // Flat input/ — plain thumbnail list, no sidebar.
+      for (const g of groups) for (const entry of g.files) pane.appendChild(makeRow(entry));
+      footer.textContent = `${values.length} image${values.length === 1 ? "" : "s"}`;
+      return;
+    }
+
+    if (activeFolder === "__all") {
+      // All images, grouped by folder with sticky section headers.
+      for (const g of groups) {
+        pane.appendChild(makeSec(folderLabel(g.folder), g.files.length));
+        for (const entry of g.files) pane.appendChild(makeRow(entry));
+      }
+      footer.textContent = `${values.length} images · all`;
+    } else {
+      const g = groups.find((x) => x.folder === activeFolder);
+      const files = g ? g.files : [];
+      for (const entry of files) pane.appendChild(makeRow(entry));
+      footer.textContent = `${files.length} image${files.length === 1 ? "" : "s"} · ${folderLabel(activeFolder)}`;
+    }
+  };
+
+  const applyThumbSize = () => {
+    body.classList.toggle("thumb-sm", thumbSize === "Small");
+    body.classList.toggle("thumb-lg", thumbSize !== "Small");
+    segS.classList.toggle("on", thumbSize === "Small");
+    segL.classList.toggle("on", thumbSize !== "Small");
+  };
+
+  // ── events ──
+  input.addEventListener("input", () => { query = input.value; renderSidebar(); renderPane(); });
+  input.addEventListener("click", (e) => e.stopPropagation());
+  segS.addEventListener("click", (e) => {
+    e.stopPropagation();
+    thumbSize = "Small"; setThumbSize(thumbSize); applyThumbSize();
+  });
+  segL.addEventListener("click", (e) => {
+    e.stopPropagation();
+    thumbSize = "Large"; setThumbSize(thumbSize); applyThumbSize();
+  });
+
+  // ── initial render ──
+  applyThumbSize();
+  renderSidebar();
+  renderPane();
+
+  document.body.appendChild(popup);
+
+  // Scroll the current image into view and focus the filter box.
+  if (scrollTarget) queueMicrotask(() => {
+    try { scrollTarget.scrollIntoView({ block: "nearest" }); } catch (_e) { /* ignore */ }
+  });
+  queueMicrotask(() => { try { input.focus(); } catch (_e) { /* ignore */ } });
+
+  // Attach close listeners after the opening click settles (capture phase so we
+  // preempt LiteGraph; each gated on !popup.contains so inside scroll/clicks
+  // don't close — Load Image Pattern #14).
   setTimeout(() => {
     document.addEventListener("mousedown", onDocDown, true);
     document.addEventListener("pointerdown", onDocDown, true);
