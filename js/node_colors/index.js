@@ -9,8 +9,9 @@ import { createPixaromaColorPicker } from "../shared/color_picker.mjs";
 //   • 👑 Reset node colors clears the override.
 // GROUPS — right-click a group → TOP-LEVEL canvas menu (like nodes, NOT
 // buried under "Edit Group"): 👑 Pixaroma colors (favorites + Save + Pick
-//   custom + Neutrals / Hues subfolders) + 👑 Copy color + 👑 Paste color +
-//   👑 Reset color. Single-color picker — a group has ONE fill color, not
+//   custom + the hand-picked GROUP_COLORS listed directly) + 👑 Copy color +
+//   👑 Paste color + 👑 Reset color. Single-color picker — a group has ONE
+//   fill color, not
 //   title+body. Added by wrapping getCanvasMenuOptions and gating on a group
 //   under the cursor (this.graph_mouse + graph.getGroupOnPos), since
 //   getCanvasMenuOptions receives no event/position argument.
@@ -138,9 +139,37 @@ const BODY_SWATCHES = [
 // like node.color does. Presets reuse the same identity colors as the node
 // themes: neutrals from the standalone bodies, hues from each HUE.main.
 const GROUP_DEFAULT_COLOR = "#3f789e"; // LiteGraph's default (pale_blue)
-const GROUP_NEUTRALS = STANDALONES.map((p) => ({ id: p.id, label: p.label, color: p.body }));
-const GROUP_HUES = HUES.map((h) => ({ id: h.id, label: h.label, color: h.main }));
-const GROUP_SWATCHES = [...GROUP_NEUTRALS, ...GROUP_HUES].map((p) => p.color);
+// Hand-picked group colors (user selection, May 2026), ordered by hue then
+// light → dark. Applied directly to group.color; the label is the menu name.
+const GROUP_COLORS = [
+  { label: "Light Red",    color: "#d57b7b" },
+  { label: "Soft Red",     color: "#d35050" },
+  { label: "Mid Red",      color: "#cf2a2a" },
+  { label: "Light Orange", color: "#d5a57b" },
+  { label: "Soft Orange",  color: "#d38d50" },
+  { label: "Mid Orange",   color: "#cf772a" },
+  { label: "Mid Gold",     color: "#cfa62a" },
+  { label: "Light Lime",   color: "#c3d57b" },
+  { label: "Soft Lime",    color: "#b9d350" },
+  { label: "Mid Lime",     color: "#aecf2a" },
+  { label: "Light Green",  color: "#8ad57b" },
+  { label: "Soft Green",   color: "#65d350" },
+  { label: "Rich Green",   color: "#38b21f" },
+  { label: "Soft Teal",    color: "#50d3a3" },
+  { label: "Mid Teal",     color: "#2acf93" },
+  { label: "Deep Teal",    color: "#189164" },
+  { label: "Soft Cyan",    color: "#50c2d3" },
+  { label: "Rich Cyan",    color: "#1f9eb2" },
+  { label: "Light Blue",   color: "#7ba1d5" },
+  { label: "Soft Blue",    color: "#5086d3" },
+  { label: "Mid Blue",     color: "#2a6fcf" },
+  { label: "Light Violet", color: "#9c7bd5" },
+  { label: "Soft Violet",  color: "#8050d3" },
+  { label: "Light Pink",   color: "#d57bba" },
+  { label: "Soft Pink",    color: "#d350ac" },
+  { label: "Mid Pink",     color: "#cf2a9e" },
+];
+const GROUP_SWATCHES = GROUP_COLORS.map((c) => c.color);
 
 // ── Favorites: 4 fixed slots, persisted as ONE compact JSON value in
 // ComfyUI's settings store (unregistered key → no Settings-panel clutter;
@@ -869,21 +898,10 @@ function buildGroupSaveSubmenu(group) {
   }));
 }
 
-function buildGroupPresetSubmenu(targets, presets) {
-  return presets.map((p) => ({
-    content: `${swatchHTMLSingle(p.color)}${p.label}`,
-    callback: () => applyGroupColor(targets, p.color),
-  }));
-}
-
-const GROUP_PRESET_GROUPS = [
-  { label: "Neutrals", presets: GROUP_NEUTRALS },
-  { label: "Hues",     presets: GROUP_HUES },
-];
-
-// The "👑 Pixaroma colors" submenu for a group — mirrors the node submenu:
-// filled Favorites on top, then Save / Pick custom, then the preset
-// subfolders. Copy / Paste / Reset are top-level siblings (see setup()).
+// The "👑 Pixaroma colors" submenu for a group: filled Favorites on top,
+// then Save / Pick custom, then the hand-picked group colors listed
+// DIRECTLY (no Neutrals/Hues subfolders). Copy / Paste / Reset are
+// top-level siblings (see setup()).
 function buildGroupColorsSubmenu(targets, group) {
   const items = [];
 
@@ -911,17 +929,13 @@ function buildGroupColorsSubmenu(targets, group) {
     content: "Pick custom...",
     callback: () => pickCustomGroup(targets),
   });
-  items.push(null); // separator: save/custom -> preset groups
-  for (const g of GROUP_PRESET_GROUPS) {
+  items.push(null); // separator: save/custom -> colors
+
+  // Hand-picked group colors, listed directly.
+  for (const c of GROUP_COLORS) {
     items.push({
-      content: g.label,
-      has_submenu: true,
-      callback: function (value, opts, e, menu) {
-        new LiteGraph.ContextMenu(
-          buildGroupPresetSubmenu(targets, g.presets),
-          { event: e, parentMenu: menu }
-        );
-      },
+      content: `${swatchHTMLSingle(c.color)}${c.label}`,
+      callback: () => applyGroupColor(targets, c.color),
     });
   }
   return items;

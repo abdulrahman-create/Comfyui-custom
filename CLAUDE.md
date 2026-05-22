@@ -146,10 +146,11 @@ js/
 │                       #  appends "Edit Group" right after, so our items land
 │                       #  just above it; node right-clicks use
 │                       #  getNodeMenuOptions so there's no double-add).
-│                       #  Mirrors nodes: "👑 Pixaroma colors ▸" (favorites +
-│                       #  Save this color to ▸ + Pick custom (single-color
-│                       #  modal) + Neutrals ▸ / Hues ▸) + "👑 Copy color" +
-│                       #  "👑 Paste color" + "👑 Reset color". A group has ONE fill
+│                       #  "👑 Pixaroma colors ▸" (favorites + Save this color
+│                       #  to ▸ + Pick custom (single-color modal) + the
+│                       #  hand-picked GROUP_COLORS list, no subfolders) +
+│                       #  "👑 Copy color" + "👑 Paste color" + "👑 Reset
+│                       #  color". A group has ONE fill
 │                       #  color (group.color), serialized in workflow
 │                       #  groups[]. Its ~25% transparency is LiteGraph's
 │                       #  hardcoded render (0.25 fill / 1.0 stroke ×
