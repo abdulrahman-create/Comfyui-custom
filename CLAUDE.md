@@ -76,12 +76,12 @@ js/
 │                       #  inherits the brand colors via the category prefix —
 │                       #  do NOT re-add per-node color guards.
 │
-├── node_colors/        # Right-click "Pixaroma colors" submenu (single
-│   └── index.js        #  global extension, ~300 lines). Wraps
-│                       #  LGraphCanvas.prototype.getNodeMenuOptions to
-│                       #  append two entries to ANY node's right-click
-│                       #  menu: "👑 Pixaroma colors" submenu + "👑 Reset
-│                       #  node colors". Submenu via LiteGraph.ContextMenu
+├── node_colors/        # Right-click "Pixaroma colors" tools (single
+│   └── index.js        #  global extension, ~900 lines). Wraps
+│                       #  LGraphCanvas.prototype.getNodeMenuOptions (nodes)
+│                       #  AND LGraphGroup.prototype.getMenuOptions (groups)
+│                       #  to append color tools to ANY node/group right-
+│                       #  click menu. Submenu via LiteGraph.ContextMenu
 │                       #  callback pattern contains 27 themes split
 │                       #  into THREE groups, each separated visually:
 │                       #  (a) STANDALONES (3 neutrals: Dark, Onyx,
@@ -110,36 +110,77 @@ js/
 │                       #  applied to the 12 BOLD_PRESETS so they
 │                       #  stand out in the submenu as the user's
 │                       #  easy-find branded rail.
-│                       #  plus a Favorite entry (reads two Pixaroma
-│                       #  settings Pixaroma.NodeColors.FavoriteTitle /
-│                       #  Body, type "color") plus "Pick custom..." which
-│                       #  opens a custom side-by-side modal (built from
-│                       #  scratch using createPixaromaColorPicker twice,
-│                       #  NOT openPixaromaColorPickerModal) so both title
-│                       #  and body pickers are visible at once with a
-│                       #  small live-preview node above that updates as
-│                       #  the user drags either SV plane. Apply stores
-│                       #  the picked pair as the new Favorite for next
-│                       #  time. Multi-select aware: when 2+ nodes are
-│                       #  selected AND the right-clicked node is one of
-│                       #  them, all entries apply to the whole selection
-│                       #  and the top-level labels show "(N nodes)".
-│                       #  Colors are written onto each node's .color /
-│                       #  .bgcolor, so they serialize into the workflow
-│                       #  JSON and travel to recipients without
-│                       #  requiring this plugin installed. The Dark
-│                       #  preset reuses the same hex values
-│                       #  brand/index.js uses for category-auto-coloring.
-│                       #  Settings live under distinct leaf categories
-│                       #  "Favorite Title" + "Favorite Body" so the Vue
-│                       #  settings panel does NOT dedupe them (Align
-│                       #  Pattern #10). Custom modal CSS is `pix-nc-*`
-│                       #  prefixed and injected once via injectCSS()
-│                       #  guarded by `#pix-nc-css` ID. Click-outside-to-
-│                       #  cancel uses the mousedown-on-backdrop guard so
-│                       #  an SV-plane drag that releases off the modal
-│                       #  does not discard the user's pick (same pattern
-│                       #  Text Overlay #12 documents).
+│                       #  --- May 2026 v3: copy/paste + 4 favorites +
+│                       #  groups. Top-level labels are Node/Group-qualified:
+│                       #  NODE menu top-level: "👑 Pixaroma Node Colors"
+│                       #  submenu + "👑 Copy Node Colors" + "👑 Paste Node
+│                       #  Colors" (shown only once something is copied) +
+│                       #  "👑 Reset Node Colors". The submenu LEADS with
+│                       #  the filled Favorites, then "Save these colors
+│                       #  to ▸" (4 slots) + "Pick custom...", then the 27
+│                       #  presets tucked into THREE subfolders (Neutrals
+│                       #  / Plain hues / Pixa hues) so favorites/save are
+│                       #  reachable without scanning every swatch.
+│                       #  Favorites are 4 fixed slots persisted as ONE
+│                       #  compact JSON value via an UNREGISTERED settings
+│                       #  id "Pixaroma.NodeColors.Favorites" (no panel
+│                       #  clutter; unregistered ids DO persist - backend
+│                       #  is a plain JSON merge, verified May 2026). An
+│                       #  in-memory write-through cache (_favoritesCache)
+│                       #  is authoritative so rapid saves can't race the
+│                       #  async setter. The OLD single Favorite (the two
+│                       #  FavoriteTitle/Body "color" settings) was REMOVED
+│                       #  from the panel; a non-default legacy value
+│                       #  migrates into Favorite 1 (eagerly persisted).
+│                       #  "Pick custom..." opens the side-by-side
+│                       #  two-color modal (createPixaromaColorPicker
+│                       #  twice, NOT openPixaromaColorPickerModal) seeded
+│                       #  from the clipboard / first favorite; Apply feeds
+│                       #  the clipboard, NOT a favorite slot.
+│                       #  GROUP menu: TOP-LEVEL of the canvas right-click
+│                       #  menu (like nodes, NOT under "Edit Group"). Wraps
+│                       #  LGraphCanvas.prototype.getCanvasMenuOptions and
+│                       #  gates on a group under the cursor via
+│                       #  this.graph_mouse + graph.getGroupOnPos
+│                       #  (getCanvasMenuOptions takes NO event arg, so the
+│                       #  position comes from graph_mouse; processContextMenu
+│                       #  appends "Edit Group" right after, so our items land
+│                       #  just above it; node right-clicks use
+│                       #  getNodeMenuOptions so there's no double-add).
+│                       #  "👑 Pixaroma Group Colors ▸" (favorites + Save this
+│                       #  color to ▸ + Pick custom (single-color modal) + the
+│                       #  hand-picked GROUP_COLORS list, no subfolders) +
+│                       #  "👑 Copy Group Color" + "👑 Paste Group Color" +
+│                       #  "👑 Reset Group Color". A group has ONE fill
+│                       #  color (group.color), serialized in workflow
+│                       #  groups[]. Its ~25% transparency is LiteGraph's
+│                       #  hardcoded render (0.25 fill / 1.0 stroke ×
+│                       #  editor_alpha) and is left untouched.
+│                       #  CROSS-TYPE: the clipboard + the 4 favorites are
+│                       #  SHARED between nodes and groups; pickGroupColor()
+│                       #  maps a node {title,body} pair to a group's single
+│                       #  color by picking the more saturated of the two
+│                       #  (Plain→body, Pixa→title, neutral→either). Saving
+│                       #  a group color into a favorite stores a flat
+│                       #  title==body pair. Group multi-select filters
+│                       #  canvas.selectedItems by the group's class (there
+│                       #  is no selected_groups map). Colors are written
+│                       #  onto each node's .color/.bgcolor (or group.color)
+│                       #  so they serialize into the workflow JSON and
+│                       #  travel to recipients without this plugin. The
+│                       #  Dark preset reuses brand/index.js's hex values.
+│                       #  Custom modal CSS is `pix-nc-*` prefixed, injected
+│                       #  once via injectCSS() guarded by `#pix-nc-css` ID;
+│                       #  the single-color group variant adds
+│                       #  .pix-nc-modal-single + a .pix-nc-grouppreview that
+│                       #  shows the fill at 0.25 alpha. Click-outside-to-
+│                       #  cancel uses the mousedown-on-backdrop guard so an
+│                       #  SV-plane drag that releases off the modal does not
+│                       #  discard the pick (same pattern Text Overlay #12
+│                       #  documents). Multi-select aware: 2+ nodes (or
+│                       #  groups) selected + the right-clicked one among
+│                       #  them → applies to all; labels show "(N nodes)" /
+│                       #  "(N groups)".
 │
 ├── connection_fx/      # Connection FX (single file, ~210 lines)
 │   └── index.js        # Frontend-only patch (no Python node). One
@@ -639,6 +680,18 @@ ComfyUI's new Vue 3 frontend introduces several behavioral differences from the 
 19. **Connection restore fires `onConnectionsChange` at the GRAPH level AFTER each node's `onConfigure` returns - a per-node "configuring" flag does NOT cover it. Use the shared `isGraphLoading()` guard for any `onConnectionsChange` handler that mutates SERIALIZED state.** This is a sharper restatement of #17's failure mode, discovered when it bit THREE nodes (Switch issue #40, Image Resize, Crop - May 2026). The timing: `LGraph.configure` creates every node and calls each `node.configure` (which runs the `onConfigure` hook, where nodes set+clear a `_xxxConfiguring` flag), and THEN - after all nodes are configured - restores the saved LINKS, firing `onConnectionsChange(INPUT, idx, true, ...)` for each. By then every node's per-node configure flag is already cleared, so a handler that mutates serialized state on connect (Switch `handleConnect` -> `state.activeIndex = slotIdx`; Image Resize auto-swap -> `disconnectInput`; Crop -> `delete node.properties.pixaromaCropSource`) RUNS during the replay and overwrites the just-restored saved state. User-visible: the saved active row / wire / persisted source resets on every workflow open, tab switch, and Ctrl+Z undo. The per-node flag (#17) is necessary but NOT sufficient.
 
     The robust fix is a LOAD-WIDE guard: `js/shared/graph_loading.mjs` wraps `app.loadGraphData` (the single funnel for open / tab switch / Ctrl+Z) exactly once, holds a flag true for the whole load plus a 300ms trailing window (covering the link restore that settles a tick later), and exports `isGraphLoading()`. **Any `onConnectionsChange` handler that writes serialized state (`node.properties`, `node.size`, slots, `widgets_values`, an active index) MUST gate that write on `!isGraphLoading()`** (in addition to any per-node flag). Handlers that touch only NON-serialized runtime fields (a CSS class, `readOnly`, a transient `node._foo`, calling `renderUI` without writing properties/size) are safe and need no guard. Reference fixes: `js/switch/index.js`, `js/image_resize/index.js`, `js/crop/index.js`, `js/text_overlay/index.js` (defensive). NOTE: Switch + Image Resize still carry equivalent INLINE `loadGraphData` wraps (`_swLoadingGraph` / `_irLoadingGraph`) from before the shared helper existed - harmless (each wrap is idempotent via its own `app._pixXxLoadWrapped` flag), but new nodes should import `isGraphLoading()` rather than re-roll the wrap. Switch WH is inherently immune (fixed slots, no `onConnectionsChange`).
+
+20. **Right-click context-menu + group facts (verified against the bundled LiteGraph `api-D9vMMk51.js`, frontend 1.43.18, May 2026 — these are recorded so agents do NOT re-grep the minified bundle, which costs ~30 min each time).** Reference implementation for ALL of this is `js/node_colors/index.js` (the Pixaroma Node/Group Colors menus).
+    - **Three menu builders, three right-click targets, mutually exclusive.** `processContextMenu(node, event)` branches: a NODE under the cursor → `LGraphCanvas.prototype.getNodeMenuOptions(node)`; ELSE → `LGraphCanvas.prototype.getCanvasMenuOptions()` (the Add Node / Add Group / Paste menu), and THEN it appends an "Edit Group" entry when `graph.getGroupOnPos(event.canvasX, event.canvasY)` finds a group. So a node right-click NEVER reaches getCanvasMenuOptions — gating canvas-menu additions on "a group is under the cursor" can't double-add on nodes.
+    - **Hook nodes via `getNodeMenuOptions`; hook canvas/groups via `getCanvasMenuOptions`.** Both are `LGraphCanvas.prototype` methods, both are wrapped by the Vue frontend via `registerWrapper`, and BOTH compose safely with a prototype monkey-patch (call original, then `options.push(null, ...entries)`) — proven by the node feature, coexists with rgthree. For TOP-LEVEL group entries (siblings of Add Node / Edit Group), patch `getCanvasMenuOptions`. The alternatives `LGraphGroup.prototype.getMenuOptions` (lands INSIDE the nested "Edit Group" submenu) and `LGraphCanvas.getGroupMenuOptions` (deprecated) are only for nested placement.
+    - **`getCanvasMenuOptions()` takes NO arguments** — it cannot see the click event/position. To know WHICH group was right-clicked, read `this.graph_mouse` (graph-space `[x,y]`, the live cursor) and call `this.graph.getGroupOnPos(gm[0], gm[1])`. (`processContextMenu` uses `event.canvasX/canvasY`, but those aren't reachable from inside getCanvasMenuOptions.) Entries you push there render just ABOVE the "Edit Group" entry that processContextMenu appends afterward.
+    - **`graph.getGroupOnPos(x, y)`** (graph coords) returns the `LGraphGroup` whose bounds contain the point, else `undefined`.
+    - **Submenu callback signature is `function(value, options, mouseEvent, parentMenu, node)`.** A `has_submenu` item opens its child via `new LiteGraph.ContextMenu(items, { event: mouseEvent, parentMenu })`. Nesting works to ≥3 levels.
+    - **Group data model:** a group has ONE color — `group.color` (any CSS string; default `#3f789e`, which is pale_blue's `groupcolor`). NO title/body split (nodes have `color` title + `bgcolor` body; groups don't). It serializes as `{id, title, bounding, color, flags}` into the workflow's top-level `groups[]` array and reloads natively, exactly like `node.color`. Recolor with `group.color = "#.."; group.setDirtyCanvas(false, true)` — no `recomputeInsideNodes()` needed for a color-only change.
+    - **Group transparency is NOT adjustable per group.** `drawGroups` → `LGraphGroup.draw` hardcode the fill at `0.25 * editor_alpha` and the outline stroke at `1.0 * editor_alpha`. `editor_alpha` (default 1) is a GLOBAL canvas dimmer (also affects nodes + wires), not per-group. An `rgba()` in `group.color` only multiplies the alpha DOWN (max effective fill 0.25); you cannot make a single group MORE opaque without monkey-patching `LGraphGroup.draw`. We deliberately leave it native.
+    - **Multi-select:** nodes via `canvas.selected_nodes` (plain object keyed by id); groups via `canvas.selectedItems` (a `Set` that mixes nodes AND groups — filter with `[...selectedItems].filter(x => x instanceof someGroup.constructor)`). There is NO `selected_groups` map.
+    - **Node default colors:** `LiteGraph.NODE_DEFAULT_COLOR = "#333"`, `LiteGraph.NODE_DEFAULT_BGCOLOR = "#353535"`.
+    - **Unregistered settings DO persist.** `app.ui.settings.setSettingValueAsync(id, val)` / `getSettingValue(id)` work for an id that is NOT in any extension's `settings[]` array — the backend saves `comfy.settings.json` as a plain JSON merge with NO allow-list, and `getSettingValue` returns the stored value (or `undefined` if unset). This is how `Pixaroma.NodeColors.Favorites` stores 4 favorite color pairs as one compact JSON blob with zero Settings-panel rows. Removing a setting's registration does NOT erase its stored value (one-time migrations can still read the old key).
 
 ### ComfyUI Settings Integration
 Pixaroma registers user-facing settings in ComfyUI's Settings panel using the `settings` array inside `app.registerExtension()`. Settings appear under the **👑 Pixaroma** category.
