@@ -76,12 +76,12 @@ js/
 │                       #  inherits the brand colors via the category prefix —
 │                       #  do NOT re-add per-node color guards.
 │
-├── node_colors/        # Right-click "Pixaroma colors" submenu (single
-│   └── index.js        #  global extension, ~300 lines). Wraps
-│                       #  LGraphCanvas.prototype.getNodeMenuOptions to
-│                       #  append two entries to ANY node's right-click
-│                       #  menu: "👑 Pixaroma colors" submenu + "👑 Reset
-│                       #  node colors". Submenu via LiteGraph.ContextMenu
+├── node_colors/        # Right-click "Pixaroma colors" tools (single
+│   └── index.js        #  global extension, ~900 lines). Wraps
+│                       #  LGraphCanvas.prototype.getNodeMenuOptions (nodes)
+│                       #  AND LGraphGroup.prototype.getMenuOptions (groups)
+│                       #  to append color tools to ANY node/group right-
+│                       #  click menu. Submenu via LiteGraph.ContextMenu
 │                       #  callback pattern contains 27 themes split
 │                       #  into THREE groups, each separated visually:
 │                       #  (a) STANDALONES (3 neutrals: Dark, Onyx,
@@ -110,36 +110,70 @@ js/
 │                       #  applied to the 12 BOLD_PRESETS so they
 │                       #  stand out in the submenu as the user's
 │                       #  easy-find branded rail.
-│                       #  plus a Favorite entry (reads two Pixaroma
-│                       #  settings Pixaroma.NodeColors.FavoriteTitle /
-│                       #  Body, type "color") plus "Pick custom..." which
-│                       #  opens a custom side-by-side modal (built from
-│                       #  scratch using createPixaromaColorPicker twice,
-│                       #  NOT openPixaromaColorPickerModal) so both title
-│                       #  and body pickers are visible at once with a
-│                       #  small live-preview node above that updates as
-│                       #  the user drags either SV plane. Apply stores
-│                       #  the picked pair as the new Favorite for next
-│                       #  time. Multi-select aware: when 2+ nodes are
-│                       #  selected AND the right-clicked node is one of
-│                       #  them, all entries apply to the whole selection
-│                       #  and the top-level labels show "(N nodes)".
-│                       #  Colors are written onto each node's .color /
-│                       #  .bgcolor, so they serialize into the workflow
-│                       #  JSON and travel to recipients without
-│                       #  requiring this plugin installed. The Dark
-│                       #  preset reuses the same hex values
-│                       #  brand/index.js uses for category-auto-coloring.
-│                       #  Settings live under distinct leaf categories
-│                       #  "Favorite Title" + "Favorite Body" so the Vue
-│                       #  settings panel does NOT dedupe them (Align
-│                       #  Pattern #10). Custom modal CSS is `pix-nc-*`
-│                       #  prefixed and injected once via injectCSS()
-│                       #  guarded by `#pix-nc-css` ID. Click-outside-to-
-│                       #  cancel uses the mousedown-on-backdrop guard so
-│                       #  an SV-plane drag that releases off the modal
-│                       #  does not discard the user's pick (same pattern
-│                       #  Text Overlay #12 documents).
+│                       #  --- May 2026 v3: copy/paste + 4 favorites +
+│                       #  groups. NODE menu top-level: "👑 Pixaroma
+│                       #  colors" submenu + "👑 Copy colors" + "👑 Paste
+│                       #  colors" (shown only once something is copied) +
+│                       #  "👑 Reset node colors". The submenu LEADS with
+│                       #  the filled Favorites, then "Save these colors
+│                       #  to ▸" (4 slots) + "Pick custom...", then the 27
+│                       #  presets tucked into THREE subfolders (Neutrals
+│                       #  / Plain hues / Pixa hues) so favorites/save are
+│                       #  reachable without scanning every swatch.
+│                       #  Favorites are 4 fixed slots persisted as ONE
+│                       #  compact JSON value via an UNREGISTERED settings
+│                       #  id "Pixaroma.NodeColors.Favorites" (no panel
+│                       #  clutter; unregistered ids DO persist - backend
+│                       #  is a plain JSON merge, verified May 2026). An
+│                       #  in-memory write-through cache (_favoritesCache)
+│                       #  is authoritative so rapid saves can't race the
+│                       #  async setter. The OLD single Favorite (the two
+│                       #  FavoriteTitle/Body "color" settings) was REMOVED
+│                       #  from the panel; a non-default legacy value
+│                       #  migrates into Favorite 1 (eagerly persisted).
+│                       #  "Pick custom..." opens the side-by-side
+│                       #  two-color modal (createPixaromaColorPicker
+│                       #  twice, NOT openPixaromaColorPickerModal) seeded
+│                       #  from the clipboard / first favorite; Apply feeds
+│                       #  the clipboard, NOT a favorite slot.
+│                       #  GROUP menu: hooks
+│                       #  LGraphGroup.prototype.getMenuOptions (Vue-safe;
+│                       #  LGraphCanvas.getGroupMenuOptions is deprecated).
+│                       #  Appends inside the native "Edit Group" submenu:
+│                       #  flat "👑 Favorite N" + "👑 Copy color" + "👑
+│                       #  Paste color" for few-click access, plus "👑
+│                       #  Pixaroma colors ▸" holding Save this color to ▸
+│                       #  / Pick custom (single-color modal) / Neutrals ▸
+│                       #  / Hues ▸ / Reset color. A group has ONE fill
+│                       #  color (group.color), serialized in workflow
+│                       #  groups[]. Its ~25% transparency is LiteGraph's
+│                       #  hardcoded render (0.25 fill / 1.0 stroke ×
+│                       #  editor_alpha) and is left untouched.
+│                       #  CROSS-TYPE: the clipboard + the 4 favorites are
+│                       #  SHARED between nodes and groups; pickGroupColor()
+│                       #  maps a node {title,body} pair to a group's single
+│                       #  color by picking the more saturated of the two
+│                       #  (Plain→body, Pixa→title, neutral→either). Saving
+│                       #  a group color into a favorite stores a flat
+│                       #  title==body pair. Group multi-select filters
+│                       #  canvas.selectedItems by the group's class (there
+│                       #  is no selected_groups map). Colors are written
+│                       #  onto each node's .color/.bgcolor (or group.color)
+│                       #  so they serialize into the workflow JSON and
+│                       #  travel to recipients without this plugin. The
+│                       #  Dark preset reuses brand/index.js's hex values.
+│                       #  Custom modal CSS is `pix-nc-*` prefixed, injected
+│                       #  once via injectCSS() guarded by `#pix-nc-css` ID;
+│                       #  the single-color group variant adds
+│                       #  .pix-nc-modal-single + a .pix-nc-grouppreview that
+│                       #  shows the fill at 0.25 alpha. Click-outside-to-
+│                       #  cancel uses the mousedown-on-backdrop guard so an
+│                       #  SV-plane drag that releases off the modal does not
+│                       #  discard the pick (same pattern Text Overlay #12
+│                       #  documents). Multi-select aware: 2+ nodes (or
+│                       #  groups) selected + the right-clicked one among
+│                       #  them → applies to all; labels show "(N nodes)" /
+│                       #  "(N groups)".
 │
 ├── connection_fx/      # Connection FX (single file, ~210 lines)
 │   └── index.js        # Frontend-only patch (no Python node). One

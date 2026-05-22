@@ -1,20 +1,29 @@
 import { app } from "/scripts/app.js";
 import { createPixaromaColorPicker } from "../shared/color_picker.mjs";
 
-// ── Pixaroma node colors: right-click menu + presets + favorite ──────────
-// Right-click on any ComfyUI node:
-//   • 👑 Pixaroma colors → submenu of 6 dark presets + Favorite (from
-//     Settings) + Pick custom... (opens a side-by-side modal with live
-//     node preview).
+// ── Pixaroma node + group colors: right-click menu + presets + favorites ─
+// NODES — right-click any node:
+//   • 👑 Pixaroma colors → favorites + Save to slot + Pick custom +
+//     Neutrals / Plain hues / Pixa hues subfolders (title+body picker).
+//   • 👑 Copy colors / 👑 Paste colors (session clipboard, pair).
 //   • 👑 Reset node colors clears the override.
+// GROUPS — right-click a group → "Edit Group" submenu:
+//   • Flat 👑 Favorite N + 👑 Copy color + 👑 Paste color for quick access,
+//     plus 👑 Pixaroma colors → Save / Pick custom / Neutrals / Hues / Reset
+//     (single-color picker — a group has ONE fill color, not title+body).
 //
-// Colors are written to each node's .color / .bgcolor, so they serialize
-// into the workflow JSON and travel to recipients without requiring this
-// plugin installed.
+// Node colors → node.color / node.bgcolor; group color → group.color. Both
+// serialize into the workflow JSON (groups[] array) and travel to recipients
+// without this plugin installed. The group fill's ~25% transparency is
+// LiteGraph's own rendering and is left untouched.
 //
-// Multi-select aware: when 2+ nodes are selected AND the right-clicked
-// node is one of them, the action applies to all of them, and the label
-// shows "(N nodes)".
+// CROSS-TYPE: the clipboard + the 4 favorite slots are SHARED between nodes
+// and groups. A node carries two colors and a group one, so pickGroupColor()
+// maps a pair → the more saturated of the two when applying to a group.
+//
+// Multi-select aware: when 2+ nodes (or groups) are selected AND the
+// right-clicked one is among them, the action applies to all, and the label
+// shows "(N nodes)" / "(N groups)".
 
 // ── Theme system (May 2026 v2 rethink) ─────────────────────────────────
 // Three groups, with EVERY chromatic hue defined ONCE in HUES and
@@ -118,6 +127,17 @@ const BODY_SWATCHES = [
   "#1d3a2d", "#284a3a", "#1a3f44", "#1a3a4d", "#25334a", "#232d55",
   "#2d2a5c", "#3d2842", "#4d2a4d", "#3d2a3d", "#4d2a3a", "#1f1f4d",
 ];
+
+// ── Group colors. A group has a SINGLE fill color (no title/body split),
+// and LiteGraph draws it at ~25% opacity (hardcoded in its renderer — not
+// adjustable per group). We write the chosen hex straight to group.color,
+// which serializes into the workflow's top-level groups[] array and reloads
+// like node.color does. Presets reuse the same identity colors as the node
+// themes: neutrals from the standalone bodies, hues from each HUE.main.
+const GROUP_DEFAULT_COLOR = "#3f789e"; // LiteGraph's default (pale_blue)
+const GROUP_NEUTRALS = STANDALONES.map((p) => ({ id: p.id, label: p.label, color: p.body }));
+const GROUP_HUES = HUES.map((h) => ({ id: h.id, label: h.label, color: h.main }));
+const GROUP_SWATCHES = [...GROUP_NEUTRALS, ...GROUP_HUES].map((p) => p.color);
 
 // ── Favorites: 4 fixed slots, persisted as ONE compact JSON value in
 // ComfyUI's settings store (unregistered key → no Settings-panel clutter;
@@ -239,6 +259,65 @@ function resetColors(nodes) {
     delete n.bgcolor;
   }
   app.graph?.setDirtyCanvas(true, true);
+}
+
+// ── Group color helpers ─────────────────────────────────────────────────
+// A node carries two colors; a group carries one. When moving color between
+// the two (cross-type Copy/Paste, applying a Favorite to a group) we pick the
+// MORE saturated of a node's title/body as the group's single identity color,
+// so Plain (saturated body), Pixa (saturated title) and neutral themes all
+// map to the color a human would call "that node's color".
+function hexToRgb(hex) {
+  const m = /^#?([0-9a-fA-F]{6})$/.exec(String(hex || "").trim());
+  if (!m) return null;
+  const n = parseInt(m[1], 16);
+  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+}
+
+function colorfulness(hex) {
+  const c = hexToRgb(hex);
+  if (!c) return 0;
+  const max = Math.max(c.r, c.g, c.b);
+  const min = Math.min(c.r, c.g, c.b);
+  return max === 0 ? 0 : (max - min) / max; // HSV saturation
+}
+
+function pickGroupColor(pair) {
+  if (!pair) return GROUP_DEFAULT_COLOR;
+  const t = pair.title, b = pair.body;
+  if (!t) return b || GROUP_DEFAULT_COLOR;
+  if (!b) return t;
+  return colorfulness(t) > colorfulness(b) ? t : b;
+}
+
+// Multi-select aware: selectedItems is a Set holding nodes AND groups; keep
+// only the groups when 2+ are selected and the right-clicked one is among
+// them, else act on just the right-clicked group.
+function getTargetGroups(currentGroup) {
+  const items = app.canvas?.selectedItems;
+  if (items && typeof items.forEach === "function" && currentGroup) {
+    const groups = [];
+    items.forEach((it) => { if (it instanceof currentGroup.constructor) groups.push(it); });
+    if (groups.length > 1 && groups.includes(currentGroup)) return groups;
+  }
+  return [currentGroup];
+}
+
+function applyGroupColor(groups, hex) {
+  for (const g of groups) {
+    g.color = hex;
+    if (typeof g.setDirtyCanvas === "function") g.setDirtyCanvas(false, true);
+  }
+  app.graph?.setDirtyCanvas(true, true);
+}
+
+function resetGroupColor(groups) {
+  for (const g of groups) delete g.color; // reverts to LiteGraph default
+  app.graph?.setDirtyCanvas(true, true);
+}
+
+function captureGroupColor(group) {
+  return group?.color || GROUP_DEFAULT_COLOR;
 }
 
 // ── Custom-colors modal: side-by-side title + body pickers with a live
@@ -373,6 +452,26 @@ function injectCSS() {
 .pix-nc-btn.primary:hover {
   background: #e85a3a;
   border-color: #e85a3a;
+}
+/* Single-color (group) variant of the modal: one picker column, narrower. */
+.pix-nc-modal-single {
+  min-width: 360px;
+}
+/* Group preview shows the fill at the same ~25% opacity LiteGraph uses, so
+   the user sees how faint the color will actually look on the canvas. */
+.pix-nc-grouppreview {
+  width: 240px;
+  height: 96px;
+  border: 2px solid #3f789e;
+  border-radius: 6px;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.5);
+  background-color: rgba(63,120,158,0.25);
+  transition: border-color 0.08s linear, background-color 0.08s linear;
+}
+.pix-nc-grouppreview-title {
+  padding: 6px 10px;
+  font: 12px Tahoma, system-ui, sans-serif;
+  color: rgba(255,255,255,0.7);
 }
   `;
   document.head.appendChild(s);
@@ -545,11 +644,131 @@ function pickCustom(nodes) {
   });
 }
 
+// ── Single-color modal for groups (one picker + a preview that mimics the
+// ~25% group transparency so the faint look isn't a surprise).
+function buildGroupPreview(initial) {
+  const el = document.createElement("div");
+  el.className = "pix-nc-grouppreview";
+  const title = document.createElement("div");
+  title.className = "pix-nc-grouppreview-title";
+  title.textContent = "Group";
+  el.appendChild(title);
+  function setColor(c) {
+    const rgb = hexToRgb(c) || { r: 63, g: 120, b: 158 };
+    el.style.borderColor = c;
+    el.style.backgroundColor = `rgba(${rgb.r},${rgb.g},${rgb.b},0.25)`;
+  }
+  setColor(initial);
+  return { el, setColor };
+}
+
+function openGroupColorModal(opts) {
+  injectCSS();
+  const { initial, onApply, onCancel = () => {} } = opts;
+  let hex = initial;
+
+  const backdrop = document.createElement("div");
+  backdrop.className = "pix-nc-backdrop";
+
+  const modal = document.createElement("div");
+  modal.className = "pix-nc-modal pix-nc-modal-single";
+
+  const titleEl = document.createElement("div");
+  titleEl.className = "pix-nc-modal-title";
+  titleEl.textContent = "Pick group color";
+  modal.appendChild(titleEl);
+
+  const previewWrap = document.createElement("div");
+  previewWrap.className = "pix-nc-preview-wrap";
+  const preview = buildGroupPreview(hex);
+  previewWrap.appendChild(preview.el);
+  modal.appendChild(previewWrap);
+
+  const pickers = document.createElement("div");
+  pickers.className = "pix-nc-pickers";
+  const col = document.createElement("div");
+  col.className = "pix-nc-picker-col";
+  const label = document.createElement("div");
+  label.className = "pix-nc-picker-label";
+  label.textContent = "Group color";
+  col.appendChild(label);
+  const picker = createPixaromaColorPicker({
+    initialColor: hex,
+    swatches: GROUP_SWATCHES,
+    hideReset: true,
+    onChange: (c) => { hex = c; preview.setColor(c); },
+  });
+  col.appendChild(picker.element);
+  pickers.appendChild(col);
+  modal.appendChild(pickers);
+
+  const actions = document.createElement("div");
+  actions.className = "pix-nc-actions";
+  const cancelBtn = document.createElement("button");
+  cancelBtn.type = "button";
+  cancelBtn.className = "pix-nc-btn";
+  cancelBtn.textContent = "Cancel";
+  const applyBtn = document.createElement("button");
+  applyBtn.type = "button";
+  applyBtn.className = "pix-nc-btn primary";
+  applyBtn.textContent = "Apply";
+  actions.appendChild(cancelBtn);
+  actions.appendChild(applyBtn);
+  modal.appendChild(actions);
+
+  backdrop.appendChild(modal);
+  document.body.appendChild(backdrop);
+
+  function close() {
+    window.removeEventListener("keydown", onKey, true);
+    picker.destroy();
+    if (backdrop.parentNode) backdrop.remove();
+  }
+
+  applyBtn.addEventListener("click", () => { onApply(hex); close(); });
+  cancelBtn.addEventListener("click", () => { onCancel(); close(); });
+
+  let mouseDownOnBackdrop = false;
+  backdrop.addEventListener("mousedown", (e) => { mouseDownOnBackdrop = (e.target === backdrop); });
+  backdrop.addEventListener("click", (e) => {
+    if (e.target === backdrop && mouseDownOnBackdrop) { onCancel(); close(); }
+    mouseDownOnBackdrop = false;
+  });
+
+  function onKey(e) {
+    if (e.key === "Escape") {
+      e.stopImmediatePropagation(); e.preventDefault(); onCancel(); close();
+    } else if (e.key === "Enter") {
+      e.stopImmediatePropagation(); e.preventDefault(); onApply(hex); close();
+    }
+  }
+  window.addEventListener("keydown", onKey, true);
+}
+
+function pickCustomGroup(groups) {
+  const fav = getFavorites().find((f) => f);
+  const seed = colorClipboard
+    ? pickGroupColor(colorClipboard)
+    : (fav ? pickGroupColor(fav) : GROUP_DEFAULT_COLOR);
+  openGroupColorModal({
+    initial: seed,
+    onApply: (hex) => {
+      applyGroupColor(groups, hex);
+      colorClipboard = { title: hex, body: hex };
+    },
+  });
+}
+
 // Inline swatch HTML for a menu entry: a small "node-shaped" chip that
 // shows the title color on top (50%) and the body color on bottom (50%).
 // Mimics what an actual ComfyUI node looks like at a glance.
 function swatchHTML(titleHex, bodyHex) {
   return `<span style="display:inline-block; width:32px; height:14px; border:1px solid rgba(255,255,255,0.18); border-radius:3px; vertical-align:middle; margin-right:10px; background: linear-gradient(to bottom, ${titleHex} 0%, ${titleHex} 50%, ${bodyHex} 50%, ${bodyHex} 100%);"></span>`;
+}
+
+// Solid single-color chip for group menu entries.
+function swatchHTMLSingle(hex) {
+  return `<span style="display:inline-block; width:32px; height:14px; border:1px solid rgba(255,255,255,0.18); border-radius:3px; vertical-align:middle; margin-right:10px; background:${hex};"></span>`;
 }
 
 // Sub-submenu listing the 4 favorite slots; picking one writes the
@@ -630,48 +849,172 @@ function buildSubmenuOptions(targets, node) {
   return items;
 }
 
+// ── Group menu builders (single color) ──────────────────────────────────
+// Save the group's current color into one of the 4 SHARED favorite slots,
+// stored as a flat title==body pair so the slot is still usable from the
+// node menu.
+function buildGroupSaveSubmenu(group) {
+  const favs = getFavorites();
+  return favs.map((f, i) => ({
+    content: f
+      ? `${swatchHTML(f.title, f.body)}Favorite ${i + 1}`
+      : `Favorite ${i + 1} (empty)`,
+    callback: () => {
+      const c = captureGroupColor(group);
+      saveFavoriteSlot(i, c, c);
+    },
+  }));
+}
+
+function buildGroupPresetSubmenu(targets, presets) {
+  return presets.map((p) => ({
+    content: `${swatchHTMLSingle(p.color)}${p.label}`,
+    callback: () => applyGroupColor(targets, p.color),
+  }));
+}
+
+const GROUP_PRESET_GROUPS = [
+  { label: "Neutrals", presets: GROUP_NEUTRALS },
+  { label: "Hues",     presets: GROUP_HUES },
+];
+
+// The "👑 Pixaroma colors" submenu for a group. Favorites + Copy/Paste sit
+// one level up (flat in the Edit Group menu) for fewer clicks; this submenu
+// holds the less-frequent Save / Pick custom / presets / Reset.
+function buildGroupColorsSubmenu(targets, group) {
+  const items = [];
+  items.push({
+    content: "Save this color to",
+    has_submenu: true,
+    callback: function (value, opts, e, menu) {
+      new LiteGraph.ContextMenu(
+        buildGroupSaveSubmenu(group),
+        { event: e, parentMenu: menu }
+      );
+    },
+  });
+  items.push({
+    content: "Pick custom...",
+    callback: () => pickCustomGroup(targets),
+  });
+  items.push(null); // separator: save/custom -> preset groups
+  for (const g of GROUP_PRESET_GROUPS) {
+    items.push({
+      content: g.label,
+      has_submenu: true,
+      callback: function (value, opts, e, menu) {
+        new LiteGraph.ContextMenu(
+          buildGroupPresetSubmenu(targets, g.presets),
+          { event: e, parentMenu: menu }
+        );
+      },
+    });
+  }
+  items.push(null); // separator: presets -> reset
+  items.push({
+    content: "Reset color",
+    callback: () => resetGroupColor(targets),
+  });
+  return items;
+}
+
 app.registerExtension({
   name: "Pixaroma.NodeColors",
 
   async setup() {
-    if (typeof LGraphCanvas === "undefined" || !LGraphCanvas?.prototype?.getNodeMenuOptions) {
-      return;
+    // ── Node right-click menu ──────────────────────────────────────────
+    if (typeof LGraphCanvas !== "undefined" && LGraphCanvas?.prototype?.getNodeMenuOptions) {
+      const origGetNodeMenuOptions = LGraphCanvas.prototype.getNodeMenuOptions;
+      LGraphCanvas.prototype.getNodeMenuOptions = function (node) {
+        const options = origGetNodeMenuOptions.apply(this, arguments);
+        const targets = getTargetNodes(node);
+        const count   = targets.length;
+        const suffix  = count > 1 ? ` (${count} nodes)` : "";
+        options.push(
+          null,
+          {
+            content: `👑 Pixaroma colors${suffix}`,
+            has_submenu: true,
+            callback: function (value, opts, e, menu) {
+              new LiteGraph.ContextMenu(
+                buildSubmenuOptions(targets, node),
+                { event: e, parentMenu: menu, node: node }
+              );
+            },
+          },
+          {
+            content: `👑 Copy colors`,
+            callback: () => { colorClipboard = captureColors(node); },
+          }
+        );
+        // Paste only appears once colors have been copied this session.
+        if (colorClipboard) {
+          options.push({
+            content: `👑 Paste colors${suffix}`,
+            callback: () => applyColors(targets, colorClipboard.title, colorClipboard.body),
+          });
+        }
+        options.push({
+          content: `👑 Reset node colors${suffix}`,
+          callback: () => resetColors(targets),
+        });
+        return options;
+      };
     }
-    const origGetNodeMenuOptions = LGraphCanvas.prototype.getNodeMenuOptions;
-    LGraphCanvas.prototype.getNodeMenuOptions = function (node) {
-      const options = origGetNodeMenuOptions.apply(this, arguments);
-      const targets = getTargetNodes(node);
-      const count   = targets.length;
-      const suffix  = count > 1 ? ` (${count} nodes)` : "";
-      options.push(
-        null,
-        {
+
+    // ── Group right-click ("Edit Group") menu ──────────────────────────
+    // Hook LGraphGroup.prototype.getMenuOptions (the Vue-safe group menu
+    // builder; the LGraphCanvas.getGroupMenuOptions form is deprecated).
+    // Groups have one fill color, so this is the single-color variant; the
+    // clipboard + favorites are SHARED with nodes (cross-type) via
+    // pickGroupColor. Quick items (favorites, copy, paste) sit flat in the
+    // Edit Group menu; the rest lives under "👑 Pixaroma colors".
+    const LGraphGroupCls =
+      (typeof LiteGraph !== "undefined" && LiteGraph.LGraphGroup) ||
+      (typeof window !== "undefined" && window.LGraphGroup);
+    if (LGraphGroupCls?.prototype?.getMenuOptions) {
+      const origGroupMenu = LGraphGroupCls.prototype.getMenuOptions;
+      LGraphGroupCls.prototype.getMenuOptions = function () {
+        const options = origGroupMenu.apply(this, arguments) || [];
+        const group = this;
+        const targets = getTargetGroups(group);
+        const suffix = targets.length > 1 ? ` (${targets.length} groups)` : "";
+
+        options.push(null);
+        // Favorites (filled only) — flat for quick access; applies the
+        // favorite's identity color to the group.
+        const filled = getFavorites().map((f, i) => ({ f, i })).filter((x) => x.f);
+        for (const { f, i } of filled) {
+          options.push({
+            content: `${swatchHTML(f.title, f.body)}👑 Favorite ${i + 1}${suffix}`,
+            callback: () => applyGroupColor(targets, pickGroupColor(f)),
+          });
+        }
+        options.push({
+          content: `👑 Copy color`,
+          callback: () => {
+            const c = captureGroupColor(group);
+            colorClipboard = { title: c, body: c };
+          },
+        });
+        if (colorClipboard) {
+          options.push({
+            content: `👑 Paste color${suffix}`,
+            callback: () => applyGroupColor(targets, pickGroupColor(colorClipboard)),
+          });
+        }
+        options.push({
           content: `👑 Pixaroma colors${suffix}`,
           has_submenu: true,
           callback: function (value, opts, e, menu) {
             new LiteGraph.ContextMenu(
-              buildSubmenuOptions(targets, node),
-              { event: e, parentMenu: menu, node: node }
+              buildGroupColorsSubmenu(targets, group),
+              { event: e, parentMenu: menu }
             );
           },
-        },
-        {
-          content: `👑 Copy colors`,
-          callback: () => { colorClipboard = captureColors(node); },
-        }
-      );
-      // Paste only appears once colors have been copied this session.
-      if (colorClipboard) {
-        options.push({
-          content: `👑 Paste colors${suffix}`,
-          callback: () => applyColors(targets, colorClipboard.title, colorClipboard.body),
         });
-      }
-      options.push({
-        content: `👑 Reset node colors${suffix}`,
-        callback: () => resetColors(targets),
-      });
-      return options;
-    };
+        return options;
+      };
+    }
   },
 });
