@@ -631,15 +631,6 @@ export function injectCSS() {
     .pix-li-root .pix-li-quickpick:hover { border-color:${BRAND}; color:#ddd; }
     .pix-li-root .pix-li-ratio-chip { box-sizing:border-box; }
     .pix-li-root .pix-li-ratio-chip:hover { border-color:${BRAND}; color:#ddd; }
-    /* Collapsible dropdown popup. */
-    .pix-li-pop-folder { display:flex; align-items:center; gap:6px; padding:5px 10px; cursor:pointer; user-select:none;
-      background:#161616; border-bottom:1px solid #2a2a2a; font-size:9px; color:#999; text-transform:uppercase; letter-spacing:.5px; }
-    .pix-li-pop-folder:hover { color:#ddd; }
-    .pix-li-pop-folder:not(:first-child) { border-top:1px solid #2a2a2a; }
-    .pix-li-pop-caret { display:inline-block; width:8px; color:${BRAND}; font-size:9px; flex:none; transition:transform .08s; }
-    .pix-li-pop-foldername { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-    .pix-li-pop-count { color:#666; font-size:9px; flex:none; }
-    .pix-li-pop-files.collapsed { display:none; }
     /* ── B2 thumbnail dropdown popup ── */
     .pix-li-popup {
       background:#1d1d1d; border:1px solid #444; border-radius:6px;
@@ -843,8 +834,13 @@ export function openImageDropdown(node, anchorEl, onPick) {
   if (!imageWidget) return;
   const values = imageWidget.options?.values || [];
 
-  // Close any existing popup.
-  document.querySelector(".pix-li-popup")?.remove();
+  // Close any existing popup. Call its stored cleanup (not a bare remove) so
+  // the prior popup's document-level capture listeners are detached too.
+  const _existingPopup = document.querySelector(".pix-li-popup");
+  if (_existingPopup) {
+    if (typeof _existingPopup._pixClose === "function") _existingPopup._pixClose();
+    else _existingPopup.remove();
+  }
 
   const popup = document.createElement("div");
   popup.className = "pix-li-popup";
@@ -869,6 +865,7 @@ export function openImageDropdown(node, anchorEl, onPick) {
   const onDocDown = (e) => { if (!popup.contains(e.target)) closePopup(); };
   const onWheel = (e) => { if (!popup.contains(e.target)) closePopup(); };
   const onKey = (e) => { if (e.key === "Escape") closePopup(); };
+  popup._pixClose = closePopup; // so a later open can detach our listeners
 
   if (values.length === 0) {
     const empty = document.createElement("div");
@@ -966,6 +963,13 @@ export function openImageDropdown(node, anchorEl, onPick) {
     return s;
   };
   const folderLabel = (key) => (key === "" ? "root" : key);
+  // Scroll the current image's row into view (deferred so the pane is laid out).
+  // Called on every non-search render so a folder switch / search-clear re-centers it.
+  const scrollCurrentIntoView = () => {
+    if (!scrollTarget) return;
+    const t = scrollTarget;
+    queueMicrotask(() => { try { t.scrollIntoView({ block: "nearest" }); } catch (_e) { /* ignore */ } });
+  };
 
   // ── renderers ──
   const renderSidebar = () => {
@@ -1025,6 +1029,7 @@ export function openImageDropdown(node, anchorEl, onPick) {
       // Flat input/ — plain thumbnail list, no sidebar.
       for (const g of groups) for (const entry of g.files) pane.appendChild(makeRow(entry));
       footer.textContent = `${values.length} image${values.length === 1 ? "" : "s"}`;
+      scrollCurrentIntoView();
       return;
     }
 
@@ -1034,13 +1039,14 @@ export function openImageDropdown(node, anchorEl, onPick) {
         pane.appendChild(makeSec(folderLabel(g.folder), g.files.length));
         for (const entry of g.files) pane.appendChild(makeRow(entry));
       }
-      footer.textContent = `${values.length} images · all`;
+      footer.textContent = `${values.length} image${values.length === 1 ? "" : "s"} · all`;
     } else {
       const g = groups.find((x) => x.folder === activeFolder);
       const files = g ? g.files : [];
       for (const entry of files) pane.appendChild(makeRow(entry));
       footer.textContent = `${files.length} image${files.length === 1 ? "" : "s"} · ${folderLabel(activeFolder)}`;
     }
+    scrollCurrentIntoView();
   };
 
   const applyThumbSize = () => {
@@ -1069,10 +1075,18 @@ export function openImageDropdown(node, anchorEl, onPick) {
 
   document.body.appendChild(popup);
 
-  // Scroll the current image into view and focus the filter box.
-  if (scrollTarget) queueMicrotask(() => {
-    try { scrollTarget.scrollIntoView({ block: "nearest" }); } catch (_e) { /* ignore */ }
-  });
+  // Keep the popup on-screen: clamp horizontally and flip above the row when it
+  // would overflow the bottom of the viewport (now measurable post-append).
+  const pr = popup.getBoundingClientRect();
+  let left = rect.left;
+  if (left + pr.width > window.innerWidth - 4) left = Math.max(4, window.innerWidth - pr.width - 4);
+  popup.style.left = `${left}px`;
+  if (pr.bottom > window.innerHeight - 4) {
+    const above = rect.top - pr.height - 2;
+    popup.style.top = `${above >= 4 ? above : Math.max(4, window.innerHeight - pr.height - 4)}px`;
+  }
+
+  // renderPane() already scrolls the current row into view. Focus the filter box.
   queueMicrotask(() => { try { input.focus(); } catch (_e) { /* ignore */ } });
 
   // Attach close listeners after the opening click settles (capture phase so we
