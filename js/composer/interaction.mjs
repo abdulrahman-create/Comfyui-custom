@@ -264,6 +264,14 @@ PixaromaEditor.prototype.attachEvents = function () {
   // Handle hover cursor + clicks on the extended hit area outside canvas bounds
   if (this.selHitArea) {
     this.selHitArea.addEventListener("mousemove", (e) => {
+      // Crop mode: show resize cursors based on the crop box, not the layer's
+      // transform handles.
+      if (this.activeMode === "crop") {
+        this.selHitArea.style.cursor = this.cropCursorFor(
+          this.getCanvasCoordinates(e),
+        );
+        return;
+      }
       if (
         this.isMouseDown ||
         this.selectedLayerIds.size !== 1 ||
@@ -309,6 +317,21 @@ PixaromaEditor.prototype.attachEvents = function () {
 
     this.selHitArea.addEventListener("mousedown", (e) => {
       if (e.button === 1 || this.spacePressed) return; // let it bubble for pan
+      // Crop mode: grab a crop handle if the box extends into the padding
+      // region. Never pan/deselect here (that would exit crop).
+      if (this.activeMode === "crop" && e.button === 0) {
+        const cc = this.getCanvasCoordinates(e);
+        const p = this._cropPointInSource(cc);
+        const hd = this._cropHitTest(p.lx, p.ly);
+        if (hd) {
+          e.preventDefault();
+          e.stopPropagation();
+          this._cropDragHandle = hd;
+          this._cropDragStart = { lx: p.lx, ly: p.ly, rect: { ...this._cropDraft } };
+          this.isMouseDown = true;
+        }
+        return;
+      }
       // Check for handle grab
       if (
         e.button === 0 &&
@@ -888,6 +911,9 @@ PixaromaEditor.prototype.attachEvents = function () {
           this.handleCropMouseMove(cc, e.shiftKey);
         } else if (this.isMouseDown) {
           this.handleCropMouseUp();
+        } else {
+          // Hover over the canvas: show the matching resize cursor.
+          this.canvas.style.cursor = this.cropCursorFor(cc);
         }
         return;
       }

@@ -342,24 +342,81 @@ PixaromaEditor.prototype.drawCropOverlay = function () {
   const kh = d.h * layer.scaleY;
   ctx.drawImage(src, d.x, d.y, d.w, d.h, kx, ky, kw, kh);
 
-  // Box + handles (sizes in screen px via viewZoom).
+  // ── Photoshop-style overlay (all sizes in screen px via viewZoom) ──
+  const z = this.viewZoom || 1;
+  const px = (n) => n / z; // screen px → local units
+
+  // Rule-of-thirds grid (faint white).
+  ctx.strokeStyle = "rgba(255,255,255,0.45)";
+  ctx.lineWidth = px(1);
+  ctx.beginPath();
+  for (let i = 1; i <= 2; i++) {
+    const gx = kx + (kw * i) / 3;
+    ctx.moveTo(gx, ky);
+    ctx.lineTo(gx, ky + kh);
+    const gy = ky + (kh * i) / 3;
+    ctx.moveTo(kx, gy);
+    ctx.lineTo(kx + kw, gy);
+  }
+  ctx.stroke();
+
+  // Thin box outline (brand orange) so it still reads as a Pixaroma crop.
   ctx.strokeStyle = "#f66744";
-  ctx.lineWidth = 2 / this.viewZoom;
+  ctx.lineWidth = px(1.5);
   ctx.strokeRect(kx, ky, kw, kh);
 
-  const hs = 8 / this.viewZoom;
-  ctx.fillStyle = "#fff";
-  ctx.lineWidth = 1 / this.viewZoom;
-  const hxs = [kx, kx + kw / 2, kx + kw];
-  const hys = [ky, ky + kh / 2, ky + kh];
-  for (const px of hxs) {
-    for (const py of hys) {
-      if (px === kx + kw / 2 && py === ky + kh / 2) continue; // skip center
-      ctx.beginPath();
-      ctx.arc(px, py, hs / 2, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-    }
-  }
+  // Chunky white corner brackets + edge bars (the grab affordances).
+  const bt = px(3); // bracket / bar thickness
+  const bl = Math.min(px(20), kw / 3, kh / 3); // corner arm length
+  const eb = Math.min(px(26), kw / 2, kh / 2); // edge bar length
+  ctx.strokeStyle = "#fff";
+  ctx.lineWidth = bt;
+  ctx.lineCap = "butt";
+
+  ctx.beginPath();
+  // Top-left
+  ctx.moveTo(kx, ky); ctx.lineTo(kx + bl, ky);
+  ctx.moveTo(kx, ky); ctx.lineTo(kx, ky + bl);
+  // Top-right
+  ctx.moveTo(kx + kw, ky); ctx.lineTo(kx + kw - bl, ky);
+  ctx.moveTo(kx + kw, ky); ctx.lineTo(kx + kw, ky + bl);
+  // Bottom-left
+  ctx.moveTo(kx, ky + kh); ctx.lineTo(kx + bl, ky + kh);
+  ctx.moveTo(kx, ky + kh); ctx.lineTo(kx, ky + kh - bl);
+  // Bottom-right
+  ctx.moveTo(kx + kw, ky + kh); ctx.lineTo(kx + kw - bl, ky + kh);
+  ctx.moveTo(kx + kw, ky + kh); ctx.lineTo(kx + kw, ky + kh - bl);
+  // Edge bars (centered on each side)
+  ctx.moveTo(kx + kw / 2 - eb / 2, ky); ctx.lineTo(kx + kw / 2 + eb / 2, ky);
+  ctx.moveTo(kx + kw / 2 - eb / 2, ky + kh); ctx.lineTo(kx + kw / 2 + eb / 2, ky + kh);
+  ctx.moveTo(kx, ky + kh / 2 - eb / 2); ctx.lineTo(kx, ky + kh / 2 + eb / 2);
+  ctx.moveTo(kx + kw, ky + kh / 2 - eb / 2); ctx.lineTo(kx + kw, ky + kh / 2 + eb / 2);
+  ctx.stroke();
+
   ctx.restore();
+};
+
+// Resize-cursor for the crop handle under the cursor (Photoshop affordance).
+const CROP_CURSORS = {
+  nw: "nwse-resize",
+  se: "nwse-resize",
+  ne: "nesw-resize",
+  sw: "nesw-resize",
+  n: "ns-resize",
+  s: "ns-resize",
+  e: "ew-resize",
+  w: "ew-resize",
+  inside: "move",
+};
+
+PixaromaEditor.prototype.cropCursorFor = function (coords) {
+  if (!this._cropLayer || !this._cropDraft) return "crosshair";
+  let hd;
+  if (this.isMouseDown && this._cropDragHandle) {
+    hd = this._cropDragHandle;
+  } else {
+    const p = this._cropPointInSource(coords);
+    hd = this._cropHitTest(p.lx, p.ly);
+  }
+  return CROP_CURSORS[hd] || "crosshair";
 };
