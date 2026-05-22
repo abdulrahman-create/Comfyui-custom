@@ -1,11 +1,13 @@
 import { app } from "/scripts/app.js";
-import { hideJsonWidget } from "../shared/index.mjs";
+import { hideJsonWidget, BRAND } from "../shared/index.mjs";
+import { isGraphLoading } from "../shared/graph_loading.mjs";
 import {
   injectCSS, buildRoot, hideNativeImageCombo, openImageDropdown,
   renderChips, renderGlobalControls,
 } from "./ui.mjs";
 import { pickAndUploadFile, pasteFromClipboard, uploadImageToInput, setSelectedImage } from "./api.mjs";
 import { buildModePanel, previewResize } from "./resize_modes.mjs";
+import { applyInlineLabel, applyWHLayout, applyCoverControls } from "./panel_polish.mjs";
 
 let _activeLoadImageNode = null;
 
@@ -49,102 +51,70 @@ function pickByOffset(node, offset) {
   let next;
   if (cur < 0) next = offset > 0 ? 0 : values.length - 1;
   else next = ((cur + offset) % values.length + values.length) % values.length;
+  node._pixLiFitPending = true; // user pick → re-fit preview to the new image's aspect
   setSelectedImage(node, values[next]);
 }
 
-// Reduce a w:h ratio to its simplest integer form when there's a clean
-// gcd match (e.g. 1920:1080 → 16:9). For non-clean ratios, return a
-// rounded decimal label (~1.78:1 / ~1:1.78) so the user still sees
-// something meaningful.
-function simplifyRatio(w, h) {
-  if (!w || !h) return "";
-  const gcd = (a, b) => b ? gcd(b, a % b) : a;
-  const g = gcd(Math.abs(w), Math.abs(h)) || 1;
-  const rw = w / g, rh = h / g;
-  // Cap at small integer pairs — bigger ratios mean the gcd reduction
-  // didn't land on a recognisable common form (1920:1081 etc).
-  if (rw <= 64 && rh <= 64) return `${rw}:${rh}`;
+const MIN_W = 360; // node needs room for the two IN/OUT cards
+
+// Load Image loads from disk and takes NO inputs. The Vue frontend's
+// "widget-is-a-socket" model (1.43+) auto-creates connectable input slots for
+// the hidden `image` / `upload` combo widgets, leaving a dangling dot you can
+// wire any COMBO/* output into (it re-converts the combo widget to an input on
+// drop). We never want that. Remove every input slot. Returns true if it
+// removed anything. See Load Image Pixaroma Pattern #17.
+function stripInputs(node) {
+  if (!node?.inputs || node.inputs.length === 0) return false;
+  for (let i = node.inputs.length - 1; i >= 0; i--) {
+    if (node.inputs[i]?.link != null) { try { node.disconnectInput(i); } catch (_e) { /* ignore */ } }
+    node.removeInput(i);
+  }
+  node.setDirtyCanvas?.(true, true);
+  return true;
+}
+
+function gcdLi(a, b) { a = Math.abs(a); b = Math.abs(b); while (b) { const t = b; b = a % b; a = t; } return a || 1; }
+function ratioLabelLi(w, h) {
+  const g = gcdLi(w, h); const rw = w / g, rh = h / g;
+  const known = ["1:1","16:9","9:16","2:1","1:2","3:2","2:3","4:3","3:4","4:5","5:4","21:9"];
+  const s = `${rw}:${rh}`;
+  if (known.includes(s)) return s;
   const r = w / h;
   return r >= 1 ? `~${r.toFixed(2)}:1` : `~1:${(1 / r).toFixed(2)}`;
 }
-
-// Build a small aspect-ratio rectangle (~14×11 px max). Mirrors the
-// helper inside resize_modes.mjs but stays local so we don't have to
-// re-export it through index.mjs.
-function makeAspectRect(w, h, maxW = 14, maxH = 11) {
-  const el = document.createElement("span");
-  el.className = "pix-li-shape";
-  const a = w / h;
-  let pw, ph;
-  if (a >= maxW / maxH) { pw = maxW; ph = maxW / a; }
-  else                   { ph = maxH; pw = maxH * a; }
-  el.style.width = `${Math.max(1, Math.round(pw))}px`;
-  el.style.height = `${Math.max(1, Math.round(ph))}px`;
-  return el;
+function aspectRectDimsLi(w, h, maxW, maxH) {
+  const a = w / h; let rw, rh;
+  if (a >= maxW / maxH) { rw = maxW; rh = maxW / a; } else { rh = maxH; rw = maxH * a; }
+  return { rw: Math.max(2, Math.round(rw)), rh: Math.max(2, Math.round(rh)) };
+}
+function roundRectPathLi(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
 }
 
-// Update the input/output dimensions info bar. Hides the upload hint
-// when an image is loaded. Shows: original dims + ratio (always when
-// loaded), and final dims + ratio when resize mode != Off.
-function updateInfoBar(node) {
-  const root = node._pixLiRoot;
-  if (!root) return;
-  const hint = root.querySelector('[data-role="hint"]');
-  const info = root.querySelector('[data-role="diminfo"]');
-  if (!info) return;
-
+// What the painter should show: dual cards (image loaded) or a message.
+function getCardInfo(node) {
   const img = node.imgs?.[0];
   const W = img?.naturalWidth || 0;
   const H = img?.naturalHeight || 0;
-
-  if (!W || !H) {
-    if (hint) hint.style.display = "";
-    info.style.display = "none";
-    info.innerHTML = "";
-    return;
-  }
-
-  if (hint) hint.style.display = "none";
-  info.style.display = "flex";
-  info.innerHTML = "";
-
+  if (!W || !H) return { mode: "msg", text: "Upload or pick an image" };
   const state = readState(node);
   const { w: outW, h: outH } = previewResize(W, H, state);
-  // Show the Output row whenever a resize mode is active, even if the
-  // computed dims happen to equal the input. Keeps the panel layout
-  // stable while the user is stepping a W/H input by 1 — otherwise
-  // every odd-numbered value would add/remove the Output row and the
-  // +/- spinner arrows would jump under the cursor.
-  const resizeActive = state.mode !== "off";
+  return { mode: "dual", inW: W, inH: H, outW, outH };
+}
 
-  function makeRow(tag, w, h, isOut) {
-    const row = document.createElement("div");
-    row.className = "pix-li-diminfo-row" + (isOut ? " out" : "");
-    const tagEl = document.createElement("span");
-    tagEl.className = "pix-li-diminfo-tag";
-    tagEl.textContent = tag;
-    const rectEl = makeAspectRect(w, h);
-    const dimsEl = document.createElement("span");
-    dimsEl.className = "pix-li-diminfo-dims";
-    dimsEl.textContent = `${w} × ${h}`;
-    const ratioEl = document.createElement("span");
-    ratioEl.className = "pix-li-diminfo-ratio";
-    ratioEl.textContent = simplifyRatio(w, h);
-    row.append(tagEl, rectEl, dimsEl, ratioEl);
-    return row;
-  }
-
-  // Horizontal layout: [Input row] → [Output row] on the same line. Saves
-  // a row of vertical space when a resize mode is active. When Off, only
-  // the Input half is rendered.
-  info.appendChild(makeRow("Input", W, H, false));
-  if (resizeActive) {
-    const arrow = document.createElement("div");
-    arrow.className = "pix-li-diminfo-arrow";
-    arrow.textContent = "→";
-    info.appendChild(arrow);
-    info.appendChild(makeRow("Output", outW, outH, true));
-  }
+// The size readout is now painted by onDrawForeground (INPUT → OUTPUT cards),
+// not a DOM bar. Toggle the upload hint by image presence, then request a
+// repaint so the painted cards reflect the latest state.
+function updateInfoBar(node) {
+  const hint = node._pixLiRoot?.querySelector('[data-role="hint"]');
+  if (hint) hint.style.display = node.imgs?.[0]?.naturalWidth ? "none" : "";
+  node.setDirtyCanvas?.(true, true);
 }
 
 function renderUI(node) {
@@ -172,8 +142,23 @@ function renderUI(node) {
   // Arrow / Tab break (the focused input would disappear).
   const oldPanel = root.querySelector(".pix-li-panel");
   if (oldPanel) oldPanel.remove();
-  const panel = buildModePanel(state.mode, node, state, writeState, () => updateInfoBar(node));
+  // Match Image Resize's panel options so the quick-pick rows render one-line
+  // (oneLine), Match ratio is crop-only (Pad is its own mode), and the Fit/Crop
+  // + Pad previews use the same sizes + live input dims.
+  const live = node.imgs?.[0]?.naturalWidth
+    ? { w: node.imgs[0].naturalWidth, h: node.imgs[0].naturalHeight }
+    : null;
+  const panel = buildModePanel(state.mode, node, state, writeState, () => updateInfoBar(node),
+    "loadImagePixState",
+    { previewMaxW: 134, previewMaxH: 96, cropOnly: true, inputDims: live, oneLine: true });
   if (panel) {
+    applyInlineLabel(panel, state.mode);
+    if (state.mode === "fit_inside" || state.mode === "cover") applyWHLayout(panel);
+    if (state.mode === "cover") {
+      applyCoverControls(node, panel, readState, writeState, () => updateInfoBar(node));
+    }
+    // No redundant title row — the highlighted button names the mode.
+    panel.querySelector(".pix-li-panel-label")?.remove();
     // Insert AFTER the chip grid.
     const chips = root.querySelector(".pix-li-chips");
     chips.after(panel);
@@ -192,27 +177,48 @@ function renderUI(node) {
   // Refresh dims info bar (input + output dims).
   updateInfoBar(node);
 
-  // Force an immediate resize ONLY when the content height grew past the
-  // current node height. Two reasons:
-  // (1) Without this, switching to a taller panel takes 1-3 seconds
-  //     because LiteGraph doesn't auto-adjust node.size when getMinHeight
-  //     changes — it only re-measures during certain lifecycle events.
-  // (2) Force-growing only (NEVER shrinking) preserves the user's manual
-  //     resize. If they dragged the node taller for a roomier preview and
-  //     then switch to a smaller panel, we leave the node's height alone.
-  //     They can manually shrink if they want.
-  const newH = node._pixLiMeasureHeight?.();
-  if (typeof newH === "number" && newH !== node._pixLiLastMeasuredH) {
-    node._pixLiLastMeasuredH = newH;
-    if (typeof node.computeSize === "function") {
-      const min = node.computeSize();
-      if (Array.isArray(min) && min.length === 2) {
-        // Only grow — preserve user's manual taller resize.
-        if (min[1] > (node.size?.[1] || 0)) node.size[1] = min[1];
-      }
-    }
-  }
+  // NOTE: node-height fitting is NOT done here. renderUI runs on the load path
+  // (configure / initial microtask) too, and resizing there dirties the saved
+  // workflow (Vue Compat #18). Height fitting happens only on genuine user
+  // actions via fitPreview() (mode-chip click + fresh drop), gated on
+  // !isGraphLoading().
   node.graph?.setDirtyCanvas?.(true, true);
+}
+
+// Auto-fit the node height so the native image preview hugs the controls with
+// a small, consistent gap in every mode (the "Hug the controls" choice). The
+// native preview reserves a FIXED minimum (~220px), so a square/landscape image
+// floats inside it. Instead we size the node so the preview area matches the
+// image's ASPECT (previewTop + width x aspect), so the picture fills the area
+// in every shape — square, portrait, landscape. Deterministic (same image +
+// mode + node width => same height) so a reload recomputes the saved height and
+// never dirties (Vue Compat #18). Layout (measured): slot area above the
+// controls widget = outputs * NODE_SLOT_HEIGHT + 6; controls height =
+// measureContentHeight; preview area = the rest. Deferred to rAF so the
+// freshly-rendered panel has laid out before measuring; gated on
+// !isGraphLoading so it never resizes during a workflow load (Vue Compat #19).
+function fitPreview(node) {
+  if (isGraphLoading()) return;
+  requestAnimationFrame(() => {
+    if (!node._pixLiRoot || isGraphLoading()) return;
+    const SLOT_H = (typeof LiteGraph !== "undefined" && LiteGraph.NODE_SLOT_HEIGHT) || 20;
+    const aboveControls = (node.outputs?.length || 7) * SLOT_H + 6; // slot area above the controls
+    const controlsH = node._pixLiMeasureHeight?.() || 280;
+    const img = node.imgs?.[0];
+    let previewH;
+    if (img?.naturalWidth) {
+      const innerW = Math.max(40, (node.size[0] || 360) - 16); // preview spans node width minus side margin
+      previewH = Math.round(innerW * img.naturalHeight / img.naturalWidth) + 22; // + dims label row
+      previewH = Math.max(90, Math.min(previewH, 1400));
+    } else {
+      previewH = 180; // no image yet — modest default
+    }
+    const target = aboveControls + controlsH + previewH;
+    if (Math.abs((node.size?.[1] || 0) - target) > 1) {
+      node.size[1] = target;
+      node.setDirtyCanvas?.(true, true);
+    }
+  });
 }
 
 // Global Ctrl+V handler for the active load-image node.
@@ -225,6 +231,7 @@ window.addEventListener("keydown", async (e) => {
   e.preventDefault();
   e.stopPropagation();
   try {
+    _activeLoadImageNode._pixLiFitPending = true;
     const saved = await pasteFromClipboard(_activeLoadImageNode);
     if (saved) refreshDropdown(_activeLoadImageNode);
   } catch (err) {
@@ -262,7 +269,9 @@ export const DEFAULT_STATE = {
   ratio_preset: "1:1",
   ratio_w: 1, ratio_h: 1,
   ratio_action: "crop",
-  pad_color: "#000000",
+  pad_color: "#808080",
+  pad_top: 0, pad_bottom: 0, pad_left: 0, pad_right: 0,
+  crop_anchor: "center", crop_scale: true,
   snap: 0,
   resample: "auto",
   allow_upscale: true,
@@ -291,6 +300,10 @@ function setupLoadImageNode(node) {
   const imageWidget = hideNativeImageCombo(node);
   node._pixLiImageWidget = imageWidget;
 
+  // Remove the auto-created widget-input slots (image / upload) so the node
+  // shows no connectable input dot (Load Image Pixaroma Pattern #17).
+  stripInputs(node);
+
   // Brand default colors applied globally by js/brand/index.js.
 
   const root = buildRoot();
@@ -314,9 +327,17 @@ function setupLoadImageNode(node) {
       totalH += child.offsetHeight;
       visible += 1;
     }
-    const padding = 16; // root padding: 8px top + 8px bottom
-    const gaps = Math.max(0, visible - 1) * 8; // flex `gap: 8px` between children
-    return Math.max(280, totalH + padding + gaps);
+    const padding = 10; // root padding: 2px top + 8px bottom
+    const gaps = Math.max(0, visible - 1) * 7; // flex `gap: 7px` between children
+    // Before the DOM widget is attached to the document, every child's
+    // offsetHeight is 0 (queueMicrotask renders before LiteGraph's first paint),
+    // so return a sane placeholder in that pre-layout case ONLY. Once laid out,
+    // hug the REAL content height with no floor. A 280px floor made short modes
+    // (e.g. "Off", which has no settings panel ≈ 220px of content) pad the
+    // controls widget taller than its content, leaving dead space between the
+    // "Upscaling" button and the image preview — that was the Off-mode gap.
+    if (totalH < 20) return 280;
+    return totalH + padding + gaps;
   }
   node._pixLiMeasureHeight = measureContentHeight;
 
@@ -334,7 +355,7 @@ function setupLoadImageNode(node) {
     // the frontend bundle: DOMWidget.computeLayoutSize reads getMaxHeight
     // and the IMAGE_PREVIEW widget has no maxHeight so it absorbs slack.
     getMaxHeight: measureContentHeight,
-    margin: 4,
+    margin: 0,
     serialize: false,
   });
   node._pixLiWidget = widget;
@@ -344,7 +365,7 @@ function setupLoadImageNode(node) {
   // chip grid fit comfortably side-by-side. LiteGraph's configure runs
   // AFTER nodeCreated and overwrites with the saved value, so existing
   // workflows keep whatever width the user had.
-  if (!node.size || node.size[0] < 380) node.size[0] = 380;
+  if (!node.size || node.size[0] < MIN_W) node.size[0] = MIN_W;
 
   // Track the currently-focused load-image node for Ctrl+V routing.
   // (One global listener; nodes register/unregister themselves on selection.)
@@ -354,9 +375,12 @@ function setupLoadImageNode(node) {
   };
 
   // Called by api.mjs updateNativePreview() once a freshly-loaded image has
-  // its naturalWidth/naturalHeight available. Refreshes the dims info bar
-  // so input + output rows reflect the new source dimensions.
-  node._pixLiOnImageLoaded = () => updateInfoBar(node);
+  // its naturalWidth/naturalHeight available (arrow / dropdown / upload / paste
+  // picks all route through here). Refreshes the dims readout AND runs the
+  // pending auto-fit so the preview re-sizes to the NEW image's aspect — this
+  // is the path that was missing the fit, so a portrait picked after a square
+  // stayed squeezed (onImageReady consumes _pixLiFitPending).
+  node._pixLiOnImageLoaded = () => onImageReady();
 
   // Refresh info bar once node.imgs[0] is loaded — covers both the
   // workflow-restore path (image_upload hook fetches the saved image
@@ -365,13 +389,25 @@ function setupLoadImageNode(node) {
   // area drop also fetches asynchronously). Reuses node._pixLiImgPoll
   // so a new call cancels any in-flight poll, and the existing onRemoved
   // cleanup picks up the same handle.
+  // When the image is ready, refresh the readout and — only if a fit was
+  // requested by a user action (fresh drop / pick / upload / paste / drop), not
+  // a workflow restore — auto-fit the node so the preview hugs the controls at
+  // the image's aspect. _pixLiFitPending guards against firing on restore (the
+  // saved height is trusted then; Vue Compat #18).
+  function onImageReady() {
+    updateInfoBar(node);
+    if (node._pixLiFitPending) {
+      node._pixLiFitPending = false;
+      fitPreview(node);
+    }
+  }
   function refreshAfterImageReady() {
     if (node._pixLiImgPoll) {
       clearInterval(node._pixLiImgPoll);
       node._pixLiImgPoll = null;
     }
     if (node.imgs?.[0]?.naturalWidth) {
-      updateInfoBar(node);
+      onImageReady();
       return;
     }
     let ticks = 0;
@@ -379,7 +415,7 @@ function setupLoadImageNode(node) {
       if (node.imgs?.[0]?.naturalWidth) {
         clearInterval(poll);
         node._pixLiImgPoll = null;
-        updateInfoBar(node);
+        onImageReady();
       } else if (++ticks > 30) {
         clearInterval(poll);
         node._pixLiImgPoll = null;
@@ -404,6 +440,9 @@ function setupLoadImageNode(node) {
     imageWidget.callback = function () {
       const ret = origCallback?.apply(this, arguments);
       if (imageWidget.value) node._pixLiSelectedFilename = imageWidget.value;
+      // Native drag-drop onto the bottom preview is a user pick → re-fit. Gated
+      // so it never fires during a workflow load (Vue Compat #18).
+      if (!isGraphLoading()) node._pixLiFitPending = true;
       refreshAfterImageReady();
       refreshDropdown(node);
       return ret;
@@ -419,7 +458,7 @@ function setupLoadImageNode(node) {
     e.stopPropagation();
     try {
       const saved = await pickAndUploadFile(node);
-      if (saved) refreshDropdown(node);
+      if (saved) { node._pixLiFitPending = true; refreshDropdown(node); }
     } catch (err) {
       console.error("[PixaromaLoadImage] upload failed", err);
       alert("Upload failed: " + err.message);
@@ -446,6 +485,7 @@ function setupLoadImageNode(node) {
     const file = e.dataTransfer?.files?.[0];
     if (!file || !file.type.startsWith("image/")) return;
     try {
+      node._pixLiFitPending = true;
       await uploadImageToInput(node, file);
       refreshDropdown(node);
     } catch (err) {
@@ -458,7 +498,7 @@ function setupLoadImageNode(node) {
   const dd = root.querySelector('[data-role="dropdown"]');
   dd?.addEventListener("click", (e) => {
     e.stopPropagation();
-    openImageDropdown(node, dd, () => refreshDropdown(node));
+    openImageDropdown(node, dd, () => { node._pixLiFitPending = true; refreshDropdown(node); });
   });
 
   // Prev / Next arrow buttons - flip through the image list visually,
@@ -497,17 +537,157 @@ function setupLoadImageNode(node) {
     if (cur.mode === mode) return;
     writeState(node, { ...cur, mode });
     renderUI(node);
+    fitPreview(node); // re-snug the preview under the new (taller/shorter) panel
   });
 
-  // Initial render — defer so configure() has time to land state.
-  queueMicrotask(() => renderUI(node));
+  // Initial render — defer so configure() has time to land state. Fit the
+  // height ONLY on a fresh drop (no saved state yet); a loaded workflow keeps
+  // its saved size (Vue Compat #18 — never resize on the load path).
+  queueMicrotask(() => {
+    const wasConfigured = node.properties?.[STATE_PROP] !== undefined;
+    renderUI(node);
+    // Fresh drop: fit once the default image loads (the image-ready path reads
+    // this flag). A restored workflow keeps its saved size (Vue Compat #18).
+    if (!wasConfigured) node._pixLiFitPending = true;
+  });
 }
 
 app.registerExtension({
   name: "Pixaroma.LoadImage",
 
+  settings: [
+    {
+      id: "Pixaroma.LoadImage.ThumbSize",
+      name: "Dropdown thumbnail size",
+      type: "combo",
+      defaultValue: "Large",
+      options: ["Small", "Large"],
+      tooltip: "Thumbnail size shown in the Load Image Pixaroma file dropdown.",
+      category: ["👑 Pixaroma", "Load Image"],
+    },
+  ],
+
   beforeRegisterNodeDef(nodeType, nodeData) {
     if (nodeData.name !== "PixaromaLoadImage") return;
+
+    // Reject ALL input connections — the node has no inputs we want, and the
+    // hidden image/upload combo widgets must not be drivable from outside
+    // (Load Image Pixaroma Pattern #17).
+    nodeType.prototype.onConnectInput = function () { return false; };
+
+    // Belt-and-braces: if a connection still slips in via the frontend's
+    // "connect to widget input" path, strip every input slot. Gated on
+    // !isGraphLoading so it never mutates serialized state during a workflow
+    // load (Vue Compat #19) — load-time cleanup is handled by onConfigure.
+    const _origConn = nodeType.prototype.onConnectionsChange;
+    const INPUT_T = (typeof LiteGraph !== "undefined" && LiteGraph.INPUT != null) ? LiteGraph.INPUT : 1;
+    nodeType.prototype.onConnectionsChange = function (type) {
+      const r = _origConn?.apply(this, arguments);
+      if (type === INPUT_T && !isGraphLoading()) stripInputs(this);
+      return r;
+    };
+
+    const _origResize = nodeType.prototype.onResize;
+    nodeType.prototype.onResize = function (size) {
+      if (this.size[0] < MIN_W) this.size[0] = MIN_W;
+      return _origResize?.apply(this, arguments);
+    };
+
+    // Paint INPUT → OUTPUT size cards in the empty space left of the 7 output
+    // dots (same technique as Image Resize). Read-only re: serialized state
+    // except the min-width self-heal (Vue Compat #18); setDirtyCanvas is only a
+    // redraw flag, not a dirty-tracker trip.
+    const _origDraw = nodeType.prototype.onDrawForeground;
+    nodeType.prototype.onDrawForeground = function (ctx) {
+      const r = _origDraw?.apply(this, arguments);
+      if (this.flags?.collapsed) return r;
+      if (this.size[0] < MIN_W) { this.size[0] = MIN_W; this.setDirtyCanvas(true, true); }
+
+      const info = getCardInfo(this);
+      const fam = "ui-sans-serif, system-ui, sans-serif";
+      // Vertical center of the 7 output slot rows: TOP_PAD(4) + 7*20/2 = 74.
+      const midY = 74;
+      ctx.save();
+      ctx.textBaseline = "middle";
+
+      if (info.mode === "msg") {
+        ctx.font = `12px ${fam}`;
+        const tw = ctx.measureText(info.text).width;
+        const bw = tw + 24, bh = 26;
+        const bx = 12, by = midY - bh / 2;
+        roundRectPathLi(ctx, bx, by, bw, bh, 8);
+        ctx.fillStyle = "#1d1d1d"; ctx.fill();
+        ctx.textAlign = "left"; ctx.fillStyle = BRAND;
+        ctx.fillText(info.text, bx + 12, midY);
+        ctx.restore();
+        return r;
+      }
+
+      // Two joined cards in the LEFT dead space; right edge stops clear of the
+      // longest output label ("original_height"). LABEL_RESERVE is the px kept
+      // free on the right for the output names.
+      const LEFT_PAD = 12, LABEL_RESERVE = 120, NECK_INSET = 3, COL_GAP = 6;
+      const pairW = Math.max(120, this.size[0] - LEFT_PAD - LABEL_RESERVE);
+      const cardW = (pairW - COL_GAP) / 2 - NECK_INSET / 2;
+      const cardH = 118;
+      const L1 = LEFT_PAD;                 // INPUT left
+      const R1 = L1 + cardW;               // INPUT right
+      const R2 = LEFT_PAD + pairW;         // OUTPUT right
+      const L2 = R2 - cardW;               // OUTPUT left
+      const arrowCx = (R1 + L2) / 2;
+      const cardY = midY - cardH / 2, T = cardY, Bm = cardY + cardH;
+      const R = 6, bridgeH = 22, bT = midY - bridgeH / 2, bB = midY + bridgeH / 2;
+      const rectMaxW = 54, rectMaxH = 40;
+
+      // Single joined outline (two rounded cards + center bridge).
+      ctx.beginPath();
+      ctx.moveTo(L1 + R, T);
+      ctx.lineTo(R1 - R, T); ctx.arcTo(R1, T, R1, T + R, R);
+      ctx.lineTo(R1, bT); ctx.lineTo(L2, bT); ctx.lineTo(L2, T + R);
+      ctx.arcTo(L2, T, L2 + R, T, R);
+      ctx.lineTo(R2 - R, T); ctx.arcTo(R2, T, R2, T + R, R);
+      ctx.lineTo(R2, Bm - R); ctx.arcTo(R2, Bm, R2 - R, Bm, R);
+      ctx.lineTo(L2 + R, Bm); ctx.arcTo(L2, Bm, L2, Bm - R, R);
+      ctx.lineTo(L2, bB); ctx.lineTo(R1, bB); ctx.lineTo(R1, Bm - R);
+      ctx.arcTo(R1, Bm, R1 - R, Bm, R);
+      ctx.lineTo(L1 + R, Bm); ctx.arcTo(L1, Bm, L1, Bm - R, R);
+      ctx.lineTo(L1, T + R); ctx.arcTo(L1, T, L1 + R, T, R);
+      ctx.closePath();
+      ctx.fillStyle = "#1d1d1d"; ctx.fill();
+      ctx.strokeStyle = "#444"; ctx.lineWidth = 1; ctx.stroke();
+
+      const drawContent = (x, label, w, h, accent) => {
+        const ccx = x + cardW / 2;
+        ctx.textAlign = "center";
+        const maxTxt = cardW - 8;
+        ctx.font = `9px ${fam}`; ctx.fillStyle = "#9a9a9a";
+        ctx.fillText(label, ccx, cardY + 18, maxTxt);
+        ctx.font = `bold 11px ${fam}`; ctx.fillStyle = BRAND;
+        ctx.fillText(`${w}×${h}`, ccx, cardY + 36, maxTxt);
+        const { rw, rh } = aspectRectDimsLi(w, h, rectMaxW, rectMaxH);
+        const rx = Math.round(ccx - rw / 2) + 0.5, ry = Math.round(cardY + 72 - rh / 2) + 0.5;
+        if (accent) { ctx.fillStyle = "rgba(246,103,68,0.20)"; ctx.fillRect(rx, ry, rw, rh); }
+        ctx.strokeStyle = accent ? BRAND : "rgba(200,200,200,0.7)"; ctx.lineWidth = 1;
+        ctx.strokeRect(rx, ry, rw, rh);
+        ctx.font = `8px ${fam}`; ctx.fillStyle = "#9a9a9a";
+        ctx.fillText(ratioLabelLi(w, h), ccx, cardY + 104, maxTxt);
+      };
+
+      const changed = info.inW !== info.outW || info.inH !== info.outH;
+      drawContent(L1, "INPUT", info.inW, info.inH, false);
+      drawContent(L2, "OUTPUT", info.outW, info.outH, changed);
+
+      ctx.strokeStyle = "#9a9a9a"; ctx.lineWidth = 1;
+      ctx.lineCap = "round"; ctx.lineJoin = "round";
+      ctx.beginPath();
+      ctx.moveTo(arrowCx - 2.5, midY - 4);
+      ctx.lineTo(arrowCx + 2.5, midY);
+      ctx.lineTo(arrowCx - 2.5, midY + 4);
+      ctx.stroke();
+      ctx.restore();
+      return r;
+    };
+
     const _origSel = nodeType.prototype.onSelected;
     const _origDes = nodeType.prototype.onDeselected;
     nodeType.prototype.onSelected = function () {
@@ -521,6 +701,9 @@ app.registerExtension({
     const _origConfigure = nodeType.prototype.onConfigure;
     nodeType.prototype.onConfigure = function (info) {
       const r = _origConfigure?.apply(this, arguments);
+      // Drop any saved widget-input slots on load (Pattern #17). Synchronous so
+      // it lands before the change-tracker snapshots the loaded graph.
+      stripInputs(this);
       // Wait a microtask so widget values are settled.
       queueMicrotask(() => {
         refreshDropdown(this);
@@ -541,6 +724,11 @@ app.registerExtension({
 
     const _origRemoved = nodeType.prototype.onRemoved;
     nodeType.prototype.onRemoved = function () {
+      // Close any open dropdown popup so its document-level capture listeners
+      // are detached — otherwise deleting the node (or reload / Ctrl+Z, which
+      // fires onRemoved per node) leaves a floating popup + leaked listeners
+      // (mirrors Prompt Reader Pixaroma Pattern #4).
+      document.querySelector(".pix-li-popup")?._pixClose?.();
       if (this._pixLiImgPoll) clearInterval(this._pixLiImgPoll);
       this._pixLiImgPoll = null;
       if (_activeLoadImageNode === this) _activeLoadImageNode = null;

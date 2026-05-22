@@ -230,6 +230,10 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 > 💡 **After updating Pixaroma:** hard-refresh your ComfyUI browser tab with **Ctrl+Shift+R** (or **Cmd+Shift+R** on Mac). The browser keeps old node visuals cached, and without a hard refresh you may still see the previous version of a node even though the update installed correctly.
 
+### **May 22, 2026 · v1.3.53**
+- **Load Image: find and pick images by thumbnail.** Open the file list and you now see a thumbnail of every image, a search box to filter by name, and a folder sidebar to jump between subfolders - so you can recognise the image you want at a glance instead of reading file names. A small toggle switches between small and large thumbnails and remembers your choice.
+- **Fixed: running a single node no longer starts the whole workflow.** Pressing a node's own run button (Execute) again runs just that node and what it needs, instead of kicking off the entire workflow.
+
 ### **May 21, 2026 · v1.3.51–1.3.52**
 - **NEW: Image Resize Pixaroma.** Resize an image (and its mask) anywhere in your workflow with one compact node. Choose **Off**, **Max megapixels**, **Longest side**, **Scale by**, **Fit inside**, **Crop to fill**, **Match aspect ratio**, or **Pad** - which adds a border for outpainting and marks the new area as the mask to fill. **Crop to fill** lets you pick which part of the image to keep (the top, a corner, the center…) and whether to scale-and-crop or cut a piece at its original size. A live **Input → Output** preview shows the exact result and lights up only when the size actually changes. Wire a **width or height** in (for example from Resolution Pixaroma): connect just one to scale while keeping the shape, or both for an exact size - the node adapts on its own.
 - **Image Resize: wire in a single "longest side" value.** Connect one number and the node scales the longer edge of your image to that size, keeping the shape, so you no longer have to decide between width and height. It also gained a matching **longest side** output. Wired sizes now follow the **Upscaling** toggle, and a value of 0 simply passes the image through untouched.

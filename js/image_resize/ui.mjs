@@ -261,6 +261,11 @@ let _activeResampleClose = null;
 export function closeResamplePopup() { _activeResampleClose?.(); }
 
 export function openResamplePopup(anchorEl, currentValue, onPick) {
+  // Close a prior popup via its tracked close() so its document capture
+  // listeners are detached — a bare .remove() leaves them attached until the
+  // next outside event self-heals (same fix as Load Image). Fallback bare
+  // remove covers any stray popup without a tracked close.
+  closeResamplePopup();
   document.querySelector(".pix-ir-rs-popup")?.remove();
   const popup = document.createElement("div");
   popup.className = "pix-ir-rs-popup";

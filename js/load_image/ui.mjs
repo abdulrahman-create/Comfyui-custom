@@ -1,3 +1,4 @@
+import { app } from "/scripts/app.js";
 import { BRAND } from "../shared/index.mjs";
 
 let _cssInjected = false;
@@ -9,7 +10,9 @@ export function injectCSS() {
     .pix-li-root {
       width: 100%;
       box-sizing: border-box;
-      padding: 8px;
+      /* Small top padding pulls the Upload button up tight under the output
+         dots (the body can't sit higher than the slot area). */
+      padding: 2px 8px 8px;
       background: #2a2a2a;
       border-radius: 4px;
       color: #ddd;
@@ -17,14 +20,14 @@ export function injectCSS() {
       font-size: 11px;
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: 7px;
     }
     .pix-li-upload-btn {
       width: 100%;
       background: ${BRAND};
       border: none;
       border-radius: 4px;
-      padding: 9px 8px;
+      padding: 7px 8px;
       font-size: 11px;
       color: #fff;
       font-weight: 600;
@@ -60,19 +63,20 @@ export function injectCSS() {
        through images visually, matching native ComfyUI LoadImage. */
     .pix-li-filerow {
       display: flex;
-      gap: 4px;
+      gap: 6px;
       align-items: stretch;
     }
     .pix-li-filerow .pix-li-dropdown { flex: 1; min-width: 0; }
+    /* File nav arrows match the resample picker exactly (orange, 30px, solid). */
     .pix-li-nav {
       background: #1d1d1d;
       border: 1px solid #444;
       border-radius: 4px;
-      color: #aaa;
-      font-size: 12px;
+      color: ${BRAND};
+      font-size: 11px;
       font-weight: 700;
       cursor: pointer;
-      width: 26px;
+      width: 30px;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -80,14 +84,13 @@ export function injectCSS() {
       transition: background 0.08s, border-color 0.08s, color 0.08s;
       flex-shrink: 0;
     }
-    .pix-li-nav:hover:not(.disabled) { border-color: ${BRAND}; color: ${BRAND}; }
-    .pix-li-nav:active:not(.disabled) { background: ${BRAND}; color: #fff; }
+    .pix-li-nav:hover:not(.disabled) { border-color: ${BRAND}; }
     .pix-li-nav.disabled { opacity: 0.3; cursor: default; }
     .pix-li-dropdown {
       background: #1d1d1d;
       border: 1px solid #444;
       border-radius: 4px;
-      padding: 6px 8px;
+      padding: 6px 10px;
       font-size: 11px;
       color: #ccc;
       cursor: pointer;
@@ -96,100 +99,39 @@ export function injectCSS() {
       align-items: center;
       user-select: none;
     }
-    .pix-li-dropdown:hover { border-color: #666; }
+    .pix-li-dropdown:hover { border-color: ${BRAND}; }
     .pix-li-dropdown .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .pix-li-dropdown .arrow { color: ${BRAND}; font-size: 10px; margin-left: 6px; }
+    .pix-li-dropdown .arrow { color: ${BRAND}; font-size: 13px; margin-left: 6px; line-height: 1; }
     .pix-li-dropdown .counter {
       color: #777;
       font-size: 9px;
       margin-left: 6px;
       flex-shrink: 0;
     }
-    /* Subfolder section header inside the dropdown popup. Visual separator
-       only - not clickable. Items below it show the bare filename. */
-    .pix-li-popup-section {
-      padding: 4px 10px 3px;
-      font-size: 9px;
-      color: #777;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      background: #161616;
-      border-bottom: 1px solid #2a2a2a;
-      user-select: none;
-    }
-    .pix-li-popup-section:not(:first-child) { border-top: 1px solid #2a2a2a; }
-    /* Dimensions info bar — replaces the "drag/paste" hint once an image
-       is loaded. Horizontal layout: [INPUT  dims  ratio] → [OUTPUT  dims
-       ratio], both halves on the same line so we save vertical space
-       when a resize mode is active. When resize is Off, only the Input
-       half is rendered. */
-    .pix-li-diminfo {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      background: #1d1d1d;
-      border: 1px solid #333;
-      border-radius: 4px;
-      padding: 6px 8px;
-      font-size: 10px;
-    }
-    .pix-li-diminfo-row {
-      display: flex;
-      align-items: center;
-      gap: 5px;
-      flex: 1;
-      min-width: 0; /* allow shrinking when both halves visible */
-    }
-    .pix-li-diminfo-tag {
-      font-size: 8px;
-      color: #777;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-    .pix-li-diminfo-dims {
-      color: #ddd;
-      flex: 1;
-      white-space: nowrap;
-    }
-    .pix-li-diminfo-ratio {
-      color: #888;
-      flex-shrink: 0;
-    }
-    .pix-li-diminfo-arrow {
-      color: ${BRAND};
-      font-size: 11px;
-      line-height: 1;
-      flex-shrink: 0;
-    }
-    .pix-li-diminfo .pix-li-shape {
-      flex-shrink: 0;
-    }
-    /* Highlight the OUTPUT half by tinting the dims orange when resize active. */
-    .pix-li-diminfo-row.out .pix-li-diminfo-dims { color: ${BRAND}; font-weight: 600; }
     .pix-li-chips {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 3px;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 5px;
     }
     .pix-li-chip {
+      box-sizing: border-box;
       background: #1d1d1d;
       border: 1px solid #444;
       border-radius: 4px;
-      padding: 6px 4px;
+      padding: 6px 3px;
       text-align: center;
-      font-size: 10px;
+      font-size: 9.5px;
       color: #ccc;
       cursor: pointer;
       user-select: none;
       transition: background 0.08s, border-color 0.08s;
     }
-    .pix-li-chip:hover { border-color: #666; }
+    .pix-li-chip:hover { border-color: ${BRAND}; color: #ddd; }
     .pix-li-chip.active {
       background: ${BRAND};
       color: #fff;
       border-color: ${BRAND};
     }
-    .pix-li-chip.span-full { grid-column: span 3; }
     .pix-li-panel {
       background: #1d1d1d;
       border: 1px solid #444;
@@ -510,61 +452,6 @@ export function injectCSS() {
       flex-direction: column;
       gap: 5px;
     }
-    .pix-li-snap-row, .pix-li-rs-row {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      background: #1d1d1d;
-      border: 1px solid #333;
-      border-radius: 4px;
-      padding: 5px 8px;
-    }
-    .pix-li-magnet {
-      display: inline-block;
-      width: 11px; height: 11px;
-      background-color: #888;
-      -webkit-mask: url("/pixaroma/assets/icons/ui/magnet.svg") center/11px 11px no-repeat;
-              mask: url("/pixaroma/assets/icons/ui/magnet.svg") center/11px 11px no-repeat;
-    }
-    .pix-li-snap-btns {
-      display: inline-flex;
-      gap: 2px;
-      margin-left: auto;
-    }
-    .pix-li-snap-btn {
-      background: #1d1d1d;
-      border: 1px solid #444;
-      border-radius: 3px;
-      color: #aaa;
-      font-size: 9px;
-      padding: 2px 5px;
-      min-width: 18px;
-      cursor: pointer;
-      font-family: inherit;
-      line-height: 1;
-    }
-    .pix-li-snap-btn:hover { color: #ddd; border-color: #666; }
-    .pix-li-snap-btn.active {
-      background: ${BRAND};
-      color: #fff;
-      border-color: ${BRAND};
-    }
-    /* Resample row — custom dropdown trigger styled like the file picker. */
-    .pix-li-rs-row {
-      cursor: pointer;
-      user-select: none;
-    }
-    .pix-li-rs-row:hover { border-color: #666; }
-    .pix-li-rs-value {
-      color: #ccc;
-      font-size: 10px;
-      margin-left: auto;
-    }
-    .pix-li-rs-arrow {
-      color: ${BRAND};
-      font-size: 9px;
-      margin-left: 4px;
-    }
     .pix-li-rs-popup {
       position: fixed;
       z-index: 99999;
@@ -590,20 +477,125 @@ export function injectCSS() {
     .pix-li-rs-item.active .pix-li-rs-item-label { color: ${BRAND}; font-weight: 600; }
     .pix-li-rs-item-label { font-size: 11px; }
     .pix-li-rs-item-hint { font-size: 9px; color: #777; }
-    .pix-li-up-row {
-      background: #1d1d1d;
-      border: 1px solid #333;
-      border-radius: 4px;
-      padding: 5px 8px;
-      display: flex;
-      align-items: center;
-      gap: 5px;
-      cursor: pointer;
-      user-select: none;
-      font-size: 10px;
-      color: #aaa;
+    /* ── Image Resize design language, scoped to .pix-li-root ── */
+    /* Centered snap footer: magnet + "Snap" + chips. */
+    .pix-li-foot { display:flex; align-items:center; justify-content:center; gap:6px; flex-wrap:wrap; }
+    .pix-li-snap2 { display:inline-flex; align-items:center; gap:5px; }
+    .pix-li-snap-icon { display:inline-block; width:12px; height:12px; background-color:#888; flex:none;
+      -webkit-mask:url("/pixaroma/assets/icons/ui/magnet.svg") center/12px 12px no-repeat;
+              mask:url("/pixaroma/assets/icons/ui/magnet.svg") center/12px 12px no-repeat; }
+    .pix-li-snap-lbl { font-size:9px; color:#7d7d7d; text-transform:uppercase; letter-spacing:.5px; }
+    .pix-li-schip { background:#1d1d1d; border:1px solid #444; border-radius:3px; color:#aaa;
+      font-size:8.5px; padding:3px 5px; min-width:16px; text-align:center; cursor:pointer; user-select:none; }
+    .pix-li-schip:hover { border-color:${BRAND}; color:#ddd; }
+    .pix-li-schip.active { background:${BRAND}; color:#fff; border-color:${BRAND}; }
+    /* Resample picker: [◀] [ Resample: Auto ▾ ] [▶] */
+    .pix-li-rs2-row { display:flex; align-items:stretch; gap:6px; }
+    .pix-li-rs2-nav { flex:0 0 30px; background:#1d1d1d; border:1px solid #444; border-radius:4px;
+      color:${BRAND}; font-size:11px; cursor:pointer; display:flex; align-items:center; justify-content:center; padding:0; }
+    .pix-li-rs2-nav:hover { border-color:${BRAND}; }
+    .pix-li-rs2-dd { flex:1; display:flex; align-items:center; justify-content:space-between;
+      background:#1d1d1d; border:1px solid #444; border-radius:4px; padding:6px 10px; cursor:pointer; user-select:none; }
+    .pix-li-rs2-dd:hover { border-color:${BRAND}; }
+    .pix-li-rs2-value { color:#ddd; font-size:11px; }
+    .pix-li-rs2-arrow { color:${BRAND}; font-size:13px; margin-left:6px; line-height:1; }
+    /* Upscaling toggle button. */
+    .pix-li-upbtn { align-self:center; background:#1d1d1d; border:1px solid #444; border-radius:5px;
+      color:#aaa; font-size:11px; padding:7px 18px; cursor:pointer; user-select:none; transition:background .08s,border-color .08s; }
+    .pix-li-upbtn:hover { border-color:${BRAND}; color:#ddd; }
+    .pix-li-upbtn.is-on, .pix-li-upbtn.is-on:hover { background:${BRAND}; border-color:${BRAND}; color:#fff; }
+    /* Per-mode panel overrides (mirror image_resize .pix-ir-root .pix-li-* block). */
+    .pix-li-root .pix-li-panel { background:rgba(255,255,255,.04); border:none; border-radius:6px; padding:9px 10px; }
+    .pix-li-root .pix-li-panel-readout { display:none; }
+    .pix-li-root .pix-li-ratio-chips { margin-bottom:0; }
+    .pix-li-root .pix-li-custom-ratio-row { margin:8px 0 0; }
+    .pix-li-root .pix-li-input-wide { width:100% !important; max-width:none; }
+    .pix-li-root .pix-li-numinput { background:#1d1d1d !important; align-items:center; min-height:28px; }
+    .pix-li-root .pix-li-numinput .pix-li-spin { align-self:stretch; }
+    .pix-li-root .pix-li-numinput input { line-height:1.2; background:transparent !important; border:none !important; border-radius:0 !important; }
+    .pix-li-root .pix-li-inline-label { display:flex; align-items:center; color:${BRAND}; font-size:9px; font-weight:600;
+      text-transform:uppercase; letter-spacing:.5px; padding:0 4px 0 9px; white-space:nowrap; flex:none; }
+    .pix-li-root .pix-li-num-labeled input { text-align:right !important; padding-right:8px !important; }
+    .pix-li-root .pix-li-swap { background:#1d1d1d !important; }
+    .pix-li-root .pix-li-wh-header { text-align:center !important; color:#d6d6d6 !important; }
+    .pix-li-root .pix-li-wh-rect { background:rgba(246,103,68,0.35); border-width:2px; }
+    .pix-li-root .pix-li-wh-grid { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:12px; align-items:center; }
+    .pix-li-root .pix-li-wh-col { display:flex; flex-direction:column; gap:6px; min-width:0; }
+    .pix-li-root .pix-li-wh-col .pix-li-swap { width:100%; height:24px; align-self:auto; }
+    .pix-li-root .pix-li-wh-grid .pix-li-wh-preview { margin-top:0; justify-content:center; }
+    /* Filled triangle spinner glyphs (replace shared outline chevrons). NOTE:
+       use the literal triangle characters - a backslash-escape inside a JS
+       template literal throws (CLAUDE.md UI Pattern #12). */
+    .pix-li-root .pix-li-spin { width:16px; border-left:none; }
+    .pix-li-root .pix-li-spin > button { background:transparent; }
+    .pix-li-root .pix-li-spin-up::before, .pix-li-root .pix-li-spin-down::before {
+      border:none; width:auto; height:auto; font-size:8px; line-height:1; transform:translate(-50%,-50%); }
+    .pix-li-root .pix-li-spin-up::before { content:"▲"; }
+    .pix-li-root .pix-li-spin-down::before { content:"▼"; }
+    /* Crop-to-fill extras: Fill/Crop toggle + 3x3 anchor grid. */
+    .pix-li-root .pix-li-swaprow { display:flex; gap:6px; align-items:stretch; }
+    .pix-li-root .pix-li-wh-col .pix-li-swaprow .pix-li-swap { flex:0 0 46px; width:auto; height:auto; align-self:stretch; }
+    .pix-li-root .pix-li-fillcrop { flex:1; display:grid; grid-template-columns:1fr 1fr; background:#1d1d1d; border:1px solid #444; border-radius:4px; overflow:hidden; }
+    .pix-li-root .pix-li-fillcrop > div { display:flex; align-items:center; justify-content:center; font-size:9.5px; padding:5px 0; color:#aaa; cursor:pointer; user-select:none; }
+    .pix-li-root .pix-li-fillcrop > div:hover { color:#ddd; background:rgba(255,255,255,.08); }
+    .pix-li-root .pix-li-fillcrop > div.active { background:${BRAND}; color:#fff; }
+    .pix-li-root .pix-li-anchor { display:grid; grid-template-columns:repeat(3,1fr); grid-template-rows:repeat(3,1fr); gap:3px;
+      width:100%; max-width:96px; aspect-ratio:1; margin:0 auto; background:#1d1d1d; border:1px solid #444; border-radius:5px; padding:5px; box-sizing:border-box; }
+    .pix-li-root .pix-li-anchor-cell { background:rgba(255,255,255,.07); border-radius:2px; cursor:pointer; transition:background .08s; }
+    .pix-li-root .pix-li-anchor-cell:hover { background:rgba(255,255,255,.18); }
+    .pix-li-root .pix-li-anchor-cell.active { background:${BRAND}; }
+    /* Bring shared quick-pick + ratio chips in line (orange hover). */
+    .pix-li-root .pix-li-quickpick { box-sizing:border-box; }
+    .pix-li-root .pix-li-quickpick:hover { border-color:${BRAND}; color:#ddd; }
+    .pix-li-root .pix-li-ratio-chip { box-sizing:border-box; }
+    .pix-li-root .pix-li-ratio-chip:hover { border-color:${BRAND}; color:#ddd; }
+    /* ── B2 thumbnail dropdown popup ── */
+    .pix-li-popup {
+      background:#1d1d1d; border:1px solid #444; border-radius:6px;
+      box-shadow:0 4px 16px rgba(0,0,0,.4); font-size:11px;
+      font-family:ui-sans-serif,system-ui,sans-serif; color:#ccc; overflow:hidden;
     }
-    .pix-li-up-row input { accent-color: ${BRAND}; cursor: pointer; }
+    .pix-li-pop-search { display:flex; align-items:center; gap:7px; padding:7px 9px;
+      background:#161616; border-bottom:1px solid #333; }
+    .pix-li-pop-mag { width:12px; height:12px; flex:none; border:1.6px solid #777; border-radius:50%; position:relative; }
+    .pix-li-pop-mag::after { content:""; position:absolute; width:5px; height:1.6px; background:#777;
+      transform:rotate(45deg); right:-3px; bottom:0; }
+    .pix-li-pop-search input { flex:1; min-width:0; background:transparent; border:none; outline:none;
+      color:#ddd; font-size:11px; font-family:inherit; }
+    .pix-li-pop-search input::placeholder { color:#777; }
+    .pix-li-pop-sizetoggle { flex:none; display:flex; border:1px solid #444; border-radius:4px; overflow:hidden; }
+    .pix-li-pop-sizetoggle span { padding:2px 7px; font-size:10px; color:#aaa; cursor:pointer; user-select:none; line-height:1.4; }
+    .pix-li-pop-sizetoggle span.on { background:${BRAND}; color:#fff; }
+    .pix-li-pop-sizetoggle span:not(.on):hover { color:#ddd; }
+    .pix-li-bsplit { display:flex; max-height:320px; }
+    .pix-li-bfolders { width:104px; flex:none; border-right:1px solid #333; background:#141414; overflow:auto; }
+    .pix-li-bfolder { padding:8px 9px; font-size:10.5px; color:#aaa; cursor:pointer; display:flex;
+      justify-content:space-between; gap:4px; align-items:center; }
+    .pix-li-bfolder:hover { background:#2a2a2a; }
+    .pix-li-bfolder.on { background:rgba(246,103,68,.16); color:${BRAND}; border-left:2px solid ${BRAND}; padding-left:7px; }
+    .pix-li-bfolder.all { border-bottom:1px solid #333; color:#cfcfcf; }
+    .pix-li-bfolder.all.on { color:${BRAND}; }
+    .pix-li-bfolder-n { color:#888; font-size:9px; flex:none; }
+    .pix-li-bfolder > span:first-child { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
+    .pix-li-bpane { flex:1; min-width:0; overflow:auto; max-height:320px; }
+    .pix-li-pop-sec { padding:5px 10px 4px; font-size:9px; color:#777; text-transform:uppercase; letter-spacing:.5px;
+      background:#141414; border-bottom:1px solid #333; display:flex; align-items:center; gap:6px; position:sticky; top:0; z-index:1; }
+    .pix-li-pop-sec-c { margin-left:auto; color:#888; }
+    .pix-li-imgrow { display:flex; align-items:center; gap:9px; padding:4px 10px; cursor:pointer; }
+    .pix-li-imgrow:hover { background:#2a2a2a; }
+    .pix-li-imgrow.cur { background:rgba(246,103,68,.12); }
+    .pix-li-imgrow.cur .pix-li-imgrow-lbl { color:${BRAND}; font-weight:600; }
+    .pix-li-imgrow-lbl { flex:1; min-width:0; font-size:11px; color:#ccc; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .pix-li-pop-thumb { position:relative; flex:none; border-radius:4px; overflow:hidden;
+      background:linear-gradient(135deg,#3a3f4a,#222); }
+    .pix-li-pop-thumb img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:block; }
+    .pix-li-pop-glyph { position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+      font-size:10px; color:rgba(255,255,255,.3); }
+    .pix-li-bsplit.thumb-sm .pix-li-pop-thumb { width:32px; height:32px; }
+    .pix-li-bsplit.thumb-lg .pix-li-pop-thumb { width:48px; height:48px; }
+    .pix-li-pop-empty { padding:10px; color:#666; text-align:center; }
+    .pix-li-pop-foot { padding:6px 10px; font-size:9px; color:#777; background:#141414;
+      border-top:1px solid #333; text-align:center; }
   `;
   const el = document.createElement("style");
   el.id = "pixaroma-load-image-css";
@@ -651,7 +643,7 @@ export function buildRoot() {
   const dd = document.createElement("div");
   dd.className = "pix-li-dropdown";
   dd.dataset.role = "dropdown";
-  dd.innerHTML = `<span class="name">— no image —</span><span class="counter" data-role="counter"></span><span class="arrow">▾</span>`;
+  dd.innerHTML = `<span class="name">— no image —</span><span class="counter" data-role="counter"></span><span class="arrow">▼</span>`;
 
   const next = document.createElement("button");
   next.type = "button";
@@ -663,15 +655,8 @@ export function buildRoot() {
   fileRow.append(prev, dd, next);
   root.appendChild(fileRow);
 
-  // Dimensions info bar — shows once an image is loaded. Replaces the
-  // hint text. Two rows when a resize is active (original → final), one
-  // row when mode = Off (only original). Each row has the dims, ratio
-  // label, and a tiny aspect rectangle.
-  const info = document.createElement("div");
-  info.className = "pix-li-diminfo";
-  info.dataset.role = "diminfo";
-  info.style.display = "none";
-  root.appendChild(info);
+  // The input/output size readout is no longer a DOM bar here — it is painted
+  // by onDrawForeground (INPUT → OUTPUT cards in the output-slot dead space).
 
   return root;
 }
@@ -737,93 +722,65 @@ function groupValuesByFolder(values) {
   return folders.map((folder) => ({ folder, files: map.get(folder) }));
 }
 
-// Open a popup listing the underlying combo's options grouped by subfolder.
-// Clicking an item sets the combo value to the FULL path (e.g.
-// "Studio1/bunny.png") and the dropdown's label.
+// Build a same-origin /view URL for a combo value like "3d/cat.png".
+// Relative path → works on whatever host/port ComfyUI runs on. No cache-buster
+// so the browser caches thumbnails across re-opens.
+function thumbURL(full) {
+  const { subfolder, filename } = splitFilenameSubfolder(full);
+  return `/view?filename=${encodeURIComponent(filename)}&type=input&subfolder=${encodeURIComponent(subfolder)}`;
+}
+
+// Read/write the persisted thumbnail size ("Small" | "Large"). Falls back to
+// "Large" if the setting isn't registered yet or settings aren't ready.
+function getThumbSize() {
+  try {
+    const v = app.ui.settings.getSettingValue("Pixaroma.LoadImage.ThumbSize");
+    return v === "Small" ? "Small" : "Large";
+  } catch (_e) { return "Large"; }
+}
+function setThumbSize(v) {
+  try {
+    const s = app.ui.settings;
+    // Prefer the async setter when present (newer ComfyUI persists reliably
+    // through it; the sync form can no-op on disk on some builds) — same guard
+    // node_colors/index.js uses.
+    if (typeof s.setSettingValueAsync === "function") s.setSettingValueAsync("Pixaroma.LoadImage.ThumbSize", v);
+    else s.setSettingValue("Pixaroma.LoadImage.ThumbSize", v);
+  } catch (_e) { /* ignore */ }
+}
+
+// Open a thumbnail picker popup anchored below the file row.
+//  - Search box filters across ALL folders while it has text.
+//  - Left sidebar (only when subfolders exist) lists All + each folder.
+//  - Right pane shows thumbnail rows; opens to "All" grouped by folder.
+//  - Small/Large thumbnail size toggle, persisted via the ThumbSize setting.
+// Reuses groupValuesByFolder, splitFilenameSubfolder, setSelectedImage.
 export function openImageDropdown(node, anchorEl, onPick) {
   const imageWidget = node._pixLiImageWidget;
   if (!imageWidget) return;
   const values = imageWidget.options?.values || [];
 
-  // Close any existing popup
-  document.querySelector(".pix-li-popup")?.remove();
+  // Close any existing popup. Call its stored cleanup (not a bare remove) so
+  // the prior popup's document-level capture listeners are detached too.
+  const _existingPopup = document.querySelector(".pix-li-popup");
+  if (_existingPopup) {
+    if (typeof _existingPopup._pixClose === "function") _existingPopup._pixClose();
+    else _existingPopup.remove();
+  }
 
   const popup = document.createElement("div");
   popup.className = "pix-li-popup";
+  const rect = anchorEl.getBoundingClientRect();
+  const width = Math.max(rect.width, 360); // widen so sidebar + thumbs fit
   Object.assign(popup.style, {
     position: "fixed",
     zIndex: 99999,
-    background: "#1d1d1d",
-    border: `1px solid #444`,
-    borderRadius: "4px",
-    boxShadow: "0 4px 16px rgba(0,0,0,0.4)",
-    maxHeight: "300px",
-    overflowY: "auto",
-    fontSize: "11px",
-    fontFamily: "ui-sans-serif, system-ui, sans-serif",
-    color: "#ccc",
-    minWidth: "200px",
+    left: `${rect.left}px`,
+    top: `${rect.bottom + 2}px`,
+    width: `${width}px`,
   });
 
-  const rect = anchorEl.getBoundingClientRect();
-  popup.style.left = `${rect.left}px`;
-  popup.style.top = `${rect.bottom + 2}px`;
-  popup.style.width = `${rect.width}px`;
-
-  if (values.length === 0) {
-    const empty = document.createElement("div");
-    empty.style.padding = "8px";
-    empty.style.color = "#666";
-    empty.textContent = "(no images uploaded yet)";
-    popup.appendChild(empty);
-  } else {
-    const groups = groupValuesByFolder(values);
-    const showHeaders = groups.length > 1 || (groups.length === 1 && groups[0].folder !== "");
-    let scrollTarget = null;
-    for (const group of groups) {
-      if (showHeaders) {
-        const head = document.createElement("div");
-        head.className = "pix-li-popup-section";
-        head.textContent = group.folder === "" ? "root" : group.folder;
-        popup.appendChild(head);
-      }
-      for (const entry of group.files) {
-        const item = document.createElement("div");
-        item.style.padding = "6px 10px";
-        item.style.cursor = "pointer";
-        item.style.borderBottom = "1px solid #2a2a2a";
-        if (entry.full === imageWidget.value) {
-          item.style.color = "#f66744";
-          item.style.fontWeight = "600";
-          scrollTarget = item;
-        }
-        item.textContent = entry.name;
-        item.title = entry.full; // hover shows full path so it stays discoverable
-        item.addEventListener("mouseenter", () => { item.style.background = "#2a2a2a"; });
-        item.addEventListener("mouseleave", () => { item.style.background = ""; });
-        item.addEventListener("click", (e) => {
-          e.stopPropagation();
-          setSelectedImage(node, entry.full);
-          closePopup();
-          if (onPick) onPick(entry.full);
-        });
-        popup.appendChild(item);
-      }
-    }
-    // Defer until popup is in DOM so scrollTop math is valid
-    if (scrollTarget) queueMicrotask(() => {
-      try {
-        scrollTarget.scrollIntoView({ block: "nearest" });
-      } catch (_e) { /* ignore */ }
-    });
-  }
-
-  document.body.appendChild(popup);
-
-  // Close the popup AND detach every listener. Captured in a single helper
-  // so all close paths (click outside, scroll, Escape, canvas pointerdown,
-  // node move) go through the same cleanup. Without centralised cleanup,
-  // detached listeners would leak and re-close zombie popups on the next open.
+  // ── close handling (defined early so row click handlers can call it) ──
   function closePopup() {
     popup.remove();
     document.removeEventListener("mousedown", onDocDown, true);
@@ -831,21 +788,247 @@ export function openImageDropdown(node, anchorEl, onPick) {
     document.removeEventListener("wheel", onWheel, true);
     document.removeEventListener("keydown", onKey, true);
   }
-  const onDocDown = (e) => {
-    if (!popup.contains(e.target)) closePopup();
+  const onDocDown = (e) => { if (!popup.contains(e.target)) closePopup(); };
+  const onWheel = (e) => { if (!popup.contains(e.target)) closePopup(); };
+  const onKey = (e) => { if (e.key === "Escape") closePopup(); };
+  popup._pixClose = closePopup; // so a later open can detach our listeners
+
+  if (values.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "pix-li-pop-empty";
+    empty.textContent = "(no images uploaded yet)";
+    popup.appendChild(empty);
+    document.body.appendChild(popup);
+    setTimeout(() => {
+      document.addEventListener("mousedown", onDocDown, true);
+      document.addEventListener("pointerdown", onDocDown, true);
+      document.addEventListener("wheel", onWheel, true);
+      document.addEventListener("keydown", onKey, true);
+    }, 0);
+    return;
+  }
+
+  const groups = groupValuesByFolder(values); // [{folder, files:[{full,name}]}], root first
+  const curVal = imageWidget.value;
+  const hasSubfolders = groups.some((g) => g.folder !== "");
+
+  // ── state ──
+  let activeFolder = "__all"; // "__all" | "" (root) | "<FolderName>"
+  let query = "";
+  let thumbSize = getThumbSize();
+  let scrollTarget = null;
+
+  // ── search row (filter + size toggle) ──
+  const searchRow = document.createElement("div");
+  searchRow.className = "pix-li-pop-search";
+  const mag = document.createElement("span");
+  mag.className = "pix-li-pop-mag";
+  const input = document.createElement("input");
+  input.type = "text";
+  input.placeholder = "Filter images…";
+  const sizeToggle = document.createElement("div");
+  sizeToggle.className = "pix-li-pop-sizetoggle";
+  const segS = document.createElement("span"); segS.textContent = "S"; segS.title = "Small thumbnails";
+  const segL = document.createElement("span"); segL.textContent = "L"; segL.title = "Large thumbnails";
+  sizeToggle.append(segS, segL);
+  searchRow.append(mag, input, sizeToggle);
+  popup.appendChild(searchRow);
+
+  // ── body: sidebar (optional) + scrollable pane ──
+  const body = document.createElement("div");
+  body.className = "pix-li-bsplit";
+  const sidebar = document.createElement("div");
+  sidebar.className = "pix-li-bfolders";
+  const pane = document.createElement("div");
+  pane.className = "pix-li-bpane";
+  if (hasSubfolders) body.append(sidebar, pane);
+  else body.append(pane);
+  popup.appendChild(body);
+
+  // ── footer ──
+  const footer = document.createElement("div");
+  footer.className = "pix-li-pop-foot";
+  popup.appendChild(footer);
+
+  // ── element builders ──
+  const makeRow = (entry) => {
+    const row = document.createElement("div");
+    row.className = "pix-li-imgrow" + (entry.full === curVal ? " cur" : "");
+    const th = document.createElement("span");
+    th.className = "pix-li-pop-thumb";
+    const glyph = document.createElement("span");
+    glyph.className = "pix-li-pop-glyph";
+    glyph.textContent = "▣";
+    const img = document.createElement("img");
+    img.loading = "lazy";
+    img.onerror = () => { img.style.display = "none"; };
+    img.src = thumbURL(entry.full);
+    th.append(glyph, img);
+    const lbl = document.createElement("span");
+    lbl.className = "pix-li-imgrow-lbl";
+    lbl.textContent = entry.name;
+    lbl.title = entry.full;
+    row.append(th, lbl);
+    if (entry.full === curVal) scrollTarget = row;
+    row.addEventListener("click", (e) => {
+      e.stopPropagation();
+      setSelectedImage(node, entry.full);
+      closePopup();
+      if (onPick) onPick(entry.full);
+    });
+    return row;
   };
-  // Only close on wheel OUTSIDE the popup — the popup itself is scrollable
-  // (overflowY: auto + maxHeight), users need wheel to navigate the list.
-  const onWheel = (e) => {
-    if (!popup.contains(e.target)) closePopup();
+  const makeSec = (label, count) => {
+    const s = document.createElement("div");
+    s.className = "pix-li-pop-sec";
+    s.textContent = label;
+    const c = document.createElement("span");
+    c.className = "pix-li-pop-sec-c";
+    c.textContent = String(count);
+    s.appendChild(c);
+    return s;
   };
-  const onKey = (e) => {
-    if (e.key === "Escape") closePopup();
+  const folderLabel = (key) => (key === "" ? "root" : key);
+  // Scroll the current image's row into view (deferred so the pane is laid out).
+  // Called on every non-search render so a folder switch / search-clear re-centers it.
+  const scrollCurrentIntoView = () => {
+    if (!scrollTarget) return;
+    const t = scrollTarget;
+    queueMicrotask(() => { try { t.scrollIntoView({ block: "nearest" }); } catch (_e) { /* ignore */ } });
   };
-  // Capture phase so we preempt LiteGraph's canvas handlers, with a
-  // setTimeout so the opening click doesn't immediately close. mousedown +
-  // pointerdown both — LiteGraph's drag uses pointer events on the canvas,
-  // and not every browser fires both reliably in capture phase.
+
+  // ── renderers ──
+  const renderSidebar = () => {
+    if (!hasSubfolders) return;
+    sidebar.replaceChildren();
+    const entries = [["__all", "All", values.length]];
+    for (const g of groups) entries.push([g.folder, folderLabel(g.folder), g.files.length]);
+    for (const [key, label, count] of entries) {
+      const f = document.createElement("div");
+      f.className = "pix-li-bfolder"
+        + (key === "__all" ? " all" : "")
+        + (key === activeFolder && !query.trim() ? " on" : "");
+      const t = document.createElement("span");
+      t.textContent = label;
+      const n = document.createElement("span");
+      n.className = "pix-li-bfolder-n";
+      n.textContent = String(count);
+      f.append(t, n);
+      f.addEventListener("click", (e) => {
+        e.stopPropagation();
+        activeFolder = key;
+        input.value = "";
+        query = "";
+        renderSidebar();
+        renderPane();
+      });
+      sidebar.appendChild(f);
+    }
+  };
+
+  const renderPane = () => {
+    pane.replaceChildren();
+    scrollTarget = null;
+    const q = query.trim().toLowerCase();
+
+    if (q) {
+      // Search across ALL folders; show only matches, grouped by folder.
+      let matches = 0;
+      for (const g of groups) {
+        const hit = g.files.filter((f) => f.name.toLowerCase().includes(q));
+        if (hit.length === 0) continue;
+        matches += hit.length;
+        pane.appendChild(makeSec(folderLabel(g.folder), hit.length));
+        for (const entry of hit) pane.appendChild(makeRow(entry));
+      }
+      if (matches === 0) {
+        const none = document.createElement("div");
+        none.className = "pix-li-pop-empty";
+        none.textContent = "(no matches)";
+        pane.appendChild(none);
+      }
+      footer.textContent = `${matches} match${matches === 1 ? "" : "es"}`;
+      return;
+    }
+
+    if (!hasSubfolders) {
+      // Flat input/ — plain thumbnail list, no sidebar.
+      for (const g of groups) for (const entry of g.files) pane.appendChild(makeRow(entry));
+      footer.textContent = `${values.length} image${values.length === 1 ? "" : "s"}`;
+      scrollCurrentIntoView();
+      return;
+    }
+
+    if (activeFolder === "__all") {
+      // All images, grouped by folder with sticky section headers.
+      for (const g of groups) {
+        pane.appendChild(makeSec(folderLabel(g.folder), g.files.length));
+        for (const entry of g.files) pane.appendChild(makeRow(entry));
+      }
+      footer.textContent = `${values.length} image${values.length === 1 ? "" : "s"} · all`;
+    } else {
+      const g = groups.find((x) => x.folder === activeFolder);
+      const files = g ? g.files : [];
+      for (const entry of files) pane.appendChild(makeRow(entry));
+      footer.textContent = `${files.length} image${files.length === 1 ? "" : "s"} · ${folderLabel(activeFolder)}`;
+    }
+    scrollCurrentIntoView();
+  };
+
+  const applyThumbSize = () => {
+    body.classList.toggle("thumb-sm", thumbSize === "Small");
+    body.classList.toggle("thumb-lg", thumbSize !== "Small");
+    segS.classList.toggle("on", thumbSize === "Small");
+    segL.classList.toggle("on", thumbSize !== "Small");
+  };
+
+  // ── events ──
+  input.addEventListener("input", () => { query = input.value; renderSidebar(); renderPane(); });
+  input.addEventListener("click", (e) => e.stopPropagation());
+  // Keep LiteGraph's canvas shortcuts (Delete/Backspace = delete the selected
+  // node, arrows = nudge, etc.) from firing while typing in the filter box —
+  // the node is selected whenever this popup is open. Mirrors makeNumericInput
+  // (Load Image Pattern #6). Enter picks the first listed match.
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      pane.querySelector(".pix-li-imgrow")?.click();
+    }
+    e.stopImmediatePropagation();
+  });
+  segS.addEventListener("click", (e) => {
+    e.stopPropagation();
+    thumbSize = "Small"; setThumbSize(thumbSize); applyThumbSize();
+  });
+  segL.addEventListener("click", (e) => {
+    e.stopPropagation();
+    thumbSize = "Large"; setThumbSize(thumbSize); applyThumbSize();
+  });
+
+  // ── initial render ──
+  applyThumbSize();
+  renderSidebar();
+  renderPane();
+
+  document.body.appendChild(popup);
+
+  // Keep the popup on-screen: clamp horizontally and flip above the row when it
+  // would overflow the bottom of the viewport (now measurable post-append).
+  const pr = popup.getBoundingClientRect();
+  let left = rect.left;
+  if (left + pr.width > window.innerWidth - 4) left = Math.max(4, window.innerWidth - pr.width - 4);
+  popup.style.left = `${left}px`;
+  if (pr.bottom > window.innerHeight - 4) {
+    const above = rect.top - pr.height - 2;
+    popup.style.top = `${above >= 4 ? above : Math.max(4, window.innerHeight - pr.height - 4)}px`;
+  }
+
+  // renderPane() already scrolls the current row into view. Focus the filter box.
+  queueMicrotask(() => { try { input.focus(); } catch (_e) { /* ignore */ } });
+
+  // Attach close listeners after the opening click settles (capture phase so we
+  // preempt LiteGraph; each gated on !popup.contains so inside scroll/clicks
+  // don't close — Load Image Pattern #14).
   setTimeout(() => {
     document.addEventListener("mousedown", onDocDown, true);
     document.addEventListener("pointerdown", onDocDown, true);
@@ -855,13 +1038,14 @@ export function openImageDropdown(node, anchorEl, onPick) {
 }
 
 const MODE_CHIPS = [
-  { id: "off",            label: "Off" },
-  { id: "max_mp",         label: "Max megapixels" },
-  { id: "longest_side",   label: "Longest side" },
-  { id: "scale_factor",   label: "Scale by ×" },
-  { id: "fit_inside",     label: "Fit inside" },
-  { id: "cover",          label: "Crop to fill" },
-  { id: "match_ratio",    label: "Match aspect ratio", spanFull: true },
+  { id: "off",          label: "Off",          title: "No resize. (Snap still applies if set.)" },
+  { id: "max_mp",       label: "Max MP",       title: "Scale so the total pixel count stays under a megapixel cap. Keeps aspect ratio." },
+  { id: "longest_side", label: "Longest side", title: "Scale so the longest side equals this many pixels. Keeps aspect ratio." },
+  { id: "scale_factor", label: "Scale by ×",   title: "Multiply both dimensions by a factor. Keeps aspect ratio." },
+  { id: "fit_inside",   label: "Fit inside",   title: "Scale to fit entirely within W×H without cropping. Keeps aspect ratio." },
+  { id: "cover",        label: "Crop to fill", title: "Resize to exactly W×H. Fill scales then crops the overflow; Crop cuts a 1:1-pixel piece. The anchor picks which part is kept." },
+  { id: "match_ratio",  label: "Match ratio",  title: "Crop the image to a target aspect ratio (no scaling)." },
+  { id: "pad",          label: "Pad",          title: "Add a pixel border on chosen sides. The new area becomes the white inpaint-mask region." },
 ];
 
 export function renderChips(state) {
@@ -869,10 +1053,10 @@ export function renderChips(state) {
   wrap.className = "pix-li-chips";
   for (const c of MODE_CHIPS) {
     const el = document.createElement("div");
-    el.className = "pix-li-chip" + (c.spanFull ? " span-full" : "");
-    if (state.mode === c.id) el.classList.add("active");
+    el.className = "pix-li-chip" + (state.mode === c.id ? " active" : "");
     el.dataset.modeId = c.id;
     el.textContent = c.label;
+    el.title = c.title || "";
     wrap.appendChild(el);
   }
   return wrap;
@@ -947,83 +1131,107 @@ export function renderGlobalControls(node, state, writeState, onChange) {
   const wrap = document.createElement("div");
   wrap.className = "pix-li-global";
 
-  // Snap row
-  const snapRow = document.createElement("div");
-  snapRow.className = "pix-li-snap-row";
-  const magnet = document.createElement("span");
-  magnet.className = "pix-li-magnet";
-  snapRow.appendChild(magnet);
-  const snapBtns = document.createElement("div");
-  snapBtns.className = "pix-li-snap-btns";
+  // Centered snap footer: magnet + "Snap" + chips.
+  const foot = document.createElement("div");
+  foot.className = "pix-li-foot";
+  const snap = document.createElement("div");
+  snap.className = "pix-li-snap2";
+  const icon = document.createElement("span");
+  icon.className = "pix-li-snap-icon";
+  snap.appendChild(icon);
+  const lbl = document.createElement("span");
+  lbl.className = "pix-li-snap-lbl";
+  lbl.textContent = "Snap";
+  snap.appendChild(lbl);
   for (const v of SNAP_OPTIONS) {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.className = "pix-li-snap-btn" + (v === (state.snap || 0) ? " active" : "");
-    b.textContent = v === 0 ? "Off" : String(v);
+    const b = document.createElement("div");
+    b.className = "pix-li-schip" + (v === (state.snap || 0) ? " active" : "");
     b.dataset.v = String(v);
-    snapBtns.appendChild(b);
+    b.textContent = v === 0 ? "Off" : String(v);
+    b.title = v === 0 ? "No snapping."
+      : `Round the output dimensions down to a multiple of ${v} px (keeps latents aligned).`;
+    snap.appendChild(b);
   }
-  snapRow.appendChild(snapBtns);
-  wrap.appendChild(snapRow);
+  foot.appendChild(snap);
+  wrap.appendChild(foot);
 
-  // Resample row — custom Pixaroma-styled dropdown (native <select>
-  // renders very differently across Mac/Win/Linux; matching it to the
-  // rest of the node's look needs our own popup).
+  // Resample picker: [◀] [ Resample: Auto ▾ ] [▶]
   const rsRow = document.createElement("div");
-  rsRow.className = "pix-li-rs-row";
-  const rsLabel = document.createElement("span");
-  rsLabel.style.fontSize = "10px";
-  rsLabel.style.color = "#888";
-  rsLabel.textContent = "Resample";
+  rsRow.className = "pix-li-rs2-row";
+  const prev = document.createElement("button");
+  prev.type = "button"; prev.className = "pix-li-rs2-nav"; prev.title = "Previous resample filter"; prev.textContent = "◀";
+  const dd = document.createElement("div");
+  dd.className = "pix-li-rs2-dd";
+  dd.title = "Resampling filter used when scaling. Click to pick, or use the arrows.";
   const rsValue = document.createElement("span");
-  rsValue.className = "pix-li-rs-value";
-  rsValue.dataset.role = "rs-value";
-  const curResample = state.resample || "auto";
-  rsValue.textContent = curResample.charAt(0).toUpperCase() + curResample.slice(1);
+  rsValue.className = "pix-li-rs2-value";
+  rsValue.textContent = "Resample: " + resampleLabel(state.resample || "auto");
   const rsArrow = document.createElement("span");
-  rsArrow.className = "pix-li-rs-arrow";
-  rsArrow.textContent = "▾";
-  rsRow.append(rsLabel, rsValue, rsArrow);
+  rsArrow.className = "pix-li-rs2-arrow"; rsArrow.textContent = "▼";
+  dd.append(rsValue, rsArrow);
+  const next = document.createElement("button");
+  next.type = "button"; next.className = "pix-li-rs2-nav"; next.title = "Next resample filter"; next.textContent = "▶";
+  rsRow.append(prev, dd, next);
   wrap.appendChild(rsRow);
 
-  // Upscale toggle row
-  const upRow = document.createElement("label");
-  upRow.className = "pix-li-up-row";
-  const cb = document.createElement("input");
-  cb.type = "checkbox";
-  cb.checked = !!state.allow_upscale;
-  const upLbl = document.createElement("span");
-  upLbl.textContent = "Allow upscaling";
-  upRow.append(cb, upLbl);
-  wrap.appendChild(upRow);
+  // Upscaling toggle button.
+  const upBtn = document.createElement("button");
+  upBtn.type = "button";
+  upBtn.title = "Allow the image to grow larger than its original size. Off = never upscale.";
+  const upOn = state.allow_upscale !== false;
+  upBtn.className = "pix-li-upbtn" + (upOn ? " is-on" : "");
+  upBtn.textContent = upOn ? "Upscaling: On" : "Upscaling: Off";
+  wrap.appendChild(upBtn);
 
-  // Wire events
-  snapBtns.addEventListener("click", (e) => {
-    const b = e.target.closest(".pix-li-snap-btn");
+  // ── events ──
+  const RESAMPLE_IDS = RESAMPLE_OPTIONS.map((o) => o.id);
+  const setResample = (id) => {
+    const s = readStateLocal(node);
+    writeState(node, { ...s, resample: id });
+    rsValue.textContent = "Resample: " + resampleLabel(id);
+    onChange?.();
+  };
+  const cycleResample = (delta) => {
+    const cur = (readStateLocal(node).resample) || "auto";
+    let i = RESAMPLE_IDS.indexOf(cur); if (i < 0) i = 0;
+    i = (i + delta + RESAMPLE_IDS.length) % RESAMPLE_IDS.length;
+    setResample(RESAMPLE_IDS[i]);
+  };
+  foot.addEventListener("click", (e) => {
+    const b = e.target.closest(".pix-li-schip");
     if (!b) return;
     e.stopPropagation();
     const v = parseInt(b.dataset.v, 10);
-    for (const x of snapBtns.querySelectorAll(".pix-li-snap-btn")) {
-      x.classList.toggle("active", parseInt(x.dataset.v, 10) === v);
-    }
-    const s = JSON.parse(node.properties?.loadImagePixState || "{}");
-    writeState(node, { ...s, snap: v });
+    for (const x of foot.querySelectorAll(".pix-li-schip")) x.classList.toggle("active", x === b);
+    writeState(node, { ...readStateLocal(node), snap: v });
     onChange?.();
   });
-  rsRow.addEventListener("click", (e) => {
+  dd.addEventListener("click", (e) => {
     e.stopPropagation();
-    openResamplePopup(rsRow, state.resample || "auto", (picked) => {
-      rsValue.textContent = picked.charAt(0).toUpperCase() + picked.slice(1);
-      const s = JSON.parse(node.properties?.loadImagePixState || "{}");
-      writeState(node, { ...s, resample: picked });
-      onChange?.();
-    });
+    openResamplePopup(dd, (readStateLocal(node).resample) || "auto", setResample);
   });
-  cb.addEventListener("change", () => {
-    const s = JSON.parse(node.properties?.loadImagePixState || "{}");
-    writeState(node, { ...s, allow_upscale: cb.checked });
+  prev.addEventListener("click", (e) => { e.stopPropagation(); cycleResample(-1); });
+  next.addEventListener("click", (e) => { e.stopPropagation(); cycleResample(1); });
+  upBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const on = !(readStateLocal(node).allow_upscale !== false);
+    writeState(node, { ...readStateLocal(node), allow_upscale: on });
+    upBtn.classList.toggle("is-on", on);
+    upBtn.textContent = on ? "Upscaling: On" : "Upscaling: Off";
     onChange?.();
   });
 
   return wrap;
+}
+
+// Local state read for event handlers (avoids depending on index.js import).
+function readStateLocal(node) {
+  try { return JSON.parse(node.properties?.loadImagePixState || "{}"); }
+  catch { return {}; }
+}
+
+// Map a resample id to its display label.
+function resampleLabel(id) {
+  const o = RESAMPLE_OPTIONS.find((x) => x.id === id) || RESAMPLE_OPTIONS[0];
+  return o.label;
 }
