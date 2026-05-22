@@ -898,7 +898,7 @@ function buildGroupSaveSubmenu(group) {
   }));
 }
 
-// The "👑 Pixaroma colors" submenu for a group: filled Favorites on top,
+// The "👑 Pixaroma Group Colors" submenu for a group: filled Favorites on top,
 // then Save / Pick custom, then the hand-picked group colors listed
 // DIRECTLY (no Neutrals/Hues subfolders). Copy / Paste / Reset are
 // top-level siblings (see setup()).
