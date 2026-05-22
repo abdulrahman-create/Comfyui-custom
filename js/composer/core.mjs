@@ -230,4 +230,62 @@ export class PixaromaEditor {
   captureState() {
     return PixaromaLayers.captureState(this.layers);
   }
+
+  // Is this editor's fullscreen overlay still in the DOM? Used by the
+  // self-healing graph patches to detect a teardown that bypassed cleanup
+  // (Vue Compat #2).
+  _overlayAlive() {
+    return !!(this.overlay && this.overlay.isConnected);
+  }
+
+  // Vue Compat #6: neuter the Ctrl+Z escape. ComfyUI's change-tracker undo runs
+  // via requestAnimationFrame and reaches the graph through app.loadGraphData ->
+  // app.graph.configure; preventDefault on the keydown does NOT stop it. While
+  // the editor is open we no-op both so Ctrl+Z can only drive the editor's own
+  // undo, never tear down the workflow underneath. The patches SELF-HEAL: if
+  // they are ever called while our overlay is gone (tab closed mid-edit, etc),
+  // they restore the originals and pass through - otherwise loadGraphData would
+  // stay disabled forever and brick the whole UI until a page refresh.
+  _installGraphPatches() {
+    const app = window.app;
+    if (!app || !app.graph) return;
+    // A stale patch from a torn-down editor may still be installed; restore it
+    // before capturing the originals so we never save a no-op as "the original".
+    if (app._pixComposerOrigLoad) {
+      app.loadGraphData = app._pixComposerOrigLoad;
+      if (app.graph && app._pixComposerOrigConfigure)
+        app.graph.configure = app._pixComposerOrigConfigure;
+    }
+    app._pixComposerOrigLoad = app.loadGraphData.bind(app);
+    app._pixComposerOrigConfigure = app.graph.configure.bind(app.graph);
+    const self = this;
+    app.loadGraphData = function (...args) {
+      if (!self._overlayAlive()) {
+        self._restoreGraphPatches();
+        return window.app.loadGraphData(...args);
+      }
+      return Promise.resolve();
+    };
+    app.graph.configure = function (...args) {
+      if (!self._overlayAlive()) {
+        self._restoreGraphPatches();
+        return window.app.graph.configure(...args);
+      }
+      return undefined;
+    };
+  }
+
+  // Restore the neutered functions. Idempotent; safe from cleanup AND self-heal.
+  _restoreGraphPatches() {
+    const app = window.app;
+    if (!app) return;
+    if (app._pixComposerOrigLoad) {
+      app.loadGraphData = app._pixComposerOrigLoad;
+      app._pixComposerOrigLoad = null;
+    }
+    if (app.graph && app._pixComposerOrigConfigure) {
+      app.graph.configure = app._pixComposerOrigConfigure;
+      app._pixComposerOrigConfigure = null;
+    }
+  }
 }

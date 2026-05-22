@@ -475,6 +475,8 @@ export class PixaromaUI {
     };
     core.overlay = layout.overlay;
     core.overlay.addEventListener("contextmenu", (e) => e.preventDefault());
+    // Vue Compat #6: block Ctrl+Z from escaping to the graph undo while open.
+    core._installGraphPatches();
 
     // =====================================================================
     // LEFT SIDEBAR

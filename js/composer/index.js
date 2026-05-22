@@ -56,8 +56,12 @@ function isEditorOpen(node) {
   if (!node._pixaromaEditor) return false;
   const overlay = node._pixaromaEditor.overlay;
   if (!overlay || !overlay.isConnected) {
-    // Editor was removed from DOM without close handler — clean up
+    // Editor was removed from DOM without close handler — clean up. Restore the
+    // Ctrl+Z graph-undo neutering (Vue Compat #6) so loadGraphData isn't left
+    // disabled, then drop the stale reference.
     dbg("editor overlay gone — clearing stale reference");
+    try { node._pixaromaEditor._restoreGraphPatches?.(); } catch {}
+    try { node._pixaromaEditor._cleanupKeys?.(); } catch {}
     node._pixaromaEditor = null;
     return false;
   }

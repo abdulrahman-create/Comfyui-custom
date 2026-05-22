@@ -259,6 +259,8 @@ PixaromaEditor.prototype.attachEvents = function () {
       window.removeEventListener("mouseup", this._composerMouseUp);
     if (this._composerBlur)
       window.removeEventListener("blur", this._composerBlur);
+    // Restore the Ctrl+Z graph-undo neutering installed at open (Vue Compat #6).
+    this._restoreGraphPatches?.();
   };
 
   // Handle hover cursor + clicks on the extended hit area outside canvas bounds
