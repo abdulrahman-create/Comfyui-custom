@@ -143,6 +143,24 @@ PixaromaEditor.prototype.resetCrop = function () {
 };
 
 // ─── Interaction ──────────────────────────────────────────────
+// Map a main-canvas point to SOURCE-image coordinates, using the full-source
+// placement shown during crop mode (_cropFullCenter + source dims). This is the
+// crop-mode analogue of getCoordinatesInLayerImage, which instead uses the
+// CROPPED img + cx/cy and would give wrong coords when re-editing a crop.
+PixaromaEditor.prototype._cropPointInSource = function (coords) {
+  const layer = this._cropLayer;
+  const fc = this._cropFullCenter || { cx: layer.cx, cy: layer.cy };
+  const { w: sw, h: sh } = srcSize(layer.sourceImg);
+  const dx = coords.x - fc.cx;
+  const dy = coords.y - fc.cy;
+  const rad = (-layer.rotation * Math.PI) / 180;
+  const rx = dx * Math.cos(rad) - dy * Math.sin(rad);
+  const ry = dx * Math.sin(rad) + dy * Math.cos(rad);
+  const fx = rx * (layer.flippedX ? -1 : 1);
+  const fy = ry * (layer.flippedY ? -1 : 1);
+  return { lx: fx / layer.scaleX + sw / 2, ly: fy / layer.scaleY + sh / 2 };
+};
+
 // Returns which part of the draft the source-space point (lx,ly) hits:
 // 'nw','ne','sw','se','n','s','e','w','inside', or null.
 PixaromaEditor.prototype._cropHitTest = function (lx, ly) {
@@ -171,7 +189,7 @@ PixaromaEditor.prototype._cropHitTest = function (lx, ly) {
 
 PixaromaEditor.prototype.handleCropMouseDown = function (coords) {
   if (!this._cropLayer || !this._cropDraft) return;
-  const p = this.getCoordinatesInLayerImage(this._cropLayer, coords.x, coords.y);
+  const p = this._cropPointInSource(coords);
   this._cropDragHandle = this._cropHitTest(p.lx, p.ly) || "inside";
   this._cropDragStart = { lx: p.lx, ly: p.ly, rect: { ...this._cropDraft } };
   this.isMouseDown = true;
@@ -179,7 +197,7 @@ PixaromaEditor.prototype.handleCropMouseDown = function (coords) {
 
 PixaromaEditor.prototype.handleCropMouseMove = function (coords, shiftKey) {
   if (!this.isMouseDown || !this._cropDragHandle || !this._cropLayer) return;
-  const p = this.getCoordinatesInLayerImage(this._cropLayer, coords.x, coords.y);
+  const p = this._cropPointInSource(coords);
   const start = this._cropDragStart;
   let { x, y, w, h } = start.rect;
   const dx = p.lx - start.lx;

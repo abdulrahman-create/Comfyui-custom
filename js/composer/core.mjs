@@ -76,21 +76,31 @@ export class PixaromaEditor {
           "Eraser mode \u00b7 Drag to erase \u00b7 [ / ] resize \u00b7 E to toggle off",
         );
     } else if (mode === "crop") {
-      // Crop mode: crosshair cursor, highlight the toggle button
-      this.canvas.style.cursor = "crosshair";
-      if (this.btnCropToggle) {
-        this.btnCropToggle.classList.add("pxf-btn-accent");
-        this.btnCropToggle.innerText = "Done  [C]";
-      }
-      if (this.btnEraserToggle) {
-        this.btnEraserToggle.classList.remove("pxf-btn-accent");
-        this.btnEraserToggle.innerText = "Enable  [E]";
-      }
+      // enterCropMode may bail (placeholder / no image) and reset activeMode.
       if (this.selectedLayerIds.size === 1) this.enterCropMode();
-      if (this._layout)
-        this._layout.setStatus(
-          "Crop mode \u00b7 Drag the box / handles \u00b7 Shift = lock aspect \u00b7 C to apply",
-        );
+      if (this.activeMode === "crop") {
+        // Crop mode active: crosshair cursor, highlight the toggle button.
+        this.canvas.style.cursor = "crosshair";
+        if (this.btnCropToggle) {
+          this.btnCropToggle.classList.add("pxf-btn-accent");
+          this.btnCropToggle.innerText = "Done  [C]";
+        }
+        if (this.btnEraserToggle) {
+          this.btnEraserToggle.classList.remove("pxf-btn-accent");
+          this.btnEraserToggle.innerText = "Enable  [E]";
+        }
+        if (this._layout)
+          this._layout.setStatus(
+            "Crop mode \u00b7 Drag the box / handles \u00b7 Shift = lock aspect \u00b7 C to apply",
+          );
+      } else {
+        // Bailed \u2014 fall back to select-mode visuals.
+        this.canvas.style.cursor = "default";
+        if (this.btnCropToggle) {
+          this.btnCropToggle.classList.remove("pxf-btn-accent");
+          this.btnCropToggle.innerText = "Enable  [C]";
+        }
+      }
     } else {
       // Select mode: default cursor, reset toggle buttons
       this.canvas.style.cursor = "default";
