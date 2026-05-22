@@ -550,48 +550,35 @@ function buildSaveSubmenu(node) {
   }));
 }
 
+// A preset group rendered as its own sub-submenu (Neutrals / Plain / Pixa).
+function buildPresetGroupSubmenu(targets, presets) {
+  return presets.map((p) => ({
+    content: `${swatchHTML(p.title, p.body)}${p.label}`,
+    callback: () => applyColors(targets, p.title, p.body),
+  }));
+}
+
+const PRESET_GROUPS = [
+  { label: "Neutrals",  presets: STANDALONES },
+  { label: "Plain hues", presets: PRESETS },
+  { label: "Pixa hues",  presets: BOLD_PRESETS },
+];
+
 function buildSubmenuOptions(targets, node) {
   const items = [];
-  // Group 1: Standalone neutrals
-  for (const p of STANDALONES) {
-    items.push({
-      content: `${swatchHTML(p.title, p.body)}${p.label}`,
-      callback: () => applyColors(targets, p.title, p.body),
-    });
-  }
-  items.push(null); // separator: standalones -> plain hue pairs
-  // Group 2: Plain hue jewel pairs
-  for (const p of PRESETS) {
-    items.push({
-      content: `${swatchHTML(p.title, p.body)}${p.label}`,
-      callback: () => applyColors(targets, p.title, p.body),
-    });
-  }
-  items.push(null); // separator: plain -> Pixa solid pairs
-  // Group 3: Pixa solid (neutral body) pairs
-  for (const p of BOLD_PRESETS) {
-    items.push({
-      content: `${swatchHTML(p.title, p.body)}${p.label}`,
-      callback: () => applyColors(targets, p.title, p.body),
-    });
-  }
 
-  // Group 4: Favorites (only the filled slots are applyable here).
+  // Personal / quick items on top — fastest to reach.
+  // Favorites (only the filled slots are applyable here).
   const favs = getFavorites();
-  const filled = favs
-    .map((f, i) => ({ f, i }))
-    .filter((x) => x.f);
-  if (filled.length) {
-    items.push(null); // separator: presets -> favorites
-    for (const { f, i } of filled) {
-      items.push({
-        content: `${swatchHTML(f.title, f.body)}Favorite ${i + 1}`,
-        callback: () => applyColors(targets, f.title, f.body),
-      });
-    }
+  const filled = favs.map((f, i) => ({ f, i })).filter((x) => x.f);
+  for (const { f, i } of filled) {
+    items.push({
+      content: `${swatchHTML(f.title, f.body)}Favorite ${i + 1}`,
+      callback: () => applyColors(targets, f.title, f.body),
+    });
   }
+  if (filled.length) items.push(null); // separator: favorites -> save/custom
 
-  items.push(null); // separator: -> save + custom
   items.push({
     content: "Save these colors to",
     has_submenu: true,
@@ -606,6 +593,23 @@ function buildSubmenuOptions(targets, node) {
     content: "Pick custom...",
     callback: () => pickCustom(targets),
   });
+
+  items.push(null); // separator: personal -> preset groups
+
+  // Preset groups, each tucked into its own subfolder.
+  for (const g of PRESET_GROUPS) {
+    items.push({
+      content: g.label,
+      has_submenu: true,
+      callback: function (value, opts, e, menu) {
+        new LiteGraph.ContextMenu(
+          buildPresetGroupSubmenu(targets, g.presets),
+          { event: e, parentMenu: menu, node: node }
+        );
+      },
+    });
+  }
+
   return items;
 }
 
