@@ -653,16 +653,16 @@ export function injectCSS() {
     .pix-li-bfolders { width:104px; flex:none; border-right:1px solid #333; background:#141414; overflow:auto; }
     .pix-li-bfolder { padding:8px 9px; font-size:10.5px; color:#aaa; cursor:pointer; display:flex;
       justify-content:space-between; gap:4px; align-items:center; }
-    .pix-li-bfolder:hover { background:#1f1f1f; }
+    .pix-li-bfolder:hover { background:#2a2a2a; }
     .pix-li-bfolder.on { background:rgba(246,103,68,.16); color:${BRAND}; border-left:2px solid ${BRAND}; padding-left:7px; }
     .pix-li-bfolder.all { border-bottom:1px solid #333; color:#cfcfcf; }
     .pix-li-bfolder.all.on { color:${BRAND}; }
-    .pix-li-bfolder-n { color:#666; font-size:9px; flex:none; }
+    .pix-li-bfolder-n { color:#888; font-size:9px; flex:none; }
     .pix-li-bfolder > span:first-child { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
     .pix-li-bpane { flex:1; min-width:0; overflow:auto; max-height:320px; }
     .pix-li-pop-sec { padding:5px 10px 4px; font-size:9px; color:#777; text-transform:uppercase; letter-spacing:.5px;
       background:#141414; border-bottom:1px solid #333; display:flex; align-items:center; gap:6px; position:sticky; top:0; z-index:1; }
-    .pix-li-pop-sec-c { margin-left:auto; color:#666; }
+    .pix-li-pop-sec-c { margin-left:auto; color:#888; }
     .pix-li-imgrow { display:flex; align-items:center; gap:9px; padding:4px 10px; cursor:pointer; }
     .pix-li-imgrow:hover { background:#2a2a2a; }
     .pix-li-imgrow.cur { background:rgba(246,103,68,.12); }
@@ -821,7 +821,14 @@ function getThumbSize() {
   } catch (_e) { return "Large"; }
 }
 function setThumbSize(v) {
-  try { app.ui.settings.setSettingValue("Pixaroma.LoadImage.ThumbSize", v); } catch (_e) { /* ignore */ }
+  try {
+    const s = app.ui.settings;
+    // Prefer the async setter when present (newer ComfyUI persists reliably
+    // through it; the sync form can no-op on disk on some builds) — same guard
+    // node_colors/index.js uses.
+    if (typeof s.setSettingValueAsync === "function") s.setSettingValueAsync("Pixaroma.LoadImage.ThumbSize", v);
+    else s.setSettingValue("Pixaroma.LoadImage.ThumbSize", v);
+  } catch (_e) { /* ignore */ }
 }
 
 // Open a thumbnail picker popup anchored below the file row.
