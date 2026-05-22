@@ -1060,6 +1060,17 @@ export function openImageDropdown(node, anchorEl, onPick) {
   // ── events ──
   input.addEventListener("input", () => { query = input.value; renderSidebar(); renderPane(); });
   input.addEventListener("click", (e) => e.stopPropagation());
+  // Keep LiteGraph's canvas shortcuts (Delete/Backspace = delete the selected
+  // node, arrows = nudge, etc.) from firing while typing in the filter box —
+  // the node is selected whenever this popup is open. Mirrors makeNumericInput
+  // (Load Image Pattern #6). Enter picks the first listed match.
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      pane.querySelector(".pix-li-imgrow")?.click();
+    }
+    e.stopImmediatePropagation();
+  });
   segS.addEventListener("click", (e) => {
     e.stopPropagation();
     thumbSize = "Small"; setThumbSize(thumbSize); applyThumbSize();

@@ -724,6 +724,11 @@ app.registerExtension({
 
     const _origRemoved = nodeType.prototype.onRemoved;
     nodeType.prototype.onRemoved = function () {
+      // Close any open dropdown popup so its document-level capture listeners
+      // are detached — otherwise deleting the node (or reload / Ctrl+Z, which
+      // fires onRemoved per node) leaves a floating popup + leaked listeners
+      // (mirrors Prompt Reader Pixaroma Pattern #4).
+      document.querySelector(".pix-li-popup")?._pixClose?.();
       if (this._pixLiImgPoll) clearInterval(this._pixLiImgPoll);
       this._pixLiImgPoll = null;
       if (_activeLoadImageNode === this) _activeLoadImageNode = null;
