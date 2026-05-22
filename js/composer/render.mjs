@@ -396,6 +396,8 @@ PixaromaEditor.prototype.attemptRestore = async function () {
           eraserMaskCtx_internal: null,
           hasMask_internal: false,
           savedMaskPath_internal: mLayer.maskSrc || null,
+          cropRect: mLayer.cropRect || null,
+          sourceImg: null,
         };
         loadedCount++;
         if (loadedCount === layersToLoad.length) this.finishRestore();
@@ -429,6 +431,8 @@ PixaromaEditor.prototype.attemptRestore = async function () {
           rawServerPath: mLayer.src,
           savedOnServer: true,
           savedMaskPath_internal: mLayer.maskSrc || null,
+          cropRect: mLayer.cropRect || null,
+          sourceImg: null,
         };
         loadedCount++;
         if (loadedCount === layersToLoad.length) this.finishRestore();
@@ -469,6 +473,8 @@ PixaromaEditor.prototype.attemptRestore = async function () {
             rawServerPath: mLayer.src,
             savedOnServer: true,
             savedMaskPath_internal: mLayer.maskSrc || null,
+            cropRect: mLayer.cropRect || null,
+            sourceImg: null,
           };
           loadedCount++;
           if (loadedCount === layersToLoad.length) this.finishRestore(true);
@@ -484,6 +490,16 @@ PixaromaEditor.prototype.attemptRestore = async function () {
 };
 
 PixaromaEditor.prototype.finishRestore = function (hadError = false) {
+  // Re-bake crops BEFORE loading masks, so the mask canvas (loaded next, sized
+  // to layer.img) matches the cropped image. recenter=false: cx/cy already hold
+  // the saved cropped center, so we must not shift them again.
+  this.layers.forEach((l) => {
+    if (l && l.cropRect && l.img) {
+      l.sourceImg = l.img;
+      this.applyCropToLayer(l, false);
+    }
+  });
+
   this.layers.forEach((l) => {
     if (l.savedMaskPath_internal) {
       const maskFileName = l.savedMaskPath_internal.split(/[\\/]/).pop();

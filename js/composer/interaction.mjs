@@ -754,6 +754,10 @@ PixaromaEditor.prototype.attachEvents = function () {
         if (layer.bgRemovalQuality && layer.bgRemovalQuality !== "normal") layerEntry.bgRemovalQuality = layer.bgRemovalQuality;
         if (layer.blendMode && layer.blendMode !== "Normal") layerEntry.blendMode = layer.blendMode;
         if (layer.blur && layer.blur > 0) layerEntry.blur = layer.blur;
+        // cropRect is in SOURCE-image pixels. src above is the full uncropped
+        // source (rawServerPath is never overwritten by cropping), so the crop
+        // stays re-editable after reload.
+        if (layer.cropRect) layerEntry.cropRect = layer.cropRect;
         if (layer.isPlaceholder) {
           layerEntry.isPlaceholder = true;
           layerEntry.placeholderColor = layer.placeholderColor;
