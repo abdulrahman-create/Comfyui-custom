@@ -479,9 +479,14 @@ api.addEventListener("execution_error", (event) => {
 // node "owns" the queue count.
 
 const _origQueuePrompt = app.queuePrompt.bind(app);
-app.queuePrompt = async function (num, batchCount) {
+// Forward ALL arguments. ComfyUI's queuePrompt is (number, batchCount=1,
+// queueNodeIds): the 3rd arg carries the "Execute to selected output nodes"
+// partial-execution targets. Dropping it makes a partial run execute the FULL
+// graph. Only batchCount is overridden (to 1) per prompt inside the loop;
+// number, queueNodeIds, and any future args are preserved.
+app.queuePrompt = async function (...args) {
   const ppNode = findFirstPromptPackNode(app);
-  if (!ppNode) return _origQueuePrompt(num, batchCount);
+  if (!ppNode) return _origQueuePrompt(...args);
 
   const state = readState(ppNode);
   const prompts = parsePrompts(state.text, state.mode);
@@ -523,8 +528,10 @@ app.queuePrompt = async function (num, batchCount) {
 
       try {
         // The api.queuePrompt wrapper above captures the prompt_id from
-        // the API response into _batch.pendingPids.
-        const r = await _origQueuePrompt(num, 1);
+        // the API response into _batch.pendingPids. Preserve number +
+        // queueNodeIds; force batchCount=1 per prompt.
+        const loopArgs = args.slice(); loopArgs[1] = 1;
+        const r = await _origQueuePrompt(...loopArgs);
         results.push(r);
       } catch (err) {
         console.error("Pixaroma.PromptPack: per-prompt enqueue failed", err);

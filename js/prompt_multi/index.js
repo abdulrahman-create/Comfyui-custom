@@ -558,15 +558,21 @@ function showNoEnabledToast() {
 // app.queuePrompt themselves, instead of locking in a bound reference at
 // extension-load time.
 const _origQueuePrompt = app.queuePrompt;
-app.queuePrompt = async function (num, batchCount) {
+// Forward ALL arguments. ComfyUI's queuePrompt is (number, batchCount=1,
+// queueNodeIds): the 3rd arg carries the "Execute to selected output nodes"
+// partial-execution targets. Dropping it makes a partial run execute the FULL
+// graph (issue: per-node Execute button ran everything). Only batchCount is
+// overridden (to 1) inside the per-row loop; number, queueNodeIds, and any
+// future args are preserved.
+app.queuePrompt = async function (...args) {
   const pmNode = findFirstPromptMultiNode();
-  if (!pmNode) return _origQueuePrompt.call(app, num, batchCount);
+  if (!pmNode) return _origQueuePrompt.apply(app, args);
 
   // List mode: don't loop. The workflow runs once with the full enabled-rows
   // list shipped to downstream From List nodes via the graphToPrompt hook.
   const mode = pmNode.properties?.[STATE_PROP]?.mode;
   if (mode === MODE_LIST) {
-    return _origQueuePrompt.call(app, num, batchCount);
+    return _origQueuePrompt.apply(app, args);
   }
 
   // Queue mode: loop one queue item per enabled row.
@@ -582,7 +588,8 @@ app.queuePrompt = async function (num, batchCount) {
     if (!pmNode.properties[STATE_PROP]) pmNode.properties[STATE_PROP] = { rows: [], activeIndex: 0 };
     pmNode.properties[STATE_PROP].activeIndex = index;
     try {
-      const r = await _origQueuePrompt.call(app, num, 1);
+      const loopArgs = args.slice(); loopArgs[1] = 1; // batchCount=1, keep number + queueNodeIds
+      const r = await _origQueuePrompt.apply(app, loopArgs);
       results.push(r);
     } catch (err) {
       console.error("Pixaroma.PromptMulti: per-row enqueue failed", err);
