@@ -17,10 +17,16 @@ PixaromaEditor.prototype.pushHistory = function () {
 };
 
 PixaromaEditor.prototype.undo = function () {
+  // Ctrl+Z while cropping CANCELS the in-progress crop (discards the draft) and
+  // consumes the keystroke - it does NOT also step back history. Otherwise the
+  // layer you were about to crop gets removed (the step before "add layer").
+  // Press Ctrl+Z again (now out of crop mode) to undo for real.
+  if (this.activeMode === "crop") {
+    this._clearCropState();
+    this.draw();
+    return;
+  }
   if (this.historyIndex > 0) {
-    // Cancel any in-progress crop first: undo rebuilds this.layers with fresh
-    // {...l} copies, which would strand the cached _cropLayer reference.
-    if (this.activeMode === "crop") this._clearCropState();
     this.historyIndex--;
     this.layers = this.history[this.historyIndex].map((l) => ({ ...l }));
     this.verifySelection();
@@ -33,8 +39,13 @@ PixaromaEditor.prototype.undo = function () {
 };
 
 PixaromaEditor.prototype.redo = function () {
+  // Mirror undo: a redo while cropping just cancels the crop draft.
+  if (this.activeMode === "crop") {
+    this._clearCropState();
+    this.draw();
+    return;
+  }
   if (this.historyIndex < this.history.length - 1) {
-    if (this.activeMode === "crop") this._clearCropState();
     this.historyIndex++;
     this.layers = this.history[this.historyIndex].map((l) => ({ ...l }));
     this.verifySelection();
