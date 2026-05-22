@@ -155,8 +155,11 @@ PixaromaEditor.prototype._drawImpl = function (cleanRender) {
     // _ensureSelPad already skips this case; mirror that here.
     if (!layer.img) return;
     // In crop mode the active layer is drawn by drawCropOverlay (full source +
-    // box), so skip it in the normal loop to avoid double-drawing.
+    // box), so skip it in the normal loop to avoid double-drawing. Only for the
+    // interactive render — a clean render (save composite) must draw it normally
+    // so the crop UI never bakes into the saved PNG.
     if (
+      !cleanRender &&
       this.activeMode === "crop" &&
       this._cropLayer &&
       layer.id === this._cropLayer.id
@@ -296,7 +299,9 @@ PixaromaEditor.prototype._drawImpl = function (cleanRender) {
   });
 
   // Crop-mode overlay: full source dimmed + bright kept region + box/handles.
-  if (this.activeMode === "crop" && this._cropLayer) this.drawCropOverlay();
+  // Interactive render only — never bake the crop UI into a save composite.
+  if (!cleanRender && this.activeMode === "crop" && this._cropLayer)
+    this.drawCropOverlay();
 
   this.ctx.globalAlpha = 1.0;
 };

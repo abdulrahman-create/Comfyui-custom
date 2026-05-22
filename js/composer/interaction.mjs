@@ -706,6 +706,9 @@ PixaromaEditor.prototype.attachEvents = function () {
   });
 
   this.saveBtn.addEventListener("click", async () => {
+    // Commit any in-progress crop before serializing so a mid-crop Save
+    // captures the dragged box (setMode(null) → exitCropMode applies it).
+    if (this.activeMode === "crop") this.setMode(null);
     this._layout.setSaving();
 
     try {
