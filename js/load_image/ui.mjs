@@ -658,15 +658,16 @@ export function injectCSS() {
     .pix-li-bfolder.all { border-bottom:1px solid #333; color:#cfcfcf; }
     .pix-li-bfolder.all.on { color:${BRAND}; }
     .pix-li-bfolder-n { color:#666; font-size:9px; flex:none; }
+    .pix-li-bfolder > span:first-child { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
     .pix-li-bpane { flex:1; min-width:0; overflow:auto; max-height:320px; }
     .pix-li-pop-sec { padding:5px 10px 4px; font-size:9px; color:#777; text-transform:uppercase; letter-spacing:.5px;
-      background:#141414; border-bottom:1px solid #333; display:flex; align-items:center; gap:6px; position:sticky; top:0; }
+      background:#141414; border-bottom:1px solid #333; display:flex; align-items:center; gap:6px; position:sticky; top:0; z-index:1; }
     .pix-li-pop-sec-c { margin-left:auto; color:#666; }
     .pix-li-imgrow { display:flex; align-items:center; gap:9px; padding:4px 10px; cursor:pointer; }
     .pix-li-imgrow:hover { background:#2a2a2a; }
     .pix-li-imgrow.cur { background:rgba(246,103,68,.12); }
     .pix-li-imgrow.cur .pix-li-imgrow-lbl { color:${BRAND}; font-weight:600; }
-    .pix-li-imgrow-lbl { font-size:11px; color:#ccc; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .pix-li-imgrow-lbl { flex:1; min-width:0; font-size:11px; color:#ccc; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .pix-li-pop-thumb { position:relative; flex:none; border-radius:4px; overflow:hidden;
       background:linear-gradient(135deg,#3a3f4a,#222); }
     .pix-li-pop-thumb img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:block; }
