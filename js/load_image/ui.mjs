@@ -62,19 +62,20 @@ export function injectCSS() {
        through images visually, matching native ComfyUI LoadImage. */
     .pix-li-filerow {
       display: flex;
-      gap: 4px;
+      gap: 6px;
       align-items: stretch;
     }
     .pix-li-filerow .pix-li-dropdown { flex: 1; min-width: 0; }
+    /* File nav arrows match the resample picker exactly (orange, 30px, solid). */
     .pix-li-nav {
       background: #1d1d1d;
       border: 1px solid #444;
       border-radius: 4px;
-      color: #aaa;
-      font-size: 12px;
+      color: ${BRAND};
+      font-size: 11px;
       font-weight: 700;
       cursor: pointer;
-      width: 26px;
+      width: 30px;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -82,14 +83,13 @@ export function injectCSS() {
       transition: background 0.08s, border-color 0.08s, color 0.08s;
       flex-shrink: 0;
     }
-    .pix-li-nav:hover:not(.disabled) { border-color: ${BRAND}; color: ${BRAND}; }
-    .pix-li-nav:active:not(.disabled) { background: ${BRAND}; color: #fff; }
+    .pix-li-nav:hover:not(.disabled) { border-color: ${BRAND}; }
     .pix-li-nav.disabled { opacity: 0.3; cursor: default; }
     .pix-li-dropdown {
       background: #1d1d1d;
       border: 1px solid #444;
       border-radius: 4px;
-      padding: 6px 8px;
+      padding: 6px 10px;
       font-size: 11px;
       color: #ccc;
       cursor: pointer;
@@ -98,9 +98,9 @@ export function injectCSS() {
       align-items: center;
       user-select: none;
     }
-    .pix-li-dropdown:hover { border-color: #666; }
+    .pix-li-dropdown:hover { border-color: ${BRAND}; }
     .pix-li-dropdown .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .pix-li-dropdown .arrow { color: ${BRAND}; font-size: 10px; margin-left: 6px; }
+    .pix-li-dropdown .arrow { color: ${BRAND}; font-size: 13px; margin-left: 6px; line-height: 1; }
     .pix-li-dropdown .counter {
       color: #777;
       font-size: 9px;
@@ -686,7 +686,7 @@ export function buildRoot() {
   const dd = document.createElement("div");
   dd.className = "pix-li-dropdown";
   dd.dataset.role = "dropdown";
-  dd.innerHTML = `<span class="name">— no image —</span><span class="counter" data-role="counter"></span><span class="arrow">▾</span>`;
+  dd.innerHTML = `<span class="name">— no image —</span><span class="counter" data-role="counter"></span><span class="arrow">▼</span>`;
 
   const next = document.createElement("button");
   next.type = "button";
