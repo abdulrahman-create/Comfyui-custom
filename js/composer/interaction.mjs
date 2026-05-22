@@ -714,6 +714,12 @@ PixaromaEditor.prototype.attachEvents = function () {
         const newImg = new Image();
         newImg.crossOrigin = "Anonymous";
         newImg.onload = () => {
+          // The POST + decode is async: bail if the editor was closed or the
+          // layer deleted meanwhile, so we don't write to a dead layer or fire
+          // draw()/pushHistory() onto a stale (or freshly-reopened) session.
+          if (!this.overlay?.isConnected || !this.layers.some((l) => l.id === layer.id)) {
+            return;
+          }
           layer.img = newImg;
           layer.rawB64_internal = data.image;
           layer.savedOnServer = false;
@@ -820,7 +826,10 @@ PixaromaEditor.prototype.attachEvents = function () {
       finalRenderCanvas.width = this.canvas.width;
       finalRenderCanvas.height = this.canvas.height;
       const rCtx = finalRenderCanvas.getContext("2d");
-      rCtx.fillStyle = "#1e1e1e";
+      // Use the user's chosen bg (this.canvas is already opaque-filled by
+      // draw(true), so this is mostly defensive against a future transparent
+      // path - but it must not hardcode #1e1e1e when the user picked another bg).
+      rCtx.fillStyle = this._bgColor || "#1e1e1e";
       rCtx.fillRect(0, 0, finalRenderCanvas.width, finalRenderCanvas.height);
       rCtx.drawImage(this.canvas, 0, 0);
       const finalDataURL = finalRenderCanvas.toDataURL("image/png");
@@ -1037,16 +1046,21 @@ PixaromaEditor.prototype.attachEvents = function () {
     if (this.isMouseDown) {
       const wasErasing = this.activeMode === "eraser";
       const wasCropping = this.activeMode === "crop";
+      // Only an ACTUAL drag pushes history. A bare mousedown (select a layer)
+      // then alt-tab leaves interactionMode null - pushing then would add a
+      // no-op duplicate undo step.
+      const wasTransforming = !!this.interactionMode;
       this.isMouseDown = false;
       this.interactionMode = null;
       if (this.canvas) this.canvas.style.cursor =
         wasErasing || wasCropping ? "crosshair" : "default";
       // Commit the in-progress action so focus loss mid-gesture (e.g. alt-tab)
-      // doesn't strand it: an eraser stroke needs an undo snapshot; a crop drag
-      // just needs its handle released (the crop applies on Done, not here).
+      // doesn't strand it: an eraser stroke or a transform drag needs an undo
+      // snapshot; a crop drag just needs its handle released (crop applies on
+      // Done, not here).
       if (wasCropping) {
         this._cropDragHandle = null;
-      } else {
+      } else if (wasErasing || wasTransforming) {
         this.pushHistory();
       }
     }

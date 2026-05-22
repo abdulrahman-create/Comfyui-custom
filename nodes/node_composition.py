@@ -404,6 +404,11 @@ class PixaromaImageComposition:
             # Grab actual dimensions from JSON
             doc_w = int(meta.get("doc_w", 1024))
             doc_h = int(meta.get("doc_h", 1024))
+            # A blank fallback sized to the ACTUAL document, so the returned
+            # tensor shape always matches the reported width/height (a
+            # hardcoded 1024x1024 here would mismatch doc_w/doc_h and break
+            # downstream nodes that trust the INT outputs).
+            doc_empty = torch.zeros((1, doc_h, doc_w, 3), dtype=torch.float32)
 
             layers = meta.get("layers", [])
             input_dir = os.path.realpath(folder_paths.get_input_directory())
@@ -530,7 +535,7 @@ class PixaromaImageComposition:
             # Fast path: load the pre-rendered composite PNG
             composite_path = meta.get("composite_path")
             if not composite_path:
-                return (empty_image, doc_w, doc_h)
+                return (doc_empty, doc_w, doc_h)
 
             full_path = os.path.realpath(os.path.join(input_dir, composite_path))
 
@@ -539,10 +544,14 @@ class PixaromaImageComposition:
                 print(
                     "[Pixaroma] Security: composite_path escapes input directory, blocked."
                 )
-                return (empty_image, doc_w, doc_h)
+                return (doc_empty, doc_w, doc_h)
 
             if not os.path.exists(full_path):
-                return (empty_image, doc_w, doc_h)
+                print(
+                    f"[Pixaroma] Composite image not found (re-open the Image "
+                    f"Composer and Save to regenerate it): {composite_path}"
+                )
+                return (doc_empty, doc_w, doc_h)
 
             img = Image.open(full_path).convert("RGB")
             img = np.array(img).astype(np.float32) / 255.0

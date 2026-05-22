@@ -20,6 +20,7 @@ import "./render.mjs";
 import "./interaction.mjs";
 import "./placeholder.mjs";
 import { getUpstreamImageUrlForNode } from "./placeholder.mjs";
+import { isGraphLoading } from "../shared/graph_loading.mjs";
 
 // Re-export so other modules can import from index
 export { PixaromaEditor };
@@ -529,7 +530,10 @@ app.registerExtension({
       dbg("onConnectionsChange", inputName, connected);
       if (isEditorOpen(node)) {
         node._pixaromaEditor.ui.updateActiveLayerUI();
-      } else if (node._pixaromaAutoPreview) {
+      } else if (node._pixaromaAutoPreview && !isGraphLoading()) {
+        // Skip during workflow load: LiteGraph replays every saved link here,
+        // which would fire one rebuildPreview (N async image loads) per slot
+        // for nothing, and can flicker the preview (Vue Compat #19).
         rebuildPreview();
       }
     };
@@ -592,16 +596,17 @@ app.registerExtension({
       // `api` already imported at top of file — no need for dynamic import.
 
       let executionRunning = false;
-      api.addEventListener("execution_start", () => {
+      const _onExecStart = () => {
         executionRunning = true;
         // Reset the WS-preview flag so if this run doesn't hit the
         // dynamic re-compose path (no placeholders / auto-rembg /
         // masks), onExecuted falls back to rebuildPreview correctly.
         node._pixaromaWsPreviewApplied = false;
-      });
+      };
+      api.addEventListener("execution_start", _onExecStart);
 
       // "executing" with null detail means execution finished
-      api.addEventListener("executing", (event) => {
+      const _onExecuting = (event) => {
         const detail = event?.detail;
         if (detail === null || detail?.node === null) {
           if (executionRunning && !isEditorOpen(node)) {
@@ -625,16 +630,31 @@ app.registerExtension({
             setTimeout(() => rebuildPreview(), 200);
           }
         }
-      });
+      };
+      api.addEventListener("executing", _onExecuting);
 
       const origRemoved = node.onRemoved;
       node.onRemoved = () => {
         origRemoved?.call(node);
         clearInterval(pollInterval);
-        // Detach the preview WebSocket listener so removed nodes don't
-        // leak event handlers / update phantom previews on later runs.
+        // If the node is deleted while its editor is open, tear the editor
+        // down properly: restore the Ctrl+Z graph-undo neutering (Vue Compat
+        // #6) and detach window listeners, or loadGraphData stays a no-op and
+        // the listeners leak.
+        try {
+          const ed = node._pixaromaEditor;
+          if (ed) {
+            ed._restoreGraphPatches?.();
+            ed._cleanupKeys?.();
+            node._pixaromaEditor = null;
+          }
+        } catch {}
+        // Detach all API listeners so removed nodes don't leak handlers /
+        // update phantom previews on later runs.
         try {
           api.removeEventListener("pixaroma-composer-preview", _onComposerPreview);
+          api.removeEventListener("execution_start", _onExecStart);
+          api.removeEventListener("executing", _onExecuting);
         } catch {}
         widget = null;
       };
