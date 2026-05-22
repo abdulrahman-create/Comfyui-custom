@@ -117,24 +117,44 @@ PixaromaEditor.prototype.enterCropMode = function () {
   }
   if (!layer.sourceImg) layer.sourceImg = layer.img;
   const { w: sw, h: sh } = srcSize(layer.sourceImg);
-  const cr = layer.cropRect || { x: 0, y: 0, w: sw, h: sh };
-  this._cropDraft = { x: cr.x, y: cr.y, w: cr.w, h: cr.h };
+  if (layer.cropRect) {
+    // Re-editing: start from the existing crop (already inset, grabbable).
+    const cr = layer.cropRect;
+    this._cropDraft = { x: cr.x, y: cr.y, w: cr.w, h: cr.h };
+  } else {
+    // Fresh crop: seed an inset box so the corner handles start INSIDE the
+    // canvas and are easy to grab. A full-bounds box would put handles on the
+    // canvas edge (half-clipped, hard to reach). Drag outward to the edges to
+    // recover the full image; doing nothing + Done applies no crop.
+    const mx = Math.round(sw * 0.08);
+    const my = Math.round(sh * 0.08);
+    this._cropDraft = { x: mx, y: my, w: sw - 2 * mx, h: sh - 2 * my };
+  }
   this._cropLayer = layer;
   this._cropFullCenter = this._computeFullSourceCenter(layer, sw, sh);
   this._cropDragHandle = null;
+  this._cropDraftTouched = false;
   this.draw();
 };
 
 PixaromaEditor.prototype.exitCropMode = function () {
   const layer = this._cropLayer;
   const draft = this._cropDraft;
+  const touched = this._cropDraftTouched;
   const srcCenter =
     this._cropFullCenter || (layer ? { cx: layer.cx, cy: layer.cy } : null);
   this._cropLayer = null;
   this._cropDraft = null;
   this._cropFullCenter = null;
   this._cropDragHandle = null;
+  this._cropDraftTouched = false;
   if (!layer || !draft) return;
+  // The box was never dragged → leave the layer's crop exactly as it was
+  // (so "enable crop, change mind, Done" applies nothing).
+  if (!touched) {
+    this.draw();
+    return;
+  }
   const { w: sw, h: sh } = srcSize(layer.sourceImg);
   const isFull =
     Math.round(draft.x) <= 0 &&
@@ -240,6 +260,7 @@ PixaromaEditor.prototype.handleCropMouseDown = function (coords) {
 
 PixaromaEditor.prototype.handleCropMouseMove = function (coords, shiftKey) {
   if (!this.isMouseDown || !this._cropDragHandle || !this._cropLayer) return;
+  this._cropDraftTouched = true;
   const p = this._cropPointInSource(coords);
   const start = this._cropDragStart;
   let { x, y, w, h } = start.rect;
