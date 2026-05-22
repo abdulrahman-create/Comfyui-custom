@@ -631,6 +631,9 @@ PixaromaEditor.prototype.attachEvents = function () {
 
   this.removeBgBtn.addEventListener("click", async () => {
     if (this.selectedLayerIds.size === 0) return;
+    // Commit any in-progress crop so we operate on the applied (cropped) image,
+    // and so the post-rembg crop reset below has a settled starting point.
+    if (this.activeMode === "crop") this.setMode(null);
     const layer = this.getActiveLayer();
     if (!layer || !layer.img) {
       if (this._layout)
@@ -712,6 +715,15 @@ PixaromaEditor.prototype.attachEvents = function () {
           layer.img = newImg;
           layer.rawB64_internal = data.image;
           layer.savedOnServer = false;
+          // The bg-removed result is the cropped pixels with background gone.
+          // Make it the new full source and clear the crop so the invariant
+          // (layer.img === crop(sourceImg, cropRect)) holds - otherwise a later
+          // re-crop or Reset Crop would re-bake from the pre-rembg source and
+          // silently discard the background removal.
+          layer.sourceImg = newImg;
+          layer.cropRect = null;
+          layer._cropMaskOriginX = 0;
+          layer._cropMaskOriginY = 0;
           this.draw();
           this.pushHistory();
           // Surface the real model name the server used — on "auto"
