@@ -29,68 +29,168 @@ import { createPixaromaColorPicker } from "../shared/color_picker.mjs";
 // right-clicked one is among them, the action applies to all, and the label
 // shows "(N nodes)" / "(N groups)".
 
-// ── Theme system (May 2026 v2 rethink) ─────────────────────────────────
-// Three groups, with EVERY chromatic hue defined ONCE in HUES and
-// producing TWO themes that share a single "identity color":
+// ── Theme system (May 2026 v3 — hue folders) ───────────────────────────
+// The right-click "Pixaroma Node Colors" submenu lists ONE FOLDER PER HUE
+// (Red … Pink). Each folder holds that hue's title+body shades, ordered
+// dark → light (Deepest / Moody / Deep / Jewel / Mid / Rich / Bold / Vivid
+// / Bright), then the muted variants (Muted Deep / Slate / Muted / Muted
+// Light), then the specials (Two-tone = colored title with an analogous-
+// hue body; Accent / Accent Dark = colored title on a neutral gray body).
 //
-//   - Plain "[Hue]"  title = SHADOW (darker desaturated variant),
-//                    body  = MAIN  (the saturated identity color).
-//                    Restores the traditional Pixaroma title-darker-
-//                    than-body look from brand/index.js.
-//   - Pixa[Hue]      title = MAIN  (same identity color as Plain body),
-//                    body  = #1d1d1d (Pixaroma dark gray).
-//
-// So if you stack a Plain node above a Pixa node of the same hue,
-// the saturated MAIN color sits at the BOTTOM of Plain (its body)
-// and the TOP of Pixa (its title), matching across the pair. The
-// Plain is the "muted/Pixaroma-conventional" look, the Pixa is the
-// bold accent that lifts the same color up onto the title bar.
-//
-// User's hand-picked May-2026 favorites are preserved as the MAIN
-// colors of their respective hues:
-//   Red    #9d1212    Green  #004835
-//   Orange #9d4912    Blue   #0d2a3a
-//                     Purple #3a1d3a
-// Green shadow (#15261c) is the user's May-2026 hand-pick for the
-// Plain Green title.
-
-const STANDALONES = [
-  { id: "dark",     label: "Dark",     title: "#1d1d1d", body: "#2a2a2a" },
-  { id: "onyx",     label: "Onyx",     title: "#060606", body: "#141414" },
-  { id: "charcoal", label: "Charcoal", title: "#262220", body: "#36312f" },
+// These 127 combos are the user's hand-curated finals (chosen May 2026 from
+// a 140-swatch exploration sheet). title -> node.color, body -> node.bgcolor;
+// both serialize into the workflow JSON and travel to recipients without
+// this plugin. Each shade: { label, title, body }. To add/remove a shade,
+// edit the relevant hue's `presets` array.
+const HUE_FOLDERS = [
+  { label: "Red", presets: [
+    { label: "Deepest", title: "#2f0a0b", body: "#521416" },
+    { label: "Deep", title: "#360c0d", body: "#62181b" },
+    { label: "Jewel", title: "#3c0b0d", body: "#6d181b" },
+    { label: "Mid", title: "#491214", body: "#7f2427" },
+    { label: "Rich", title: "#511517", body: "#972b2e" },
+    { label: "Bold", title: "#5f1b1d", body: "#9f3236" },
+    { label: "Vivid", title: "#611a1c", body: "#ad3438" },
+    { label: "Bright", title: "#732629", body: "#da494e" },
+    { label: "Muted Deep", title: "#331e1f", body: "#543637" },
+    { label: "Slate", title: "#392324", body: "#5f3f40" },
+    { label: "Muted", title: "#492728", body: "#744446" },
+    { label: "Muted Light", title: "#582d2e", body: "#955053" },
+    { label: "Accent", title: "#a9282c", body: "#242424" },
+    { label: "Accent Dark", title: "#ab2b2f", body: "#1f1f1f" },
+  ] },
+  { label: "Orange", presets: [
+    { label: "Deepest", title: "#2f180a", body: "#522d14" },
+    { label: "Deep", title: "#361d0c", body: "#623618" },
+    { label: "Jewel", title: "#3c1f0b", body: "#6d3a18" },
+    { label: "Mid", title: "#492812", body: "#7f4824" },
+    { label: "Rich", title: "#512d15", body: "#97562b" },
+    { label: "Bold", title: "#5f361b", body: "#9f5e32" },
+    { label: "Vivid", title: "#61361a", body: "#ad6434" },
+    { label: "Bright", title: "#734526", body: "#da8349" },
+    { label: "Muted Deep", title: "#33271e", body: "#544236" },
+    { label: "Slate", title: "#392c23", body: "#5f4c3f" },
+    { label: "Muted", title: "#493527", body: "#745744" },
+    { label: "Muted Light", title: "#583e2d", body: "#956c50" },
+    { label: "Accent", title: "#a95c28", body: "#242424" },
+    { label: "Accent Dark", title: "#ab5e2b", body: "#1f1f1f" },
+  ] },
+  { label: "Gold", presets: [
+    { label: "Deepest", title: "#2f250a", body: "#524114" },
+    { label: "Deep", title: "#362b0c", body: "#624e18" },
+    { label: "Jewel", title: "#3c2f0b", body: "#6d5618" },
+    { label: "Mid", title: "#493b12", body: "#7f6724" },
+    { label: "Rich", title: "#514115", body: "#977a2b" },
+    { label: "Bold", title: "#5f4d1b", body: "#9f8232" },
+    { label: "Vivid", title: "#614e1a", body: "#ad8c34" },
+    { label: "Bright", title: "#735e26", body: "#dab349" },
+    { label: "Muted Deep", title: "#332e1e", body: "#544c36" },
+    { label: "Muted", title: "#494027", body: "#746744" },
+    { label: "Muted Light", title: "#584c2d", body: "#958350" },
+  ] },
+  { label: "Green", presets: [
+    { label: "Deepest", title: "#0a2f13", body: "#145224" },
+    { label: "Moody", title: "#093514", body: "#125423" },
+    { label: "Deep", title: "#0c3617", body: "#18622b" },
+    { label: "Jewel", title: "#0b3c18", body: "#186d2d" },
+    { label: "Mid", title: "#124920", body: "#247f3b" },
+    { label: "Rich", title: "#155124", body: "#2b9746" },
+    { label: "Bold", title: "#1b5f2c", body: "#329f4d" },
+    { label: "Vivid", title: "#1a612b", body: "#34ad52" },
+    { label: "Bright", title: "#267339", body: "#49da6d" },
+    { label: "Muted Deep", title: "#1e3323", body: "#36543d" },
+    { label: "Slate", title: "#233928", body: "#3f5f47" },
+    { label: "Muted", title: "#274930", body: "#447450" },
+    { label: "Muted Light", title: "#2d5838", body: "#509562" },
+  ] },
+  { label: "Teal", presets: [
+    { label: "Deepest", title: "#0a2f27", body: "#145245" },
+    { label: "Moody", title: "#09352c", body: "#125447" },
+    { label: "Deep", title: "#0c362e", body: "#186253" },
+    { label: "Jewel", title: "#0b3c32", body: "#186d5c" },
+    { label: "Mid", title: "#12493e", body: "#247f6d" },
+    { label: "Rich", title: "#155145", body: "#2b9781" },
+    { label: "Bold", title: "#1b5f52", body: "#329f89" },
+    { label: "Vivid", title: "#1a6152", body: "#34ad95" },
+    { label: "Bright", title: "#267363", body: "#49dabd" },
+    { label: "Muted Deep", title: "#1e332f", body: "#36544e" },
+    { label: "Slate", title: "#233935", body: "#3f5f59" },
+    { label: "Muted", title: "#274942", body: "#44746a" },
+    { label: "Muted Light", title: "#2d584f", body: "#509587" },
+    { label: "Two-tone", title: "#18594c", body: "#2f9d57" },
+  ] },
+  { label: "Cyan", presets: [
+    { label: "Deepest", title: "#0a282f", body: "#144752" },
+    { label: "Moody", title: "#092d35", body: "#124954" },
+    { label: "Deep", title: "#0c2f36", body: "#185662" },
+    { label: "Jewel", title: "#0b343c", body: "#185f6d" },
+    { label: "Mid", title: "#124049", body: "#24707f" },
+    { label: "Rich", title: "#154751", body: "#2b8597" },
+    { label: "Bold", title: "#1b545f", body: "#328d9f" },
+    { label: "Vivid", title: "#1a5561", body: "#3499ad" },
+    { label: "Bright", title: "#266673", body: "#49c2da" },
+    { label: "Muted Deep", title: "#1e3033", body: "#364f54" },
+    { label: "Slate", title: "#233539", body: "#3f5a5f" },
+    { label: "Muted", title: "#274349", body: "#446c74" },
+    { label: "Muted Light", title: "#2d5058", body: "#508a95" },
+    { label: "Two-tone", title: "#184e59", body: "#2f9d80" },
+  ] },
+  { label: "Blue", presets: [
+    { label: "Deepest", title: "#0a1b2f", body: "#143152" },
+    { label: "Moody", title: "#091d35", body: "#123154" },
+    { label: "Deep", title: "#0c2036", body: "#183b62" },
+    { label: "Jewel", title: "#0b223c", body: "#183f6d" },
+    { label: "Mid", title: "#122c49", body: "#244f7f" },
+    { label: "Rich", title: "#153151", body: "#2b5d97" },
+    { label: "Bold", title: "#1b3b5f", body: "#32659f" },
+    { label: "Vivid", title: "#1a3b61", body: "#346cad" },
+    { label: "Bright", title: "#264a73", body: "#498dda" },
+    { label: "Muted Deep", title: "#1e2833", body: "#364454" },
+    { label: "Slate", title: "#232d39", body: "#3f4e5f" },
+    { label: "Muted", title: "#273749", body: "#445a74" },
+    { label: "Muted Light", title: "#2d4158", body: "#507095" },
+    { label: "Two-tone", title: "#183659", body: "#2f929d" },
+    { label: "Accent", title: "#2864a9", body: "#242424" },
+  ] },
+  { label: "Indigo", presets: [
+    { label: "Bold", title: "#221b5f", body: "#3d329f" },
+    { label: "Vivid", title: "#211a61", body: "#4034ad" },
+    { label: "Bright", title: "#2e2673", body: "#5749da" },
+    { label: "Muted Deep", title: "#201e33", body: "#393654" },
+    { label: "Slate", title: "#252339", body: "#423f5f" },
+    { label: "Muted", title: "#2b2749", body: "#494474" },
+    { label: "Muted Light", title: "#312d58", body: "#575095" },
+    { label: "Two-tone", title: "#1e1859", body: "#6a2f9d" },
+    { label: "Accent Dark", title: "#382bab", body: "#1f1f1f" },
+  ] },
+  { label: "Purple", presets: [
+    { label: "Mid", title: "#371249", body: "#61247f" },
+    { label: "Rich", title: "#3d1551", body: "#732b97" },
+    { label: "Bold", title: "#491b5f", body: "#7b329f" },
+    { label: "Vivid", title: "#491a61", body: "#8434ad" },
+    { label: "Bright", title: "#592673", body: "#a949da" },
+    { label: "Muted Deep", title: "#2c1e33", body: "#4a3654" },
+    { label: "Slate", title: "#322339", body: "#543f5f" },
+    { label: "Muted", title: "#3e2749", body: "#644474" },
+    { label: "Muted Light", title: "#492d58", body: "#7e5095" },
+    { label: "Two-tone", title: "#431859", body: "#9d2f92" },
+  ] },
+  { label: "Pink", presets: [
+    { label: "Deepest", title: "#2f0a21", body: "#52143b" },
+    { label: "Deep", title: "#360c27", body: "#621847" },
+    { label: "Mid", title: "#491235", body: "#7f245e" },
+    { label: "Rich", title: "#51153b", body: "#972b6f" },
+    { label: "Bold", title: "#5f1b46", body: "#9f3277" },
+    { label: "Vivid", title: "#611a47", body: "#ad3480" },
+    { label: "Bright", title: "#732657", body: "#da49a5" },
+    { label: "Slate", title: "#392331", body: "#5f3f53" },
+    { label: "Muted", title: "#49273d", body: "#744462" },
+    { label: "Muted Light", title: "#582d48", body: "#95507c" },
+    { label: "Two-tone", title: "#591841", body: "#9d2f45" },
+    { label: "Accent", title: "#a9287a", body: "#242424" },
+    { label: "Accent Dark", title: "#ab2b7c", body: "#1f1f1f" },
+  ] },
 ];
-
-// Each hue: main = saturated identity color, shadow = darker
-// desaturated variant. Ordering is a wheel traversal warm -> cool.
-const HUES = [
-  { id: "red",     label: "Red",     main: "#9d1212", shadow: "#3a1414" },
-  { id: "orange",  label: "Orange",  main: "#9d4912", shadow: "#3a2814" },
-  { id: "gold",    label: "Gold",    main: "#8a6814", shadow: "#3a3014" },
-  { id: "olive",   label: "Olive",   main: "#4d6814", shadow: "#1f2814" },
-  { id: "lime",    label: "Lime",    main: "#2d5a0d", shadow: "#152a08" },
-  { id: "green",   label: "Green",   main: "#004835", shadow: "#15261c" },
-  { id: "teal",    label: "Teal",    main: "#006b5e", shadow: "#102a25" },
-  { id: "cyan",    label: "Cyan",    main: "#0a6a8d", shadow: "#1a3a4a" },
-  { id: "sky",     label: "Sky",     main: "#1a5a8a", shadow: "#15263a" },
-  { id: "blue",    label: "Blue",    main: "#0d2a3a", shadow: "#1a242e" },
-  { id: "indigo",  label: "Indigo",  main: "#1f1a6a", shadow: "#15123a" },
-  { id: "purple",  label: "Purple",  main: "#3a1d3a", shadow: "#251a25" },
-  { id: "magenta", label: "Magenta", main: "#8a2275", shadow: "#2e1a25" },
-  { id: "pink",    label: "Pink",    main: "#8a224a", shadow: "#3a1a26" },
-  { id: "brown",   label: "Brown",   main: "#6a4818", shadow: "#2e1f12" },
-];
-
-// Derived: title = shadow, body = main (Plain restores traditional
-// Pixaroma title-darker-than-body convention).
-const PRESETS = HUES.map((h) => ({
-  id: h.id, label: h.label, title: h.shadow, body: h.main,
-}));
-
-// Derived: title = main (same identity color as Plain body), body =
-// neutral dark gray (the Pixa "branded" body).
-const BOLD_PRESETS = HUES.map((h) => ({
-  id: "pixa" + h.id, label: "Pixa" + h.label, title: h.main, body: "#1d1d1d",
-}));
 
 // Curated swatch sets for the Pick custom modal. The default
 // PIXAROMA_PALETTE has a wide range including bright pastels that read
@@ -818,19 +918,13 @@ function buildSaveSubmenu(node) {
   }));
 }
 
-// A preset group rendered as its own sub-submenu (Neutrals / Plain / Pixa).
+// A hue folder rendered as its own sub-submenu — lists that hue's shades.
 function buildPresetGroupSubmenu(targets, presets) {
   return presets.map((p) => ({
     content: `${swatchHTML(p.title, p.body)}${p.label}`,
     callback: () => applyColors(targets, p.title, p.body),
   }));
 }
-
-const PRESET_GROUPS = [
-  { label: "Neutrals",  presets: STANDALONES },
-  { label: "Plain hues", presets: PRESETS },
-  { label: "Pixa hues",  presets: BOLD_PRESETS },
-];
 
 function buildSubmenuOptions(targets, node) {
   const items = [];
@@ -862,10 +956,10 @@ function buildSubmenuOptions(targets, node) {
     callback: () => pickCustom(targets),
   });
 
-  items.push(null); // separator: personal -> preset groups
+  items.push(null); // separator: personal -> hue folders
 
-  // Preset groups, each tucked into its own subfolder.
-  for (const g of PRESET_GROUPS) {
+  // One folder per hue; each opens that hue's shades (dark -> light).
+  for (const g of HUE_FOLDERS) {
     items.push({
       content: g.label,
       has_submenu: true,

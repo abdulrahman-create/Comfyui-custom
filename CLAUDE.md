@@ -82,34 +82,26 @@ js/
 │                       #  AND LGraphGroup.prototype.getMenuOptions (groups)
 │                       #  to append color tools to ANY node/group right-
 │                       #  click menu. Submenu via LiteGraph.ContextMenu
-│                       #  callback pattern contains 27 themes split
-│                       #  into THREE groups, each separated visually:
-│                       #  (a) STANDALONES (3 neutrals: Dark, Onyx,
-│                       #  Charcoal); (b) PRESETS (12 Plain hue themes);
-│                       #  (c) BOLD_PRESETS (12 Pixa[Hue] themes).
-│                       #  Every chromatic hue is defined ONCE in the
-│                       #  HUES array as { main, shadow } and produces
-│                       #  TWO themes that share an identity color:
-│                       #  Plain "[Hue]" = title=shadow, body=main;
-│                       #  Pixa[Hue]     = title=main, body=#1d1d1d.
-│                       #  So stacking a Plain node above a Pixa node
-│                       #  of the same hue places the saturated MAIN
-│                       #  color at the BOTTOM of Plain (its body) and
-│                       #  the TOP of Pixa (its title), matching across
-│                       #  the pair. Plain restores the traditional
-│                       #  Pixaroma title-darker-than-body look; Pixa
-│                       #  is the bold accent. 15 hue families: Red,
-│                       #  Orange, Gold, Olive, Lime, Green, Teal,
-│                       #  Cyan, Sky, Blue, Indigo, Purple, Magenta,
-│                       #  Pink, Brown. User's
-│                       #  hand-picked May-2026 main colors are
-│                       #  preserved: Red #9d1212, Orange #9d4912,
-│                       #  Green #004835, Blue #0d2a3a, Purple #3a1d3a;
-│                       #  Green shadow #15261c is also a user pick.
-│                       #  The Pixa* prefix is INTENTIONALLY ONLY
-│                       #  applied to the 12 BOLD_PRESETS so they
-│                       #  stand out in the submenu as the user's
-│                       #  easy-find branded rail.
+│                       #  callback pattern. May 2026 v4: the node
+│                       #  presets are the user's 127 hand-curated
+│                       #  finals (HUE_FOLDERS), organized as ONE
+│                       #  FOLDER PER HUE: Red, Orange, Gold, Green,
+│                       #  Teal, Cyan, Blue, Indigo, Purple, Pink.
+│                       #  Each folder holds that hue's title+body
+│                       #  shades ordered dark -> light: Deepest /
+│                       #  Moody / Deep / Jewel / Mid / Rich / Bold /
+│                       #  Vivid / Bright, then the muted variants
+│                       #  (Muted Deep / Slate / Muted / Muted Light),
+│                       #  then specials (Two-tone = colored title
+│                       #  with an analogous-hue body; Accent /
+│                       #  Accent Dark = colored title on a neutral
+│                       #  gray body #242424 / #1f1f1f). title ->
+│                       #  node.color, body -> node.bgcolor. The OLD
+│                       #  Plain/Pixa/Neutrals theme grouping (HUES /
+│                       #  PRESETS / BOLD_PRESETS / STANDALONES) was
+│                       #  REPLACED by this hue-folder set. To add or
+│                       #  remove a shade, edit the relevant hue's
+│                       #  `presets` array in js/node_colors/index.js.
 │                       #  --- May 2026 v3: copy/paste + 4 favorites +
 │                       #  groups. Top-level labels are Node/Group-qualified:
 │                       #  NODE menu top-level: "👑 Pixaroma Node Colors"
@@ -117,9 +109,9 @@ js/
 │                       #  Colors" (shown only once something is copied) +
 │                       #  "👑 Reset Node Colors". The submenu LEADS with
 │                       #  the filled Favorites, then "Save these colors
-│                       #  to ▸" (4 slots) + "Pick custom...", then the 27
-│                       #  presets tucked into THREE subfolders (Neutrals
-│                       #  / Plain hues / Pixa hues) so favorites/save are
+│                       #  to ▸" (4 slots) + "Pick custom...", then the
+│                       #  127 presets tucked into 10 HUE subfolders
+│                       #  (Red ... Pink) so favorites/save are
 │                       #  reachable without scanning every swatch.
 │                       #  Favorites are 4 fixed slots persisted as ONE
 │                       #  compact JSON value via an UNREGISTERED settings
