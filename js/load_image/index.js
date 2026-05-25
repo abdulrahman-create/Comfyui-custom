@@ -452,6 +452,42 @@ function setupLoadImageNode(node) {
     if (imageWidget.value) node._pixLiSelectedFilename = imageWidget.value;
   }
 
+  // Catch EXTERNAL writes to the image widget value that bypass our callback.
+  // ComfyUI core sets imageWidget.value DIRECTLY (no callback) in two paths:
+  // the Mask Editor, and "Copy/Paste (Clipspace)" - pasteFromClipspace's first
+  // block assigns widget.value with no callback, especially when pasting an
+  // OUTPUT image copied from another node (its name e.g. "img_0001_.png
+  // [output]" has no "clipspace" substring). Without catching these, the
+  // `_pixLiSelectedFilename` cache stays stale and the graphToPrompt override
+  // (issue #38) reverts the widget to the old file -> wrong image loaded
+  // (issue #50 / clipspace report). A value setter keeps the cache in lockstep
+  // with ANY write EXCEPT writes during a graph load, which are Vue's
+  // config-replay (issue #38) and must NOT update the cache so the override
+  // can still restore the user's session pick. Chains any existing descriptor;
+  // no-op if the property is locked non-configurable.
+  if (imageWidget) {
+    try {
+      const initialVal = imageWidget.value;
+      const desc = Object.getOwnPropertyDescriptor(imageWidget, "value");
+      if (!desc || desc.configurable) {
+        const origGet = desc && desc.get;
+        const origSet = desc && desc.set;
+        let stored = initialVal;
+        Object.defineProperty(imageWidget, "value", {
+          configurable: true,
+          enumerable: desc ? desc.enumerable !== false : true,
+          get() { return origGet ? origGet.call(this) : stored; },
+          set(v) {
+            if (origSet) origSet.call(this, v); else stored = v;
+            if (v && !isGraphLoading()) node._pixLiSelectedFilename = v;
+          },
+        });
+      }
+    } catch (e) {
+      console.warn("[PixaromaLoadImage] could not intercept image value", e);
+    }
+  }
+
   // Wire upload button.
   const btn = root.querySelector(".pix-li-upload-btn");
   btn?.addEventListener("click", async (e) => {
