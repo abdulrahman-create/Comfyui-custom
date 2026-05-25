@@ -452,6 +452,42 @@ function setupLoadImageNode(node) {
     if (imageWidget.value) node._pixLiSelectedFilename = imageWidget.value;
   }
 
+  // Catch EXTERNAL writes to the image widget value that bypass our callback.
+  // ComfyUI core sets imageWidget.value DIRECTLY (no callback) in two paths:
+  // the Mask Editor, and "Copy/Paste (Clipspace)" - pasteFromClipspace's first
+  // block assigns widget.value with no callback, especially when pasting an
+  // OUTPUT image copied from another node (its name e.g. "img_0001_.png
+  // [output]" has no "clipspace" substring). Without catching these, the
+  // `_pixLiSelectedFilename` cache stays stale and the graphToPrompt override
+  // (issue #38) reverts the widget to the old file -> wrong image loaded
+  // (issue #50 / clipspace report). A value setter keeps the cache in lockstep
+  // with ANY write EXCEPT writes during a graph load, which are Vue's
+  // config-replay (issue #38) and must NOT update the cache so the override
+  // can still restore the user's session pick. Chains any existing descriptor;
+  // no-op if the property is locked non-configurable.
+  if (imageWidget) {
+    try {
+      const initialVal = imageWidget.value;
+      const desc = Object.getOwnPropertyDescriptor(imageWidget, "value");
+      if (!desc || desc.configurable) {
+        const origGet = desc && desc.get;
+        const origSet = desc && desc.set;
+        let stored = initialVal;
+        Object.defineProperty(imageWidget, "value", {
+          configurable: true,
+          enumerable: desc ? desc.enumerable !== false : true,
+          get() { return origGet ? origGet.call(this) : stored; },
+          set(v) {
+            if (origSet) origSet.call(this, v); else stored = v;
+            if (v && !isGraphLoading()) node._pixLiSelectedFilename = v;
+          },
+        });
+      }
+    } catch (e) {
+      console.warn("[PixaromaLoadImage] could not intercept image value", e);
+    }
+  }
+
   // Wire upload button.
   const btn = root.querySelector(".pix-li-upload-btn");
   btn?.addEventListener("click", async (e) => {
@@ -787,18 +823,31 @@ app.graphToPrompt = async function (...args) {
       const state = node?.properties?.[STATE_PROP] || JSON.stringify(DEFAULT_STATE);
       entry.inputs = entry.inputs || {};
       entry.inputs[HIDDEN_INPUT_NAME] = state;
-      // Defensive image filename sync (issue #38 hardening). If a Vue
-      // configure replay or autosave snapshot drifted widget.value back
-      // to a previously-saved filename, our cache `_pixLiSelectedFilename`
-      // holds whatever the user last picked in this session. Use it for
-      // both the widget AND the submitted entry so the workflow sees
-      // what the user actually chose. No-op when the cache matches
-      // (the normal case) or when the user hasn't picked anything yet.
-      const cached = node?._pixLiSelectedFilename;
       const w = node?._pixLiImageWidget;
-      if (cached && w && entry.inputs.image !== cached) {
-        w.value = cached;
-        entry.inputs.image = cached;
+      const live = entry.inputs.image;
+      // Mask Editor / "Copy (Clipspace)" / "Paste (Clipspace)" write the
+      // edited image (with the painted mask baked into its alpha channel) to
+      // input/clipspace/ and point the image widget there. That's a fresh,
+      // legitimate pick the user just made — ADOPT it into the cache and never
+      // override it. Without this, issue #50: the cache still holds the
+      // pre-edit filename, the sync below reverts the widget to it, the
+      // backend loads the maskless original, and the MASK output comes back
+      // blank. Detected by the canonical "clipspace" location ComfyUI uses.
+      if (typeof live === "string" && /clipspace/i.test(live)) {
+        node._pixLiSelectedFilename = live;
+      } else {
+        // Defensive image filename sync (issue #38 hardening). If a Vue
+        // configure replay or autosave snapshot drifted widget.value back
+        // to a previously-saved filename, our cache `_pixLiSelectedFilename`
+        // holds whatever the user last picked in this session. Use it for
+        // both the widget AND the submitted entry so the workflow sees
+        // what the user actually chose. No-op when the cache matches
+        // (the normal case) or when the user hasn't picked anything yet.
+        const cached = node?._pixLiSelectedFilename;
+        if (cached && w && live !== cached) {
+          w.value = cached;
+          entry.inputs.image = cached;
+        }
       }
     }
   }

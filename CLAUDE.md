@@ -82,34 +82,29 @@ js/
 │                       #  AND LGraphGroup.prototype.getMenuOptions (groups)
 │                       #  to append color tools to ANY node/group right-
 │                       #  click menu. Submenu via LiteGraph.ContextMenu
-│                       #  callback pattern contains 27 themes split
-│                       #  into THREE groups, each separated visually:
-│                       #  (a) STANDALONES (3 neutrals: Dark, Onyx,
-│                       #  Charcoal); (b) PRESETS (12 Plain hue themes);
-│                       #  (c) BOLD_PRESETS (12 Pixa[Hue] themes).
-│                       #  Every chromatic hue is defined ONCE in the
-│                       #  HUES array as { main, shadow } and produces
-│                       #  TWO themes that share an identity color:
-│                       #  Plain "[Hue]" = title=shadow, body=main;
-│                       #  Pixa[Hue]     = title=main, body=#1d1d1d.
-│                       #  So stacking a Plain node above a Pixa node
-│                       #  of the same hue places the saturated MAIN
-│                       #  color at the BOTTOM of Plain (its body) and
-│                       #  the TOP of Pixa (its title), matching across
-│                       #  the pair. Plain restores the traditional
-│                       #  Pixaroma title-darker-than-body look; Pixa
-│                       #  is the bold accent. 15 hue families: Red,
-│                       #  Orange, Gold, Olive, Lime, Green, Teal,
-│                       #  Cyan, Sky, Blue, Indigo, Purple, Magenta,
-│                       #  Pink, Brown. User's
-│                       #  hand-picked May-2026 main colors are
-│                       #  preserved: Red #9d1212, Orange #9d4912,
-│                       #  Green #004835, Blue #0d2a3a, Purple #3a1d3a;
-│                       #  Green shadow #15261c is also a user pick.
-│                       #  The Pixa* prefix is INTENTIONALLY ONLY
-│                       #  applied to the 12 BOLD_PRESETS so they
-│                       #  stand out in the submenu as the user's
-│                       #  easy-find branded rail.
+│                       #  callback pattern. May 2026 v4: the node
+│                       #  presets are the user's 127 hand-curated
+│                       #  finals (HUE_FOLDERS), organized as a leading
+│                       #  "Dark" folder (Default #1d1d1d/#2a2a2a =
+│                       #  brand default, Onyx, Charcoal, + 6 dark
+│                       #  low-sat color tints) then ONE FOLDER PER
+│                       #  HUE: Red, Orange, Gold, Green, Teal, Cyan,
+│                       #  Blue, Indigo, Purple, Pink.
+│                       #  Each folder holds that hue's title+body
+│                       #  shades ordered dark -> light: Deepest /
+│                       #  Moody / Deep / Jewel / Mid / Rich / Bold /
+│                       #  Vivid / Bright, then the muted variants
+│                       #  (Muted Deep / Slate / Muted / Muted Light),
+│                       #  then specials (Two-tone = colored title
+│                       #  with an analogous-hue body; Accent /
+│                       #  Accent Dark = colored title on a neutral
+│                       #  gray body #242424 / #1f1f1f). title ->
+│                       #  node.color, body -> node.bgcolor. The OLD
+│                       #  Plain/Pixa/Neutrals theme grouping (HUES /
+│                       #  PRESETS / BOLD_PRESETS / STANDALONES) was
+│                       #  REPLACED by this hue-folder set. To add or
+│                       #  remove a shade, edit the relevant hue's
+│                       #  `presets` array in js/node_colors/index.js.
 │                       #  --- May 2026 v3: copy/paste + 4 favorites +
 │                       #  groups. Top-level labels are Node/Group-qualified:
 │                       #  NODE menu top-level: "👑 Pixaroma Node Colors"
@@ -117,9 +112,9 @@ js/
 │                       #  Colors" (shown only once something is copied) +
 │                       #  "👑 Reset Node Colors". The submenu LEADS with
 │                       #  the filled Favorites, then "Save these colors
-│                       #  to ▸" (4 slots) + "Pick custom...", then the 27
-│                       #  presets tucked into THREE subfolders (Neutrals
-│                       #  / Plain hues / Pixa hues) so favorites/save are
+│                       #  to ▸" (4 slots) + "Pick custom...", then the
+│                       #  presets tucked into 11 subfolders (Dark +
+│                       #  Red ... Pink) so favorites/save are
 │                       #  reachable without scanning every swatch.
 │                       #  Favorites are 4 fixed slots persisted as ONE
 │                       #  compact JSON value via an UNREGISTERED settings
@@ -1152,7 +1147,7 @@ Any Pixaroma node that picks an image from `input/` via ComfyUI's `image_upload:
 
 5. **Dropdown popup MUST group by subfolder.** Users on shared input folders accumulate dozens of subfolders. Flat list = unscannable. Group by subfolder with small `.pix-*-popup-section` headers ("root", "Studio1", "Renders" ...), items show the bare filename only, hover `title` carries the full path so it stays discoverable. Selected item should auto-scroll into view on popup open (the user's current image is what they want to find first, especially when navigating with prev/next).
 
-6. **Defensive `_pix<NodeShort>SelectedFilename` cache + sync at submission time (issue #38 hardening).** Whenever the user picks a new image (dropdown / arrow / upload / paste / drop / native drag-drop), write the filename to a per-node cache `node._pix<NodeShort>SelectedFilename`. Seed it from `imageWidget.value` in three places: the wrapped `imageWidget.callback` (covers native drag-drop), the initial setup after `hideNativeImageCombo` returns (covers configure-already-landed-by-then), and `onConfigure` (covers workflow reload). For nodes whose Python contract reads the image filename from `widget.value` (which is what `image_upload: True` makes natively serialise) **patch `app.graphToPrompt` to re-sync `widget.value = cached` and `entry.inputs.image = cached` just before submission** if they drifted apart. Reason: Vue's configure replay can fire at unpredictable moments (tab switch, autosave then load) and silently restore an older saved value over the user's in-session pick. The cache + graphToPrompt fix prevents that drift from leaking into the submitted prompt. Load Image is the reference implementation; Prompt Reader uses the same cache pattern but does not need the graphToPrompt sync because the workflow only sends the image filename to the Python node which reads metadata server-side (no prompt-time injection needed).
+6. **Defensive `_pix<NodeShort>SelectedFilename` cache + sync at submission time (issue #38 hardening).** Whenever the user picks a new image (dropdown / arrow / upload / paste / drop / native drag-drop), write the filename to a per-node cache `node._pix<NodeShort>SelectedFilename`. Seed it from `imageWidget.value` in three places: the wrapped `imageWidget.callback` (covers native drag-drop), the initial setup after `hideNativeImageCombo` returns (covers configure-already-landed-by-then), and `onConfigure` (covers workflow reload). For nodes whose Python contract reads the image filename from `widget.value` (which is what `image_upload: True` makes natively serialise) **patch `app.graphToPrompt` to re-sync `widget.value = cached` and `entry.inputs.image = cached` just before submission** if they drifted apart. Reason: Vue's configure replay can fire at unpredictable moments (tab switch, autosave then load) and silently restore an older saved value over the user's in-session pick. The cache + graphToPrompt fix prevents that drift from leaking into the submitted prompt. Load Image is the reference implementation; Prompt Reader uses the same cache pattern but does not need the graphToPrompt sync because the workflow only sends the image filename to the Python node which reads metadata server-side (no prompt-time injection needed). **CRITICAL (issue #50): the graphToPrompt override MUST exempt `clipspace` values.** ComfyUI's Mask Editor (and "Copy/Paste (Clipspace)") write the EDITED image - with the painted mask baked into its ALPHA channel - to `input/clipspace/clipspace-mask-*.png` and point the image widget there, often WITHOUT firing the widget callback. So the cache still holds the pre-edit filename, and the blind `widget.value !== cached -> revert to cached` sync reverts the widget to the maskless original; the backend loads it, finds no alpha, and the MASK output comes back BLANK (user-visible: "I drew a mask, saved, and the Load Image node produces no mask"). Fix: in the graphToPrompt hook, when the live submitted value matches `/clipspace/i`, ADOPT it into the cache (`node._pixLiSelectedFilename = live`) and skip the override entirely; only apply the cache-revert for non-clipspace values. This works whether or not the Mask Editor fires the callback. The Python side was already correct (it reads `1 - alpha` like native LoadImage) - the mask was being lost purely because the clipspace filename never reached the backend. **Follow-up (Copy/Paste Clipspace):** the same root cause also breaks "Copy (Clipspace)" -> "Paste (Clipspace)", but the `/clipspace/i` exemption does NOT catch it - when you copy an OUTPUT image from another node and paste it onto Load Image, ComfyUI's `pasteFromClipspace` first block assigns `widget.value = "<name>.png [output]"` (no "clipspace" substring) with NO callback, so the cache stays stale and the override reverts to the old file (user-visible: node preview shows the pasted image but the OUTPUT is the previous one). The general fix is a **value setter on the image widget** (installed in `setupLoadImageNode`): `Object.defineProperty(imageWidget, "value", {...})` chains any existing descriptor and, on every write, updates `node._pixLiSelectedFilename = v` UNLESS `isGraphLoading()` (a load-time write is Vue config-replay and must not touch the cache, preserving #38). This catches every external write path (Mask Editor, both clipspace blocks, native drag-drop) regardless of whether a callback fires, so the cache is always the user's latest deliberate pick and the override only ever fires to undo a genuine config-replay drift. Guarded by try/catch + a `desc.configurable` check so a future non-configurable widget value can't throw.
 
 7. **Prev / next arrows on a dedicated `pickByOffset(node, offset)` helper with PageUp/PageDown shortcuts.** Visual flip-through, matches native ComfyUI LoadImage. Wrap at both ends. Buttons disable when `values.length < 2`. PageUp/PageDown shortcut uses a module-scoped `_active<NodeShort>Node` + window keydown listener (bail when target is INPUT/TEXTAREA/SELECT or contenteditable). Counter `"3 / 247"` inside the dropdown so users know where they are. Selection tracking via `onSelected` / `onDeselected` on the nodeType prototype; clear on `onRemoved` so a deleted node doesn't dangle.
 
