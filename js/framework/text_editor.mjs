@@ -33,7 +33,9 @@ export function createTextEditorPanel({ mount, onChange, onReset, onAlignCanvas,
   let fontCatalog = null;
 
   const root = document.createElement("div");
-  root.className = "pix-to-root";
+  // composerMode mounts in a narrow sidebar — force single-column grids so the
+  // number/color cells get full width and don't clip (see .pix-to-narrow CSS).
+  root.className = "pix-to-root" + (composerMode ? " pix-to-narrow" : "");
   mount.appendChild(root);
 
   function fireChange() {
@@ -498,7 +500,7 @@ function openFontPopup(anchorEl, catalog, currentId, onPick) {
   popup.className = "pix-to-popup";
   const rect = anchorEl.getBoundingClientRect();
   popup.style.left = `${rect.left}px`;
-  popup.style.top  = `${rect.bottom + 2}px`;
+  popup.style.top = "0px"; // real position set after measuring (below)
   popup.style.width = `${rect.width}px`;
 
   let lastCat = null;
@@ -521,6 +523,20 @@ function openFontPopup(anchorEl, catalog, currentId, onPick) {
     popup.appendChild(item);
   }
   document.body.appendChild(popup);
+  // Position: open downward; if it would overflow the viewport bottom, flip
+  // above the anchor; clamp into the viewport as a last resort. Also clamp the
+  // left edge so a narrow sidebar near the screen edge doesn't push it off.
+  const vw = window.innerWidth, vh = window.innerHeight;
+  const ph = Math.min(popup.offsetHeight, 320);
+  let top = rect.bottom + 2;
+  if (top + ph > vh - 8) {
+    const above = rect.top - 2 - ph;
+    top = above >= 8 ? above : Math.max(8, vh - 8 - ph);
+  }
+  let left = rect.left;
+  if (left + rect.width > vw - 8) left = Math.max(8, vw - 8 - rect.width);
+  popup.style.top = `${top}px`;
+  popup.style.left = `${left}px`;
   attachPopupCloseListeners(popup, close);
   function close() { popup.remove(); }
 }
@@ -686,18 +702,22 @@ function injectCSS() {
     .pix-to-align-chip.active img,
     .pix-to-align-chip.is-flashing img { filter: brightness(0) invert(1); }
 
-    /* 2-column grid for number inputs + colors */
+    /* 2-column grid for number inputs + colors. minmax(0,1fr) lets columns
+       shrink below their content min-size so cells never overflow the panel. */
     .pix-to-grid2 {
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
       gap: 4px;
     }
     /* 3-column grid used by the Rotate / X / Y row */
     .pix-to-grid3 {
       display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
       gap: 4px;
     }
+    /* Narrow (composer sidebar) — stack to one column so every cell gets full
+       width and the longer labels (LINE HEIGHT / LETTER SP / BEHIND) fit. */
+    .pix-to-narrow .pix-to-grid2 { grid-template-columns: 1fr; }
 
     /* Numeric input cell: [LABEL  value] */
     .pix-to-input-cell {
