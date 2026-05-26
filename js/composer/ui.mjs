@@ -12,6 +12,7 @@ import {
   createTransformPanel,
   createSelectInput,
   createRow,
+  createTextEditorPanel,
 } from "../framework/index.mjs";
 // PixaromaAPI is used below to query rembg install status when the
 // AI Background Removal panel builds. Without this import the whole
@@ -122,8 +123,10 @@ export class PixaromaUI {
     // for the Adjustments panel (and vice-versa).
     const _activeLayer = core.getActiveLayer();
     const _isFx = !!(_activeLayer && _activeLayer.isAdjustment);
+    const _isText = !!(_activeLayer && _activeLayer.isText);
     if (this._fxPanel) this._fxPanel.root.style.display = _isFx ? "" : "none";
-    if (core.toolsPanel) core.toolsPanel.style.display = _isFx ? "none" : "";
+    if (this._textPanel) this._textPanel.root.style.display = _isText ? "" : "none";
+    if (core.toolsPanel) core.toolsPanel.style.display = (_isFx || _isText) ? "none" : "";
 
     // Context-aware tooltips based on current state
     if (core._layout && core.activeMode !== "eraser") {
@@ -176,6 +179,25 @@ export class PixaromaUI {
       if (core._layerPanel && core._layerPanel.setOpacity)
         core._layerPanel.setOpacity(Math.round((_activeLayer.opacity ?? 1) * 100));
       this.refreshFxControls(_activeLayer);
+      this.refreshLayersPanel();
+      return;
+    }
+
+    // Text layer: image-only panels don't apply. Dim them, exit eraser/crop,
+    // keep blend + opacity active, sync the Text panel, then bail.
+    if (_isText) {
+      if (core.activeMode === "eraser" || core.activeMode === "crop") core.setMode(null);
+      for (const p of [core.eraserPanel, core.cropPanel]) {
+        if (p) { p.style.opacity = "0.3"; p.style.pointerEvents = "none"; }
+      }
+      if (core.removeBgBtn) { core.removeBgBtn.style.opacity = "0.3"; core.removeBgBtn.style.pointerEvents = "none"; }
+      if (core._autoBgRow) { core._autoBgRow.style.opacity = "0.3"; core._autoBgRow.style.pointerEvents = "none"; }
+      if (core._convertPhBtn) { core._convertPhBtn.style.opacity = "0.3"; core._convertPhBtn.style.pointerEvents = "none"; }
+      if (core._layerPanel && core._layerPanel.setBlend)
+        core._layerPanel.setBlend(_activeLayer.blendMode || "Normal");
+      if (core._layerPanel && core._layerPanel.setOpacity)
+        core._layerPanel.setOpacity(Math.round((_activeLayer.opacity ?? 1) * 100));
+      if (this._textPanel) this._textPanel.panel.setLayer(_activeLayer.textState);
       this.refreshLayersPanel();
       return;
     }
@@ -373,6 +395,20 @@ export class PixaromaUI {
           tctx.textBaseline = "middle";
           tctx.fillText("✦", 13, 13);
         }
+      } else if (layer.isText) {
+        // Text layer — paint a bold "T" glyph (tinted BRAND) on a dark tile,
+        // rather than a tiny preview of the text bitmap.
+        const tctx = tCvs.getContext("2d");
+        tCvs.style.display = "block";
+        tCvs.style.width = "100%";
+        tCvs.style.height = "100%";
+        tctx.fillStyle = "#2a2a2a";
+        tctx.fillRect(0, 0, 26, 26);
+        tctx.fillStyle = "#f66744";
+        tctx.font = "bold 18px Arial";
+        tctx.textAlign = "center";
+        tctx.textBaseline = "middle";
+        tctx.fillText("T", 13, 14);
       } else if (layer.img) {
         this._thumbCtx.clearRect(0, 0, 26, 26);
         const iw = layer.img.naturalWidth || layer.img.width;
@@ -574,6 +610,28 @@ export class PixaromaUI {
     for (const [name, chip] of this._presetChips) {
       chip.classList.toggle("active", name === match);
     }
+  }
+
+  // Build the text properties panel (composerMode = no opacity/rotate/x/y rows).
+  // Shown/hidden by updateActiveLayerUI. Edits mutate the active layer's
+  // textState; on change we re-render the bitmap, redraw, and (debounced) push
+  // history so typing isn't one undo step per keystroke.
+  _buildTextPanel() {
+    const core = this.core;
+    const panel = createPanel("Text", { collapsible: true, collapsed: false });
+    let histTimer = null;
+    const tp = createTextEditorPanel({
+      mount: panel.content,
+      composerMode: true,
+      onChange: () => {
+        const ly = core.getActiveLayer();
+        if (!ly || !ly.isText) return;
+        core.rebuildTextLayer(ly).then(() => core.draw());
+        clearTimeout(histTimer);
+        histTimer = setTimeout(() => core.pushHistory(), 400);
+      },
+    });
+    this._textPanel = { root: panel.el, panel: tp };
   }
 
   build() {
@@ -849,6 +907,12 @@ export class PixaromaUI {
     addFxBtn.onclick = () => core.addFxLayer();
     imagesPanel.content.appendChild(addFxBtn);
 
+    const addTextBtn = createButton("Add Text Layer", { variant: "full" });
+    addTextBtn.title = "Add an editable text layer";
+    addTextBtn.style.marginTop = "4px";
+    addTextBtn.onclick = () => core.addTextLayer();
+    imagesPanel.content.appendChild(addTextBtn);
+
     layout.leftSidebar.appendChild(imagesPanel.el);
 
     // --- BG Color + Clear/Reset in Canvas Settings ---
@@ -1061,6 +1125,12 @@ export class PixaromaUI {
     this._buildFxPanel();
     layout.leftSidebar.appendChild(this._fxPanel.root);
     this._fxPanel.root.style.display = "none";
+
+    // Text properties panel — occupies the Transform Properties slot when a
+    // text layer is selected (updateActiveLayerUI toggles which one shows).
+    this._buildTextPanel();
+    layout.leftSidebar.appendChild(this._textPanel.root);
+    this._textPanel.root.style.display = "none";
 
     // Status tooltip
     core.statusText = layout.statusText;
