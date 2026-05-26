@@ -164,7 +164,10 @@ class PixaromaLoadImage:
         orig_name = _parse_orig_name(LoadImagePixState)
         is_clipspace = "clipspace" in image.replace("\\", "/").lower()
         if is_clipspace and orig_name:
-            basename = os.path.splitext(os.path.basename(orig_name))[0]
+            # Normalize Windows separators so a "Studio1\cat.png" orig_name
+            # strips the subfolder on a POSIX server too (combo values use "/",
+            # so this is belt-and-braces).
+            basename = os.path.splitext(os.path.basename(orig_name.replace("\\", "/")))[0]
         else:
             basename = os.path.splitext(os.path.basename(image_path))[0]
 
