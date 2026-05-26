@@ -47,6 +47,24 @@ function _applyBgQualityToSelect(selectEl, stored) {
   if (hasOption) selectEl.value = v;
 }
 
+// Return the name of the preset whose values EXACTLY match the given
+// adjustments (every field, merged over NEUTRAL), else null. Drives the
+// orange chip highlight by VALUE: editing any slider away from a preset's
+// numbers deselects it; returning to those exact numbers re-selects it.
+// "Original" (all zeros) matches a fully-neutral layer.
+function matchPresetName(adj) {
+  if (!adj) return null;
+  for (const name in PRESETS) {
+    const merged = { ...NEUTRAL, ...PRESETS[name] };
+    let eq = true;
+    for (const k in NEUTRAL) {
+      if ((adj[k] ?? 0) !== merged[k]) { eq = false; break; }
+    }
+    if (eq) return name;
+  }
+  return null;
+}
+
 // ─── Editor-specific CSS (layer items, eraser, etc.) ────────
 const COMPOSER_STYLE_ID = "pixaroma-composer-styles";
 function injectComposerStyles() {
@@ -65,9 +83,11 @@ function injectComposerStyles() {
         .pxf-workspace.panning, .pxf-workspace.panning * { cursor: grabbing !important; }
         /* FX adjustment layer panel */
         .pix-fx-addbtn { border-color:#f66744 !important; color:#f66744 !important; }
-        .pix-fx-presets { display:grid; grid-template-columns:repeat(3,1fr); gap:5px; margin-bottom:10px; }
-        .pix-fx-preset { font-size:11px; padding:4px 5px; border-radius:5px; cursor:pointer; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.16); color:#ccc; text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
-        .pix-fx-preset:hover { border-color:#f66744; color:#fff; }
+        /* Preset chips reuse the shared .pxf-ratio-btn look (gray base, #444 hover,
+           orange .active) so selection/hover/click match the ratio grid + every
+           other pxf-* control. Only spacing + long-name clipping is overridden. */
+        .pix-fx-presets { margin-bottom:10px; }
+        .pix-fx-presets .pxf-ratio-btn { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding-left:2px; padding-right:2px; }
         .pix-fx-group { display:flex; justify-content:space-between; align-items:center; font-size:10px; text-transform:uppercase; letter-spacing:0.05em; color:#888; margin:10px 0 5px; }
         .pix-fx-reset { color:#f66744; cursor:pointer; font-size:10px; text-transform:none; }
         .pix-fx-reset:hover { text-decoration:underline; }
@@ -458,10 +478,11 @@ export class PixaromaUI {
     const root = panel.el;
 
     const strip = document.createElement("div");
-    strip.className = "pix-fx-presets";
+    strip.className = "pxf-ratio-grid pix-fx-presets";
+    const presetChips = new Map();
     for (const name of Object.keys(PRESETS)) {
       const chip = document.createElement("button");
-      chip.className = "pix-fx-preset";
+      chip.className = "pxf-ratio-btn";
       chip.textContent = name;
       chip.title = `Apply the ${name} look`;
       chip.onclick = () => {
@@ -473,8 +494,10 @@ export class PixaromaUI {
         core.draw();
         core.pushHistory();
       };
+      presetChips.set(name, chip);
       strip.appendChild(chip);
     }
+    this._presetChips = presetChips;
     panel.content.appendChild(strip);
 
     const sliders = {};
@@ -509,6 +532,7 @@ export class PixaromaUI {
           if (!ly || !ly.isAdjustment) return;
           ly.adjustments[key] = Math.round(v);
           ly.presetId = "Custom";
+          this.refreshPresetSelection(ly);
           core.draw();
         }, { step: 1 });
         // pushHistory on commit (release / number-box change), not every tick.
@@ -520,6 +544,7 @@ export class PixaromaUI {
           if (ly && ly.isAdjustment) {
             ly.adjustments[key] = 0;
             ly.presetId = "Custom";
+            this.refreshPresetSelection(ly);
             core.draw();
             core.pushHistory();
           }
@@ -537,6 +562,17 @@ export class PixaromaUI {
     for (const key in this._fxPanel.sliders) {
       const v = ly.adjustments[key] ?? 0;
       this._fxPanel.sliders[key].setValue(v);
+    }
+    this.refreshPresetSelection(ly);
+  }
+
+  // Light up the chip whose values match the layer (orange .active), clear
+  // the rest. Value-based, so it tracks slider edits live. Safe to call any time.
+  refreshPresetSelection(ly) {
+    if (!this._presetChips) return;
+    const match = (ly && ly.isAdjustment) ? matchPresetName(ly.adjustments) : null;
+    for (const [name, chip] of this._presetChips) {
+      chip.classList.toggle("active", name === match);
     }
   }
 

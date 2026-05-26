@@ -59,18 +59,22 @@ then `out = orig*(1-amount01) + processed_clamped*amount01`, then clamp 0..1 (sa
 *255, round half-up. `amount01 = layer.opacity` (0..1).
 
 ## Presets (name -> non-zero fields; all others 0)
-- Original:     {}
-- Punch:        {contrast:18, saturation:20, clarity:12}
-- Warm:         {temperature:25, saturation:8, contrast:6}
-- Cool:         {temperature:-22, tint:-6, saturation:6}
-- Vintage:      {contrast:-10, saturation:-18, temperature:18, fade:30}
-- Faded:        {contrast:-12, fade:45, saturation:-8, blacks:15}
-- Matte:        {contrast:-16, fade:35, saturation:-6}
-- Vivid:        {saturation:32, contrast:12, vibrance:20}
-- Cross-process:{hue:-12, saturation:26, contrast:14, temperature:-10}
-- Mono:         {saturation:-100, contrast:12}
-- Noir:         {saturation:-100, contrast:40, blacks:20}
-- Sepia:        {saturation:-100, temperature:35, contrast:6, fade:10}
+15 cinematic looks (Original + 14), listed in grid order (5 across x 3 down).
+- Original:  {}
+- Cinema:    {contrast:22, saturation:8, vibrance:14, temperature:-10, tint:4, clarity:8, blacks:8}
+- Vivid:     {saturation:30, vibrance:22, contrast:14, clarity:8}
+- Teal:      {temperature:-30, tint:6, saturation:14, vibrance:12, contrast:8}
+- Amber:     {temperature:30, contrast:14, saturation:6, highlights:-8, grain:22, fade:8}
+- Sienna:    {temperature:26, saturation:-6, contrast:6, fade:24, blacks:10, highlights:-10}
+- Safari:    {temperature:18, contrast:16, saturation:8, vibrance:8, clarity:12}
+- Tropic:    {temperature:-8, saturation:24, vibrance:18, contrast:12, clarity:6, exposure:3}
+- Bloom:     {temperature:8, saturation:18, vibrance:16, contrast:10, clarity:6}
+- Forest:    {contrast:24, blacks:18, shadows:-10, saturation:-16, tint:8, temperature:-6, vignette:22, clarity:8}
+- Emerald:   {contrast:14, saturation:-10, tint:14, temperature:-6, blacks:10, fade:8}
+- Nordic:    {contrast:10, saturation:-8, temperature:-12, tint:10, fade:16, blacks:8, highlights:-6}
+- Airy:      {exposure:6, brightness:8, contrast:-8, fade:18, blacks:12, highlights:-8, saturation:-4}
+- Crisp:     {contrast:16, clarity:16, sharpness:12, saturation:10, vibrance:8}
+- Street:    {contrast:26, blacks:20, saturation:-14, clarity:12, sharpness:8, vignette:14}
 
 ## Parity & carve-out
 JS and Python MUST produce identical output (within rounding, tolerance 1/255) for every
