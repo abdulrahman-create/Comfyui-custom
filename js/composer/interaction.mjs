@@ -762,6 +762,18 @@ PixaromaEditor.prototype.attachEvents = function () {
     try {
       // Upload all unsaved layers and masks in parallel
       const uploadPromises = this.layers.map(async (layer) => {
+        // FX adjustment layer: no image to upload — serialize just its values.
+        if (layer.isAdjustment) {
+          return {
+            id: layer.id,
+            name: layer.name,
+            isAdjustment: true,
+            adjustments: { ...layer.adjustments },
+            presetId: layer.presetId || "Custom",
+            visible: layer.visible,
+            opacity: layer.opacity ?? 1,
+          };
+        }
         let finalSrcPath = layer.rawServerPath || null;
         if (!layer.savedOnServer && layer.rawB64_internal) {
           const dRaw = await PixaromaAPI.uploadLayer(

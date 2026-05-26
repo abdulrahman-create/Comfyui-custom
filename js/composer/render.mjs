@@ -29,7 +29,9 @@ PixaromaEditor.prototype.undo = function () {
   }
   if (this.historyIndex > 0) {
     this.historyIndex--;
-    this.layers = this.history[this.historyIndex].map((l) => ({ ...l }));
+    this.layers = this.history[this.historyIndex].map((l) =>
+      l.adjustments ? { ...l, adjustments: { ...l.adjustments } } : { ...l },
+    );
     this.verifySelection();
     this.isRestoringHistory = true;
     this.ui.updateActiveLayerUI();
@@ -48,7 +50,9 @@ PixaromaEditor.prototype.redo = function () {
   }
   if (this.historyIndex < this.history.length - 1) {
     this.historyIndex++;
-    this.layers = this.history[this.historyIndex].map((l) => ({ ...l }));
+    this.layers = this.history[this.historyIndex].map((l) =>
+      l.adjustments ? { ...l, adjustments: { ...l.adjustments } } : { ...l },
+    );
     this.verifySelection();
     this.isRestoringHistory = true;
     this.ui.updateActiveLayerUI();
@@ -394,6 +398,23 @@ PixaromaEditor.prototype.attemptRestore = async function () {
     this.layers = new Array(layersToLoad.length);
 
     layersToLoad.forEach((mLayer, i) => {
+      // FX adjustment layer: no image — build synchronously. This single branch
+      // covers all the restore paths (it never reaches img.onload/onerror).
+      if (mLayer.isAdjustment) {
+        this.layers[i] = {
+          id: mLayer.id,
+          name: mLayer.name || "Color Grade",
+          isAdjustment: true,
+          adjustments: { ...(mLayer.adjustments || {}) },
+          presetId: mLayer.presetId || "Custom",
+          visible: mLayer.visible !== false,
+          opacity: mLayer.opacity ?? 1,
+          locked: false,
+        };
+        loadedCount++;
+        if (loadedCount === layersToLoad.length) this.finishRestore();
+        return;
+      }
       // Placeholder layers don't need image loading — build canvas immediately
       if (mLayer.isPlaceholder) {
         const color = mLayer.placeholderColor || "#808080";
