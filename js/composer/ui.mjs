@@ -65,8 +65,8 @@ function injectComposerStyles() {
         .pxf-workspace.panning, .pxf-workspace.panning * { cursor: grabbing !important; }
         /* FX adjustment layer panel */
         .pix-fx-addbtn { border-color:#f66744 !important; color:#f66744 !important; }
-        .pix-fx-presets { display:flex; flex-wrap:wrap; gap:5px; margin-bottom:10px; }
-        .pix-fx-preset { font-size:11px; padding:4px 7px; border-radius:5px; cursor:pointer; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.16); color:#ccc; }
+        .pix-fx-presets { display:grid; grid-template-columns:repeat(3,1fr); gap:5px; margin-bottom:10px; }
+        .pix-fx-preset { font-size:11px; padding:4px 5px; border-radius:5px; cursor:pointer; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.16); color:#ccc; text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
         .pix-fx-preset:hover { border-color:#f66744; color:#fff; }
         .pix-fx-group { display:flex; justify-content:space-between; align-items:center; font-size:10px; text-transform:uppercase; letter-spacing:0.05em; color:#888; margin:10px 0 5px; }
         .pix-fx-reset { color:#f66744; cursor:pointer; font-size:10px; text-transform:none; }
