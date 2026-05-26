@@ -126,7 +126,9 @@ export class PixaromaUI {
     const _isText = !!(_activeLayer && _activeLayer.isText);
     if (this._fxPanel) this._fxPanel.root.style.display = _isFx ? "" : "none";
     if (this._textPanel) this._textPanel.root.style.display = _isText ? "" : "none";
-    if (core.toolsPanel) core.toolsPanel.style.display = (_isFx || _isText) ? "none" : "";
+    // FX has no geometry → hide Transform. Text HAS geometry → keep Transform
+    // (it shows alongside the Text panel; only image-only tools are hidden).
+    if (core.toolsPanel) core.toolsPanel.style.display = _isFx ? "none" : "";
 
     // Context-aware tooltips based on current state
     if (core._layout && core.activeMode !== "eraser") {
@@ -183,20 +185,29 @@ export class PixaromaUI {
       return;
     }
 
-    // Text layer: image-only panels don't apply. Dim them, exit eraser/crop,
-    // keep blend + opacity active, sync the Text panel, then bail.
+    // Text layer: KEEP Transform Properties (text has real geometry) + blend +
+    // opacity, show the Text panel, and dim ONLY the image-only tools (eraser /
+    // crop / AI background removal / convert-to-placeholder).
     if (_isText) {
       if (core.activeMode === "eraser" || core.activeMode === "crop") core.setMode(null);
+      if (core.toolsPanel) { core.toolsPanel.style.opacity = "1"; core.toolsPanel.style.pointerEvents = "auto"; }
+      if (core.btnDelLayer) core.btnDelLayer.style.opacity = "1";
+      if (core.btnDupLayer) core.btnDupLayer.style.opacity = "1";
       for (const p of [core.eraserPanel, core.cropPanel]) {
         if (p) { p.style.opacity = "0.3"; p.style.pointerEvents = "none"; }
       }
       if (core.removeBgBtn) { core.removeBgBtn.style.opacity = "0.3"; core.removeBgBtn.style.pointerEvents = "none"; }
       if (core._autoBgRow) { core._autoBgRow.style.opacity = "0.3"; core._autoBgRow.style.pointerEvents = "none"; }
       if (core._convertPhBtn) { core._convertPhBtn.style.opacity = "0.3"; core._convertPhBtn.style.pointerEvents = "none"; }
-      if (core._layerPanel && core._layerPanel.setBlend)
-        core._layerPanel.setBlend(_activeLayer.blendMode || "Normal");
-      if (core._layerPanel && core._layerPanel.setOpacity)
-        core._layerPanel.setOpacity(Math.round((_activeLayer.opacity ?? 1) * 100));
+      // Sync blend + opacity + transform sliders to the text layer.
+      if (core._layerPanel && core._layerPanel.setBlend) core._layerPanel.setBlend(_activeLayer.blendMode || "Normal");
+      if (core._layerPanel && core._layerPanel.setOpacity) core._layerPanel.setOpacity(Math.round((_activeLayer.opacity ?? 1) * 100));
+      if (core.opacitySlider) { core.opacitySlider.value = Math.round(_activeLayer.opacity * 100); core.opacityNum.value = Math.round(_activeLayer.opacity * 100); }
+      if (core.blurSlider) { core.blurSlider.value = _activeLayer.blur || 0; core.blurNum.value = _activeLayer.blur || 0; }
+      if (core.rotateSlider) { core.rotateSlider.value = _activeLayer.rotation; core.rotateNum.value = _activeLayer.rotation; }
+      if (core.scaleSlider) { core.scaleSlider.value = Math.round(_activeLayer.scaleX * 100); core.scaleNum.value = Math.round(_activeLayer.scaleX * 100); }
+      if (core.stretchHSlider) { core.stretchHSlider.value = Math.round(_activeLayer.scaleX * 100); core.stretchHNum.value = Math.round(_activeLayer.scaleX * 100); }
+      if (core.stretchVSlider) { core.stretchVSlider.value = Math.round(_activeLayer.scaleY * 100); core.stretchVNum.value = Math.round(_activeLayer.scaleY * 100); }
       if (this._textPanel) this._textPanel.panel.setLayer(_activeLayer.textState);
       this.refreshLayersPanel();
       return;
