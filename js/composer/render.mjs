@@ -1,5 +1,6 @@
 // Rendering, history/undo, restore — mixed into PixaromaEditor.prototype
 import { PixaromaEditor } from "./core.mjs";
+import { applyFx, isNeutral, fxSeed } from "./fx_engine.mjs";
 
 PixaromaEditor.prototype.pushHistory = function () {
   if (this.isRestoringHistory) return;
@@ -166,6 +167,19 @@ PixaromaEditor.prototype._drawImpl = function (cleanRender) {
 
   this.layers.forEach((layer) => {
     if (!layer.visible) return;
+    // FX adjustment layer: grade everything composited so far (the pixels
+    // already on the canvas = every layer below this one), then move on. Runs
+    // for BOTH interactive and clean/save renders so the grade is baked into
+    // the saved composite PNG (which keeps the Python fast path correct).
+    if (layer.isAdjustment) {
+      const amount01 = layer.opacity ?? 1;
+      if (isNeutral(layer.adjustments, amount01)) return;
+      const W = this.canvas.width, H = this.canvas.height;
+      const id = this.ctx.getImageData(0, 0, W, H);
+      applyFx(id.data, W, H, layer.adjustments, amount01, fxSeed(layer.id));
+      this.ctx.putImageData(id, 0, 0);
+      return;
+    }
     // Defensive: layer.img can briefly be null during async upload / restore.
     // _ensureSelPad already skips this case; mirror that here.
     if (!layer.img) return;

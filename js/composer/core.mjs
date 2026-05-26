@@ -1,6 +1,7 @@
 import { PixaromaUI } from "./ui.mjs";
 import { PixaromaLayers } from "./layers.mjs";
 import { installFocusTrap } from "../shared/index.mjs";
+import { NEUTRAL } from "./fx_engine.mjs";
 
 export class PixaromaEditor {
   constructor(node) {
@@ -201,6 +202,29 @@ export class PixaromaEditor {
       this.draw();
       this.pushHistory();
     }
+  }
+
+  // Create a Photoshop-style FX/adjustment layer on top of the stack. It has no
+  // image; it grades every layer beneath it at render time (see render.mjs +
+  // node_composition.py). opacity doubles as the effect Amount.
+  addFxLayer() {
+    const id = "fx_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    const layer = {
+      id,
+      name: "Color Grade",
+      isAdjustment: true,
+      adjustments: { ...NEUTRAL },
+      presetId: "Original",
+      visible: true,
+      opacity: 1, // = Amount
+      locked: false,
+    };
+    this.layers.push(layer);
+    this.selectedLayerIds = new Set([id]);
+    this.syncActiveLayerIndex();
+    this.ui.updateActiveLayerUI();
+    this.draw();
+    this.pushHistory();
   }
 
   getCanvasCoordinates(e) {

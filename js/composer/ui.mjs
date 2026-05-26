@@ -18,6 +18,7 @@ import {
 // right sidebar fails to build and the editor won't open.
 import { PixaromaAPI } from "./api.mjs";
 import { fetchBgRemovalInfo, buildBgRemovalDropdown } from "../framework/bg_removal_dropdown.mjs";
+import { PRESETS, NEUTRAL } from "./fx_engine.mjs";
 
 // Legacy values that predate the multi-model dropdown — remapped to
 // whatever the modern dropdown calls the same quality tier, so an
@@ -62,6 +63,18 @@ function injectComposerStyles() {
         .pix-view-btn:hover { background: #3a3d40; color: #f66744; }
         .pix-view-btn:disabled { opacity: 0.3 !important; cursor: not-allowed; }
         .pxf-workspace.panning, .pxf-workspace.panning * { cursor: grabbing !important; }
+        /* FX adjustment layer panel */
+        .pix-fx-addbtn { border-color:#f66744 !important; color:#f66744 !important; }
+        .pix-fx-presets { display:flex; flex-wrap:wrap; gap:5px; margin-bottom:10px; }
+        .pix-fx-preset { font-size:11px; padding:4px 7px; border-radius:5px; cursor:pointer; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.16); color:#ccc; }
+        .pix-fx-preset:hover { border-color:#f66744; color:#fff; }
+        .pix-fx-group { display:flex; justify-content:space-between; align-items:center; font-size:10px; text-transform:uppercase; letter-spacing:0.05em; color:#888; margin:10px 0 5px; }
+        .pix-fx-reset { color:#f66744; cursor:pointer; font-size:10px; text-transform:none; }
+        .pix-fx-reset:hover { text-decoration:underline; }
+        .pix-fx-row { display:flex; align-items:center; gap:7px; margin-bottom:5px; }
+        .pix-fx-lab { width:78px; font-size:11px; color:#bbb; text-transform:capitalize; }
+        .pix-fx-slider { flex:1; accent-color:#f66744; }
+        .pix-fx-val { width:32px; text-align:right; font-size:10px; color:#f66744; font-weight:700; }
     `;
   document.head.appendChild(s);
 }
@@ -84,6 +97,13 @@ export class PixaromaUI {
 
   updateActiveLayerUI() {
     const core = this.core;
+
+    // FX adjustment layer selected? Swap the left Transform Properties panel
+    // for the Adjustments panel (and vice-versa).
+    const _activeLayer = core.getActiveLayer();
+    const _isFx = !!(_activeLayer && _activeLayer.isAdjustment);
+    if (this._fxPanel) this._fxPanel.root.style.display = _isFx ? "" : "none";
+    if (core.toolsPanel) core.toolsPanel.style.display = _isFx ? "none" : "";
 
     // Context-aware tooltips based on current state
     if (core._layout && core.activeMode !== "eraser") {
@@ -121,6 +141,23 @@ export class PixaromaUI {
       });
       if (core._layout?.titlebarCenter)
         core._layout.titlebarCenter.style.opacity = "0.3";
+    }
+
+    // FX layer: image-only panels don't apply. Dim them, exit eraser/crop, sync
+    // the Adjustments sliders + the Amount (layer-panel opacity), then bail.
+    if (_isFx) {
+      if (core.activeMode === "eraser" || core.activeMode === "crop") core.setMode(null);
+      for (const p of [core.eraserPanel, core.cropPanel]) {
+        if (p) { p.style.opacity = "0.3"; p.style.pointerEvents = "none"; }
+      }
+      if (core.removeBgBtn) { core.removeBgBtn.style.opacity = "0.3"; core.removeBgBtn.style.pointerEvents = "none"; }
+      if (core._autoBgRow) { core._autoBgRow.style.opacity = "0.3"; core._autoBgRow.style.pointerEvents = "none"; }
+      if (core._convertPhBtn) { core._convertPhBtn.style.opacity = "0.3"; core._convertPhBtn.style.pointerEvents = "none"; }
+      if (core._layerPanel && core._layerPanel.setOpacity)
+        core._layerPanel.setOpacity(Math.round((_activeLayer.opacity ?? 1) * 100));
+      this.refreshFxControls(_activeLayer);
+      this.refreshLayersPanel();
+      return;
     }
 
     if (core.selectedLayerIds.size === 0) {
@@ -361,6 +398,112 @@ export class PixaromaUI {
     core.syncActiveLayerIndex();
     this.updateActiveLayerUI();
     core.draw();
+  }
+
+  // Build the FX Adjustments panel (preset strip + grouped sliders). Stored on
+  // this._fxPanel = { root, sliders }. Shown/hidden by updateActiveLayerUI.
+  _buildFxPanel() {
+    const core = this.core;
+    const FX_GROUPS = [
+      ["Tone", ["brightness", "contrast", "exposure", "highlights", "shadows", "whites", "blacks"]],
+      ["Color", ["saturation", "vibrance", "temperature", "tint", "hue"]],
+      ["Detail", ["sharpness", "clarity", "grain"]],
+      ["Effects", ["vignette", "fade"]],
+    ];
+    // Default range is [-100, 100]; these keys differ.
+    const FX_RANGES = { hue: [-180, 180], sharpness: [0, 100], grain: [0, 100], vignette: [0, 100], fade: [0, 100] };
+
+    const panel = createPanel("Adjustments", { collapsible: true, collapsed: false });
+    const root = panel.el;
+
+    const strip = document.createElement("div");
+    strip.className = "pix-fx-presets";
+    for (const name of Object.keys(PRESETS)) {
+      const chip = document.createElement("button");
+      chip.className = "pix-fx-preset";
+      chip.textContent = name;
+      chip.title = `Apply the ${name} look`;
+      chip.onclick = () => {
+        const ly = core.getActiveLayer();
+        if (!ly || !ly.isAdjustment) return;
+        ly.adjustments = { ...NEUTRAL, ...PRESETS[name] };
+        ly.presetId = name;
+        this.refreshFxControls(ly);
+        core.draw();
+        core.pushHistory();
+      };
+      strip.appendChild(chip);
+    }
+    panel.content.appendChild(strip);
+
+    const sliders = {};
+    for (const [group, keys] of FX_GROUPS) {
+      const gh = document.createElement("div");
+      gh.className = "pix-fx-group";
+      const gname = document.createElement("span");
+      gname.textContent = group;
+      const greset = document.createElement("span");
+      greset.className = "pix-fx-reset";
+      greset.textContent = "reset";
+      greset.title = `Reset ${group} to default`;
+      greset.onclick = () => {
+        const ly = core.getActiveLayer();
+        if (!ly || !ly.isAdjustment) return;
+        for (const k of keys) ly.adjustments[k] = 0;
+        ly.presetId = "Custom";
+        this.refreshFxControls(ly);
+        core.draw();
+        core.pushHistory();
+      };
+      gh.append(gname, greset);
+      panel.content.appendChild(gh);
+
+      for (const key of keys) {
+        const [min, max] = FX_RANGES[key] || [-100, 100];
+        const row = document.createElement("div");
+        row.className = "pix-fx-row";
+        const lab = document.createElement("span");
+        lab.className = "pix-fx-lab";
+        lab.textContent = key;
+        const sld = document.createElement("input");
+        sld.type = "range";
+        sld.min = String(min);
+        sld.max = String(max);
+        sld.value = "0";
+        sld.className = "pix-fx-slider";
+        const val = document.createElement("span");
+        val.className = "pix-fx-val";
+        val.textContent = "0";
+        sld.addEventListener("input", () => {
+          const ly = core.getActiveLayer();
+          if (!ly || !ly.isAdjustment) return;
+          ly.adjustments[key] = +sld.value;
+          ly.presetId = "Custom";
+          val.textContent = sld.value;
+          core.draw();
+        });
+        sld.addEventListener("change", () => core.pushHistory());
+        sld.addEventListener("dblclick", () => {
+          sld.value = "0";
+          sld.dispatchEvent(new Event("input"));
+          core.pushHistory();
+        });
+        row.append(lab, sld, val);
+        panel.content.appendChild(row);
+        sliders[key] = { sld, val };
+      }
+    }
+    this._fxPanel = { root, sliders };
+  }
+
+  // Push an FX layer's adjustment values into the sliders.
+  refreshFxControls(ly) {
+    if (!this._fxPanel || !ly || !ly.adjustments) return;
+    for (const key in this._fxPanel.sliders) {
+      const v = ly.adjustments[key] ?? 0;
+      this._fxPanel.sliders[key].sld.value = String(v);
+      this._fxPanel.sliders[key].val.textContent = String(v);
+    }
   }
 
   build() {
@@ -629,6 +772,14 @@ export class PixaromaUI {
     core._convertPhBtn = convertPhBtn;
     imagesPanel.content.appendChild(convertPhBtn);
 
+    const addFxBtn = createButton("✦ Add FX Layer", { variant: "full" });
+    addFxBtn.title =
+      "Add a color-grade / FX layer that adjusts every layer below it";
+    addFxBtn.classList.add("pix-fx-addbtn");
+    addFxBtn.style.marginTop = "4px";
+    addFxBtn.onclick = () => core.addFxLayer();
+    imagesPanel.content.appendChild(addFxBtn);
+
     layout.leftSidebar.appendChild(imagesPanel.el);
 
     // --- BG Color + Clear/Reset in Canvas Settings ---
@@ -835,6 +986,12 @@ export class PixaromaUI {
     core.blurNum = tp.blurNum;
 
     layout.leftSidebar.appendChild(core.toolsPanel);
+
+    // FX Adjustments panel — occupies the Transform Properties slot when an FX
+    // layer is selected (updateActiveLayerUI toggles which of the two shows).
+    this._buildFxPanel();
+    layout.leftSidebar.appendChild(this._fxPanel.root);
+    this._fxPanel.root.style.display = "none";
 
     // Status tooltip
     core.statusText = layout.statusText;
