@@ -230,6 +230,9 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 > 💡 **After updating Pixaroma:** hard-refresh your ComfyUI browser tab with **Ctrl+Shift+R** (or **Cmd+Shift+R** on Mac). The browser keeps old node visuals cached, and without a hard refresh you may still see the previous version of a node even though the update installed correctly.
 
+### **May 26, 2026 · v1.3.57**
+- **Fixed: Load Image keeps the original filename after you draw a mask.** Adding a mask in the Mask Editor no longer switches the node's Filename output to a temporary name - it stays the name of the image you loaded.
+
 ### **May 25, 2026 · v1.3.56**
 - **NEW: node colors organized by color.** Right-click a node → **👑 Pixaroma Node Colors** and pick a color (Red, Orange, Gold … Pink); open one to see its shades from deep to bright. A new **Dark** folder holds the standard Pixaroma dark plus a few neutral and softly-tinted dark options.
 - **Fixed: masks work again on Load Image.** Drawing a mask in the Mask Editor and saving now produces the mask from the node.
