@@ -1042,6 +1042,25 @@ PixaromaEditor.prototype.attachEvents = function () {
       this.interactionMode = null;
       this.canvas.style.cursor = "default";
       this.verifySelection();
+
+      // Text layer just resized: fold the scale into font size and re-render the
+      // bitmap SHARP at its new displayed size (so text never blurs when scaled).
+      // Uniform via the geometric mean so any handle type produces clean text.
+      // Async rebuild → commit history + redraw in the .then().
+      const _tl = this.getActiveLayer();
+      if (_tl && _tl.isText && (_tl.scaleX !== 1 || _tl.scaleY !== 1)) {
+        const factor = Math.sqrt(Math.abs(_tl.scaleX * _tl.scaleY)) || 1;
+        _tl.textState.fontSize = Math.min(512, Math.max(4, Math.round(_tl.textState.fontSize * factor)));
+        _tl.scaleX = 1;
+        _tl.scaleY = 1;
+        this.rebuildTextLayer(_tl).then(() => {
+          this.ui.updateActiveLayerUI();
+          this.draw();
+          this.pushHistory();
+        });
+        return;
+      }
+
       this.ui.updateActiveLayerUI();
       this.draw();
       this.pushHistory();
