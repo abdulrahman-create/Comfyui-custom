@@ -67,6 +67,11 @@ export function setSelectedImage(node, filename) {
   }
   w.value = filename;
   node._pixLiSelectedFilename = filename;
+  // Track the original (non-clipspace) name directly here too, not only via the
+  // imageWidget.value setter — that setter is skipped when the widget's `value`
+  // property is non-configurable, and every caller of this fn is a real pick
+  // (dropdown / arrow / upload / paste), never a clipspace copy (issue #51).
+  if (!/clipspace/i.test(filename)) node._pixLiOrigName = filename;
   updateNativePreview(node, filename);
   node._pixLiOnFilenameChanged?.(filename);
   node.graph?.setDirtyCanvas?.(true, true);
