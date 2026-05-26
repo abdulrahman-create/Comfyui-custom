@@ -501,13 +501,19 @@ PixaromaEditor.prototype.attachEvents = function () {
       num.value = e.target.value;
       updateCanvas(parseFloat(e.target.value));
     });
-    slider.addEventListener("change", () => this.pushHistory());
+    slider.addEventListener("change", () => {
+      // Text layers: a scale change re-renders the bitmap crisp (fold into font
+      // size), matching the canvas corner handles. Other props just commit.
+      if (prop === "scale" && this._commitTextScaleFold()) return;
+      this.pushHistory();
+    });
     num.addEventListener("change", (e) => {
       let v = parseFloat(e.target.value);
       v = Math.max(slider.min, Math.min(slider.max, v));
       num.value = v;
       slider.value = v;
       updateCanvas(v);
+      if (prop === "scale" && this._commitTextScaleFold()) return;
       this.pushHistory();
     });
   };
@@ -530,13 +536,17 @@ PixaromaEditor.prototype.attachEvents = function () {
       num.value = e.target.value;
       updateCanvas(parseFloat(e.target.value));
     });
-    slider.addEventListener("change", () => this.pushHistory());
+    slider.addEventListener("change", () => {
+      if (this._commitTextScaleFold()) return; // text: re-render crisp at new size
+      this.pushHistory();
+    });
     num.addEventListener("change", (e) => {
       let v = parseFloat(e.target.value);
       v = Math.max(slider.min, Math.min(slider.max, v));
       num.value = v;
       slider.value = v;
       updateCanvas(v);
+      if (this._commitTextScaleFold()) return;
       this.pushHistory();
     });
   };
@@ -1067,25 +1077,9 @@ PixaromaEditor.prototype.attachEvents = function () {
       this.interactionMode = null;
       this.canvas.style.cursor = "default";
       this.verifySelection();
-
-      // Text layer just resized: fold the scale into font size and re-render the
-      // bitmap SHARP at its new displayed size (so text never blurs when scaled).
-      // Uniform via the geometric mean so any handle type produces clean text.
-      // Async rebuild → commit history + redraw in the .then().
-      const _tl = this.getActiveLayer();
-      if (_tl && _tl.isText && (_tl.scaleX !== 1 || _tl.scaleY !== 1)) {
-        const factor = Math.sqrt(Math.abs(_tl.scaleX * _tl.scaleY)) || 1;
-        _tl.textState.fontSize = Math.min(512, Math.max(4, Math.round(_tl.textState.fontSize * factor)));
-        _tl.scaleX = 1;
-        _tl.scaleY = 1;
-        this.rebuildTextLayer(_tl).then(() => {
-          this.ui.updateActiveLayerUI();
-          this.draw();
-          this.pushHistory();
-        });
-        return;
-      }
-
+      // Text layer resized via handles: fold scale into font size + re-render
+      // crisp (async; commits history itself). See _commitTextScaleFold.
+      if (this._commitTextScaleFold()) return;
       this.ui.updateActiveLayerUI();
       this.draw();
       this.pushHistory();
@@ -1122,6 +1116,27 @@ PixaromaEditor.prototype.attachEvents = function () {
     }
   };
   window.addEventListener("blur", this._composerBlur);
+};
+
+// If the active layer is a text layer that was scaled (via canvas handles OR
+// the Transform Scale/Horiz/Vert sliders), fold the scale into font size and
+// re-render the bitmap SHARP at its new displayed size, so text never blurs.
+// Uniform via the geometric mean so any handle/slider produces clean text.
+// Async rebuild -> commits history + redraws in the .then(). Returns true if it
+// handled the commit (caller should NOT also pushHistory), false otherwise.
+PixaromaEditor.prototype._commitTextScaleFold = function () {
+  const tl = this.getActiveLayer();
+  if (!tl || !tl.isText || (tl.scaleX === 1 && tl.scaleY === 1)) return false;
+  const factor = Math.sqrt(Math.abs(tl.scaleX * tl.scaleY)) || 1;
+  tl.textState.fontSize = Math.min(512, Math.max(4, Math.round(tl.textState.fontSize * factor)));
+  tl.scaleX = 1;
+  tl.scaleY = 1;
+  this.rebuildTextLayer(tl).then(() => {
+    this.ui.updateActiveLayerUI();
+    this.draw();
+    this.pushHistory();
+  });
+  return true;
 };
 
 PixaromaEditor.prototype.onSelectMouseDown = function (e, coords) {
