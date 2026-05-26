@@ -63,12 +63,8 @@ export async function renderTextToCanvas(state) {
   scratch.height = bboxH;
   const sctx = scratch.getContext("2d");
 
-  // Synthesized italic skew (+ right-translate by the overhang)
-  if (skew) {
-    sctx.setTransform(1, 0, -skew, 1, slant, 0);
-  }
-
-  // 1. Background pill
+  // 1. Background pill — axis-aligned (NOT skewed) so synthesized-italic text
+  //    leans inside a clean rectangle. The bbox is already widened by `slant`.
   if (bgColor) {
     const r = Math.min(BG_RADIUS, bboxW / 2, bboxH / 2);
     sctx.save();
@@ -78,8 +74,10 @@ export async function renderTextToCanvas(state) {
     sctx.restore();
   }
 
-  // 2. Fill text
+  // 2. Fill text — synthesized italic skews ONLY the text (+ slant translate),
+  //    leaving the pill rectangular.
   sctx.save();
+  if (skew) sctx.setTransform(1, 0, -skew, 1, slant, 0);
   sctx.font = fontStr;
   sctx.textBaseline = "alphabetic";
   sctx.fillStyle = state.color || "#FFFFFF";

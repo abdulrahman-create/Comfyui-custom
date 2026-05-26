@@ -271,34 +271,47 @@ def render_text_layer(base_img, layer):
     bbox_w = max(1, int(round(max_line_w + 2 * pad_x)))
     bbox_h = max(1, int(round(glyph_h + max(0, len(lines) - 1) * line_height_px + 2 * pad_y)))
 
-    layer_img = Image.new("RGBA", (bbox_w, bbox_h), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(layer_img)
-
-    # 1. Background pill (only if bgColor is set)
-    if bg_color:
-        bg_rgba = _hex_to_rgb(bg_color) + (255,)
-        r = min(_BG_RADIUS * ss, bbox_w // 2, bbox_h // 2)
-        _round_rect(draw, 0, 0, bbox_w - 1, bbox_h - 1, r, bg_rgba)
-
-    # 2. Fill text
     fill_color = _hex_to_rgb(color_hex) + (255,)
-    for i, ln in enumerate(lines):
-        lx = _line_origin_x(align, pad_x, max_line_w, line_widths[i])
-        ly = pad_y + ascender + i * line_height_px
-        _draw_line(draw, pil_font, ln, lx, ly, letter_spacing_eff, fill_color)
-
-    # 3. Synthesized italic skew. The skew shifts the bottom of glyphs LEFT by
-    # m*bbox_h; widen the canvas by that overhang and shift content RIGHT by it
-    # (AFFINE c = -slant) so the lean isn't clipped at the left edge. Mirror of
-    # js/framework/text_render.mjs.
     if synthesized_italic:
+        # Italic: pill stays axis-aligned; ONLY the text is skewed. The skew
+        # shifts the bottom of glyphs LEFT by m*bbox_h, so widen the canvas by
+        # that overhang (slant) and shift the text RIGHT by it (AFFINE c =
+        # -slant) so the lean isn't clipped. Text is drawn on its own layer,
+        # skewed, then composited over the rectangular pill. Mirror of
+        # js/framework/text_render.mjs.
         m = math.tan(math.radians(12))
         slant = int(math.ceil(m * bbox_h))
-        layer_img = layer_img.transform(
-            (bbox_w + slant, bbox_h), Image.AFFINE, (1, m, -slant, 0, 1, 0),
+        final_w = bbox_w + slant
+        layer_img = Image.new("RGBA", (final_w, bbox_h), (0, 0, 0, 0))
+        if bg_color:
+            bg_rgba = _hex_to_rgb(bg_color) + (255,)
+            r = min(_BG_RADIUS * ss, final_w // 2, bbox_h // 2)
+            _round_rect(ImageDraw.Draw(layer_img), 0, 0, final_w - 1, bbox_h - 1, r, bg_rgba)
+        text_img = Image.new("RGBA", (bbox_w, bbox_h), (0, 0, 0, 0))
+        tdraw = ImageDraw.Draw(text_img)
+        for i, ln in enumerate(lines):
+            lx = _line_origin_x(align, pad_x, max_line_w, line_widths[i])
+            ly = pad_y + ascender + i * line_height_px
+            _draw_line(tdraw, pil_font, ln, lx, ly, letter_spacing_eff, fill_color)
+        text_img = text_img.transform(
+            (final_w, bbox_h), Image.AFFINE, (1, m, -slant, 0, 1, 0),
             resample=Image.BICUBIC,
         )
-        bbox_w = bbox_w + slant
+        layer_img.alpha_composite(text_img)
+        bbox_w = final_w
+    else:
+        layer_img = Image.new("RGBA", (bbox_w, bbox_h), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(layer_img)
+        # 1. Background pill (only if bgColor is set)
+        if bg_color:
+            bg_rgba = _hex_to_rgb(bg_color) + (255,)
+            r = min(_BG_RADIUS * ss, bbox_w // 2, bbox_h // 2)
+            _round_rect(draw, 0, 0, bbox_w - 1, bbox_h - 1, r, bg_rgba)
+        # 2. Fill text
+        for i, ln in enumerate(lines):
+            lx = _line_origin_x(align, pad_x, max_line_w, line_widths[i])
+            ly = pad_y + ascender + i * line_height_px
+            _draw_line(draw, pil_font, ln, lx, ly, letter_spacing_eff, fill_color)
 
     # 4. Layer-level opacity (final pass)
     if opacity < 1.0:

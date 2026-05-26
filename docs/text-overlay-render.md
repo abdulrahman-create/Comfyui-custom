@@ -18,10 +18,13 @@ Given `(font_id, weight, italic)`:
 5. font_id not in catalog → fall back to `Inter`
 6. Even Inter missing → hard error
 
-Synthesized italic skews canvas/PIL transform by 12° horizontally. The skew
+Synthesized italic skews canvas/PIL transform by 12° horizontally, applied to
+ONLY the text (the background pill stays an axis-aligned rectangle). The skew
 shifts the bottom of glyphs LEFT by `tan(12°)*bbox_h`; the bitmap is widened by
-that overhang (`slant = ceil(tan(12°)*bbox_h)`) and drawing is shifted RIGHT by
-`slant`, so the lean is never clipped at the left edge (both engines).
+that overhang (`slant = ceil(tan(12°)*bbox_h)`) and the text is shifted RIGHT by
+`slant`, so the lean is never clipped at the left edge (both engines). Python
+draws the text on its own layer, skews it, then composites over the pill; canvas
+draws the pill un-skewed then the text under a skew transform.
 
 ## 1b. Variable Font Handling
 
