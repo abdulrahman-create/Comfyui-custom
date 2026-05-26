@@ -439,7 +439,12 @@ function setupLoadImageNode(node) {
     const origCallback = imageWidget.callback;
     imageWidget.callback = function () {
       const ret = origCallback?.apply(this, arguments);
-      if (imageWidget.value) node._pixLiSelectedFilename = imageWidget.value;
+      if (imageWidget.value) {
+        node._pixLiSelectedFilename = imageWidget.value;
+        // Track the original (non-clipspace) name so the Filename output stays
+        // the original even after a Mask Editor / clipspace swap (issue #51).
+        if (!/clipspace/i.test(imageWidget.value)) node._pixLiOrigName = imageWidget.value;
+      }
       // Native drag-drop onto the bottom preview is a user pick → re-fit. Gated
       // so it never fires during a workflow load (Vue Compat #18).
       if (!isGraphLoading()) node._pixLiFitPending = true;
@@ -449,7 +454,10 @@ function setupLoadImageNode(node) {
     };
     // Seed the cache from whatever value the widget has at setup time
     // (covers saved-workflow restore, where configure() landed before us).
-    if (imageWidget.value) node._pixLiSelectedFilename = imageWidget.value;
+    if (imageWidget.value) {
+      node._pixLiSelectedFilename = imageWidget.value;
+      if (!/clipspace/i.test(imageWidget.value)) node._pixLiOrigName = imageWidget.value;
+    }
   }
 
   // Catch EXTERNAL writes to the image widget value that bypass our callback.
@@ -479,7 +487,13 @@ function setupLoadImageNode(node) {
           get() { return origGet ? origGet.call(this) : stored; },
           set(v) {
             if (origSet) origSet.call(this, v); else stored = v;
-            if (v && !isGraphLoading()) node._pixLiSelectedFilename = v;
+            if (v && !isGraphLoading()) {
+              node._pixLiSelectedFilename = v;
+              // A clipspace copy (Mask Editor / Copy-Paste Clipspace) is NOT a
+              // real filename — keep the last real pick so the Filename output
+              // stays the original (issue #51).
+              if (!/clipspace/i.test(v)) node._pixLiOrigName = v;
+            }
           },
         });
       }
@@ -748,7 +762,10 @@ app.registerExtension({
         // any later Vue tab-switch / configure replay from drifting the
         // value mid-session.
         const w = this._pixLiImageWidget;
-        if (w?.value) this._pixLiSelectedFilename = w.value;
+        if (w?.value) {
+          this._pixLiSelectedFilename = w.value;
+          if (!/clipspace/i.test(w.value)) this._pixLiOrigName = w.value;
+        }
       });
       // Refresh info bar after a short delay so the image (set async by
       // ComfyUI's image_upload hook on workflow restore) has a chance to
@@ -820,9 +837,21 @@ app.graphToPrompt = async function (...args) {
       if (!entry || entry.class_type !== "PixaromaLoadImage") continue;
       if (!index) index = buildPixaromaNodeIndex();
       const node = findPixaromaNode(index, id);
-      const state = node?.properties?.[STATE_PROP] || JSON.stringify(DEFAULT_STATE);
+      const stateStr = node?.properties?.[STATE_PROP] || JSON.stringify(DEFAULT_STATE);
       entry.inputs = entry.inputs || {};
-      entry.inputs[HIDDEN_INPUT_NAME] = state;
+      // Augment the injected state with the original (non-clipspace) filename so
+      // the Python FILENAME output stays the original even when the Mask Editor /
+      // clipspace swap loads a clipspace copy (issue #51). Submission-time only —
+      // node.properties is never touched, so saved workflows aren't dirtied and
+      // orig_name is not persisted.
+      if (node?._pixLiOrigName) {
+        let stateObj;
+        try { stateObj = JSON.parse(stateStr); } catch { stateObj = { ...DEFAULT_STATE }; }
+        stateObj.orig_name = node._pixLiOrigName;
+        entry.inputs[HIDDEN_INPUT_NAME] = JSON.stringify(stateObj);
+      } else {
+        entry.inputs[HIDDEN_INPUT_NAME] = stateStr;
+      }
       const w = node?._pixLiImageWidget;
       const live = entry.inputs.image;
       // Mask Editor / "Copy (Clipspace)" / "Paste (Clipspace)" write the

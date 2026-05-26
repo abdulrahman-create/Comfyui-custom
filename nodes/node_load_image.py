@@ -58,6 +58,20 @@ def _parse_state(state_json: str) -> dict:
         return dict(DEFAULT_STATE)
 
 
+def _parse_orig_name(state_json: str) -> str:
+    """Read the original (non-clipspace) filename the frontend injects at
+    submission time (issue #51). Parsed separately from _parse_state because
+    that helper filters keys down to DEFAULT_STATE and would drop orig_name.
+    Returns "" when absent or malformed."""
+    if not state_json:
+        return ""
+    try:
+        v = json.loads(state_json).get("orig_name")
+        return v if isinstance(v, str) else ""
+    except Exception:
+        return ""
+
+
 # ── Node class ───────────────────────────────────────────────────────────────
 
 
@@ -140,6 +154,20 @@ class PixaromaLoadImage:
 
         state = _parse_state(LoadImagePixState)
 
+        # Filename output (issue #51): when the Mask Editor / Copy-Paste
+        # Clipspace swaps in a clipspace copy, the loaded path is an
+        # auto-generated "clipspace-mask-NNNN.png". The frontend passes the
+        # original (non-clipspace) name in orig_name so we report THAT instead,
+        # keeping the Filename output stable across masking. Falls back to the
+        # actual loaded file's name for normal picks (and for reloaded saved
+        # workflows where the original name was never stored).
+        orig_name = _parse_orig_name(LoadImagePixState)
+        is_clipspace = "clipspace" in image.replace("\\", "/").lower()
+        if is_clipspace and orig_name:
+            basename = os.path.splitext(os.path.basename(orig_name))[0]
+        else:
+            basename = os.path.splitext(os.path.basename(image_path))[0]
+
         for frame in ImageSequence.Iterator(img):
             frame = node_helpers.pillow(ImageOps.exif_transpose, frame)
             if frame.mode == "I":
@@ -189,7 +217,6 @@ class PixaromaLoadImage:
             # shapes consistent if we ever hit a pathological file.
             zeros = torch.zeros((1, 64, 64, 3), dtype=tensor_dtype)
             zeros_mask = torch.zeros((1, 64, 64), dtype=tensor_dtype)
-            basename = os.path.splitext(os.path.basename(image_path))[0]
             return (zeros, zeros_mask, 64, 64, basename, 64, 64)
 
         if len(output_images) > 1:
@@ -205,7 +232,6 @@ class PixaromaLoadImage:
         if final_w is None:
             final_w, final_h = orig_w, orig_h
 
-        basename = os.path.splitext(os.path.basename(image_path))[0]
         return (out_img, out_mask, final_w, final_h, basename, orig_w, orig_h)
 
     @classmethod
