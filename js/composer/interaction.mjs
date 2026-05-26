@@ -181,7 +181,14 @@ PixaromaEditor.prototype.attachEvents = function () {
       if (this.activeMode === "eraser") {
         this.setMode(null);
       } else if (this.selectedLayerIds.size === 1) {
-        this.setMode("eraser");
+        // Eraser is image-only: text + FX layers have no editable pixels.
+        const al = this.getActiveLayer();
+        if (al && (al.isText || al.isAdjustment)) {
+          if (this._layout)
+            this._layout.setStatus("Eraser doesn't apply to this layer", "warn");
+        } else {
+          this.setMode("eraser");
+        }
       } else if (this.selectedLayerIds.size > 1) {
         if (this._layout)
           this._layout.setStatus(
@@ -195,7 +202,14 @@ PixaromaEditor.prototype.attachEvents = function () {
       if (this.activeMode === "crop") {
         this.setMode(null);
       } else if (this.selectedLayerIds.size === 1) {
-        this.setMode("crop");
+        // Crop is image-only: not for text, FX, or placeholder layers.
+        const al = this.getActiveLayer();
+        if (al && (al.isText || al.isAdjustment || al.isPlaceholder)) {
+          if (this._layout)
+            this._layout.setStatus("Crop doesn't apply to this layer", "warn");
+        } else {
+          this.setMode("crop");
+        }
       } else if (this.selectedLayerIds.size > 1) {
         if (this._layout)
           this._layout.setStatus(
