@@ -895,20 +895,25 @@ function injectCSS() {
        width and the longer labels (LINE HEIGHT / LETTER SP / BEHIND) fit. */
     .pix-to-narrow .pix-to-grid2 { grid-template-columns: 1fr; }
 
-    /* Numeric input cell: [LABEL  value] */
+    /* Numeric input cell: [LABEL  value  spin]. Matches Load Image's
+       .pix-li-numinput: the cell STRETCHES its children (align-items:stretch)
+       so the spinner column fills the full cell height and its chevrons render
+       cleanly. No padding on the cell itself - the label and input supply
+       their own, the spin column sits flush against the right border. */
     .pix-to-input-cell {
       display: flex;
-      align-items: center;
-      gap: 6px;
+      align-items: stretch;
       background: #1d1d1d;
       border: 1px solid #444;
       border-radius: 4px;
-      padding: 4px 8px;
       min-height: 28px;
       overflow: hidden;   /* clip the recessed spinner column to the rounded corner */
     }
     .pix-to-input-cell:focus-within { border-color: ${BRAND}; }
     .pix-to-input-label {
+      display: flex;
+      align-items: center;
+      padding-left: 8px;
       font: 10px ui-sans-serif, system-ui, sans-serif;
       color: ${BRAND};
       text-transform: uppercase;
@@ -925,26 +930,23 @@ function injectCSS() {
       text-align: right;
       width: 100%;
       min-width: 0;
-      padding: 0;
+      padding: 0 6px;
       -moz-appearance: textfield;
     }
     .pix-to-input-val::-webkit-outer-spin-button,
     .pix-to-input-val::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 
-    /* Custom +/- spinner buttons (mirrors Load Image .pix-li-spin pattern,
-       CSS chevrons so no extra SVG needed). */
-    /* +/- spinners. Use unicode triangle chars (▴ ▾) so they always
-       render as proper up/down arrows regardless of CSS border-rotation
-       rendering quirks. */
     /* Spinner column matches Load Image (.pix-li-spin): recessed dark buttons
-       with CSS chevron arrows (rotated-border squares, no glyph font). */
+       that stretch full cell height, with CSS chevron arrows (rotated-border
+       squares, no glyph font). Stretches via the cell's align-items:stretch -
+       no negative-margin hack (that left the column too short and the chevrons
+       collapsed into little x marks). */
     .pix-to-spin {
       display: flex;
       flex-direction: column;
       width: 14px;
       flex-shrink: 0;
       border-left: 1px solid #444;
-      margin: -4px -8px -4px 6px; /* extend to the cell edge */
     }
     .pix-to-spin > button {
       flex: 1;
