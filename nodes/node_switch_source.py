@@ -96,13 +96,18 @@ class PixaromaSwitchSource:
             if SwitchSourceState in ("A", "B"):
                 active = SwitchSourceState
 
-        # Fallback: infer the visible row count from the highest wired index.
-        if rows <= 0:
-            for i in range(MAX_ROWS, 0, -1):
-                if kwargs.get(f"a_{i}") is not None or kwargs.get(f"b_{i}") is not None:
-                    rows = i
-                    break
-            rows = max(rows, 1)
+        # Row count: trust the injected state, but NEVER fall below the highest
+        # wired index. The JS hook normally injects the exact rows; if it did not
+        # run (an API / scripted submission, or the default state whose rows is
+        # 1) a stale rows would silently drop wired rows. Extending to cover the
+        # highest wired index defends both ways and is always safe (you can only
+        # wire a slot the node actually exposes, so highest <= real row count).
+        highest = 0
+        for i in range(MAX_ROWS, 0, -1):
+            if kwargs.get(f"a_{i}") is not None or kwargs.get(f"b_{i}") is not None:
+                highest = i
+                break
+        rows = max(rows, highest, 1)
 
         out = []
         for i in range(1, MAX_ROWS + 1):

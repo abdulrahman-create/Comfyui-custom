@@ -23,11 +23,16 @@ export function openLabelEditor(node, rowIdx1, rect) {
   input.maxLength = 64; // keep stored row names sane; display is clipped to node width
 
   const scale = app.canvas?.ds?.scale || 1;
+  // Grow the edit box to a comfortable min width for typing (names go up to 64
+  // chars), extending LEFT into the node body so its right edge stays aligned
+  // with the (possibly short) label.
+  const boxW = Math.max(160 * scale, rect.w);
+  const boxLeft = rect.x + rect.w - boxW;
   Object.assign(input.style, {
     position: "fixed",
-    left: `${rect.x}px`,
+    left: `${boxLeft}px`,
     top: `${rect.y}px`,
-    width: `${Math.max(40, rect.w)}px`,
+    width: `${boxW}px`,
     height: `${rect.h}px`,
     boxSizing: "border-box",
     background: "#1d1d1d",
@@ -74,8 +79,12 @@ export function openLabelEditor(node, rowIdx1, rect) {
 
   input.addEventListener("blur", commit);
   // Defer focus + listener install so the opening mousedown doesn't ghost-blur
-  // the input (same pattern as Switch's editor).
+  // the input (same pattern as Switch's editor). Guard against teardown before
+  // the timer fires (node deleted / another editor opened in the same tick):
+  // without this, the window keydown listener gets added AFTER cleanup ran and
+  // leaks for the page's life, keeping a removed node + closure alive.
   setTimeout(() => {
+    if (!input.isConnected) return;
     window.addEventListener("keydown", onKey, true);
     input.focus();
     input.select();

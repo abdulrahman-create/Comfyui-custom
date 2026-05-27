@@ -53,6 +53,10 @@ export function writeState(node, state) {
 function linked(slot) {
   return slot != null && slot.link != null;
 }
+// Output slots hold their connections in slot.links (an array), NOT slot.link.
+function outputLinked(slot) {
+  return slot != null && Array.isArray(slot.links) && slot.links.length > 0;
+}
 function inputByName(node, name) {
   return (node.inputs || []).find((s) => s.name === name) || null;
 }
@@ -73,7 +77,7 @@ export function highestWiredRow(node) {
   for (let r = 1; r <= n; r++) {
     if (linked(inputByName(node, A_NAME(r))) ||
         linked(inputByName(node, B_NAME(r))) ||
-        linked(outputByName(node, OUT_NAME(r)))) {
+        outputLinked(outputByName(node, OUT_NAME(r)))) {
       hi = r;
     }
   }
@@ -183,7 +187,10 @@ export function clearAllSlots(node) {
 // name keeps the user's wires. Gated by _pixSsRebuilding so the disconnect/
 // connect events fired here don't re-enter onConnectionsChange on this node.
 export function rebuildSlots(node, targetRows) {
-  const rows = Math.max(1, Math.min(MAX_ROWS, Math.round(targetRows) || 1));
+  // Self-enforce the no-drop-a-wired-row invariant here (not just in the UI
+  // handler) so any caller is safe: never shrink below the highest wired row.
+  const hw = highestWiredRow(node);
+  const rows = Math.min(MAX_ROWS, Math.max(1, Math.round(targetRows) || 1, hw));
   node._pixSsRebuilding = true;
   try {
     // Snapshot input links by slot name.
@@ -273,14 +280,17 @@ function buildBareRows(node, rows) {
 // onConfigure no longer wiping, the load path must not pre-create conflicting
 // slots. Fresh drops (not loading) build immediately.
 export function setupNode(node) {
-  const state = readState(node);
   clearAllSlots(node);
-  if (!isGraphLoading()) {
-    buildBareRows(node, state.rows);
-    return;
-  }
-  // Safety net for the rare fresh drop inside the load's 300ms trailing window
-  // (no configure will follow): build the default once it's clear none came.
+  // ALWAYS defer the build to a microtask - never build synchronously here.
+  // If this node is being restored from saved data (workflow load, tab switch,
+  // undo, OR copy-paste), LGraphNode.configure() runs synchronously right after
+  // onNodeCreated and re-adds the saved slots in their saved two-bank order onto
+  // the now-empty node (so no A-B-A-B scramble), setting _pixSsConfigureRan.
+  // The microtask then no-ops. Only a genuine fresh drop (no configure follows)
+  // reaches the build. Microtasks flush before the first paint, so the build is
+  // in place before the node is ever drawn - no visible flash. (Paste does NOT
+  // go through app.loadGraphData, so an isGraphLoading() gate could not cover it;
+  // letting configure win via the flag covers every restore path uniformly.)
   queueMicrotask(() => {
     if (node._pixSsConfigureRan) return;          // configure restored the slots
     if (node.inputs && node.inputs.length) return; // already populated
