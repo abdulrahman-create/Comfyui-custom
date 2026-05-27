@@ -117,8 +117,14 @@ export function showNodePreview(parts, src, dimText, node) {
 export function restoreNodePreview(parts, json, node) {
   try {
     const meta = JSON.parse(json);
-    if (!meta.composite_path) return;
-    const fn = meta.composite_path.split(/[\\/]/).pop();
+    // Prefer the saved composite; fall back to the raw source (e.g. a Crop node
+    // where the user pasted/dropped an image but never opened the editor — it
+    // has a src_path but no composite_path), otherwise the mini-preview is blank
+    // after a workflow tab switch. Composer/Paint/3D always have composite_path,
+    // so this fallback never changes their behavior.
+    const rel = meta.composite_path || meta.src_path;
+    if (!rel) return;
+    const fn = rel.split(/[\\/]/).pop();
     const url = `/view?filename=${encodeURIComponent(fn)}&type=input&subfolder=pixaroma&t=${Date.now()}`;
     const dimText = `${meta.doc_w || "?"}\u00d7${meta.doc_h || "?"}`;
     showNodePreview(parts, url, dimText, node);

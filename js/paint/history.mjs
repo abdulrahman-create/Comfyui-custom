@@ -69,6 +69,7 @@ proto.undo = function () {
       locked: ly.locked,
       opacity: ly.opacity,
       blendMode: ly.blendMode,
+      sourceKind: ly.sourceKind,
       transform: { ...ly.transform },
       imageData: ly.ctx.getImageData(0, 0, this.docW, this.docH),
     }));
