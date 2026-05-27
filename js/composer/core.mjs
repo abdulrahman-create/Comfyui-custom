@@ -222,7 +222,10 @@ export class PixaromaEditor {
     if (changed) {
       this.ui.updateActiveLayerUI();
       this.draw();
-      this.pushHistory();
+      // Text layers: re-bake the bitmap crisp at its new size (fold scale into
+      // font size), matching the canvas handles + sliders. Returns true if it
+      // handled the history commit; otherwise commit normally.
+      if (!this._commitTextScaleFold()) this.pushHistory();
     }
   }
 

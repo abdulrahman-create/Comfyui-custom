@@ -141,9 +141,12 @@ PixaromaEditor.prototype.attachEvents = function () {
             this.draw();
           });
         }
-        // Debounce history push so a wheel-burst is one undo step
+        // Debounce history push so a wheel-burst is one undo step. Text layers
+        // re-bake the bitmap crisp (fold scale into font size) once it settles.
         clearTimeout(this._scaleWheelTimer);
-        this._scaleWheelTimer = setTimeout(() => this.pushHistory(), 300);
+        this._scaleWheelTimer = setTimeout(() => {
+          if (!this._commitTextScaleFold()) this.pushHistory();
+        }, 300);
       }
       return;
     }
