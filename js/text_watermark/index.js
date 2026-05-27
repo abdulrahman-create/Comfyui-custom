@@ -20,7 +20,7 @@ const HIDDEN_INPUT_NAME = "TextWatermarkState";
 // height with the text-lock hint hidden; if the panel layout changes
 // (add/remove a row), update BASE_H to match. HINT_H is the extra height when
 // the `text` input is wired (the lock-hint row appears).
-const BASE_H = 410;
+const BASE_H = 412;
 const HINT_H = 18;
 const MIN_W = 320;
 
@@ -110,8 +110,10 @@ function setupWatermarkNode(node) {
   });
 
   // Default size for fresh nodes; LiteGraph restores saved sizes via configure.
+  // +58 = node chrome (title bar + image/text input rows) measured for this
+  // node, so a fresh drop fits exactly with no initial resize jump.
   if (!node.size || node.size[0] < 320) {
-    node.size = [340, BASE_H + 43];
+    node.size = [340, BASE_H + 58];
   }
 
   // Min-width self-heal on draw (Preview Image Pattern #11 / Vue Compat #13:
