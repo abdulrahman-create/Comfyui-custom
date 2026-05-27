@@ -67,6 +67,16 @@ app.registerExtension({
       refreshTextLock(this, !this._watermarkConfiguring && !isGraphLoading());
       return r;
     };
+
+    // Tear down the DOM panel when the node is deleted so its element + any
+    // internal listeners are released (the panel's destroy() removes its root).
+    const origOnRemoved = nodeType.prototype.onRemoved;
+    nodeType.prototype.onRemoved = function () {
+      try { this._watermarkBodyPanel?.destroy?.(); } catch { /* no-op */ }
+      this._watermarkBodyPanel = null;
+      this._watermarkBodyRoot = null;
+      return origOnRemoved?.apply(this, arguments);
+    };
   },
 });
 
@@ -111,9 +121,14 @@ function setupWatermarkNode(node) {
 
   // Default size for fresh nodes; LiteGraph restores saved sizes via configure.
   // +58 = node chrome (title bar + image/text input rows) measured for this
-  // node, so a fresh drop fits exactly with no initial resize jump.
-  if (!node.size || node.size[0] < 320) {
+  // node, so a fresh drop fits exactly with no initial resize jump. Mutate the
+  // array in place rather than replacing it (UI convention #9 - plays nicer
+  // with any Vue reactive proxy on node.size).
+  if (!node.size) {
     node.size = [340, BASE_H + 58];
+  } else if (node.size[0] < 320) {
+    node.size[0] = 340;
+    node.size[1] = BASE_H + 58;
   }
 
   // Min-width self-heal on draw (Preview Image Pattern #11 / Vue Compat #13:

@@ -902,7 +902,7 @@ function injectCSS() {
        their own, the spin column sits flush against the right border. */
     .pix-to-input-cell {
       display: flex;
-      align-items: stretch;
+      align-items: center;   /* center label + value; the spin column stretches itself */
       background: #1d1d1d;
       border: 1px solid #444;
       border-radius: 4px;
@@ -927,6 +927,7 @@ function injectCSS() {
       outline: none;
       color: ${BRAND};
       font: 600 13px ui-sans-serif, system-ui, sans-serif;
+      line-height: 1.2;   /* explicit vertical centering (don't rely on input auto-center) */
       text-align: right;
       width: 100%;
       min-width: 0;
@@ -946,6 +947,7 @@ function injectCSS() {
       flex-direction: column;
       width: 16px;
       flex-shrink: 0;
+      align-self: stretch;   /* full cell height even though the cell centers its items */
     }
     .pix-to-spin > button {
       flex: 1;

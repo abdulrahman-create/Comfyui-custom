@@ -13,7 +13,7 @@ import numpy as np
 import torch
 from PIL import Image
 
-from ._text_render_helpers import render_text_layer, compute_text_bbox
+from ._text_render_helpers import render_text_layer, compute_text_bbox, resolve_font_variant
 
 
 # Each anchor's horizontal band (left / center / right) and vertical band
@@ -119,12 +119,16 @@ class PixaromaTextWatermark:
         # right-anchored italic watermark pushes its lean off the edge. Matches
         # the slant math in _text_render_helpers.render_text_layer (12 degrees,
         # no supersampling on the non-rotated path).
+        # Italic widens the rendered layer ONLY when the font has no real italic
+        # face and the renderer SYNTHESIZES the lean (a skew). A font WITH a
+        # genuine italic renders upright metrics with no overhang, so adding the
+        # slant would over-inset right/center anchors. Gate on the same
+        # synthesized-italic decision the renderer makes.
         eff_w = bbox_w
-        if bool(state.get("italic", False)):
+        if bool(state.get("italic", False)) and self._is_synthesized_italic(state):
             slant = int(math.ceil(math.tan(math.radians(12)) * bbox_h))
-            # + a small size-relative cushion: italic glyph ink overhangs its
-            # advance width (the bbox measurement misses that), so without it a
-            # right-anchored italic watermark still clips a few pixels.
+            # + a small size-relative cushion for italic ink that overhangs the
+            # advance width (the bbox measurement misses it).
             eff_w += slant + int(math.ceil(0.06 * font_px))
 
         margin_x = int(state.get("marginX", 20))
@@ -153,6 +157,21 @@ class PixaromaTextWatermark:
             render_text_layer(pil, st)
         except Exception as e:
             print(f"[Text Watermark Pixaroma] WARN: render failed: {e}")
+
+    @staticmethod
+    def _is_synthesized_italic(state):
+        """True if the renderer will FAKE italic (skew) because the font has no
+        real italic face. Mirrors resolve_font_variant's decision so the anchor
+        math only widens for the synthesized case."""
+        try:
+            variant = resolve_font_variant(
+                state.get("font", "Roboto"),
+                int(state.get("weight", 400)),
+                True,
+            )
+            return bool(variant.get("synthesized_italic"))
+        except Exception:
+            return True  # assume synthesized (keeps the extra slant room - safer)
 
     @staticmethod
     def _pil_to_tensor_array(pil):
