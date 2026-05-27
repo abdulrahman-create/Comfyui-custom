@@ -30,11 +30,15 @@ export async function getFontCatalog() {
 /** Clear the cached catalog and re-fetch, rescanning the drop-in folder. */
 export async function refreshFontCatalog() {
   _catalog = null;
-  _catalogPromise = null;
-  const resp = await fetch(FONT_LIST_URL + "?refresh=1", { cache: "no-store" });
-  if (!resp.ok) throw new Error(`fonts/list refresh HTTP ${resp.status}`);
-  _catalog = await resp.json();
-  return _catalog;
+  // Assign the in-flight fetch to _catalogPromise so a concurrent
+  // getFontCatalog() awaits THIS refresh instead of launching a second fetch.
+  _catalogPromise = (async () => {
+    const resp = await fetch(FONT_LIST_URL + "?refresh=1", { cache: "no-store" });
+    if (!resp.ok) throw new Error(`fonts/list refresh HTTP ${resp.status}`);
+    _catalog = await resp.json();
+    return _catalog;
+  })();
+  return _catalogPromise;
 }
 
 /** Best-match font variant lookup. Falls back per math doc section 1. */

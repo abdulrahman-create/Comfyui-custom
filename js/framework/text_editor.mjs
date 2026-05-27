@@ -71,7 +71,11 @@ export function createTextEditorPanel({ mount, onChange, onReset, onAlignCanvas,
       ui.fontDropdownName.textContent = labelForFont(fontCatalog, id);
       ui.fontDropdownName.style.fontFamily = `"Pix-${id}", system-ui`;
       fireChange();
-    }, (cat) => { fontCatalog = cat; });
+    }, (cat) => {
+      fontCatalog = cat;
+      const l = layerNow();
+      if (l) ui.fontDropdownName.textContent = labelForFont(cat, l.font);
+    });
   });
   fontRow.appendChild(ui.fontDropdown);
 
@@ -236,9 +240,9 @@ export function createTextEditorPanel({ mount, onChange, onReset, onAlignCanvas,
     if (currentLayer) {
       ui.fontDropdownName.textContent = labelForFont(cat, currentLayer.font);
       ui.fontDropdownName.style.fontFamily = `"Pix-${currentLayer.font}", system-ui`;
-      const cur = cat.find((f) => f.id === currentLayer.font);
-      const w0 = cur?.weights?.[0];
-      if (w0) loadFontForLayer(cur.id, w0.weight, w0.italic).catch(() => {});
+      if (cat.some((f) => f.id === currentLayer.font)) {
+        loadFontForLayer(currentLayer.font, currentLayer.weight ?? 400, !!currentLayer.italic).catch(() => {});
+      }
     }
   }).catch((e) => console.warn("[text_editor] font catalog load failed", e));
 
@@ -532,14 +536,14 @@ function openFontPopup(anchorEl, catalog, currentId, onPick, onCatalog) {
     io = new IntersectionObserver((entries) => {
       for (const en of entries) {
         if (!en.isIntersecting) continue;
-        const el = en.target;
-        io.unobserve(el);
-        const id = el.dataset.fontId;
+        const rowEl = en.target;
+        io.unobserve(rowEl);
+        const id = rowEl.dataset.fontId;
         const f = cat.find((x) => x.id === id);
         const w0 = f?.weights?.[0];
         if (!w0) continue;
         loadFontForLayer(f.id, w0.weight, w0.italic)
-          .then(() => { el.style.fontFamily = `"Pix-${f.id}", system-ui`; })
+          .then(() => { rowEl.style.fontFamily = `"Pix-${f.id}", system-ui`; })
           .catch(() => {});
       }
     }, { root: list });
@@ -562,7 +566,7 @@ function openFontPopup(anchorEl, catalog, currentId, onPick, onCatalog) {
       item.addEventListener("click", (e) => {
         e.stopPropagation();
         onPick(f.id);
-        close();
+        dismiss();
       });
       list.appendChild(item);
       io.observe(item);
@@ -577,13 +581,16 @@ function openFontPopup(anchorEl, catalog, currentId, onPick, onCatalog) {
   };
 
   let workingCat = catalog;
-  buildList(workingCat, "");
+  // Teardown: removes the popup + the observer. Reassigned after the popup is
+  // in the DOM to the closer returned by attachPopupCloseListeners, which ALSO
+  // detaches the document listeners (so no listener leak on row-click/Escape).
+  let dismiss = () => { if (io) io.disconnect(); popup.remove(); };
 
   // Typing filters; keystrokes must not reach the canvas (pan/shortcuts).
   input.addEventListener("input", () => buildList(workingCat, input.value));
   input.addEventListener("keydown", (e) => {
     e.stopImmediatePropagation();
-    if (e.key === "Escape") close();
+    if (e.key === "Escape") dismiss();
   });
 
   refreshBtn.addEventListener("click", async (e) => {
@@ -601,6 +608,12 @@ function openFontPopup(anchorEl, catalog, currentId, onPick, onCatalog) {
   });
 
   document.body.appendChild(popup);
+  // Wire close + build rows AFTER the popup is connected: the IntersectionObserver
+  // root (the scroll list) must be in the DOM for lazy previews to fire, and the
+  // returned closer is the single teardown path that also detaches listeners.
+  dismiss = attachPopupCloseListeners(popup, () => { if (io) io.disconnect(); popup.remove(); });
+  buildList(workingCat, "");
+
   // Position: open downward; if it would overflow the viewport bottom, flip
   // above the anchor; clamp into the viewport as a last resort. Also clamp the
   // left edge so a narrow sidebar near the screen edge doesn't push it off.
@@ -615,10 +628,7 @@ function openFontPopup(anchorEl, catalog, currentId, onPick, onCatalog) {
   if (left + popup.offsetWidth > vw - 8) left = Math.max(8, vw - 8 - popup.offsetWidth);
   popup.style.top = `${top}px`;
   popup.style.left = `${left}px`;
-  attachPopupCloseListeners(popup, close);
   setTimeout(() => input.focus(), 0);
-
-  function close() { if (io) io.disconnect(); popup.remove(); }
 }
 
 // Shared close-listener wiring for our custom popups. Mirrors Load Image
@@ -641,6 +651,7 @@ function attachPopupCloseListeners(popup, closeFn) {
     document.addEventListener("wheel", onWheel, true);
     document.addEventListener("keydown", onKey, true);
   }, 0);
+  return doClose;
 }
 
 // ── CSS injection (once per page) ─────────────────────────────────────────────

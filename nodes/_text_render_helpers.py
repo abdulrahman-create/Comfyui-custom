@@ -61,7 +61,9 @@ def _cached_pil_font(file: str, size: int, wght: int, source: str):
     if source == "custom":
         path = resolve_custom_file(file)
         if not path:
-            raise RuntimeError(f"Custom font file not found: {file}")
+            # Custom file vanished after the catalog cached it (rare race) —
+            # fall back to bundled Inter rather than erroring the whole render.
+            path = str(_FONTS_DIR / "Inter-Variable.ttf")
     else:
         path = str(_FONTS_DIR / file)
     f = ImageFont.truetype(path, size=int(size))

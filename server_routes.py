@@ -185,9 +185,6 @@ async def list_note_icons(request):
         return web.json_response({"icons": []})
 
 
-PIXAROMA_FONTS_DIR = os.path.join(PIXAROMA_ASSETS_DIR, "fonts")
-
-
 @PromptServer.instance.routes.get("/pixaroma/api/fonts/list")
 async def pixaroma_fonts_list(request):
     """Return the merged builtin + custom font catalog. `?refresh=1` rescans
