@@ -2,7 +2,7 @@ import { app } from "/scripts/app.js";
 import {
   STATE_PROP, MAX_ROWS, CONTROL_BAND,
   readState, writeState,
-  setupNode, restoreFromProperties, rebuildSlots, clearAllSlots,
+  setupNode, restoreFromProperties, rebuildSlots,
   updateOutputLabels, rowCount, highestWiredRow, minNodeHeight,
   outputLabelRect, outputLabelScreenRect, pointInRect,
 } from "./core.mjs";
@@ -233,13 +233,16 @@ app.registerExtension({
     const _origConfigure = nodeType.prototype.onConfigure;
     nodeType.prototype.onConfigure = function (info) {
       this._pixSsConfiguring = true;
+      this._pixSsConfigureRan = true; // tells setupNode's safety net configure happened
       try {
-        // Clear the slots setupNode created (a_1, b_1) BEFORE configure runs.
-        // Otherwise LiteGraph's configure keeps those two and APPENDS the saved
-        // extras (a_2, a_3, b_2, b_3) at the end -> scrambled "A B A A B B" on
-        // reload. Starting empty makes configure re-add all saved slots in their
-        // saved two-bank order (a_1..a_N, b_1..b_N). Links restore afterwards.
-        clearAllSlots(this);
+        // Do NOT wipe slots here. onConfigure fires at the END of
+        // LGraphNode.configure(), i.e. AFTER the saved slots and their links
+        // have already been restored. The old clearAllSlots(this) was therefore
+        // destroying every restored wire on every workflow load / tab switch /
+        // undo (confirmed: the node came back with zero inputs/outputs and the
+        // whole graph lost its links). The saved two-bank order is preserved
+        // because setupNode leaves the node empty during a load, so configure
+        // re-adds the saved slots in their saved order.
         const r = _origConfigure?.apply(this, arguments);
         restoreFromProperties(this);
         this._pixSsRefresh?.();

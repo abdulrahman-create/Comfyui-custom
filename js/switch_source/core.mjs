@@ -232,15 +232,10 @@ export function rebuildSlots(node, targetRows) {
   app.graph?.setDirtyCanvas?.(true, true);
 }
 
-// Fresh-on-canvas drop: strip the raw Python slots (no links yet) and build the
-// saved/initial row count. configure() overwrites node.size + slots from saved
-// JSON on workflow load, so this only shapes fresh drops.
-export function setupNode(node) {
-  const state = readState(node);
-  clearAllSlots(node);
+// Build exactly `rows` rows of bare slots in two-bank order (no link work).
+function buildBareRows(node, rows) {
   node._pixSsRebuilding = true;
   try {
-    const rows = state.rows;
     for (let r = 1; r <= rows; r++) { const s = node.addInput(A_NAME(r), "*"); s.label = "A"; }
     for (let r = 1; r <= rows; r++) { const s = node.addInput(B_NAME(r), "*"); s.label = "B"; }
     for (let r = 1; r <= rows; r++) { node.addOutput(OUT_NAME(r), "*"); }
@@ -249,7 +244,36 @@ export function setupNode(node) {
   }
   updateInputLabels(node);
   updateOutputLabels(node);
-  resizeToRows(node, state.rows);
+  resizeToRows(node, rows);
+}
+
+// Strip the raw Python-declared slots (a_1..a_16, b_1..b_16, 16 outputs). Safe
+// here: onNodeCreated runs before any links are restored.
+//
+// On a workflow LOAD / tab switch / undo, leave the node EMPTY and let
+// LGraphNode.configure() restore the saved slots (a_1..a_N, b_1..b_N,
+// output_1..N) in their saved two-bank order, with their links. Pre-building
+// stub rows here (state.rows defaults to 1 before properties are restored)
+// would make configure MERGE the saved extras onto the stubs and scramble the
+// order to A B A B - which is why the old code wiped slots in onConfigure, and
+// that wipe was destroying the just-restored wires on every tab switch. With
+// onConfigure no longer wiping, the load path must not pre-create conflicting
+// slots. Fresh drops (not loading) build immediately.
+export function setupNode(node) {
+  const state = readState(node);
+  clearAllSlots(node);
+  if (!isGraphLoading()) {
+    buildBareRows(node, state.rows);
+    return;
+  }
+  // Safety net for the rare fresh drop inside the load's 300ms trailing window
+  // (no configure will follow): build the default once it's clear none came.
+  queueMicrotask(() => {
+    if (node._pixSsConfigureRan) return;          // configure restored the slots
+    if (node.inputs && node.inputs.length) return; // already populated
+    buildBareRows(node, readState(node).rows);
+    node.graph?.setDirtyCanvas?.(true, true);
+  });
 }
 
 // Workflow load / undo restore: configure() already restored node.inputs,
