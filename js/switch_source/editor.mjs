@@ -31,8 +31,8 @@ export function openLabelEditor(node, rowIdx1, rect) {
     boxSizing: "border-box",
     background: "#1d1d1d",
     color: "#fff",
-    border: "1px solid #f66744",
-    borderRadius: "3px",
+    border: `${Math.max(1, Math.round(scale))}px solid #f66744`,
+    borderRadius: `${Math.max(2, Math.round(3 * scale))}px`,
     padding: `0 ${Math.max(2, Math.round(4 * scale))}px`,
     font: `${Math.max(9, Math.round(12 * scale))}px 'Segoe UI', -apple-system, sans-serif`,
     textAlign: "right",
@@ -54,11 +54,13 @@ export function openLabelEditor(node, rowIdx1, rect) {
   }
 
   function cleanup() {
-    if (!activeEditor) return;
+    // Idempotent + identity-safe: always tear down THIS editor's listeners and
+    // DOM (safe to call twice), but only clear the module singleton if it still
+    // points at us, so a stale cleanup can't null out a newer editor.
     window.removeEventListener("keydown", onKey, true);
     input.removeEventListener("blur", commit);
     if (input.parentNode) input.parentNode.removeChild(input);
-    activeEditor = null;
+    if (activeEditor && activeEditor.node === node) activeEditor = null;
   }
 
   function onKey(e) {

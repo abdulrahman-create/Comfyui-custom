@@ -11,6 +11,7 @@
 //     labels:{ [rowIndex1]: "name" } }
 
 import { app } from "/scripts/app.js";
+import { isGraphLoading } from "../shared/graph_loading.mjs";
 
 export const STATE_PROP = "switchSourceState";
 export const MAX_ROWS = 16;
@@ -138,8 +139,20 @@ export function updateOutputLabels(node) {
   }
 }
 
+// Min node height for a given row count. ONE place for the formula so the
+// resizeToRows write and the onDrawForeground/onResize self-heal (index.js)
+// can never disagree.
+export function minNodeHeight(rows) {
+  return TOP_PAD + rows * 2 * ROW_H + CONTROL_BAND + BOT_PAD;
+}
+
 function resizeToRows(node, rows) {
-  const h = TOP_PAD + rows * 2 * ROW_H + CONTROL_BAND + BOT_PAD;
+  // Never write node.size during a workflow load / tab switch / Ctrl+Z undo:
+  // configure() restores the saved size, and a write here would falsely flag
+  // the workflow "modified" so just opening+closing it pops "Save Changes?"
+  // (Vue Compat #18/#19). Fresh drops + genuine Rows-field changes still size.
+  if (isGraphLoading()) return;
+  const h = minNodeHeight(rows);
   const w = Math.max(node.size[0] || 0, DEFAULT_W);
   if (node.size[0] !== w) node.size[0] = w;
   if (node.size[1] !== h) node.size[1] = h;
@@ -259,8 +272,19 @@ export function outputBandY(rowIdx0) {
 export function outputLabelRect(node, rowIdx1) {
   const cy = outputBandY(rowIdx1 - 1);
   const w = node.size?.[0] || DEFAULT_W;
-  const right = w - 24;       // stop before the output dot's drag zone
-  const left = Math.max(w * 0.4, 60);
+  const right = w - 18; // just left of the output dot's drag zone
+  // Native output labels are right-aligned, so hug the text from the right
+  // edge rather than spanning the whole right half (which left dead space on
+  // the left with no visible label to click). Width is estimated from the
+  // label string (~7px/char at the default slot font): short names get a
+  // small target, long type names a wider one. Floored so it never reaches
+  // across into the A-input dot on the left of the same band.
+  const out = outputByName(node, OUT_NAME(rowIdx1));
+  const text = (out && out.label) || `out ${rowIdx1}`;
+  const approx = text.length * 7 + 14;
+  const floor = Math.max(w * 0.45, 60);
+  let left = right - approx;
+  if (left < floor) left = floor;
   return { x: left, y: cy - ROW_H / 2, w: Math.max(0, right - left), h: ROW_H };
 }
 

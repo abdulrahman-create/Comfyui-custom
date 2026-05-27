@@ -3,7 +3,7 @@ import {
   STATE_PROP, MAX_ROWS, CONTROL_BAND,
   readState, writeState,
   setupNode, restoreFromProperties, rebuildSlots, clearAllSlots,
-  updateOutputLabels, rowCount, highestWiredRow,
+  updateOutputLabels, rowCount, highestWiredRow, minNodeHeight,
   outputLabelRect, outputLabelScreenRect, pointInRect,
 } from "./core.mjs";
 import { openLabelEditor, cancelEditorForNode } from "./editor.mjs";
@@ -37,6 +37,22 @@ if (app && app.loadGraphData && !app._pixSsLoadWrapped) {
   };
 }
 
+// Brief warning toast (modern ComfyUI API, with a hand-rolled banner fallback
+// for older Easy Install builds that lack extensionManager.toast).
+function toast(msg) {
+  try {
+    if (app.extensionManager?.toast?.add) {
+      app.extensionManager.toast.add({ severity: "warn", summary: "Switch Source", detail: msg, life: 3000 });
+      return;
+    }
+  } catch (e) { /* fall through to banner */ }
+  const d = document.createElement("div");
+  d.textContent = msg;
+  d.style.cssText = "position:fixed;top:16px;left:50%;transform:translateX(-50%);background:#1d1d1d;color:#fff;border:2px solid " + BRAND + ";border-radius:8px;padding:10px 16px;font:13px sans-serif;z-index:100000;box-shadow:0 4px 16px rgba(0,0,0,.5);";
+  document.body.appendChild(d);
+  setTimeout(() => { d.remove(); }, 3000);
+}
+
 function injectCSS() {
   if (document.getElementById("pix-switchsrc-css")) return;
   const s = document.createElement("style");
@@ -49,6 +65,7 @@ function injectCSS() {
       background:#1d1d1d; border:1px solid #444; border-radius:6px; overflow:hidden;
     }
     .pix-ss-rowsfield:focus-within { border-color:${BRAND}; }
+    .pix-ss-rowsfield.is-blocked { border-color:#ff5555 !important; }
     .pix-ss-rows-label {
       color:${BRAND}; font-size:10px; font-weight:600; letter-spacing:0.5px;
       text-transform:uppercase; padding:0 4px 0 9px; white-space:nowrap;
@@ -108,7 +125,12 @@ function buildControls(node) {
     onCommit: (v) => {
       let target = Math.max(1, Math.min(MAX_ROWS, Math.round(v)));
       const hw = highestWiredRow(node);
-      if (target < hw) target = hw; // can't drop a wired row
+      if (target < hw) {
+        target = hw; // can't drop a wired row
+        toast(`Can't go below ${hw} rows: row ${hw} still has wires. Disconnect them first.`);
+        rowsField.classList.add("is-blocked");
+        setTimeout(() => { rowsField.classList.remove("is-blocked"); }, 700);
+      }
       if (rowsBuilt.input.value !== String(target)) rowsBuilt.input.value = String(target);
       if (target !== rowCount(node)) rebuildSlots(node, target);
     },
@@ -261,13 +283,30 @@ app.registerExtension({
       return _origRemoved?.apply(this, arguments);
     };
 
-    // Self-heal min width every paint (UI conventions #7; onResize unreliable
-    // for DOM-widget nodes per Vue Compat #13).
+    // Self-heal min width AND height every paint (UI conventions #7; onResize
+    // unreliable for DOM-widget nodes per Vue Compat #13). Without the height
+    // floor, dragging the node shorter clips the control strip / output rows
+    // past the bottom frame. Both writes are CONDITIONAL (only when below the
+    // min) so a correctly-saved workflow never gets a size write on load
+    // (Vue Compat #18).
     const _origDraw = nodeType.prototype.onDrawForeground;
     nodeType.prototype.onDrawForeground = function (ctx) {
       if (_origDraw) _origDraw.call(this, ctx);
       if (this.flags?.collapsed) return;
       if (this.size[0] < MIN_W) this.size[0] = MIN_W;
+      const minH = minNodeHeight(rowCount(this));
+      if (this.size[1] < minH) this.size[1] = minH;
+    };
+
+    // Belt-and-braces clamp on the resize path too (Switch WH pattern).
+    const _origResize = nodeType.prototype.onResize;
+    nodeType.prototype.onResize = function (size) {
+      if (size) {
+        if (size[0] < MIN_W) size[0] = MIN_W;
+        const minH = minNodeHeight(rowCount(this));
+        if (size[1] < minH) size[1] = minH;
+      }
+      return _origResize?.apply(this, arguments);
     };
   },
 });

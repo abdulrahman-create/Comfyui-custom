@@ -81,16 +81,17 @@ class PixaromaSwitchSource:
                 if state.get("active") in ("A", "B"):
                     active = state["active"]
                 r = state.get("rows")
-                if isinstance(r, int) and r > 0:
-                    rows = min(r, MAX_ROWS)
+                # Accept a JSON float (1.0) too; reject bool (subclass of int).
+                if isinstance(r, (int, float)) and not isinstance(r, bool) and r > 0:
+                    rows = min(int(r), MAX_ROWS)
                 if state.get("missing") in ("connected", "strict"):
                     missing = state["missing"]
                 aw = state.get("aWired")
                 if isinstance(aw, list):
-                    a_wired = [int(x) for x in aw if isinstance(x, int)]
+                    a_wired = [int(x) for x in aw if isinstance(x, int) and not isinstance(x, bool)]
                 bw = state.get("bWired")
                 if isinstance(bw, list):
-                    b_wired = [int(x) for x in bw if isinstance(x, int)]
+                    b_wired = [int(x) for x in bw if isinstance(x, int) and not isinstance(x, bool)]
         except (TypeError, ValueError):
             if SwitchSourceState in ("A", "B"):
                 active = SwitchSourceState
