@@ -66,11 +66,12 @@ export class PixaromaEditor {
   }
 
   setMode(mode) {
-    // Eraser + crop are image-only — never enter them on a text or FX layer
-    // (the panels are dimmed + [E]/[C] are gated, but guard the entry too).
+    // Eraser + crop are image-only — never enter them on a text, FX, or
+    // placeholder layer (the panels are dimmed + [E]/[C] are gated, but guard
+    // the entry too; a placeholder's mask would misapply to the real image).
     if (mode === "eraser" || mode === "crop") {
       const al = this.getActiveLayer();
-      if (al && (al.isText || al.isAdjustment)) {
+      if (al && (al.isText || al.isAdjustment || al.isPlaceholder)) {
         if (this._layout)
           this._layout.setStatus(
             (mode === "eraser" ? "Eraser" : "Crop") + " doesn't apply to this layer",

@@ -184,9 +184,10 @@ PixaromaEditor.prototype.attachEvents = function () {
       if (this.activeMode === "eraser") {
         this.setMode(null);
       } else if (this.selectedLayerIds.size === 1) {
-        // Eraser is image-only: text + FX layers have no editable pixels.
+        // Eraser is image-only: text + FX have no editable pixels, and a
+        // placeholder is a UI tile whose mask would misapply to the real image.
         const al = this.getActiveLayer();
-        if (al && (al.isText || al.isAdjustment)) {
+        if (al && (al.isText || al.isAdjustment || al.isPlaceholder)) {
           if (this._layout)
             this._layout.setStatus("Eraser doesn't apply to this layer", "warn");
         } else {
@@ -654,7 +655,8 @@ PixaromaEditor.prototype.attachEvents = function () {
 
   this.btnDelLayer.addEventListener("click", () => {
     if (this.selectedLayerIds.size === 0) return;
-    this.layers = this.layers.filter((l) => !this.selectedLayerIds.has(l.id));
+    // Keep locked layers even if they're part of the selection.
+    this.layers = this.layers.filter((l) => !this.selectedLayerIds.has(l.id) || l.locked);
     this.selectedLayerIds.clear();
     this.syncActiveLayerIndex();
     this.ui.updateActiveLayerUI();
@@ -818,14 +820,20 @@ PixaromaEditor.prototype.attachEvents = function () {
 
         let finalMaskPath = layer.savedMaskPath_internal || null;
         if (layer.hasMask_internal && layer.eraserMaskCanvas_internal) {
-          const maskB64 =
-            layer.eraserMaskCanvas_internal.toDataURL("image/png");
-          const dMask = await PixaromaAPI.uploadLayer(
-            layer.id + "_mask_" + Date.now(),
-            maskB64,
-          );
-          finalMaskPath = dMask.path;
-          layer.savedMaskPath_internal = finalMaskPath;
+          // Only re-upload when the mask actually changed (or was never
+          // uploaded). Otherwise every Save would write a new timestamped
+          // mask file forever, none of them ever cleaned up.
+          if (layer.maskDirty_internal || !layer.savedMaskPath_internal) {
+            const maskB64 =
+              layer.eraserMaskCanvas_internal.toDataURL("image/png");
+            const dMask = await PixaromaAPI.uploadLayer(
+              layer.id + "_mask_" + Date.now(),
+              maskB64,
+            );
+            layer.savedMaskPath_internal = dMask.path;
+            layer.maskDirty_internal = false;
+          }
+          finalMaskPath = layer.savedMaskPath_internal;
         }
 
         const layerEntry = {

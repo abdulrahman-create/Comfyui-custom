@@ -71,8 +71,12 @@ export class PixaromaLayers {
       if (l.adjustments) copy.adjustments = { ...l.adjustments };
       // Deep-copy text layer state so undo/redo snapshots are independent.
       if (l.textState) copy.textState = { ...l.textState };
-      // Deep-copy eraser mask canvas so undo/redo restores mask state
-      if (l.eraserMaskCanvas_internal && l.hasMask_internal) {
+      // Deep-copy eraser mask canvas so undo/redo restores mask state.
+      // Clone whenever the canvas exists (NOT gated on hasMask_internal): a
+      // snapshot taken after entering eraser but before the first stroke would
+      // otherwise shallow-share the live canvas, so a later stroke would bleed
+      // into the snapshot and undo wouldn't clear it.
+      if (l.eraserMaskCanvas_internal) {
         const cloneCvs = document.createElement("canvas");
         cloneCvs.width = l.eraserMaskCanvas_internal.width;
         cloneCvs.height = l.eraserMaskCanvas_internal.height;

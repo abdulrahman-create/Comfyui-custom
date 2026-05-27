@@ -11,6 +11,18 @@ function cloneLayerForHistory(l) {
   if (l.adjustments) c.adjustments = { ...l.adjustments };
   if (l.textState) c.textState = { ...l.textState };
   if (l.cropRect) c.cropRect = { ...l.cropRect };
+  // Deep-copy the eraser mask canvas too: a shallow {...l} shares the canvas
+  // with the history snapshot, so strokes drawn after an undo/redo would bleed
+  // into the stored snapshot and corrupt history.
+  if (l.eraserMaskCanvas_internal) {
+    const cvs = document.createElement("canvas");
+    cvs.width = l.eraserMaskCanvas_internal.width;
+    cvs.height = l.eraserMaskCanvas_internal.height;
+    const cctx = cvs.getContext("2d");
+    cctx.drawImage(l.eraserMaskCanvas_internal, 0, 0);
+    c.eraserMaskCanvas_internal = cvs;
+    c.eraserMaskCtx_internal = cctx;
+  }
   return c;
 }
 
