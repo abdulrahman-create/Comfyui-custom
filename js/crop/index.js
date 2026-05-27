@@ -352,7 +352,10 @@ app.registerExtension({
 
     // ── Open button ──
     node.addWidget("button", "Open Crop", null, () => {
+      // Don't stack a second editor on this node (orphans the first + leaks).
+      if (node._pixaromaCropEditor?.el?.overlay?.isConnected) return;
       const editor = new CropEditor();
+      node._pixaromaCropEditor = editor;
 
       editor.onSave = (jsonStr, dataURL) => {
         cropJson = jsonStr;
@@ -386,6 +389,7 @@ app.registerExtension({
       };
 
       editor.onClose = () => {
+        node._pixaromaCropEditor = null;
         node.setDirtyCanvas(true, true);
       };
 
@@ -668,6 +672,10 @@ app.registerExtension({
 
     const origRemoved = node.onRemoved;
     node.onRemoved = () => {
+      // Tear down an open editor so its undo guard is restored + keys unbound.
+      try {
+        if (node._pixaromaCropEditor?.el?.overlay?.isConnected) node._pixaromaCropEditor._close();
+      } catch (e) {}
       origRemoved?.call(node);
       clearInterval(pollInterval);
       try { api.removeEventListener("execution_start", onStart); } catch {}
