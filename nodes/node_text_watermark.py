@@ -121,7 +121,11 @@ class PixaromaTextWatermark:
         # no supersampling on the non-rotated path).
         eff_w = bbox_w
         if bool(state.get("italic", False)):
-            eff_w += int(math.ceil(math.tan(math.radians(12)) * bbox_h))
+            slant = int(math.ceil(math.tan(math.radians(12)) * bbox_h))
+            # + a small size-relative cushion: italic glyph ink overhangs its
+            # advance width (the bbox measurement misses that), so without it a
+            # right-anchored italic watermark still clips a few pixels.
+            eff_w += slant + int(math.ceil(0.06 * font_px))
 
         margin_x = int(state.get("marginX", 20))
         margin_y = int(state.get("marginY", 20))

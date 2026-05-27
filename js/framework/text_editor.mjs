@@ -141,20 +141,24 @@ export function createTextEditorPanel({ mount, onChange, onReset, onAlignCanvas,
     ui.opacityInput = inputCell(typoGrid, "Opacity",       0,  100,  100, 1,   (v) => { const l = layerNow(); if (l) { l.opacity = v / 100;  fireChange(); }});
 
     if (watermarkMode) {
-      // Watermark mode: a Pixels / %-width size-unit toggle, a 3x3 anchor
-      // grid (replaces the momentary "Position on canvas" buttons), and
-      // Margin X / Y (the inset from the anchored edge) instead of absolute
-      // X / Y. The renderer is shared with Text Overlay; the node computes
-      // the final x/y from anchor + margin + size mode at render time.
+      // Watermark mode: a Pixels / %-width size-unit toggle, then a position
+      // row that puts Rotate + Margin X / Y on the left and a compact 3x3
+      // anchor square (mirrors Load Image's crop anchor) on the right. Sitting
+      // them side by side saves vertical height vs. a separate anchor row.
+      // Margin X / Y are the inset from the anchored edge (replace absolute
+      // X / Y). The renderer is shared with Text Overlay; the node computes the
+      // final x/y from anchor + margin + size mode at render time.
       buildSizeModeToggle();
-      buildAnchorGrid();
-      const transformGrid = el("div", "pix-to-grid3");
-      root.appendChild(transformGrid);
-      ui.rotateInput  = inputCell(transformGrid, "Rotate", -180, 180,  0, 1, (v) => { const l = layerNow(); if (l) { l.rotation = v; fireChange(); }});
-      ui.marginXInput = inputCell(transformGrid, "Marg X",    0, 4096, 20, 1, (v) => { const l = layerNow(); if (l) { l.marginX  = v; fireChange(); }});
-      ui.marginYInput = inputCell(transformGrid, "Marg Y",    0, 4096, 20, 1, (v) => { const l = layerNow(); if (l) { l.marginY  = v; fireChange(); }});
+      const posRow = el("div", "pix-to-wm-posrow");
+      root.appendChild(posRow);
+      const posFields = el("div", "pix-to-wm-posfields");
+      posRow.appendChild(posFields);
+      ui.rotateInput  = inputCell(posFields, "Rotate", -180, 180,  0, 1, (v) => { const l = layerNow(); if (l) { l.rotation = v; fireChange(); }});
+      ui.marginXInput = inputCell(posFields, "Marg X",    0, 4096, 20, 1, (v) => { const l = layerNow(); if (l) { l.marginX  = v; fireChange(); }});
+      ui.marginYInput = inputCell(posFields, "Marg Y",    0, 4096, 20, 1, (v) => { const l = layerNow(); if (l) { l.marginY  = v; fireChange(); }});
       ui.marginXInput.el.title = "Horizontal inset from the anchored edge, in pixels";
       ui.marginYInput.el.title = "Vertical inset from the anchored edge, in pixels";
+      buildAnchorGrid(posRow);
     } else {
       // Transform row: Rotate + X + Y in a 3-column grid. Keeps the rows
       // balanced (no empty cell next to Rotate) and saves a row of height.
@@ -293,34 +297,30 @@ export function createTextEditorPanel({ mount, onChange, onReset, onAlignCanvas,
     ui.applySizeMode = apply;
   }
 
-  // 3x3 anchor grid. Grid position mirrors image position (top-left cell =
-  // top-left anchor); the dot sits in the matching corner so it's self-
-  // explanatory. Persistent selection (the chosen cell stays orange).
-  function buildAnchorGrid() {
-    root.appendChild(caption("Position (anchor)"));
-    const grid = el("div", "pix-to-anchor-grid");
-    root.appendChild(grid);
+  // Compact 3x3 anchor square (mirrors Load Image's crop anchor). Grid
+  // position == image position (top-left cell = top-left anchor); the chosen
+  // cell stays orange. Appended into the caller's parent so it can sit beside
+  // the Rotate / Margin inputs.
+  function buildAnchorGrid(parent) {
+    const grid = el("div", "pix-to-anchor");
+    grid.title = "Watermark position";
     const ANCHORS = [
       ["top-left", "Top left"],     ["top-center", "Top center"],     ["top-right", "Top right"],
       ["middle-left", "Middle left"], ["center", "Center"],            ["middle-right", "Middle right"],
       ["bottom-left", "Bottom left"], ["bottom-center", "Bottom center"], ["bottom-right", "Bottom right"],
     ];
-    const VMAP = { top: "flex-start", middle: "center", bottom: "flex-end" };
-    const HMAP = { left: "flex-start", center: "center", right: "flex-end" };
     ui.anchorCells = ANCHORS.map(([id, title]) => {
-      const b = el("button", "pix-to-anchor-cell"); b.type = "button"; b.dataset.anchor = id; b.title = title;
-      if (id === "center") { b.style.alignItems = "center"; b.style.justifyContent = "center"; }
-      else { const [v, h] = id.split("-"); b.style.alignItems = VMAP[v]; b.style.justifyContent = HMAP[h]; }
-      b.appendChild(el("span", "pix-to-anchor-dot"));
-      b.addEventListener("click", () => {
+      const c = el("div", "pix-to-anchor-cell"); c.dataset.anchor = id; c.title = title;
+      c.addEventListener("click", () => {
         const l = layerNow(); if (!l) return;
         l.anchor = id;
-        ui.anchorCells.forEach((c) => c.classList.toggle("active", c.dataset.anchor === id));
+        ui.anchorCells.forEach((x) => x.classList.toggle("active", x.dataset.anchor === id));
         fireChange();
       });
-      grid.appendChild(b);
-      return b;
+      grid.appendChild(c);
+      return c;
     });
+    parent.appendChild(grid);
   }
 
   function setLayer(layer) {
@@ -905,11 +905,12 @@ function injectCSS() {
       border-radius: 4px;
       padding: 4px 8px;
       min-height: 28px;
+      overflow: hidden;   /* clip the recessed spinner column to the rounded corner */
     }
     .pix-to-input-cell:focus-within { border-color: ${BRAND}; }
     .pix-to-input-label {
       font: 10px ui-sans-serif, system-ui, sans-serif;
-      color: #888;
+      color: ${BRAND};
       text-transform: uppercase;
       letter-spacing: 0.5px;
       flex-shrink: 0;
@@ -935,6 +936,8 @@ function injectCSS() {
     /* +/- spinners. Use unicode triangle chars (▴ ▾) so they always
        render as proper up/down arrows regardless of CSS border-rotation
        rendering quirks. */
+    /* Spinner column matches Load Image (.pix-li-spin): recessed dark buttons
+       with CSS chevron arrows (rotated-border squares, no glyph font). */
     .pix-to-spin {
       display: flex;
       flex-direction: column;
@@ -945,22 +948,30 @@ function injectCSS() {
     }
     .pix-to-spin > button {
       flex: 1;
-      background: transparent;
+      background: #232323;
       border: none;
       padding: 0;
       cursor: pointer;
-      color: #888;
-      font: 10px ui-sans-serif, system-ui, sans-serif;
-      line-height: 1;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      color: #aaa;
+      position: relative;
       outline: none;
     }
-    .pix-to-spin > button:hover { background: #2a2a2a; color: ${BRAND}; }
-    .pix-to-spin-up   { border-bottom: 1px solid #444; }
-    .pix-to-spin-up::before   { content: "▴"; }
-    .pix-to-spin-down::before { content: "▾"; }
+    .pix-to-spin > button:hover { background: #333; color: ${BRAND}; }
+    .pix-to-spin-up { border-bottom: 1px solid #444; }
+    .pix-to-spin-up::before,
+    .pix-to-spin-down::before {
+      content: "";
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: 6px;
+      height: 6px;
+      transform: translate(-50%, -50%) rotate(-45deg);
+      border-top: 1px solid currentColor;
+      border-right: 1px solid currentColor;
+    }
+    .pix-to-spin-up::before   { transform: translate(-50%, -25%) rotate(-45deg); }
+    .pix-to-spin-down::before { transform: translate(-50%, -75%) rotate(135deg); }
 
     /* Color cell: [swatch LABEL hex] */
     .pix-to-color-cell {
@@ -1091,24 +1102,32 @@ function injectCSS() {
     .pix-to-seg:hover { border-color: #666; color: #ddd; }
     .pix-to-seg.active { background: ${BRAND}; color: #fff; border-color: ${BRAND}; }
 
-    /* Watermark: 3x3 anchor grid. The dot sits in the cell corner that
-       matches the anchor (positioned via inline align/justify), so the
-       control reads like a position picker. */
-    .pix-to-anchor-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; }
-    .pix-to-anchor-cell {
+    /* Watermark position row: Rotate + Margin X/Y on the left, compact 3x3
+       anchor square on the right (mirrors Load Image's crop anchor). */
+    .pix-to-wm-posrow { display: flex; gap: 6px; align-items: stretch; }
+    .pix-to-wm-posfields { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+    .pix-to-anchor {
+      flex: none;
+      width: 92px;
+      aspect-ratio: 1;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      grid-template-rows: repeat(3, 1fr);
+      gap: 3px;
       background: #1d1d1d;
       border: 1px solid #444;
-      border-radius: 4px;
-      cursor: pointer;
-      min-height: 22px;
-      display: flex;
-      padding: 3px;
+      border-radius: 5px;
+      padding: 5px;
+      box-sizing: border-box;
     }
-    .pix-to-anchor-cell:hover { border-color: #666; }
-    .pix-to-anchor-cell.active { background: ${BRAND}; border-color: ${BRAND}; }
-    .pix-to-anchor-dot { width: 5px; height: 5px; border-radius: 50%; background: #888; }
-    .pix-to-anchor-cell:hover .pix-to-anchor-dot { background: #ddd; }
-    .pix-to-anchor-cell.active .pix-to-anchor-dot { background: #fff; }
+    .pix-to-anchor-cell {
+      background: rgba(255, 255, 255, 0.07);
+      border-radius: 2px;
+      cursor: pointer;
+      transition: background 0.08s;
+    }
+    .pix-to-anchor-cell:hover { background: rgba(255, 255, 255, 0.18); }
+    .pix-to-anchor-cell.active { background: ${BRAND}; }
   `;
   document.head.appendChild(s);
 }
