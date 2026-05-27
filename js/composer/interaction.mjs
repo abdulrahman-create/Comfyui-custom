@@ -805,6 +805,7 @@ PixaromaEditor.prototype.attachEvents = function () {
             presetId: layer.presetId || "Custom",
             visible: layer.visible,
             opacity: layer.opacity ?? 1,
+            locked: !!layer.locked,
           };
         }
         let finalSrcPath = layer.rawServerPath || null;
@@ -865,6 +866,7 @@ PixaromaEditor.prototype.attachEvents = function () {
           layerEntry.placeholderColor = layer.placeholderColor;
           layerEntry.inputIndex = layer.inputIndex;
           layerEntry.fillMode = layer.fillMode || "cover";
+          if (layer.phRatio) layerEntry.phRatio = layer.phRatio;
           layerEntry.naturalWidth = layer.img.width;
           layerEntry.naturalHeight = layer.img.height;
         }
@@ -896,6 +898,10 @@ PixaromaEditor.prototype.attachEvents = function () {
       const finalMeta = {
         doc_w: this.docWidth,
         doc_h: this.docHeight,
+        // Scope live-preview events to THIS node so a 2nd composer node in the
+        // same workflow doesn't pick up this one's preview (read by the Python
+        // node + the JS preview matcher).
+        project_id: this.projectID,
         // Save the user's chosen canvas BG so the dynamic-compose path
         // (Python composer when there are placeholders / auto-rembg /
         // masks) and the JS rebuildPreview can fill the canvas with it

@@ -433,7 +433,7 @@ PixaromaEditor.prototype.attemptRestore = async function () {
           presetId: mLayer.presetId || "Custom",
           visible: mLayer.visible !== false,
           opacity: mLayer.opacity ?? 1,
-          locked: false,
+          locked: !!mLayer.locked,
         };
         loadedCount++;
         if (loadedCount === layersToLoad.length) this.finishRestore();
@@ -451,6 +451,7 @@ PixaromaEditor.prototype.attemptRestore = async function () {
           placeholderColor: color,
           inputIndex: mLayer.inputIndex || 1,
           fillMode: mLayer.fillMode || "cover",
+          phRatio: mLayer.phRatio,
           removeBgOnExec: !!mLayer.removeBgOnExec,
           bgRemovalQuality: mLayer.bgRemovalQuality,
           img: this._makePlaceholderImage(w, h, color, mLayer.name, (bitmapImg) => {

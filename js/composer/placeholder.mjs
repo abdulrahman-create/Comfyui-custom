@@ -106,6 +106,12 @@ PixaromaEditor.prototype.convertLayerToPlaceholder = function (layerId) {
   layer.eraserMaskCtx_internal = null;
   layer.hasMask_internal = false;
   layer.savedMaskPath_internal = null;
+  // Clear contradictory kind-flags so a converted layer can't carry stale
+  // text/FX state into the save (the placeholder restore would silently drop it).
+  layer.isText = false;
+  layer.textState = undefined;
+  layer.isAdjustment = false;
+  layer.adjustments = undefined;
 
   this.ui.updateActiveLayerUI();
   this.draw();
