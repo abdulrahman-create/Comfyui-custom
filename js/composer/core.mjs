@@ -3,6 +3,7 @@ import { PixaromaLayers } from "./layers.mjs";
 import { installFocusTrap } from "../shared/index.mjs";
 import { NEUTRAL } from "./fx_engine.mjs";
 import { renderTextToCanvas } from "../framework/text_render.mjs";
+import { installGraphUndoGuard } from "../shared/graph_undo_guard.mjs";
 
 // Default style for a fresh text layer. Field names match the shared text panel
 // (js/framework/text_editor.mjs) so setLayer(layer.textState) edits these directly.
@@ -347,76 +348,16 @@ export class PixaromaEditor {
   // they restore the originals and pass through - otherwise loadGraphData would
   // stay disabled forever and brick the whole UI until a page refresh.
   _installGraphPatches() {
-    const app = window.app;
-    if (!app || !app.graph) return;
-    // REFCOUNTED across all open Composer editors. Two Composer nodes can both
-    // have an editor open; the patch must stay installed (Ctrl+Z blocked) until
-    // EVERY overlay is gone, so closing one editor never un-blocks another.
-    if (!app._pixComposerEditors) app._pixComposerEditors = new Set();
-    app._pixComposerEditors.add(this);
-
-    // Install the wrapper exactly ONCE, capturing the REAL originals. The guard
-    // flag prevents a second editor from saving the no-op wrapper as "original".
-    if (app._pixComposerPatchInstalled) return;
-    app._pixComposerOrigLoad = app.loadGraphData.bind(app);
-    app._pixComposerOrigConfigure = app.graph.configure.bind(app.graph);
-    app._pixComposerPatchInstalled = true;
-
-    const anyOverlayAlive = () => {
-      if (!app._pixComposerEditors) return false;
-      for (const ed of app._pixComposerEditors) {
-        try { if (ed._overlayAlive && ed._overlayAlive()) return true; } catch {}
-      }
-      return false;
-    };
-    // SELF-HEAL: if called while NO overlay is alive (all editors torn down
-    // without cleanup, e.g. tab closed mid-edit), restore the originals + clear
-    // state so loadGraphData/configure can never stay bricked. Returns the
-    // originals captured before clearing so the call still passes through.
-    const heal = () => {
-      const ol = app._pixComposerOrigLoad, oc = app._pixComposerOrigConfigure;
-      if (ol) app.loadGraphData = ol;
-      if (app.graph && oc) app.graph.configure = oc;
-      app._pixComposerOrigLoad = null;
-      app._pixComposerOrigConfigure = null;
-      app._pixComposerPatchInstalled = false;
-      if (app._pixComposerEditors) app._pixComposerEditors.clear();
-      return { ol, oc };
-    };
-    app.loadGraphData = function (...args) {
-      if (anyOverlayAlive()) return Promise.resolve();
-      const { ol } = heal();
-      return (ol || window.app.loadGraphData)(...args);
-    };
-    app.graph.configure = function (...args) {
-      if (anyOverlayAlive()) return undefined;
-      const { oc } = heal();
-      return oc ? oc(...args) : window.app.graph.configure(...args);
-    };
+    // Delegate to the shared, refcount-safe, self-healing guard. It also covers
+    // graph.undo/redo + the Comfy.Undo/Redo command (which this editor's old
+    // bespoke version did not), and unifies the patch with the other editors so
+    // they can never fight over app.loadGraphData. Idempotent: a re-open just
+    // re-registers via a fresh token.
+    if (!this._undoGuardOff)
+      this._undoGuardOff = installGraphUndoGuard(() => this._overlayAlive());
   }
 
-  // Drop THIS editor from the live set. Only truly restore the originals when NO
-  // Composer overlay remains alive (closing one of two open editors keeps the
-  // block intact for the other). Idempotent; safe from cleanup AND self-heal.
   _restoreGraphPatches() {
-    const app = window.app;
-    if (!app) return;
-    if (app._pixComposerEditors) app._pixComposerEditors.delete(this);
-    const stillAlive =
-      app._pixComposerEditors &&
-      [...app._pixComposerEditors].some((ed) => {
-        try { return ed._overlayAlive && ed._overlayAlive(); } catch { return false; }
-      });
-    if (stillAlive) return; // another editor is still open — keep the patch
-    if (app._pixComposerOrigLoad) {
-      app.loadGraphData = app._pixComposerOrigLoad;
-      app._pixComposerOrigLoad = null;
-    }
-    if (app.graph && app._pixComposerOrigConfigure) {
-      app.graph.configure = app._pixComposerOrigConfigure;
-      app._pixComposerOrigConfigure = null;
-    }
-    app._pixComposerPatchInstalled = false;
-    if (app._pixComposerEditors) app._pixComposerEditors.clear();
+    if (this._undoGuardOff) { this._undoGuardOff(); this._undoGuardOff = null; }
   }
 }
