@@ -83,7 +83,7 @@ async def serve_pixaroma_asset(request):
     ):
         return web.Response(status=400)
     file_path = os.path.realpath(os.path.join(PIXAROMA_ASSETS_DIR, filename))
-    if not file_path.startswith(PIXAROMA_ASSETS_DIR):
+    if not file_path.startswith(PIXAROMA_ASSETS_DIR + os.sep):
         return web.Response(status=403)
     if not os.path.isfile(file_path):
         return web.Response(status=404)
@@ -98,7 +98,7 @@ async def serve_pixaroma_asset_sub(request):
         if not _SAFE_ID_RE.match(part):
             return web.Response(status=400)
     file_path = os.path.realpath(os.path.join(PIXAROMA_ASSETS_DIR, subdir, filename))
-    if not file_path.startswith(PIXAROMA_ASSETS_DIR):
+    if not file_path.startswith(PIXAROMA_ASSETS_DIR + os.sep):
         return web.Response(status=403)
     if not os.path.isfile(file_path):
         return web.Response(status=404)
@@ -116,7 +116,7 @@ async def serve_pixaroma_asset_sub2(request):
     file_path = os.path.realpath(
         os.path.join(PIXAROMA_ASSETS_DIR, subdir, subdir2, filename)
     )
-    if not file_path.startswith(PIXAROMA_ASSETS_DIR):
+    if not file_path.startswith(PIXAROMA_ASSETS_DIR + os.sep):
         return web.Response(status=403)
     if not os.path.isfile(file_path):
         return web.Response(status=404)
