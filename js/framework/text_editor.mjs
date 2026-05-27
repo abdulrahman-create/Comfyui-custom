@@ -936,21 +936,20 @@ function injectCSS() {
     .pix-to-input-val::-webkit-outer-spin-button,
     .pix-to-input-val::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 
-    /* Spinner column matches Load Image (.pix-li-spin): recessed dark buttons
-       that stretch full cell height, with CSS chevron arrows (rotated-border
-       squares, no glyph font). Stretches via the cell's align-items:stretch -
-       no negative-margin hack (that left the column too short and the chevrons
-       collapsed into little x marks). */
+    /* Spinner column: SOLID filled triangle glyphs (literal ▲ ▼ chars - never
+       a \\25B2 CSS escape, which throws inside this template literal). No
+       divider, transparent buttons, so the field reads as one uniform dark box
+       (mirrors the Image Resize / Load Image spinner). Stretches full cell
+       height via the cell's align-items:stretch. */
     .pix-to-spin {
       display: flex;
       flex-direction: column;
-      width: 14px;
+      width: 16px;
       flex-shrink: 0;
-      border-left: 1px solid #444;
     }
     .pix-to-spin > button {
       flex: 1;
-      background: #232323;
+      background: transparent;
       border: none;
       padding: 0;
       cursor: pointer;
@@ -958,22 +957,18 @@ function injectCSS() {
       position: relative;
       outline: none;
     }
-    .pix-to-spin > button:hover { background: #333; color: ${BRAND}; }
-    .pix-to-spin-up { border-bottom: 1px solid #444; }
+    .pix-to-spin > button:hover { color: ${BRAND}; }
     .pix-to-spin-up::before,
     .pix-to-spin-down::before {
-      content: "";
       position: absolute;
       left: 50%;
       top: 50%;
-      width: 6px;
-      height: 6px;
-      transform: translate(-50%, -50%) rotate(-45deg);
-      border-top: 1px solid currentColor;
-      border-right: 1px solid currentColor;
+      transform: translate(-50%, -50%);
+      font-size: 8px;
+      line-height: 1;
     }
-    .pix-to-spin-up::before   { transform: translate(-50%, -25%) rotate(-45deg); }
-    .pix-to-spin-down::before { transform: translate(-50%, -75%) rotate(135deg); }
+    .pix-to-spin-up::before   { content: "▲"; }
+    .pix-to-spin-down::before { content: "▼"; }
 
     /* Color cell: [swatch LABEL hex] */
     .pix-to-color-cell {
