@@ -462,7 +462,10 @@ Pixaroma3DEditor.prototype._onResize = function () {
 };
 
 Pixaroma3DEditor.prototype._animate = function () {
-  if (!this.renderer) return;
+  // Self-terminate + dispose if the overlay was torn down without _close()
+  // running (Vue Compat #2) — otherwise the loop renders to a detached canvas
+  // forever and pins the WebGL context (Chrome caps ~16).
+  if (!this.renderer || !this.el.overlay?.isConnected) { this._close?.(); return; }
   this._animId = requestAnimationFrame(() => this._animate());
   this.orbitCtrl.update();
   // Composer renders scene + OutlinePass for live preview. Save path
