@@ -51,10 +51,10 @@ Native canvas does NOT honor CSS letter-spacing. We add it manually by drawing e
 
 When `layer.bgColor` is a hex string (not null / not empty):
 - Filled rounded rect at `(0, 0)` to `(bbox_width, bbox_height)`
-- Radius: `min(BG_RADIUS, bbox_width/2, bbox_height/2)` where `BG_RADIUS = 6`
+- Radius: `min(BG_RADIUS, bbox_width/2, bbox_height/2)` where `BG_RADIUS = 0` (sharp rectangle, per user preference)
 - Color: `bgColor` opaque (no alpha — pill is always full alpha; the layer's `opacity` applies to the whole composition including the pill)
 
-Hardcoded defaults: `BG_PAD_X = 16`, `BG_PAD_Y = 10`, `BG_RADIUS = 6`. No user controls for these in v2.
+Hardcoded defaults: `BG_PAD_X = 16`, `BG_PAD_Y = 10`, `BG_RADIUS = 0`. No user controls for these in v2.
 
 ## 4. Draw Order
 
