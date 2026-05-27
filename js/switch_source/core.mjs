@@ -145,7 +145,7 @@ function resizeToRows(node, rows) {
   if (node.size[1] !== h) node.size[1] = h;
 }
 
-function clearAllSlots(node) {
+export function clearAllSlots(node) {
   if (node.inputs) for (let i = node.inputs.length - 1; i >= 0; i--) node.removeInput(i);
   if (node.outputs) for (let i = node.outputs.length - 1; i >= 0; i--) node.removeOutput(i);
 }

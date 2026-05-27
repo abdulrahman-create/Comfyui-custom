@@ -2,7 +2,7 @@ import { app } from "/scripts/app.js";
 import {
   STATE_PROP, MAX_ROWS, CONTROL_BAND,
   readState, writeState,
-  setupNode, restoreFromProperties, rebuildSlots,
+  setupNode, restoreFromProperties, rebuildSlots, clearAllSlots,
   updateOutputLabels, rowCount, highestWiredRow,
   outputLabelRect, outputLabelScreenRect, pointInRect,
 } from "./core.mjs";
@@ -212,6 +212,12 @@ app.registerExtension({
     nodeType.prototype.onConfigure = function (info) {
       this._pixSsConfiguring = true;
       try {
+        // Clear the slots setupNode created (a_1, b_1) BEFORE configure runs.
+        // Otherwise LiteGraph's configure keeps those two and APPENDS the saved
+        // extras (a_2, a_3, b_2, b_3) at the end -> scrambled "A B A A B B" on
+        // reload. Starting empty makes configure re-add all saved slots in their
+        // saved two-bank order (a_1..a_N, b_1..b_N). Links restore afterwards.
+        clearAllSlots(this);
         const r = _origConfigure?.apply(this, arguments);
         restoreFromProperties(this);
         this._pixSsRefresh?.();
