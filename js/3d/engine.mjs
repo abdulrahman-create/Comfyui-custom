@@ -549,7 +549,13 @@ Pixaroma3DEditor.prototype._applyLightDir = function () {
 
 Pixaroma3DEditor.prototype._updateShadowFrustum = function () {
   const THREE = getTHREE();
-  if (!this.light || !this.objects.length) return;
+  if (!this.light) return;
+  // Refresh the shadow map on EVERY call (autoUpdate is off). This is critical
+  // for the empty-scene case — e.g. undoing the last object — where no casters
+  // remain: without flipping needsUpdate here, the last object's shadow stays
+  // frozen in the map. The frustum-fit below only runs when objects exist.
+  this.light.shadow.needsUpdate = true;
+  if (!this.objects.length) return;
   const box = new THREE.Box3();
   this.objects.forEach((o) => {
     if (!o.visible) return;
