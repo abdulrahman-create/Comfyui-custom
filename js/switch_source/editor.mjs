@@ -20,6 +20,7 @@ export function openLabelEditor(node, rowIdx1, rect) {
   input.type = "text";
   input.value = state.labels?.[rowIdx1] || "";
   input.placeholder = "row name";
+  input.maxLength = 64; // keep stored row names sane; display is clipped to node width
 
   const scale = app.canvas?.ds?.scale || 1;
   Object.assign(input.style, {

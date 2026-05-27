@@ -110,6 +110,19 @@ export function updateInputLabels(node) {
 // type, else "out r". Output type adopts the resolved wire type so downstream
 // type checks pass. Load-race guard (Vue Compat #18): never downgrade a wired
 // output to "*" when the type can't be resolved yet.
+// Clip a long display label so it can't overflow the node frame. Native output
+// labels are right-aligned and otherwise extend past both edges of the node
+// (a long custom row name spilled across the whole graph). The FULL name stays
+// in state.labels[r]; only the on-canvas text is clipped. Width-aware so a
+// wider node shows more, and deterministic for a given size (so recomputing it
+// on load matches the saved value and never falsely dirties the workflow).
+function clipLabel(node, s) {
+  if (typeof s !== "string") return s;
+  const w = node.size?.[0] || DEFAULT_W;
+  const maxChars = Math.max(8, Math.floor((w - 95) / 8));
+  return s.length > maxChars ? s.slice(0, maxChars - 1) + "…" : s;
+}
+
 export function updateOutputLabels(node) {
   const state = readState(node);
   const active = state.active;
@@ -125,15 +138,15 @@ export function updateOutputLabels(node) {
 
     if (t && t !== "*") {
       if (out.type !== t) out.type = t;
-      const lbl = custom || t;
+      const lbl = clipLabel(node, custom || t);
       if (out.label !== lbl) out.label = lbl;
     } else if (!hasLink) {
       if (out.type !== "*") out.type = "*";
-      const lbl = custom || `out ${r}`;
+      const lbl = clipLabel(node, custom || `out ${r}`);
       if (out.label !== lbl) out.label = lbl;
     } else {
       // Wired but type unresolved (load race): keep saved type; only fix label.
-      const lbl = custom || out.label || `out ${r}`;
+      const lbl = clipLabel(node, custom || out.label || `out ${r}`);
       if (out.label !== lbl) out.label = lbl;
     }
   }
