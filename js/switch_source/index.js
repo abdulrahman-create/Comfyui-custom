@@ -68,6 +68,19 @@ function injectCSS() {
     .pix-ss-missing-label { font-size:10px; color:#999; white-space:nowrap; }
     .pix-ss-missingtoggle { display:flex; gap:4px; flex:1; }
     .pix-ss-missingtoggle .pix-ss-btn { font-size:11px; letter-spacing:0; }
+    /* Solid filled ▲▼ triangles (like Image Resize / Load Image), replacing the
+       shared outline-chevron carets, and drop the internal divider so the Rows
+       box reads as one uniform field. Literal glyphs - never the \\XXXX escape
+       (octal-escape error in a template literal), per UI conventions #12. */
+    .pix-ss-rowsfield .pix-li-spin { width:16px; border-left:none; }
+    .pix-ss-rowsfield .pix-li-spin > button { background:transparent; }
+    .pix-ss-rowsfield .pix-li-spin-up::before,
+    .pix-ss-rowsfield .pix-li-spin-down::before {
+      border:none; width:auto; height:auto; font-size:8px; line-height:1;
+      transform:translate(-50%,-50%);
+    }
+    .pix-ss-rowsfield .pix-li-spin-up::before { content:"▲"; }
+    .pix-ss-rowsfield .pix-li-spin-down::before { content:"▼"; }
   `;
   document.head.appendChild(s);
 }
