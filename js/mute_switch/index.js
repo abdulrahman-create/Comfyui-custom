@@ -7,7 +7,7 @@ import {
   restoreAllOnRemove,
 } from "./core.mjs";
 import {
-  drawMuteSwitch,
+  drawMuteSwitch, hideTooltip,
   hitSelectModePill, hitMutePill, hitRowPill, hitLabel, labelScreenRect,
 } from "./render.mjs";
 import { openLabelEditor, cancelEditorForNode } from "./editor.mjs";
@@ -123,9 +123,10 @@ app.registerExtension({
       if (_origDown) return _origDown.call(this, e, pos);
     };
 
-    // Removal - restore muted nodes + cancel editor + clear pending disconnects.
+    // Removal - hide tooltip + restore muted nodes + cancel editor + clear pending.
     const _origRemoved = nodeType.prototype.onRemoved;
     nodeType.prototype.onRemoved = function () {
+      if (this._pixMsHover) hideTooltip();
       restoreAllOnRemove(this);
       cancelEditorForNode(this);
       if (this._pendingDisconnects?.size) {

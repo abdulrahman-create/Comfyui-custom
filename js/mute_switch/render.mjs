@@ -238,9 +238,129 @@ function getUpstreamType(node, slotIdx1) {
   return upstream?.outputs?.[link.origin_slot]?.type || null;
 }
 
+// ── Canvas tooltip helper (Pixaroma UI Convention #8) ────────────────────
+// Single floating <div> appended to document.body. Hover state tracked on
+// the calling node so transitions fire showTooltip/hideTooltip exactly once.
+
+let _tipEl = null;
+let _tipMoveHandler = null;
+let _tipOwnerNode = null;
+
+function ensureTipEl() {
+  if (_tipEl) return _tipEl;
+  _tipEl = document.createElement("div");
+  _tipEl.style.cssText = [
+    "position: fixed",
+    "z-index: 99999",
+    "pointer-events: none",
+    "background: rgba(20,20,20,0.95)",
+    "color: #ddd",
+    "font: 11px 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif",
+    "padding: 4px 8px",
+    "border-radius: 3px",
+    "border: 1px solid rgba(255,255,255,0.12)",
+    "max-width: 240px",
+    "line-height: 1.3",
+    "display: none",
+  ].join("; ");
+  document.body.appendChild(_tipEl);
+  return _tipEl;
+}
+
+function showTooltip(text, ownerNode) {
+  const el = ensureTipEl();
+  el.textContent = text;
+  el.style.display = "block";
+  _tipOwnerNode = ownerNode;
+
+  if (!_tipMoveHandler) {
+    _tipMoveHandler = (e) => {
+      // Hide if cursor leaves the LG canvas entirely (Prompt Pack Pattern #8).
+      if (e.target !== app.canvas?.canvas) {
+        hideTooltip();
+        return;
+      }
+      el.style.left = (e.clientX + 12) + "px";
+      el.style.top = (e.clientY + 16) + "px";
+    };
+    window.addEventListener("mousemove", _tipMoveHandler);
+  }
+}
+
+export function hideTooltip() {
+  if (_tipEl) _tipEl.style.display = "none";
+  if (_tipMoveHandler) {
+    window.removeEventListener("mousemove", _tipMoveHandler);
+    _tipMoveHandler = null;
+  }
+  if (_tipOwnerNode) {
+    _tipOwnerNode._pixMsHover = null;
+    _tipOwnerNode = null;
+  }
+}
+
+// Per-frame hover detection inside drawMuteSwitch.
+function detectHover(node) {
+  const gm = app.canvas?.graph_mouse;
+  if (!gm) return null;
+  const mx = gm[0] - node.pos[0];
+  const my = gm[1] - node.pos[1];
+  const w = node.size[0];
+
+  if (hitSelectModePill([mx, my], w)) return "selectMode";
+  if (hitMutePill([mx, my], w)) return "muteMode";
+
+  const inputs = node.inputs || [];
+  for (let i = 0; i < inputs.length; i++) {
+    if (hitRowPill([mx, my], w, i)) return `rowPill:${i}`;
+  }
+  return null;
+}
+
+function updateHoverTooltip(node) {
+  const newHover = detectHover(node);
+  const prevHover = node._pixMsHover || null;
+  if (newHover === prevHover) return;
+  node._pixMsHover = newHover;
+
+  if (newHover === "selectMode") {
+    const cur = node.properties?.muteSwitchState?.selectMode || "multi";
+    showTooltip(
+      cur === "single"
+        ? "Click to allow multiple scenes at once"
+        : "Click to allow only one scene at a time",
+      node,
+    );
+  } else if (newHover === "muteMode") {
+    const cur = node.properties?.muteSwitchState?.muteMode || "mute";
+    showTooltip(
+      cur === "mute"
+        ? "Mute: scene does not run at all. Click for Bypass."
+        : "Bypass: each node passes its input through unchanged. Click for Mute.",
+      node,
+    );
+  } else if (newHover && newHover.startsWith("rowPill:")) {
+    const i = parseInt(newHover.split(":")[1], 10);
+    const row = node.properties?.muteSwitchState?.rows?.[i];
+    const slot = node.inputs?.[i];
+    if (slot && slot.link != null && row) {
+      showTooltip(
+        row.enabled ? "Click to skip this scene" : "Click to enable this scene",
+        node,
+      );
+    } else {
+      hideTooltip();
+    }
+  } else {
+    hideTooltip();
+  }
+}
+
 // ── Main paint ───────────────────────────────────────────────────────────
 
 export function drawMuteSwitch(node, ctx) {
+  updateHoverTooltip(node);
+
   const w = node.size[0];
   const state = node.properties?.muteSwitchState;
   const selectMode = state?.selectMode || "multi";
