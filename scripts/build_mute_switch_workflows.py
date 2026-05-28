@@ -1118,7 +1118,7 @@ def build_workflow_4_v2():
                  "pos": [10, 42 + i*20]} for i in range(len(rows_labels) + 1)
             ],
             "outputs": [
-                {"name": "out", "type": "*", "links": []}
+                {"name": "out", "type": "PIXAROMA_MUTE_CHAIN", "links": []}
             ],
             "properties": {
                 "cnr_id": "ComfyUI-Pixaroma",
@@ -1181,11 +1181,11 @@ def build_workflow_4_v2():
     }
     nodes.append(outer)
 
-    l = new_link(swA["id"], 0, outer_id, 0, "*")
+    l = new_link(swA["id"], 0, outer_id, 0, "PIXAROMA_MUTE_CHAIN")
     swA["outputs"][0]["links"].append(l)
     outer["inputs"][0]["link"] = l
 
-    l = new_link(swB["id"], 0, outer_id, 1, "*")
+    l = new_link(swB["id"], 0, outer_id, 1, "PIXAROMA_MUTE_CHAIN")
     swB["outputs"][0]["links"].append(l)
     outer["inputs"][1]["link"] = l
 
@@ -1316,7 +1316,7 @@ def build_workflow_5_simple_chaining():
                 for i in range(n_visible)
             ],
             "outputs": [
-                {"name": "out", "type": "*", "links": [], "label": "​"},
+                {"name": "out", "type": "PIXAROMA_MUTE_CHAIN", "links": [], "label": "​"},
             ],
             "properties": {
                 "cnr_id": "ComfyUI-Pixaroma",
