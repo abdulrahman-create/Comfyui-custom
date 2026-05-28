@@ -27,11 +27,11 @@ const ROW_PILL_W = 28;
 const ROW_PILL_H = 14;
 const ROW_PILL_R = 7;
 const ROW_KNOB_R = 4;
-// Right-side margin. Wide enough to leave room for the phantom "out" output
-// dot (which we pull 10 px inside the body, mirroring the input-dot inset on
-// the left). Without this margin the pill would butt right up against the
-// edge and the output dot would have nowhere to sit.
-const ROW_PILL_RIGHT_PAD = 28;
+// Right-side margin. Wide enough to leave room for BOTH the phantom "out"
+// output dot (10 px inside) AND its "out" caption (~20 px wide painted to
+// the dot's left) without either overlapping the row pills. At MIN_W=260
+// this still leaves ~144 px of label width on each row.
+const ROW_PILL_RIGHT_PAD = 52;
 const DOT_GUTTER = 28;
 
 // ── Mode bar rects (body-local) ──────────────────────────────────────────
