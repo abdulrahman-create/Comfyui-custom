@@ -103,26 +103,41 @@ export function normalizeSlots(node) {
   // Push each input dot down by MODE_BAR_H so it aligns with our row paint.
   // slot.pos = [x, y] is body-local. Vue Compat #16: this LG fork reads
   // slot.pos via calculateInputSlotPosFromSlot.
+  // Diff-gated to avoid dirtying a saved workflow on plain open (Compat #18) -
+  // LG serialises slot.pos so unconditional writes count as a modification.
   for (let i = 0; i < node.inputs.length; i++) {
     const y = MODE_BAR_H + TOP_PAD + i * ROW_H + ROW_H / 2;
-    node.inputs[i].pos = [10, y];
+    const cur = node.inputs[i].pos;
+    if (!cur || cur[0] !== 10 || cur[1] !== y) {
+      node.inputs[i].pos = [10, y];
+    }
   }
 
   // Schema migration: workflows saved before the phantom "out" output was
-  // added still have outputs: []. Re-add it. LiteGraph happily appends.
+  // added still have outputs: []. Re-add it. One-time dirty for legacy
+  // workflows; once re-saved, the migration branch never fires again.
+  // Use the custom PIXAROMA_MUTE_CHAIN type so LG type-checking blocks the
+  // user from wiring 'out' into non-Mute-Switch consumers (which would
+  // crash at runtime - the output carries None).
   if (!node.outputs || node.outputs.length === 0) {
-    node.addOutput("out", "*");
+    node.addOutput("out", "PIXAROMA_MUTE_CHAIN");
+  } else if (node.outputs[0] && node.outputs[0].type === "*") {
+    // One-time migration from the v2.0 wildcard output to the typed one.
+    node.outputs[0].type = "PIXAROMA_MUTE_CHAIN";
   }
   // Suppress the "out" label (it would otherwise overlap with the mode bar
-  // pill text) and pin the dot just below the mode bar.
+  // pill text).
   for (const out of node.outputs) {
     if (out.label !== "​") out.label = "​";
   }
+  // Pin the dot just below the mode bar, diff-gated (Compat #18).
   if (node.outputs[0]) {
-    node.outputs[0].pos = [
-      node.size[0] - OUTPUT_X_INSET,
-      MODE_BAR_H + TOP_PAD + ROW_H / 2,
-    ];
+    const ox = node.size[0] - OUTPUT_X_INSET;
+    const oy = MODE_BAR_H + TOP_PAD + ROW_H / 2;
+    const cur = node.outputs[0].pos;
+    if (!cur || cur[0] !== ox || cur[1] !== oy) {
+      node.outputs[0].pos = [ox, oy];
+    }
   }
 
   // Sync state.rows length to slot count.
@@ -135,8 +150,9 @@ export function normalizeSlots(node) {
     state.rows.pop();
   }
 
-  const w = Math.max(node.size[0] || 0, DEFAULT_W);
-  if (node.size[0] !== w) node.size[0] = w;
+  // Width: do NOT clobber a user-resized width back up to DEFAULT_W
+  // (Compat #18). Fresh-node default is handled in setupNode; here we
+  // just leave node.size[0] alone unless slot count actually changed.
 
   if (node.inputs.length !== beforeLen) {
     const h = computeNodeHeight(node.inputs.length);
@@ -149,6 +165,10 @@ export function normalizeSlots(node) {
 export function setupNode(node) {
   clearNativeInputs(node);
   normalizeSlots(node);
+  // Fresh-node defaults. LG configure() runs AFTER onNodeCreated and
+  // overwrites these from the saved workflow JSON, so this only affects
+  // brand-new drops on the canvas.
+  if (!node.size[0] || node.size[0] < DEFAULT_W) node.size[0] = DEFAULT_W;
   node.size[1] = Math.max(node.size[1], MIN_BODY_H);
 }
 
@@ -326,6 +346,13 @@ export function applyAllMuteSwitches(graph, excludeId /* optional */) {
     if (n && n.id != null) nodesById[n.id] = n;
   }
 
+  // Prune stale originalModes entries on every switch (their upstream node
+  // was deleted from the graph). Without this, deleted-node ids accumulate
+  // on every switch's originalModes forever.
+  for (const sw of switches) {
+    pruneOrphanedOriginalModes(sw);
+  }
+
   // Compute the union of want-muted sets across every Mute Switch.
   const wantMuted = resolveAllMutes(switches, nodesById, graph.links, isMuteSwitchNode);
 
@@ -357,7 +384,13 @@ export function applyAllMuteSwitches(graph, excludeId /* optional */) {
       if (om && om[key] !== undefined) { alreadySaved = true; break; }
     }
 
-    if (!alreadySaved && n.mode !== targetMode && switches.length > 0) {
+    // Save the "true original" regardless of whether the mode actually
+    // needs to change. Without this, a node that happened to be in the
+    // target mode already (user manually muted it before we touched it,
+    // or it carried mode=2 across a workflow reload) leaves no record on
+    // any switch - so when the row toggles back ON we have nothing to
+    // restore to and the node stays stuck at target mode.
+    if (!alreadySaved && switches.length > 0) {
       const sw = switches[0];
       if (!sw.properties[ORIGINAL_MODES_PROP]) sw.properties[ORIGINAL_MODES_PROP] = {};
       sw.properties[ORIGINAL_MODES_PROP][key] = n.mode;
@@ -375,19 +408,30 @@ function actuallyDisconnect(node, slotIdx1) {
   const state = readState(node);
   const slotCount = node.inputs?.length || 0;
 
+  // Defensive against a disconnect -> connect -> disconnect timing race
+  // where the deferred call fires after the slot has been re-wired.
+  // handleConnect's pending-cancel should prevent this, but cheap insurance.
+  const slot = node.inputs?.[slotIdx1 - 1];
+  if (slot && slot.link != null) return;
+
   // 1. Remove the slot.
   if (slotIdx1 >= 1 && slotIdx1 <= slotCount) {
     node.removeInput(slotIdx1 - 1);
   }
 
   // 2. Rename remaining slots so suffixes stay contiguous AND re-apply slot.pos
-  //    so dots stay aligned with our row paint after the shift.
+  //    so dots stay aligned with our row paint after the shift. Diff-gated
+  //    to avoid spurious serialized-state writes (Compat #18).
   if (node.inputs) {
     for (let i = 0; i < node.inputs.length; i++) {
-      node.inputs[i].name = `input_${i + 1}`;
-      node.inputs[i].label = "​";
+      const expectedName = `input_${i + 1}`;
+      if (node.inputs[i].name !== expectedName) node.inputs[i].name = expectedName;
+      if (node.inputs[i].label !== "​") node.inputs[i].label = "​";
       const y = MODE_BAR_H + TOP_PAD + i * ROW_H + ROW_H / 2;
-      node.inputs[i].pos = [10, y];
+      const cur = node.inputs[i].pos;
+      if (!cur || cur[0] !== 10 || cur[1] !== y) {
+        node.inputs[i].pos = [10, y];
+      }
     }
   }
 

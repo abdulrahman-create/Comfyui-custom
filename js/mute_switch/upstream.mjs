@@ -41,7 +41,10 @@ export function cascadeMuteSet(switchNode, nodesById, graphLinks, isMuteSwitch) 
   visited.add(switchNode.id);
 
   function cascade(target) {
-    if (!target || visited.has(target.id)) return;
+    // target.id == null guards against pre-LG-assignment construction races
+    // and against null-id collisions in the visited Set.
+    if (!target || target.id == null) return;
+    if (visited.has(target.id)) return;
     visited.add(target.id);
     out.add(target.id);
 

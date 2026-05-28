@@ -51,7 +51,12 @@ class PixaromaMuteSwitch:
     # input so the outer switch can cascade through this one. The value is
     # always None at runtime - muting is JS-side, the output exists only as
     # a canvas-side hook.
-    RETURN_TYPES = (ANY,)
+    #
+    # The custom type "PIXAROMA_MUTE_CHAIN" prevents accidentally wiring
+    # 'out' into a non-Mute-Switch consumer (which would receive None and
+    # crash at runtime). Mute Switch's own ANY inputs still accept it
+    # because ANY matches anything.
+    RETURN_TYPES = ("PIXAROMA_MUTE_CHAIN",)
     RETURN_NAMES = ("out",)
     OUTPUT_TOOLTIPS = (
         "Phantom pass-through used to CHAIN Mute Switches. Wire this into "

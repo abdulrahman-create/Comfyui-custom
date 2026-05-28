@@ -51,9 +51,11 @@ export function openLabelEditor(node, slotIdx, rect) {
 
   const initial = node.properties?.[STATE_PROP]?.rows?.[slotIdx - 1]?.label || "";
 
+  // Floor the font + padding so the editor stays usable at low zoom (LG
+  // can go as low as 0.25, which would otherwise render 3px text).
   const scale = app.canvas?.ds?.scale || 1;
-  const fontPx = 12 * scale;
-  const padX = 6 * scale;
+  const fontPx = Math.max(11, 12 * scale);
+  const padX = Math.max(4, 6 * scale);
   const borderPx = Math.max(1, 2 * scale);
 
   const input = document.createElement("input");

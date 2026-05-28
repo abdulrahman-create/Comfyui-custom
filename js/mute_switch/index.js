@@ -67,7 +67,9 @@ app.registerExtension({
     const _origDraw = nodeType.prototype.onDrawForeground;
     nodeType.prototype.onDrawForeground = function (ctx) {
       // Self-heal min width / height (Vue Compat #13 + Preview Image #11).
-      const MIN_W = 240;
+      // MIN_W = 260 leaves clear horizontal headroom between the right-side
+      // pill and the phantom output dot at the right edge.
+      const MIN_W = 260;
       const MIN_H = 80;
       let changed = false;
       if (this.size[0] < MIN_W) { this.size[0] = MIN_W; changed = true; }
