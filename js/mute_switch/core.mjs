@@ -105,7 +105,7 @@ export function normalizeSlots(node) {
   // slot.pos via calculateInputSlotPosFromSlot.
   for (let i = 0; i < node.inputs.length; i++) {
     const y = MODE_BAR_H + TOP_PAD + i * ROW_H + ROW_H / 2;
-    node.inputs[i].pos = [0, y];
+    node.inputs[i].pos = [10, y];
   }
 
   // Sync state.rows length to slot count.
@@ -168,7 +168,7 @@ export function handleConnect(node, slotIdx1) {
       state.rows.push({ enabled, label: null });
       // Update slot.pos for the freshly-added trailing slot too.
       const y = MODE_BAR_H + TOP_PAD + (newIdx1 - 1) * ROW_H + ROW_H / 2;
-      node.inputs[newIdx1 - 1].pos = [0, y];
+      node.inputs[newIdx1 - 1].pos = [10, y];
       node.size[1] = computeNodeHeight(node.inputs.length);
     }
   }
@@ -364,7 +364,7 @@ function actuallyDisconnect(node, slotIdx1) {
       node.inputs[i].name = `input_${i + 1}`;
       node.inputs[i].label = "​";
       const y = MODE_BAR_H + TOP_PAD + i * ROW_H + ROW_H / 2;
-      node.inputs[i].pos = [0, y];
+      node.inputs[i].pos = [10, y];
     }
   }
 
@@ -378,13 +378,13 @@ function actuallyDisconnect(node, slotIdx1) {
     addInputSlot(node, 1);
     const enabled = state.selectMode === "single" ? false : true;
     state.rows.push({ enabled, label: null });
-    inputs[0].pos = [0, MODE_BAR_H + TOP_PAD + ROW_H / 2];
+    inputs[0].pos = [10, MODE_BAR_H + TOP_PAD + ROW_H / 2];
   } else if (last && last.link != null && inputs.length < MAX_INPUTS) {
     addInputSlot(node, inputs.length + 1);
     const enabled = state.selectMode === "single" ? false : true;
     state.rows.push({ enabled, label: null });
     const newIdx0 = inputs.length - 1;
-    inputs[newIdx0].pos = [0, MODE_BAR_H + TOP_PAD + newIdx0 * ROW_H + ROW_H / 2];
+    inputs[newIdx0].pos = [10, MODE_BAR_H + TOP_PAD + newIdx0 * ROW_H + ROW_H / 2];
   }
 
   // 5. Resize.
