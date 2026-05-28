@@ -68,7 +68,7 @@ The best way to see the difference between two images. Easily compare them side-
 ![Image Compare Editor](workflows/Image%20Compare%20Pixaroma%20Workflow%20v2.jpg?v=2)
 
 ### 🖼️ Load Image Pixaroma
-A drop-in replacement for ComfyUI's native LoadImage with everything you'd want in one node. Same upload / drag-drop / Ctrl+V paste / multi-frame / alpha-to-mask behavior as native, plus inline resize: pick from **Off**, **Max megapixels**, **Longest side**, **Scale by ×**, **Fit inside**, **Crop to fill**, or **Match aspect ratio** with a sub-toggle for Crop or Pad (12 ratio presets + Custom, with a Pixaroma color picker for the Pad color). **Snap to /8/16/32/64**, **Resample picker** (Auto / Nearest / Bilinear / Bicubic / Lanczos with one-line hints under each), and an **Allow upscaling** toggle apply on top. Numeric fields accept math expressions (`1024+64`, `512*2`), ↑↓ arrow stepping (Shift = 10×), and have visible +/- spinner buttons. A live **Input → Output** info bar with tiny aspect-ratio rectangles shows you exactly what dimensions the workflow will produce as you tweak settings. Outputs include `IMAGE`, `MASK`, `WIDTH`, `HEIGHT`, `FILENAME` (no extension), `ORIGINAL_WIDTH`, `ORIGINAL_HEIGHT` — eliminates downstream Get Image Size + Image Scale chains in most workflows.
+A drop-in replacement for ComfyUI's native LoadImage with everything you'd want in one node. Same upload / drag-drop / Ctrl+V paste / multi-frame / alpha-to-mask behavior as native, plus inline resize: pick from **Off**, **Max megapixels**, **Longest side**, **Scale by ×**, **Fit inside**, **Crop to fill**, or **Match aspect ratio** with a sub-toggle for Crop or Pad (12 ratio presets + Custom, with a Pixaroma color picker for the Pad color). **Snap to /8/16/32/64**, **Resample picker** (Auto / Nearest / Bilinear / Bicubic / Lanczos with one-line hints under each), and an **Allow upscaling** toggle apply on top. Numeric fields accept math expressions (`1024+64`, `512*2`), ↑↓ arrow stepping (Shift = 10×), and have visible +/- spinner buttons. A live **Input → Output** info bar with tiny aspect-ratio rectangles shows you exactly what dimensions the workflow will produce as you tweak settings. Outputs include `IMAGE`, `MASK`, `WIDTH`, `HEIGHT`, `FILENAME` (no extension), `ORIGINAL_WIDTH`, `ORIGINAL_HEIGHT` - eliminates downstream Get Image Size + Image Scale chains in most workflows.
 
 ### ↔️ Image Resize Pixaroma
 Resize any image (and its mask) anywhere in your workflow with one compact node. Pick a mode - **Off**, **Max megapixels**, **Longest side**, **Scale by ×**, **Fit inside**, **Crop to fill**, **Match aspect ratio**, or **Pad** (add a colored border for outpainting / inpainting, where the new area becomes the editable mask region). **Crop to fill** has a 9-point **anchor** (keep the top, a corner, the center…) and a **Fill / Crop** toggle (scale-and-crop, or cut a piece at original pixels). A live **Input → Output** card with tiny aspect-ratio rectangles shows exactly what you'll get, and turns orange only when the size actually changes. Wire a **width / height** in (e.g. from Resolution Pixaroma): connect just one to scale while keeping the aspect ratio, or both for an exact size, and the controls adapt automatically. **Snap to /8/16/32/64**, a **Resample picker** (Auto / Nearest / Bilinear / Bicubic / Lanczos), and an **Allow upscaling** toggle apply on top; number fields take math like `1024+64`. Outputs `IMAGE`, `MASK`, `WIDTH`, `HEIGHT`.
@@ -245,19 +245,20 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 > 💡 **After updating Pixaroma:** hard-refresh your ComfyUI browser tab with **Ctrl+Shift+R** (or **Cmd+Shift+R** on Mac). The browser keeps old node visuals cached, and without a hard refresh you may still see the previous version of a node even though the update installed correctly.
 
-### **May 28, 2026 · v1.3.62–1.3.65**
-- **Preview Image: option to keep filenames clean on Save to Disk.** In Settings → 👑 Pixaroma → Preview (disk save), turn on **Save Disk: omit counter from filename** and the Save dialog will pre-fill `myimage.png` instead of `myimage_00001_.png` — no more deleting the padding by hand. Your computer will still warn before overwriting an existing file. Save to Output is unchanged: it always keeps the counter so a re-run can't silently overwrite the previous file.
-- **Mute Switch: right-click to flip every row at once.** Right-click any Mute Switch and pick **Enable all rows** or **Disable all rows** to turn every wired row on (or off) in one click. Both options stay greyed out in Single mode (since only one row can be on at a time there). Per-row toggles still work the same — this is just a shortcut for "give me everything" or "skip everything" without clicking each row.
+### **May 28, 2026 · v1.3.62-1.3.66**
+- **Preview Image: saved images now appear in the Media Assets panel.** With the node's save mode set to "save", your image shows up in the Assets panel the moment the workflow finishes, exactly like the native Save Image node. Before, the file landed in your output folder but the panel stayed empty until you manually reloaded. The thumbnail on the node itself stays clean (no duplicate preview), and the asset card no longer shows a confusing stack-count badge for single saves. Thanks @Dean-Corso for the bug report and video that nailed down the cause.
+- **Preview Image: option to keep filenames clean on Save to Disk.** In Settings → 👑 Pixaroma → Preview (disk save), turn on **Save Disk: omit counter from filename** and the Save dialog will pre-fill `myimage.png` instead of `myimage_00001_.png` - no more deleting the padding by hand. Your computer will still warn before overwriting an existing file. Save to Output is unchanged: it always keeps the counter so a re-run can't silently overwrite the previous file.
+- **Mute Switch: right-click to flip every row at once.** Right-click any Mute Switch and pick **Enable all rows** or **Disable all rows** to turn every wired row on (or off) in one click. Both options stay greyed out in Single mode (since only one row can be on at a time there). Per-row toggles still work the same - this is just a shortcut for "give me everything" or "skip everything" without clicking each row.
 - **NEW: Mute Switch Pixaroma.** Skip whole parts of a workflow with one click. Wire the last node of each "scene" (usually a KSampler) into a row, then use the small switches to pick what runs and what does not. Two pills at the top: Single (only one scene runs at a time, like a radio button) or Multi (any combination), and Mute (the scene does not run) or Bypass (each node passes its input through unchanged). Chain Mute Switches together to group scenes: an outer Mute Switch can pick a group, and inner Mute Switches fine-tune which scenes inside that group run. Labels on rows are editable so you can name your scenes.
 - **Tooltips on Mute Switch, Prompt Pack and Prompt Multi now match the standard Windows / Mac look** (white background, dark text, sharp corners) so they read the same way as the tooltips on regular buttons.
 - **NEW: Switch Source Pixaroma.** Flip a whole pipeline (or any set of wires) between two sources with one click. Wire your A bank and B bank for as many rows as you need (works for any wire type: MODEL, CLIP, VAE, IMAGE, LATENT, STRING…), then toggle A/B to swap them all at once. Two common setups: swap a combined Load Checkpoint against three separate model/CLIP/VAE loaders, or flip a "local" pipeline against an "api" one without ticking ten little switches. Output labels are editable per row, and you can pick whether empty rows leave the output blank or show a clear error.
 - **Prompt Reader sees through Switch Source.** Drop a saved image whose workflow ran through a Switch Source and the prompt comes back correctly, instead of "no prompt found".
 
-### **May 27, 2026 · v1.3.59–1.3.61**
-- **Fixed: Prompt Multi / Prompt Pack no longer make too many images when wired into one Switch together.** With several prompt nodes feeding a single Switch, clicking Run now makes exactly the prompts from the one the Switch is pointing at (for example 3, not 9) — the others sit out instead of multiplying.
-- **NEW: Text Watermark node.** Stamp text onto an image or a whole batch in a fixed spot — pick a corner / edge / center on a 3×3 grid plus a margin, and it lands in the same place on every image no matter its size. Set the size in pixels or as a percentage of the image width (so mixed-size batches stay consistent), with font, color, opacity, rotation and an optional background bar. No separate editor to open.
-- **NEW: use your own fonts.** Drop `.ttf`/`.otf` files into `ComfyUI/models/fonts/` and they show up in the font picker for Text Overlay and Image Composer text — with a search box and a "Custom" group to find them fast.
-- **Undo inside an editor stays inside that editor.** In Paint, 3D Builder, Image Crop, Image Composer, Note, AudioReact and Text Overlay, pressing **Ctrl+Z** now only undoes your edits in the open editor — it can no longer accidentally delete the node or revert the rest of your workflow behind it.
+### **May 27, 2026 · v1.3.59-1.3.61**
+- **Fixed: Prompt Multi / Prompt Pack no longer make too many images when wired into one Switch together.** With several prompt nodes feeding a single Switch, clicking Run now makes exactly the prompts from the one the Switch is pointing at (for example 3, not 9) - the others sit out instead of multiplying.
+- **NEW: Text Watermark node.** Stamp text onto an image or a whole batch in a fixed spot - pick a corner / edge / center on a 3×3 grid plus a margin, and it lands in the same place on every image no matter its size. Set the size in pixels or as a percentage of the image width (so mixed-size batches stay consistent), with font, color, opacity, rotation and an optional background bar. No separate editor to open.
+- **NEW: use your own fonts.** Drop `.ttf`/`.otf` files into `ComfyUI/models/fonts/` and they show up in the font picker for Text Overlay and Image Composer text - with a search box and a "Custom" group to find them fast.
+- **Undo inside an editor stays inside that editor.** In Paint, 3D Builder, Image Crop, Image Composer, Note, AudioReact and Text Overlay, pressing **Ctrl+Z** now only undoes your edits in the open editor - it can no longer accidentally delete the node or revert the rest of your workflow behind it.
 - **3D Builder:** undoing the last object now also clears its shadow, and opening/closing the editor repeatedly no longer slows the viewport down over time.
 - **Text Overlay:** the red ✕ Close button now discards the changes you made that session (use Save to keep them).
 - Plus smaller touches: many Image Composer reliability fixes (erasing + undo, color-grade layers, saving and reloading), crisper text when resizing a text layer, and editor cleanups.
@@ -268,10 +269,10 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 ### **May 25, 2026 · v1.3.56**
 - **NEW: node colors organized by color.** Right-click a node → **👑 Pixaroma Node Colors** and pick a color (Red, Orange, Gold … Pink); open one to see its shades from deep to bright. A new **Dark** folder holds the standard Pixaroma dark plus a few neutral and softly-tinted dark options.
 - **Fixed: masks work again on Load Image.** Drawing a mask in the Mask Editor and saving now produces the mask from the node.
-- **Fixed: Load Image loads the right picture after Copy/Paste (Clipspace)** — pasting a copied image now loads that image, not the previous one.
+- **Fixed: Load Image loads the right picture after Copy/Paste (Clipspace)** - pasting a copied image now loads that image, not the previous one.
 - **Fixed: Number and WH nodes keep their size when you switch workflows** (the title no longer gets cut off).
 
-### **May 22, 2026 · v1.3.53–1.3.55**
+### **May 22, 2026 · v1.3.53-1.3.55**
 - **NEW: color your groups, not just nodes.** Right-click a group (the labelled box around nodes) and pick from a set of ready-made colors, or open the custom picker for any shade - a quick way to organize a busy workflow at a glance.
 - **Copy a color and paste it anywhere.** Grab the color from any node or group and paste it onto others - even from a node onto a group - so you can match an existing workflow's color scheme in a couple of clicks.
 - **Save your favorite colors.** Keep up to four colors you use often and apply them in one click from the right-click menu; they're remembered between sessions.
@@ -284,7 +285,7 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 - **Load Image: find and pick images by thumbnail.** Open the file list and you now see a thumbnail of every image, a search box to filter by name, and a folder sidebar to jump between subfolders - so you can recognise the image you want at a glance instead of reading file names. A small toggle switches between small and large thumbnails and remembers your choice.
 - **Fixed: running a single node no longer starts the whole workflow.** Pressing a node's own run button (Execute) again runs just that node and what it needs, instead of kicking off the entire workflow.
 
-### **May 21, 2026 · v1.3.51–1.3.52**
+### **May 21, 2026 · v1.3.51-1.3.52**
 - **NEW: Image Resize Pixaroma.** Resize an image (and its mask) anywhere in your workflow with one compact node. Choose **Off**, **Max megapixels**, **Longest side**, **Scale by**, **Fit inside**, **Crop to fill**, **Match aspect ratio**, or **Pad** - which adds a border for outpainting and marks the new area as the mask to fill. **Crop to fill** lets you pick which part of the image to keep (the top, a corner, the center…) and whether to scale-and-crop or cut a piece at its original size. A live **Input → Output** preview shows the exact result and lights up only when the size actually changes. Wire a **width or height** in (for example from Resolution Pixaroma): connect just one to scale while keeping the shape, or both for an exact size - the node adapts on its own.
 - **Image Resize: wire in a single "longest side" value.** Connect one number and the node scales the longer edge of your image to that size, keeping the shape, so you no longer have to decide between width and height. It also gained a matching **longest side** output. Wired sizes now follow the **Upscaling** toggle, and a value of 0 simply passes the image through untouched.
 - **Press Ctrl+Enter to run while typing.** Text, Prompt Pack, Prompt Multi, and Prompt Stack fields no longer swallow the Run shortcut.
@@ -292,16 +293,16 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 - **Nodes remember their settings on reload.** Switch, Image Resize, and Crop no longer reset their choices when you reopen a workflow or switch tabs.
 - **Title cards hug their text** instead of stretching into a wide empty box.
 
-### **May 20, 2026 · v1.3.48–1.3.50**
+### **May 20, 2026 · v1.3.48-1.3.50**
 - **Text Overlay: move the whole caption in one click.** A new **Position on canvas** row on the node body snaps the text to any edge or the center of the image. The left/center/right buttons are now clearly labelled **Text align** (they line up multiple lines inside the text block).
 - **Prompt Pack & Prompt Multi no longer block a Run when they're not in use.** A leftover prompt node sitting on the canvas (unwired or muted) used to stop every workflow with a "paste a prompt" warning. Now it only speaks up when it's actually wired into the run.
 - **Fixed: opening and closing a workflow no longer falsely asks to "Save Changes?".** Text Overlay, Prompt Stack, Prompt Multi, Switch, and Label title cards were marking a workflow as edited just by being opened. (Re-save an affected workflow once to clear it for good.)
-- **Fixed: drag the ⋮⋮ handle to reorder rows** in Prompt Stack and Prompt Multi — it now works.
+- **Fixed: drag the ⋮⋮ handle to reorder rows** in Prompt Stack and Prompt Multi - it now works.
 - **Fixed: the fullscreen editors can no longer freeze the UI.** Closing a workflow while a Text Overlay / Note / AudioReact editor was open could leave you unable to open or create workflows until a refresh; it now recovers on its own.
 - **Fixed: Connection FX no longer sparkles every wire when you open a workflow.** The sparkle now fires only when you connect two nodes yourself, not when a saved workflow loads all its wires.
 - **Fixed: the Paragraph/Line tip on Prompt Pack (and Queue/List on Prompt Multi) no longer stays stuck on screen** after you move your mouse off the buttons into the text box.
 
-### **May 19, 2026 · v1.3.40–1.3.47**
+### **May 19, 2026 · v1.3.40-1.3.47**
 - **NEW: Run Button FX & Connection FX.** Optional flair in Settings: 8 styles for the Run button (flames, lightning, sparkles, shockwave…) and a magnetic glow with particles while you drag a wire to a slot. Both off by default.
 - **NEW: One-click node colors.** Right-click any node → **👑 Pixaroma colors** for 33 ready-made themes, plus a saved Favorite and a custom picker. Works on several selected nodes at once, and the colors travel with the workflow when you share it.
 - **Text & prompt nodes share one clean look.** Matching textareas, buttons, and spacing that blend with any node color. Text Pixaroma gained **Copy all / Replace / Clear** buttons, and the mode pills on Prompt Pack/Multi moved to the top with hover tips.
@@ -310,31 +311,31 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 - **Works again on older ComfyUI installs** (a recent update could hide the whole Pixaroma menu).
 - Plus smaller touches: Image Compare one-click Copy, a default save-mode setting for Preview Image, and fixes for drag-selecting text in prompt rows, layer renaming, and minimum node sizes.
 
-### **May 18, 2026 · v1.3.37–1.3.39**
+### **May 18, 2026 · v1.3.37-1.3.39**
 - **NEW: Text Overlay Pixaroma.** Add a styled caption to any image: 10 fonts, bold/italic, alignment, size, rotation, color, and an optional background bar. Open the fullscreen editor to drag, scale, and rotate the text with snap guides, then Save to Disk.
 - **NEW: Prompt Pack Pixaroma.** Paste a block of prompts and the node runs your workflow once per prompt (split by blank line or by line), with a live countdown.
 - **NEW: Prompt From List Pixaroma + Prompt Multi "List mode".** Send different prompts to different parts of a single workflow.
 
-### **May 17, 2026 · v1.3.32–1.3.35**
+### **May 17, 2026 · v1.3.32-1.3.35**
 - **NEW: Prompt Stack Pixaroma.** Stack prompt chunks in labelled rows, toggle each on/off, drag to reorder, and join them into one prompt with your chosen separator.
-- **AI Background Removal: built-in model dropdown.** Three BiRefNet quality levels right on the node (drop `.safetensors` into `ComfyUI/models/background_removal/`). Now works on 4–6 GB cards (auto-retries smaller, falls back to CPU if needed), and the Composer/Paint editors use the same models.
+- **AI Background Removal: built-in model dropdown.** Three BiRefNet quality levels right on the node (drop `.safetensors` into `ComfyUI/models/background_removal/`). Now works on 4-6 GB cards (auto-retries smaller, falls back to CPU if needed), and the Composer/Paint editors use the same models.
 
-### **May 15, 2026 · v1.3.28–1.3.31**
+### **May 15, 2026 · v1.3.28-1.3.31**
 - **NEW: Switch Pixaroma.** A universal one-click switch for any data type (models, images, prompts, masks, audio…). It grows its inputs as you wire more (up to 32) and only one is active at a time.
-- **NEW: Remove Background Pixaroma.** One node that outputs the cutout, the mask, and the inverted mask together — replacing the usual three-node chain.
+- **NEW: Remove Background Pixaroma.** One node that outputs the cutout, the mask, and the inverted mask together - replacing the usual three-node chain.
 - **Show Text: one-click Copy button.** Prompt Reader now also reads prompts routed through a Switch.
 
-### **May 13, 2026 · v1.3.24–1.3.27**
+### **May 13, 2026 · v1.3.24-1.3.27**
 - **NEW: Prompt Reader Pixaroma.** Drop a generated PNG on it to instantly read the prompt saved inside (works with ComfyUI, A1111, Forge), with a Copy button and a text output.
 - **Load Image: cleaner resize math.** Picking "1 MP" keeps 1024×1024 (SD/SDXL/Flux-friendly); presets map to 512² / 1024² / 2048², and the on-canvas readout matches the real output.
 - **AudioReact handles long audio** without crashing, with a live memory indicator. **Preview Image:** wired filenames always work and refresh after you delete a saved file.
 
-### **May 12, 2026 · v1.3.21–1.3.23**
+### **May 12, 2026 · v1.3.21-1.3.23**
 - **NEW: Load Image Pixaroma.** A drop-in replacement for LoadImage with built-in resize controls (7 modes, aspect-ratio presets, snap-to-multiple, math in number fields) and 7 outputs, so you can skip downstream resize chains. A live readout shows the resulting size before you Run.
-- **NEW: small utility nodes** — Text, Number (int + float), WH, and Switch WH.
+- **NEW: small utility nodes** - Text, Number (int + float), WH, and Switch WH.
 - **Drag-and-drop images** onto Image Crop / Composer / Paint. **Preview Image:** new Copy & Open buttons, and Save buttons honor a wired filename.
 
-### **May 10, 2026 · v1.3.18–1.3.20**
+### **May 10, 2026 · v1.3.18-1.3.20**
 - **Preview Image: native-style grid for batches.** Thumbnails fill the space as big as possible, with a per-node Grid/Strip toggle, and filenames now accept date folders like `%date:yyyy-MM-dd%/img`.
 - **Image Composer:** your chosen canvas background color now survives a Run, and the mini-preview thumbnail stays square as you resize.
 - **Fixed:** the right-sidebar Parameters tab no longer breaks Pixaroma node bodies. Plus clearer Info-panel descriptions and a calmer startup notice.

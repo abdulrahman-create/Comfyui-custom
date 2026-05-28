@@ -137,11 +137,32 @@ class PixaromaPreview:
         # Sanitize: PROMPT contains is_changed:[NaN] (IS_CHANGED returns nan),
         # which is invalid JSON and would break the whole executed message.
         meta = _json_safe({"prompt": prompt, "workflow": workflow})
+
+        # Embed the workflow/prompt metadata as an extra field on the FIRST
+        # frame entry instead of in a separate `pixaroma_preview_meta` ui
+        # key. ComfyUI's server-side get_outputs_summary (comfy_execution/
+        # jobs.py) counts EVERY dict item across EVERY list-keyed ui array
+        # as a separate "output" - which becomes the Assets panel's stack-
+        # count badge. A separate meta key would add +1 to that count for
+        # every save, surfacing as a confusing "2" or "3" badge on a single
+        # PNG. Embedding meta as an extra field on the frame dict keeps the
+        # count at 1 (server counts dicts, not nested fields). The frontend
+        # safely ignores unknown fields like `_pixaroma_meta` per the
+        # ResultItemImpl constructor in dialogService bundle - only known
+        # fields (filename, subfolder, type, mediaType, nodeId) are copied.
+        if results:
+            results[0]["_pixaroma_meta"] = meta
+
+        # Save mode emits the standard `ui.images` key so the Media Assets
+        # panel refreshes (it uses that key as its "new output file" signal).
+        # Preview mode uses our custom `pixaroma_preview_frames` key so
+        # ComfyUI doesn't try to auto-populate node.imgs (defineProperty in
+        # js/preview/index.js also blocks that as belt-and-braces). Either
+        # way it's ONE ui key with ONE dict per frame, so the stack badge
+        # never gets inflated.
+        ui_key = "images" if save_mode == "save" else "pixaroma_preview_frames"
         return {
-            "ui": {
-                "pixaroma_preview_frames": results,
-                "pixaroma_preview_meta": [meta],
-            },
+            "ui": {ui_key: results},
             "result": (image,),
         }
 

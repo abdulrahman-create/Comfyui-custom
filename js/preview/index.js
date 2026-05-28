@@ -1103,6 +1103,31 @@ app.registerExtension({
       this.addCustomWidget(createButtonsWidget());
       this.addCustomWidget(createStripWidget());
 
+      // Suppress ComfyUI's native canvas-image-preview widget. Since
+      // node_preview.py now emits `ui.images` in save_mode=save (so the
+      // Media Assets panel refreshes), ComfyUI's frontend would otherwise
+      // assign the returned images to `node.imgs` and then auto-add a
+      // `$$canvas-image-preview` widget below our custom strip widget,
+      // producing a SECOND thumbnail. The gate is just `node.imgs?.length`
+      // (verified against dialogService bundle's showCanvasImagePreview),
+      // so locking imgs to an empty array prevents the widget from ever
+      // being added. Same pattern Prompt Reader Pixaroma uses; see
+      // Prompt Reader Pixaroma Pattern #2 in CLAUDE.md.
+      const imgsDesc = Object.getOwnPropertyDescriptor(this, "imgs");
+      if (imgsDesc && imgsDesc.configurable === false) {
+        console.warn("[PixaromaPreview] cannot suppress node.imgs - existing descriptor is non-configurable");
+      } else {
+        try {
+          Object.defineProperty(this, "imgs", {
+            configurable: true,
+            get() { return []; },
+            set(_v) { /* swallow */ },
+          });
+        } catch (e) {
+          console.warn("[PixaromaPreview] node.imgs suppression failed:", e.message);
+        }
+      }
+
       // Apply user's preferred default save_mode for fresh nodes.
       // onNodeCreated fires BEFORE configure() (Vue Compat #8), so for a
       // saved-workflow node configure() will overwrite this with the
@@ -1270,8 +1295,6 @@ window.addEventListener("keydown", (e) => {
 }, true);
 
 api.addEventListener("executed", ({ detail }) => {
-  const frames = detail?.output?.pixaroma_preview_frames;
-  if (!frames || !frames.length) return;
   // Cross-version node-id resolution: Vue may pass detail.node as a
   // string, legacy as a number — try both.
   let node = app.graph.getNodeById(detail.node);
@@ -1280,11 +1303,28 @@ api.addEventListener("executed", ({ detail }) => {
   }
   if (!node || node.type !== "PixaromaPreview") return;
 
-  // Capture the EXECUTION-time prompt + workflow (the seed that actually made
-  // this image) so the Save buttons embed it instead of the live, post-
-  // "randomize" graph state. Runtime-only (NOT persisted to node.properties —
-  // that would recursively bloat the saved workflow with a copy of itself).
-  const execMeta = detail?.output?.pixaroma_preview_meta?.[0];
+  // Save mode emits `ui.images` (so the Media Assets panel refreshes);
+  // preview mode emits `ui.pixaroma_preview_frames`. Either way it's the
+  // SAME shape (`[{filename, subfolder, type, _pixaroma_meta?}]`), so we
+  // read whichever key is present. This single-key-per-mode design keeps
+  // the Assets stack-count badge at 1 (server counts items across all
+  // list-keyed arrays - see node_preview.py comment).
+  const frames =
+    detail?.output?.pixaroma_preview_frames ||
+    detail?.output?.images;
+  if (!frames || !frames.length) return;
+
+  // Note: node.imgs is permanently locked to [] via Object.defineProperty
+  // in onNodeCreated (so ComfyUI's native canvas-image-preview widget
+  // never gets added even though we emit ui.images in save mode).
+
+  // Capture the EXECUTION-time prompt + workflow (the seed that actually
+  // made this image) so the Save buttons embed it instead of the live,
+  // post-"randomize" graph state. Now embedded as a field on the first
+  // frame entry (instead of a separate ui.pixaroma_preview_meta key) so
+  // the Assets stack-count stays at 1. Runtime-only (NOT persisted to
+  // node.properties - that would recursively bloat the saved workflow).
+  const execMeta = frames[0]?._pixaroma_meta;
   if (execMeta) {
     node._pixaromaExecPrompt = execMeta.prompt ?? null;
     node._pixaromaExecWorkflow = execMeta.workflow ?? null;
