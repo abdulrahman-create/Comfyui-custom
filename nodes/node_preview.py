@@ -137,11 +137,26 @@ class PixaromaPreview:
         # Sanitize: PROMPT contains is_changed:[NaN] (IS_CHANGED returns nan),
         # which is invalid JSON and would break the whole executed message.
         meta = _json_safe({"prompt": prompt, "workflow": workflow})
+        ui_payload = {
+            "pixaroma_preview_frames": results,
+            "pixaroma_preview_meta": [meta],
+        }
+        # When we actually saved to output/, also emit the standard `images`
+        # key. ComfyUI's Media Assets panel (and the Desktop build's media
+        # browser) listens for `ui.images` on the executed event as its
+        # "new output file was just saved, refresh the list" signal. Without
+        # this, the PNG lands in output/ but the panel stays empty until the
+        # user manually reloads. Trade-off: ComfyUI auto-populates node.imgs
+        # from this payload and would draw a native thumbnail strip below our
+        # custom widget; the JS extension nulls node.imgs on every executed
+        # event to suppress that native render (so the user only sees ONE
+        # strip, ours). Preview mode writes to temp/ so we deliberately do
+        # NOT add `images` there - Assets ignores temp files anyway, and
+        # adding it would just trigger pointless refresh churn.
+        if save_mode == "save":
+            ui_payload["images"] = results
         return {
-            "ui": {
-                "pixaroma_preview_frames": results,
-                "pixaroma_preview_meta": [meta],
-            },
+            "ui": ui_payload,
             "result": (image,),
         }
 

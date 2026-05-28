@@ -1280,6 +1280,22 @@ api.addEventListener("executed", ({ detail }) => {
   }
   if (!node || node.type !== "PixaromaPreview") return;
 
+  // Suppress ComfyUI's native thumbnail strip. node_preview.py emits
+  // `ui.images` in save_mode=save so the Media Assets panel refreshes
+  // (it listens for that key as its "new output file" signal). The side-
+  // effect is that ComfyUI auto-populates node.imgs and would draw its
+  // own thumbnail strip BELOW our custom strip widget. Nulling here, in
+  // the same tick as ComfyUI's internal handler and before the next
+  // canvas paint, prevents the native strip from ever rendering — our
+  // custom widget stays the only renderer. Safe to do unconditionally:
+  // every check in this file uses `node._pixaromaFrames?.length` as the
+  // primary truthiness signal, with `node.imgs?.length` only as a legacy
+  // fallback that hasn't been reachable since we switched to the custom
+  // key (and is unreachable here too because we always set _pixaromaFrames
+  // alongside). In preview mode `images` isn't sent by Python so node.imgs
+  // stays null anyway, but we null it anyway for consistency.
+  node.imgs = null;
+
   // Capture the EXECUTION-time prompt + workflow (the seed that actually made
   // this image) so the Save buttons embed it instead of the live, post-
   // "randomize" graph state. Runtime-only (NOT persisted to node.properties —
