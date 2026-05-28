@@ -138,13 +138,98 @@ export function restoreFromProperties(node) {
   normalizeSlots(node);
 }
 
-// Stubs for later tasks - real versions in Task 3.
-export function handleConnect(node /* , slotIdx1 */) {
-  normalizeSlots(node);
+// Connect to a fresh slot. If the slot was just-disconnected (wire-replace),
+// cancel that pending disconnect.
+export function handleConnect(node, slotIdx1) {
+  const state = readState(node);
+
+  let wasReplace = false;
+  if (node._pendingDisconnects?.has(slotIdx1)) {
+    clearTimeout(node._pendingDisconnects.get(slotIdx1));
+    node._pendingDisconnects.delete(slotIdx1);
+    wasReplace = true;
+  }
+
+  // New row default: ON in multi mode, OFF in single mode. Only on a
+  // fresh connect, not a wire-replace (which keeps existing enabled state).
+  if (!wasReplace) {
+    const row = state.rows[slotIdx1 - 1];
+    if (row) {
+      row.enabled = state.selectMode === "single" ? false : true;
+    }
+
+    // Grow the slot list if this was the trailing empty slot.
+    const isLast = slotIdx1 === (node.inputs?.length || 0);
+    if (isLast && (node.inputs?.length || 0) < MAX_INPUTS) {
+      const newIdx1 = (node.inputs?.length || 0) + 1;
+      addInputSlot(node, newIdx1);
+      const enabled = state.selectMode === "single" ? false : true;
+      state.rows.push({ enabled, label: null });
+      // Update slot.pos for the freshly-added trailing slot too.
+      const y = MODE_BAR_H + TOP_PAD + (newIdx1 - 1) * ROW_H + ROW_H / 2;
+      node.inputs[newIdx1 - 1].pos = [0, y];
+      node.size[1] = computeNodeHeight(node.inputs.length);
+    }
+  }
+
+  app.graph?.setDirtyCanvas?.(true, true);
 }
-export function handleDisconnect(node /* , slotIdx1 */) {
-  setTimeout(() => {
-    if (!node.graph) return;
-    normalizeSlots(node);
+
+export function handleDisconnect(node, slotIdx1) {
+  if (!node._pendingDisconnects) node._pendingDisconnects = new Map();
+  if (node._pendingDisconnects.has(slotIdx1)) {
+    clearTimeout(node._pendingDisconnects.get(slotIdx1));
+  }
+  const timer = setTimeout(() => {
+    node._pendingDisconnects.delete(slotIdx1);
+    actuallyDisconnect(node, slotIdx1);
   }, 0);
+  node._pendingDisconnects.set(slotIdx1, timer);
+}
+
+function actuallyDisconnect(node, slotIdx1) {
+  if (!node.graph) return;
+
+  const state = readState(node);
+  const slotCount = node.inputs?.length || 0;
+
+  // 1. Remove the slot.
+  if (slotIdx1 >= 1 && slotIdx1 <= slotCount) {
+    node.removeInput(slotIdx1 - 1);
+  }
+
+  // 2. Rename remaining slots so suffixes stay contiguous AND re-apply slot.pos
+  //    so dots stay aligned with our row paint after the shift.
+  if (node.inputs) {
+    for (let i = 0; i < node.inputs.length; i++) {
+      node.inputs[i].name = `input_${i + 1}`;
+      node.inputs[i].label = "​";
+      const y = MODE_BAR_H + TOP_PAD + i * ROW_H + ROW_H / 2;
+      node.inputs[i].pos = [0, y];
+    }
+  }
+
+  // 3. Shift state.rows: drop the removed entry; entries after it shift up.
+  state.rows.splice(slotIdx1 - 1, 1);
+
+  // 4. Maintain the empty-trailing invariant.
+  const inputs = node.inputs || [];
+  const last = inputs[inputs.length - 1];
+  if (inputs.length === 0) {
+    addInputSlot(node, 1);
+    const enabled = state.selectMode === "single" ? false : true;
+    state.rows.push({ enabled, label: null });
+    inputs[0].pos = [0, MODE_BAR_H + TOP_PAD + ROW_H / 2];
+  } else if (last && last.link != null && inputs.length < MAX_INPUTS) {
+    addInputSlot(node, inputs.length + 1);
+    const enabled = state.selectMode === "single" ? false : true;
+    state.rows.push({ enabled, label: null });
+    const newIdx0 = inputs.length - 1;
+    inputs[newIdx0].pos = [0, MODE_BAR_H + TOP_PAD + newIdx0 * ROW_H + ROW_H / 2];
+  }
+
+  // 5. Resize.
+  node.size[1] = computeNodeHeight(node.inputs.length);
+
+  node.graph?.setDirtyCanvas?.(true, true);
 }
