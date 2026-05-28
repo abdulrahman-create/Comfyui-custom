@@ -1,4 +1,5 @@
 import { app } from "/scripts/app.js";
+import { isGraphLoading } from "../shared/graph_loading.mjs";
 import {
   setupNode, restoreFromProperties,
   handleConnect, handleDisconnect,
@@ -40,12 +41,20 @@ app.registerExtension({
       }
     };
 
-    // Connection changes - minimal version for Task 2.
+    // Connection changes - gated on BOTH the per-node configure flag AND
+    // the load-wide isGraphLoading guard (Vue Compat #17 + #19). The
+    // per-node flag covers onConfigure; isGraphLoading covers the graph-
+    // level link restore that fires AFTER each node's onConfigure has
+    // cleared its flag.
     const _origOnConnectionsChange = nodeType.prototype.onConnectionsChange;
     nodeType.prototype.onConnectionsChange = function (
       type, slotIndex, isConnected, link, ioSlot
     ) {
-      if (type === 1 /* INPUT */ && !this._pixMsConfiguring) {
+      if (
+        type === 1 /* INPUT */ &&
+        !this._pixMsConfiguring &&
+        !isGraphLoading()
+      ) {
         if (isConnected) handleConnect(this, slotIndex + 1);
         else handleDisconnect(this, slotIndex + 1);
       }
