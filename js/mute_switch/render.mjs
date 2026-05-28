@@ -117,16 +117,173 @@ export function labelScreenRect(node, slotIdx1) {
   };
 }
 
-// ── Paint ────────────────────────────────────────────────────────────────
-// Task 2: placeholder stub - replaced in Task 4.
+// ── Helpers ──────────────────────────────────────────────────────────────
+
+function roundedRectPath(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+function drawTwoSegmentPill(ctx, rect, leftLabel, rightLabel, leftActive) {
+  const halfW = rect.w / 2;
+  ctx.save();
+
+  // Background (unfilled rounded rect with subtle border).
+  roundedRectPath(ctx, rect.x, rect.y, rect.w, rect.h, rect.h / 2);
+  ctx.fillStyle = "rgba(255,255,255,0.04)";
+  ctx.fill();
+  ctx.strokeStyle = "rgba(255,255,255,0.18)";
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  // Active segment fill (BRAND orange), clipped to the pill shape.
+  ctx.save();
+  roundedRectPath(ctx, rect.x, rect.y, rect.w, rect.h, rect.h / 2);
+  ctx.clip();
+  ctx.fillStyle = BRAND;
+  if (leftActive) {
+    ctx.fillRect(rect.x, rect.y, halfW, rect.h);
+  } else {
+    ctx.fillRect(rect.x + halfW, rect.y, halfW, rect.h);
+  }
+  ctx.restore();
+
+  // Text.
+  ctx.font = "11px 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif";
+  ctx.textBaseline = "middle";
+  ctx.textAlign = "center";
+  ctx.fillStyle = leftActive ? "#fff" : "rgba(255,255,255,0.65)";
+  ctx.fillText(leftLabel, rect.x + halfW / 2, rect.y + rect.h / 2);
+  ctx.fillStyle = leftActive ? "rgba(255,255,255,0.65)" : "#fff";
+  ctx.fillText(rightLabel, rect.x + halfW + halfW / 2, rect.y + rect.h / 2);
+  ctx.restore();
+}
+
+function drawRowPill(ctx, rect, on) {
+  ctx.save();
+  ctx.fillStyle = on ? BRAND : "rgba(255,255,255,0.06)";
+  ctx.strokeStyle = on ? BRAND : "rgba(255,255,255,0.18)";
+  ctx.lineWidth = 1;
+  roundedRectPath(ctx, rect.x, rect.y, rect.w, rect.h, ROW_PILL_R);
+  ctx.fill();
+  ctx.stroke();
+
+  // Knob.
+  ctx.beginPath();
+  ctx.fillStyle = on ? "#fff" : "#ccc";
+  const knobX = on ? (rect.x + rect.w - ROW_PILL_R) : (rect.x + ROW_PILL_R);
+  const knobY = rect.y + rect.h / 2;
+  ctx.arc(knobX, knobY, ROW_KNOB_R, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawRowLabel(ctx, nodeWidth, slotIdx0, text, isTrailing, upstreamType) {
+  const cy = rowCenterY(slotIdx0);
+  const lx = DOT_GUTTER + 4;
+  const maxW = nodeWidth - ROW_PILL_RIGHT_PAD - ROW_PILL_W - 8 - lx;
+
+  ctx.save();
+  if (isTrailing) ctx.globalAlpha = 0.45;
+
+  const hasUserText = text && text.length > 0;
+  const usefulType = upstreamType && upstreamType !== "*" ? upstreamType : null;
+  let display, color;
+  if (hasUserText) {
+    display = text;
+    color = "#d8d8d8";
+  } else if (isTrailing) {
+    display = "(empty)";
+    color = "#aaa";
+  } else if (usefulType) {
+    display = usefulType;
+    color = "#d8d8d8";
+  } else {
+    display = "Label...";
+    color = "#5a5a5a";
+  }
+
+  ctx.fillStyle = color;
+  ctx.font = "12px 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif";
+  ctx.textBaseline = "middle";
+  ctx.textAlign = "left";
+
+  let painted = display;
+  if (ctx.measureText(painted).width > maxW) {
+    while (painted.length > 1 && ctx.measureText(painted + "...").width > maxW) {
+      painted = painted.slice(0, -1);
+    }
+    painted += "...";
+  }
+  ctx.fillText(painted, lx, cy);
+  ctx.restore();
+}
+
+// Vue Compat #3: graph.links may be a Map.
+function getUpstreamType(node, slotIdx1) {
+  const slot = node.inputs?.[slotIdx1 - 1];
+  const linkId = slot?.link;
+  if (linkId == null) return null;
+  let link = node.graph?.links?.[linkId];
+  if (!link && typeof node.graph?.links?.get === "function") {
+    link = node.graph.links.get(linkId);
+  }
+  if (!link) return null;
+  const upstream = node.graph?.getNodeById?.(link.origin_id);
+  return upstream?.outputs?.[link.origin_slot]?.type || null;
+}
+
+// ── Main paint ───────────────────────────────────────────────────────────
 
 export function drawMuteSwitch(node, ctx) {
+  const w = node.size[0];
+  const state = node.properties?.muteSwitchState;
+  const selectMode = state?.selectMode || "multi";
+  const muteMode = state?.muteMode || "mute";
+  const rows = state?.rows || [];
+  const inputs = node.inputs || [];
+
+  // Mode bar background (subtle separator).
   ctx.save();
-  ctx.fillStyle = "rgba(255,255,255,0.04)";
-  ctx.fillRect(0, 0, node.size[0], MODE_BAR_H);
-  ctx.fillStyle = "#666";
-  ctx.font = "11px 'Segoe UI', sans-serif";
-  ctx.textBaseline = "middle";
-  ctx.fillText("(mode pills - Task 4)", SIDE_PAD, MODE_BAR_H / 2);
+  ctx.fillStyle = "rgba(0,0,0,0.18)";
+  ctx.fillRect(0, 0, w, MODE_BAR_H);
   ctx.restore();
+
+  // Left pill: Single | Multi
+  drawTwoSegmentPill(
+    ctx,
+    selectModePillRect(w),
+    "Single",
+    "Multi",
+    selectMode === "single",
+  );
+
+  // Right pill: Mute | Bypass
+  drawTwoSegmentPill(
+    ctx,
+    mutePillRect(w),
+    "Mute",
+    "Bypass",
+    muteMode === "mute",
+  );
+
+  // Rows.
+  for (let i = 0; i < inputs.length; i++) {
+    const slotIdx1 = i + 1;
+    const slot = inputs[i];
+    const connected = slot != null && slot.link != null;
+    const isTrailing = !connected && slotIdx1 === inputs.length;
+    const row = rows[i];
+    const on = connected && row && row.enabled;
+
+    const labelTxt = (row && row.label) || "";
+    const upType = connected ? getUpstreamType(node, slotIdx1) : null;
+    drawRowLabel(ctx, w, i, labelTxt, isTrailing, upType);
+    drawRowPill(ctx, rowPillRect(w, i), on);
+  }
 }
