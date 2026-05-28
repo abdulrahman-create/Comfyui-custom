@@ -1103,6 +1103,31 @@ app.registerExtension({
       this.addCustomWidget(createButtonsWidget());
       this.addCustomWidget(createStripWidget());
 
+      // Suppress ComfyUI's native canvas-image-preview widget. Since
+      // node_preview.py now emits `ui.images` in save_mode=save (so the
+      // Media Assets panel refreshes), ComfyUI's frontend would otherwise
+      // assign the returned images to `node.imgs` and then auto-add a
+      // `$$canvas-image-preview` widget below our custom strip widget,
+      // producing a SECOND thumbnail. The gate is just `node.imgs?.length`
+      // (verified against dialogService bundle's showCanvasImagePreview),
+      // so locking imgs to an empty array prevents the widget from ever
+      // being added. Same pattern Prompt Reader Pixaroma uses; see
+      // Prompt Reader Pixaroma Pattern #2 in CLAUDE.md.
+      const imgsDesc = Object.getOwnPropertyDescriptor(this, "imgs");
+      if (imgsDesc && imgsDesc.configurable === false) {
+        console.warn("[PixaromaPreview] cannot suppress node.imgs - existing descriptor is non-configurable");
+      } else {
+        try {
+          Object.defineProperty(this, "imgs", {
+            configurable: true,
+            get() { return []; },
+            set(_v) { /* swallow */ },
+          });
+        } catch (e) {
+          console.warn("[PixaromaPreview] node.imgs suppression failed:", e.message);
+        }
+      }
+
       // Apply user's preferred default save_mode for fresh nodes.
       // onNodeCreated fires BEFORE configure() (Vue Compat #8), so for a
       // saved-workflow node configure() will overwrite this with the
@@ -1280,21 +1305,10 @@ api.addEventListener("executed", ({ detail }) => {
   }
   if (!node || node.type !== "PixaromaPreview") return;
 
-  // Suppress ComfyUI's native thumbnail strip. node_preview.py emits
-  // `ui.images` in save_mode=save so the Media Assets panel refreshes
-  // (it listens for that key as its "new output file" signal). The side-
-  // effect is that ComfyUI auto-populates node.imgs and would draw its
-  // own thumbnail strip BELOW our custom strip widget. Nulling here, in
-  // the same tick as ComfyUI's internal handler and before the next
-  // canvas paint, prevents the native strip from ever rendering — our
-  // custom widget stays the only renderer. Safe to do unconditionally:
-  // every check in this file uses `node._pixaromaFrames?.length` as the
-  // primary truthiness signal, with `node.imgs?.length` only as a legacy
-  // fallback that hasn't been reachable since we switched to the custom
-  // key (and is unreachable here too because we always set _pixaromaFrames
-  // alongside). In preview mode `images` isn't sent by Python so node.imgs
-  // stays null anyway, but we null it anyway for consistency.
-  node.imgs = null;
+  // Note: node.imgs is permanently locked to [] via Object.defineProperty
+  // in onNodeCreated (so ComfyUI's native canvas-image-preview widget
+  // never gets added). The `ui.images` payload we emit in save_mode=save
+  // exists purely to trigger the Media Assets panel's refresh signal.
 
   // Capture the EXECUTION-time prompt + workflow (the seed that actually made
   // this image) so the Save buttons embed it instead of the live, post-
