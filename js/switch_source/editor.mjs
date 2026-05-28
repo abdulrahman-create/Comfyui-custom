@@ -70,6 +70,10 @@ export function openLabelEditor(node, rowIdx1, rect) {
   }
 
   function onKey(e) {
+    // Only intercept keys while the rename input itself is focused; otherwise
+    // let them through so other shortcuts (graph + browser) keep working while
+    // the overlay is mounted. Mirrors the Switch sibling editor.
+    if (e.target !== input) return;
     // Capture + stopImmediatePropagation so Ctrl+Z / Enter / Esc don't escape
     // to ComfyUI's canvas while typing.
     e.stopImmediatePropagation();

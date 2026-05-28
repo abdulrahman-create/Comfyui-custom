@@ -112,6 +112,7 @@ function buildControls(node) {
 
   const rowsField = document.createElement("div");
   rowsField.className = "pix-ss-rowsfield";
+  rowsField.title = "Number of A/B row pairs (1-16). Disconnect a row's wires before lowering Rows below it.";
   const rowsLabel = document.createElement("span");
   rowsLabel.className = "pix-ss-rows-label";
   rowsLabel.textContent = "Rows";
@@ -142,8 +143,10 @@ function buildControls(node) {
   ab.className = "pix-ss-abtoggle";
   const btnA = document.createElement("button");
   btnA.className = "pix-ss-btn"; btnA.textContent = "A"; btnA.dataset.value = "A";
+  btnA.title = "Route every row through its A input.";
   const btnB = document.createElement("button");
   btnB.className = "pix-ss-btn"; btnB.textContent = "B"; btnB.dataset.value = "B";
+  btnB.title = "Route every row through its B input.";
   ab.append(btnA, btnB);
   row1.appendChild(ab);
   root.appendChild(row1);
@@ -233,7 +236,6 @@ app.registerExtension({
     const _origConfigure = nodeType.prototype.onConfigure;
     nodeType.prototype.onConfigure = function (info) {
       this._pixSsConfiguring = true;
-      this._pixSsConfigureRan = true; // tells setupNode's safety net configure happened
       try {
         // Do NOT wipe slots here. onConfigure fires at the END of
         // LGraphNode.configure(), i.e. AFTER the saved slots and their links
@@ -244,6 +246,11 @@ app.registerExtension({
         // because setupNode leaves the node empty during a load, so configure
         // re-adds the saved slots in their saved order.
         const r = _origConfigure?.apply(this, arguments);
+        // Set the safety-net flag AFTER _origConfigure SUCCEEDS. If it threw,
+        // the flag stays false and setupNode's microtask falls through to its
+        // slot-count check + buildBareRows fallback (recovering an empty node
+        // from saved state.rows), instead of being permanently disabled.
+        this._pixSsConfigureRan = true;
         restoreFromProperties(this);
         this._pixSsRefresh?.();
         return r;
