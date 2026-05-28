@@ -12,7 +12,7 @@
 
 import { app } from "/scripts/app.js";
 import { ROW_H, TOP_PAD, MODE_BAR_H, OUTPUT_X_INSET } from "./render.mjs";
-import { resolveAllMutes } from "./upstream.mjs";
+import { resolveAllMutes, getUpstreamNode } from "./upstream.mjs";
 
 export const STATE_PROP = "muteSwitchState";
 export const ORIGINAL_MODES_PROP = "muteSwitchOriginalModes";
@@ -409,19 +409,65 @@ export function applyAllMuteSwitches(graph, excludeId /* optional */) {
       if (om && om[key] !== undefined) { alreadySaved = true; break; }
     }
 
-    // Save the "true original" regardless of whether the mode actually
-    // needs to change. Without this, a node that happened to be in the
-    // target mode already (user manually muted it before we touched it,
-    // or it carried mode=2 across a workflow reload) leaves no record on
-    // any switch - so when the row toggles back ON we have nothing to
-    // restore to and the node stays stuck at target mode.
+    // Save the original mode so untoggle can restore. CRITICAL: when the
+    // node is ALREADY at target mode (something other than us muted it -
+    // e.g. user manual right-click, a previous buggy save, or a leftover
+    // from a deleted Mute Switch), we save 0 as a FALLBACK rather than
+    // saving the actual mode. Saving the actual mode (2) would mean
+    // restoring to 2 on untoggle - silently re-muting the node despite
+    // the pill being ON. The self-heal sweep below catches this anyway,
+    // but the fallback prevents the orphaned-mute state from being
+    // written in the first place. Trade-off: a pre-existing manual mute
+    // is lost on first toggle cycle (the user can re-mute manually if
+    // they want).
     if (!alreadySaved && switches.length > 0) {
       const sw = switches[0];
       if (!sw.properties[ORIGINAL_MODES_PROP]) sw.properties[ORIGINAL_MODES_PROP] = {};
-      sw.properties[ORIGINAL_MODES_PROP][key] = n.mode;
+      const savedOriginal = (n.mode === targetMode) ? 0 : n.mode;
+      sw.properties[ORIGINAL_MODES_PROP][key] = savedOriginal;
     }
 
     if (n.mode !== targetMode) n.mode = targetMode;
+  }
+
+  // ── Self-heal phase ────────────────────────────────────────────────────
+  // For every switch's ON+wired rows, if the directly-wired upstream node
+  // is currently muted (mode != 0) but NO switch tracks it in originalModes,
+  // it's an ORPHANED MUTE. Un-mute it (set mode = 0). Catches:
+  //   1. External mutes the user later forgot about (right-click → Set Mode
+  //      → Mute on a node that's now wired to an ON row).
+  //   2. State corruption from previous buggy saves (the bug class that
+  //      prompted this fix: a previous save stored originalModes[X] = 2,
+  //      restore wrote 2 back, deleted the entry, leaving X stuck muted
+  //      with no way to recover via the pill).
+  //   3. Cross-switch consistency violations.
+  // Mute Switch IS the source of truth for nodes wired to it - so if the
+  // pill says ON, the canvas should match.
+  for (const sw of switches) {
+    const swState = sw.properties?.[STATE_PROP];
+    if (!swState || !Array.isArray(swState.rows)) continue;
+    for (let i = 0; i < swState.rows.length; i++) {
+      if (!swState.rows[i].enabled) continue;       // OFF row: don't heal
+      const slot = sw.inputs?.[i];
+      if (!slot || slot.link == null) continue;     // empty slot: nothing to heal
+      const upstream = getUpstreamNode(slot, nodesById, graph.links);
+      if (!upstream || upstream.mode === 0) continue;
+
+      const keyU = String(upstream.id);
+      // Don't heal: we want it muted (mute phase already handled it).
+      if (wantMuted.has(keyU)) continue;
+      // Don't heal: some switch tracks the original (restore will handle it
+      // correctly on the next toggle cycle).
+      let tracked = false;
+      for (const sw2 of switches) {
+        const om = sw2.properties?.[ORIGINAL_MODES_PROP];
+        if (om && om[keyU] !== undefined) { tracked = true; break; }
+      }
+      if (tracked) continue;
+
+      // Orphan: un-mute.
+      upstream.mode = 0;
+    }
   }
 
   // Drop empty originalModes objects so they don't bloat the saved JSON.
