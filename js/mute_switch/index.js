@@ -4,7 +4,7 @@ import {
   setupNode, restoreFromProperties,
   handleConnect, handleDisconnect,
   togglePillRow, setSelectMode, setMuteMode,
-  restoreAllOnRemove,
+  setAllRowsEnabled, restoreAllOnRemove,
 } from "./core.mjs";
 import {
   drawMuteSwitch, hideTooltip,
@@ -147,3 +147,52 @@ app.registerExtension({
     };
   },
 });
+
+// ── Right-click menu: bulk row toggles ─────────────────────────────────
+// Patches LGraphCanvas.prototype.getNodeMenuOptions once. For ANY node
+// right-click, append two items if the node is a Mute Switch:
+//   Enable all rows  - flip every wired row to ON
+//   Disable all rows - flip every wired row to OFF
+// Both items appear in the menu always (discoverability) but are disabled
+// in Single mode (the "exactly one ON" invariant rules out all-ON and
+// all-OFF) and when there are no wired rows (nothing to flip).
+//
+// _pixMsMenuPatched guards against extension hot-reload exponential
+// wrapping, same idea as the _pixMsPatched flag on nodeType.prototype.
+if (typeof LGraphCanvas !== "undefined"
+    && LGraphCanvas?.prototype?.getNodeMenuOptions
+    && !LGraphCanvas.prototype._pixMsMenuPatched) {
+  LGraphCanvas.prototype._pixMsMenuPatched = true;
+  const _origGetNodeMenu = LGraphCanvas.prototype.getNodeMenuOptions;
+  LGraphCanvas.prototype.getNodeMenuOptions = function (node) {
+    const options = _origGetNodeMenu.apply(this, arguments);
+    if (!node || (node.type !== "PixaromaMuteSwitch"
+                  && node.comfyClass !== "PixaromaMuteSwitch")) {
+      return options;
+    }
+    const state = node.properties?.muteSwitchState;
+    const isSingle = state?.selectMode === "single";
+    // Disable when there are no wired rows to flip.
+    let hasWired = false;
+    if (node.inputs) {
+      for (const s of node.inputs) {
+        if (s && s.link != null) { hasWired = true; break; }
+      }
+    }
+    const disabled = isSingle || !hasWired;
+    options.push(
+      null, // separator
+      {
+        content: "Enable all rows",
+        disabled,
+        callback: () => setAllRowsEnabled(node, true),
+      },
+      {
+        content: "Disable all rows",
+        disabled,
+        callback: () => setAllRowsEnabled(node, false),
+      },
+    );
+    return options;
+  };
+}
