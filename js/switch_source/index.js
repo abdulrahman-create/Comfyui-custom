@@ -352,11 +352,17 @@ function findNode(index, promptId) {
   return null;
 }
 
-const _origGraphToPrompt = app.graphToPrompt.bind(app);
-app.graphToPrompt = async function (...args) {
-  const result = await _origGraphToPrompt(...args);
-  const out = result?.output;
-  if (out) {
+// Idempotency guard: hot-reload or duplicate module evaluation would otherwise
+// capture this module's previous wrapper as _origGraphToPrompt and double-wrap,
+// double-injecting SwitchSourceState and double-pruning. Matches the
+// _pixSsLoadWrapped pattern above.
+if (!app._pixSsGtpWrapped) {
+  app._pixSsGtpWrapped = true;
+  const _origGraphToPrompt = app.graphToPrompt.bind(app);
+  app.graphToPrompt = async function (...args) {
+    const result = await _origGraphToPrompt(...args);
+    const out = result?.output;
+    if (out) {
     let index = null;
     for (const id in out) {
       const entry = out[id];
@@ -397,4 +403,5 @@ app.graphToPrompt = async function (...args) {
     }
   }
   return result;
-};
+  };
+}

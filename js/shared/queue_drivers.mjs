@@ -21,6 +21,8 @@
 
 const SWITCH_CLASS = "PixaromaSwitch";
 const SWITCH_STATE_PROP = "switchState";
+const SWITCH_SOURCE_CLASS = "PixaromaSwitchSource";
+const SWITCH_SOURCE_STATE_PROP = "switchSourceState";
 
 // ---- Re-entrancy lock (shared across all importers; ESM module singleton) ----
 
@@ -78,6 +80,23 @@ function isInactiveSwitchTarget(targetNode, targetSlot) {
   return (targetSlot + 1) !== active;
 }
 
+// Switch Source counterpart: rejects when targetSlot's name (a_R / b_R)
+// belongs to the bank that is NOT active. Same fail-open philosophy as
+// isInactiveSwitchTarget - any uncertainty (missing state, unknown slot
+// name, etc.) treats the link as live.
+function isInactiveSwitchSourceTarget(targetNode, targetSlot) {
+  if (!targetNode) return false;
+  const isSwitchSource = targetNode.comfyClass === SWITCH_SOURCE_CLASS || targetNode.type === SWITCH_SOURCE_CLASS;
+  if (!isSwitchSource) return false;
+  const active = targetNode.properties?.[SWITCH_SOURCE_STATE_PROP]?.active;
+  if (active !== "A" && active !== "B") return false;
+  const slot = targetNode.inputs?.[targetSlot];
+  const slotName = slot?.name;
+  if (typeof slotName !== "string") return false;
+  const activePrefix = active === "A" ? "a_" : "b_";
+  return !slotName.startsWith(activePrefix);
+}
+
 // Returns true ONLY when the node has output links AND every one of them lands
 // on an inactive input of a Switch Pixaroma. Such a node cannot reach any
 // output this run, so it must not drive the queue. Returns false when the node
@@ -97,7 +116,10 @@ export function feedsOnlyInactiveSwitch(node) {
         if (!link) return false; // unresolved link -> assume live
         sawLink = true;
         const target = graph.getNodeById?.(link.target_id);
-        if (!isInactiveSwitchTarget(target, link.target_slot)) {
+        const inactive =
+          isInactiveSwitchTarget(target, link.target_slot) ||
+          isInactiveSwitchSourceTarget(target, link.target_slot);
+        if (!inactive) {
           return false; // at least one live destination
         }
       }

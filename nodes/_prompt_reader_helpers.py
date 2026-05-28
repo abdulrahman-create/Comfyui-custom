@@ -95,6 +95,14 @@ _PROMPT_PACK_CLASS = "PixaromaPromptPack"
 # `prompts` input back to the upstream Multi and indexes rowTexts.
 _PROMPT_FROM_LIST_CLASS = "PixaromaPromptFromList"
 
+# Switch Source Pixaroma: N-output A/B bank switcher. The hidden
+# SwitchSourceState carries active side + row count. At submit time the JS
+# hook prunes the inactive side, so only a_r OR b_r survives in the saved
+# prompt JSON. To know which row we came from, the walker tracks
+# `origin_slot` (the upstream output slot index of the link tuple that led
+# here): row = origin_slot + 1, then follow a_r or b_r based on active.
+_SWITCH_SOURCE_CLASS = "PixaromaSwitchSource"
+
 _MAX_WALK_DEPTH = 24
 # Chase depth caps how many PixaromaPromptReader hops we follow when an image
 # was generated from a workflow that itself contained a PromptReader pointing
@@ -157,11 +165,14 @@ def _chase_pixaroma_prompt_reader(node: dict, chase_depth: int) -> Optional[str]
 
 
 def _pix_switch_active_link(inputs: dict):
-    """Return the upstream node-id wired to the active row of a PixaromaSwitch.
+    """Return the active-row link tuple [upstream_id, upstream_output_slot] of
+    a PixaromaSwitch.
 
     SwitchState is injected by js/switch/index.js's app.graphToPrompt hook as
     a string "1".."32". A wired input is stored as [origin_id, origin_slot].
-    Returns None when nothing is connected on the active row.
+    Returns the full tuple (so the caller can pass origin_slot when recursing
+    in case the upstream is itself a Switch Source). Returns None when
+    nothing is connected on the active row.
     """
     state = inputs.get("SwitchState")
     try:
@@ -172,7 +183,7 @@ def _pix_switch_active_link(inputs: dict):
         return None
     wire = inputs.get(f"input_{idx}")
     if isinstance(wire, list) and len(wire) >= 1:
-        return wire[0]
+        return wire
     return None
 
 
@@ -350,12 +361,14 @@ def _pix_prompt_pack_extract(inputs: dict) -> Optional[str]:
 
 
 def _rgthree_any_switch_active_link(inputs: dict):
-    """Return the upstream node-id wired to rgthree Any Switch's active input.
+    """Return the active-input link tuple [upstream_id, upstream_output_slot]
+    of rgthree's Any Switch.
 
     rgthree's Any Switch has no widget: at run-time it picks the first non-
     None any_NN value. The walker mirrors that by scanning any_NN keys in
     numeric order and returning the first one that has a wired link.
-    Returns None when nothing is connected.
+    Returns the full tuple (for origin_slot threading when the upstream is a
+    Switch Source). Returns None when nothing is connected.
     """
     candidates = []
     for key, v in inputs.items():
@@ -363,11 +376,42 @@ def _rgthree_any_switch_active_link(inputs: dict):
         if not m:
             continue
         if isinstance(v, list) and len(v) >= 1:
-            candidates.append((int(m.group(1)), v[0]))
+            candidates.append((int(m.group(1)), v))
     if not candidates:
         return None
     candidates.sort(key=lambda t: t[0])
     return candidates[0][1]
+
+
+def _pix_switch_source_active_link(inputs: dict, row: int):
+    """Return the active-side link tuple [upstream_id, upstream_output_slot]
+    for the given row of a PixaromaSwitchSource, or None.
+
+    SwitchSourceState is injected by js/switch_source/index.js's graphToPrompt
+    hook as {"version":1, "active":"A"|"B", "rows":N, ...}. The same hook
+    prunes the inactive side, so only the active a_r or b_r key carries a
+    wire tuple in the saved prompt JSON.
+
+    Returns None when state is unparseable, row out of range, or the active
+    side has no link on that row (the walker bails cleanly in that case).
+    """
+    raw = inputs.get("SwitchSourceState")
+    if not isinstance(raw, str) or not raw:
+        return None
+    try:
+        state = json.loads(raw)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(state, dict):
+        return None
+    active = state.get("active", "A")
+    if active not in ("A", "B"):
+        return None
+    key = f"a_{row}" if active == "A" else f"b_{row}"
+    wire = inputs.get(key)
+    if isinstance(wire, list) and len(wire) >= 1:
+        return wire
+    return None
 
 
 def _walk_for_text(
@@ -377,6 +421,7 @@ def _walk_for_text(
     visited: set,
     depth: int = 0,
     chase_depth: int = 0,
+    origin_slot: Optional[int] = None,
 ) -> None:
     """DFS from `node_id` collecting string text-widget values.
 
@@ -386,6 +431,10 @@ def _walk_for_text(
     PixaromaPromptReader nodes are special-cased: their text output is a
     runtime value (not stored in the prompt JSON), so we chase the source
     image file and recursively extract its prompt.
+
+    `origin_slot` is the upstream output slot index of the link that led
+    here - needed for multi-output nodes like Switch Source where row R is
+    fed by output_R. For other nodes it's harmless extra info.
     """
     if depth > _MAX_WALK_DEPTH:
         return
@@ -417,12 +466,32 @@ def _walk_for_text(
     if cls == _MUX_PIX_SWITCH:
         link = _pix_switch_active_link(inputs)
         if link is not None:
-            _walk_for_text(link, nodes, captured, visited, depth + 1, chase_depth)
+            _walk_for_text(
+                link[0], nodes, captured, visited, depth + 1, chase_depth,
+                origin_slot=link[1] if len(link) >= 2 else None,
+            )
         return
     if cls == _MUX_RGTHREE_ANY_SWITCH:
         link = _rgthree_any_switch_active_link(inputs)
         if link is not None:
-            _walk_for_text(link, nodes, captured, visited, depth + 1, chase_depth)
+            _walk_for_text(
+                link[0], nodes, captured, visited, depth + 1, chase_depth,
+                origin_slot=link[1] if len(link) >= 2 else None,
+            )
+        return
+
+    # Switch Source Pixaroma: 16 outputs, each fed by a_r or b_r depending on
+    # active side. We need origin_slot to know which row (R = origin_slot + 1)
+    # this output corresponds to. The submit-time hook already pruned the
+    # inactive side, so only the active a_r OR b_r carries a link.
+    if cls == _SWITCH_SOURCE_CLASS:
+        if origin_slot is not None:
+            link = _pix_switch_source_active_link(inputs, origin_slot + 1)
+            if link is not None:
+                _walk_for_text(
+                    link[0], nodes, captured, visited, depth + 1, chase_depth,
+                    origin_slot=link[1] if len(link) >= 2 else None,
+                )
         return
 
     # Prompt Stack Pixaroma: text is NOT a wired input - all rows live as a
@@ -463,7 +532,8 @@ def _walk_for_text(
 
     # Single pass over inputs. For each one, classify as text-carrying
     # (capture string OR recurse into linked node), conditioning-link
-    # (recurse only), or ignore.
+    # (recurse only), or ignore. Pass v[1] as origin_slot so a downstream
+    # Switch Source knows which row this output came from.
     for key, v in inputs.items():
         if _is_text_key(key):
             if isinstance(v, str):
@@ -471,10 +541,16 @@ def _walk_for_text(
                 if s:
                     captured.append(s)
             elif isinstance(v, list) and len(v) >= 1:
-                _walk_for_text(v[0], nodes, captured, visited, depth + 1, chase_depth)
+                _walk_for_text(
+                    v[0], nodes, captured, visited, depth + 1, chase_depth,
+                    origin_slot=v[1] if len(v) >= 2 else None,
+                )
         elif key in _COND_LINK_KEYS:
             if isinstance(v, list) and len(v) >= 1:
-                _walk_for_text(v[0], nodes, captured, visited, depth + 1, chase_depth)
+                _walk_for_text(
+                    v[0], nodes, captured, visited, depth + 1, chase_depth,
+                    origin_slot=v[1] if len(v) >= 2 else None,
+                )
 
 
 def extract_positive_from_comfy_prompt(
@@ -520,7 +596,10 @@ def extract_positive_from_comfy_prompt(
             continue
         pos = (node.get("inputs") or {}).get("positive")
         if isinstance(pos, list) and len(pos) >= 1:
-            _walk_for_text(pos[0], nodes, captured, visited, 0, _chase_depth)
+            _walk_for_text(
+                pos[0], nodes, captured, visited, 0, _chase_depth,
+                origin_slot=pos[1] if len(pos) >= 2 else None,
+            )
         elif isinstance(pos, str) and pos.strip():
             captured.append(pos.strip())
 
