@@ -1,144 +1,210 @@
 // Run with: node scripts/mute_switch_test.mjs
-// Tests the pure-function pieces of Mute Switch (walkUpstream + resolveMuteSet)
+// Tests the v2 pure-function helpers (cascadeMuteSet + resolveAllMutes)
 // against synthetic graph fixtures. No browser, no ComfyUI dependency.
 
 import assert from "node:assert/strict";
-import { walkUpstream, resolveMuteSet } from "../js/mute_switch/upstream.mjs";
+import {
+  getUpstreamNode,
+  cascadeMuteSet,
+  resolveAllMutes,
+} from "../js/mute_switch/upstream.mjs";
 
-function makeNode(id, inputLinks = []) {
-  return {
+function node(id, opts = {}) {
+  const { inputLinks = [], type = "GenericNode", state = null } = opts;
+  const n = {
     id,
+    type,
     inputs: inputLinks.map((linkId) => ({ link: linkId })),
+    outputs: [],
+    properties: {},
   };
+  if (state) n.properties.muteSwitchState = state;
+  return n;
 }
-function makeLink(id, originId) {
+
+function link(id, originId) {
   return { id, origin_id: originId };
 }
 
-// ── Test 1: linear chain A -> B -> C -> D
-{
-  const A = makeNode("A", []);
-  const B = makeNode("B", [1]);
-  const C = makeNode("C", [2]);
-  const D = makeNode("D", [3]);
-  const links = {
-    1: makeLink(1, "A"),
-    2: makeLink(2, "B"),
-    3: makeLink(3, "C"),
-  };
-  const nodesById = { A, B, C, D };
-
-  const r = walkUpstream(D, nodesById, links);
-  assert.deepEqual([...r].sort(), ["A", "B", "C", "D"], "Test 1: linear chain");
-  console.log("PASS Test 1: linear chain A->B->C->D walked from D");
+function muteSwitch(id, rows, opts = {}) {
+  // rows: array of { enabled: boolean, link: number-or-null }
+  const inputLinks = rows.map((r) => (r.link == null ? null : r.link));
+  const stateRows = rows.map((r) => ({ enabled: r.enabled, label: null }));
+  const n = node(id, {
+    type: "PixaromaMuteSwitch",
+    inputLinks,
+    state: {
+      version: 1,
+      selectMode: "multi",
+      muteMode: opts.muteMode || "mute",
+      rows: stateRows,
+    },
+  });
+  return n;
 }
 
-// ── Test 2: shared upstream - X feeds B and C
-{
-  const X = makeNode("X", []);
-  const B = makeNode("B", [1]);
-  const C = makeNode("C", [2]);
-  const D = makeNode("D", [3, 4]);
-  const links = {
-    1: makeLink(1, "X"),
-    2: makeLink(2, "X"),
-    3: makeLink(3, "B"),
-    4: makeLink(4, "C"),
-  };
-  const nodesById = { X, B, C, D };
+const isMuteSwitch = (n) => n && n.type === "PixaromaMuteSwitch";
 
-  const r = walkUpstream(D, nodesById, links);
-  assert.deepEqual([...r].sort(), ["B", "C", "D", "X"], "Test 2: shared X reached once");
-  console.log("PASS Test 2: shared upstream X reached via both B and C, deduped");
+// ── Test 1: direct-only mute (no inner switch) ─────────────────────────
+{
+  const X1 = node("X1");
+  const SW = muteSwitch("SW", [
+    { enabled: false, link: 1 }, // row 1 OFF, wired to X1
+  ]);
+  const links = { 1: link(1, "X1") };
+  const nodesById = { X1, SW };
+  const set = cascadeMuteSet(SW, nodesById, links, isMuteSwitch);
+  assert.deepEqual([...set], ["X1"], "Test 1: direct mute");
+  console.log("PASS Test 1: row OFF mutes ONLY the wired upstream node");
 }
 
-// ── Test 3: resolveMuteSet - two isolated scenes, one OFF
+// ── Test 2: row ON contributes nothing ─────────────────────────────────
 {
-  const A1 = makeNode("A1", []);
-  const KS1 = makeNode("KS1", [1]);
-  const A2 = makeNode("A2", []);
-  const KS2 = makeNode("KS2", [2]);
-  const links = {
-    1: makeLink(1, "A1"),
-    2: makeLink(2, "A2"),
-  };
-  const nodesById = { A1, KS1, A2, KS2 };
-  const mute = resolveMuteSet([KS1], [KS2], nodesById, links, "MUTE_SW");
-  assert.deepEqual([...mute].sort(), ["A2", "KS2"], "Test 3: only OFF scene muted");
-  console.log("PASS Test 3: isolated scenes, OFF scene fully muted");
+  const X1 = node("X1");
+  const X2 = node("X2");
+  const SW = muteSwitch("SW", [
+    { enabled: true, link: 1 },   // ON
+    { enabled: false, link: 2 },  // OFF
+  ]);
+  const links = { 1: link(1, "X1"), 2: link(2, "X2") };
+  const nodesById = { X1, X2, SW };
+  const set = cascadeMuteSet(SW, nodesById, links, isMuteSwitch);
+  assert.deepEqual([...set], ["X2"], "Test 2: only OFF rows contribute");
+  console.log("PASS Test 2: ON rows do NOT contribute to want-muted");
 }
 
-// ── Test 4: resolveMuteSet - shared upstream is SPARED
+// ── Test 3: cascade through inner Mute Switch ──────────────────────────
 {
-  const SHARED = makeNode("SHARED", []);
-  const KS1 = makeNode("KS1", [1]);
-  const KS2 = makeNode("KS2", [2]);
+  const X1 = node("X1");
+  const X2 = node("X2");
+  // Inner switch A wires X1 and X2
+  const A = muteSwitch("A", [
+    { enabled: true, link: 1 },
+    { enabled: true, link: 2 },
+  ]);
+  // Outer switch C wires A
+  const C = muteSwitch("C", [
+    { enabled: false, link: 3 },  // OFF -> cascade into A
+  ]);
   const links = {
-    1: makeLink(1, "SHARED"),
-    2: makeLink(2, "SHARED"),
+    1: link(1, "X1"),
+    2: link(2, "X2"),
+    3: link(3, "A"),
   };
-  const nodesById = { SHARED, KS1, KS2 };
-  const mute = resolveMuteSet([KS1], [KS2], nodesById, links, "MUTE_SW");
-  assert.deepEqual([...mute], ["KS2"], "Test 4: shared upstream spared");
-  console.log("PASS Test 4: shared upstream is spared when any dependent scene is ON");
+  const nodesById = { X1, X2, A, C };
+  const set = cascadeMuteSet(C, nodesById, links, isMuteSwitch);
+  // C wants A AND everything wired into A (X1, X2) muted.
+  assert.deepEqual([...set].sort(), ["A", "X1", "X2"], "Test 3: cascade");
+  console.log("PASS Test 3: OFF row cascades through inner Mute Switch");
 }
 
-// ── Test 5: resolveMuteSet - both scenes OFF mutes everything
+// ── Test 4: cascade respects inner switch's own OFF rows ───────────────
+// If C row B is OFF, cascade through B mutes everything B is wired to
+// regardless of B's own row state (we're overriding B's choices).
 {
-  const SHARED = makeNode("SHARED", []);
-  const KS1 = makeNode("KS1", [1]);
-  const KS2 = makeNode("KS2", [2]);
+  const Y1 = node("Y1");
+  const Y2 = node("Y2");
+  const B = muteSwitch("B", [
+    { enabled: false, link: 1 },  // B's own row 1 OFF
+    { enabled: true, link: 2 },   // B's own row 2 ON
+  ]);
+  const C = muteSwitch("C", [
+    { enabled: false, link: 3 },  // C's row B is OFF
+  ]);
   const links = {
-    1: makeLink(1, "SHARED"),
-    2: makeLink(2, "SHARED"),
+    1: link(1, "Y1"),
+    2: link(2, "Y2"),
+    3: link(3, "B"),
   };
-  const nodesById = { SHARED, KS1, KS2 };
-  const mute = resolveMuteSet([], [KS1, KS2], nodesById, links, "MUTE_SW");
-  assert.deepEqual([...mute].sort(), ["KS1", "KS2", "SHARED"], "Test 5: both off mutes shared too");
-  console.log("PASS Test 5: both scenes OFF mutes shared upstream too");
+  const nodesById = { Y1, Y2, B, C };
+  const set = cascadeMuteSet(C, nodesById, links, isMuteSwitch);
+  // C overrides B: even Y2 (which B wants enabled) gets muted via cascade.
+  assert.deepEqual([...set].sort(), ["B", "Y1", "Y2"], "Test 4: cascade override");
+  console.log("PASS Test 4: outer OFF overrides inner ON via cascade");
 }
 
-// ── Test 6: graph.links as a Map
+// ── Test 5: cycle through chained switches doesn't infinite-loop ──────
 {
-  const A = makeNode("A", []);
-  const B = makeNode("B", [1]);
+  const X = node("X");
+  const A = muteSwitch("A", [
+    { enabled: false, link: 1 },
+    { enabled: false, link: 2 },  // wires back to C - cycle
+  ]);
+  const C = muteSwitch("C", [
+    { enabled: false, link: 3 },  // wires to A
+  ]);
+  const links = {
+    1: link(1, "X"),
+    2: link(2, "C"),  // A -> C (cycle)
+    3: link(3, "A"),  // C -> A
+  };
+  const nodesById = { X, A, C };
+  const set = cascadeMuteSet(C, nodesById, links, isMuteSwitch);
+  // Cascade from C: A (visit), then through A's inputs: X (visit), C (already visited).
+  // C itself is NEVER added (it's the caller).
+  assert.deepEqual([...set].sort(), ["A", "X"], "Test 5: cycle terminates");
+  console.log("PASS Test 5: cycle through chained switches terminates");
+}
+
+// ── Test 6: resolveAllMutes unions multiple switches ───────────────────
+{
+  const A = node("A");
+  const B = node("B");
+  const SW1 = muteSwitch("SW1", [{ enabled: false, link: 1 }]);
+  const SW2 = muteSwitch("SW2", [{ enabled: false, link: 2 }]);
+  const links = { 1: link(1, "A"), 2: link(2, "B") };
+  const nodesById = { A, B, SW1, SW2 };
+  const m = resolveAllMutes([SW1, SW2], nodesById, links, isMuteSwitch);
+  assert.deepEqual([...m.keys()].sort(), ["A", "B"], "Test 6: union of two switches");
+  console.log("PASS Test 6: resolveAllMutes unions across switches");
+}
+
+// ── Test 7: resolveAllMutes - bypass mode wins per-switch ─────────────
+{
+  const X = node("X");
+  const SW = muteSwitch("SW", [{ enabled: false, link: 1 }], { muteMode: "bypass" });
+  const links = { 1: link(1, "X") };
+  const nodesById = { X, SW };
+  const m = resolveAllMutes([SW], nodesById, links, isMuteSwitch);
+  assert.equal(m.get("X"), 4, "Test 7: bypass mode -> targetMode 4");
+  console.log("PASS Test 7: muteMode=bypass produces targetMode 4");
+}
+
+// ── Test 8: graph.links as Map (Vue Compat #3) ─────────────────────────
+{
+  const X = node("X");
+  const SW = muteSwitch("SW", [{ enabled: false, link: 1 }]);
   const linksMap = new Map();
-  linksMap.set(1, makeLink(1, "A"));
-  const nodesById = { A, B };
-  const r = walkUpstream(B, nodesById, linksMap);
-  assert.deepEqual([...r].sort(), ["A", "B"], "Test 6: links as Map works");
-  console.log("PASS Test 6: graph.links as Map (Vue Compat #3)");
+  linksMap.set(1, link(1, "X"));
+  const nodesById = { X, SW };
+  const set = cascadeMuteSet(SW, nodesById, linksMap, isMuteSwitch);
+  assert.deepEqual([...set], ["X"], "Test 8: links as Map");
+  console.log("PASS Test 8: graph.links as Map works");
 }
 
-// ── Test 7: cycle does not infinite-loop
+// ── Test 9: getUpstreamNode helper ─────────────────────────────────────
 {
-  const A = makeNode("A", [2]);
-  const B = makeNode("B", [1]);
-  const links = {
-    1: makeLink(1, "A"),
-    2: makeLink(2, "B"),
-  };
-  const nodesById = { A, B };
-  const r = walkUpstream(A, nodesById, links);
-  assert.deepEqual([...r].sort(), ["A", "B"], "Test 7: cycle terminates");
-  console.log("PASS Test 7: cycle terminates via visited-set");
+  const X = node("X");
+  const A = node("A", { inputLinks: [1] });
+  const links = { 1: link(1, "X") };
+  const nodesById = { X, A };
+  assert.equal(getUpstreamNode(A.inputs[0], nodesById, links), X, "Test 9: getUpstreamNode");
+  assert.equal(getUpstreamNode({ link: null }, nodesById, links), null, "Test 9: null link");
+  console.log("PASS Test 9: getUpstreamNode resolves correctly");
 }
 
-// ── Test 8: maxDepth cap
+// ── Test 10: disconnected row contributes nothing ──────────────────────
 {
-  const nodes = {};
-  const links = {};
-  for (let i = 0; i < 10; i++) {
-    const id = `N${i}`;
-    const inputs = i === 0 ? [] : [i];
-    nodes[id] = makeNode(id, inputs);
-    if (i > 0) links[i] = makeLink(i, `N${i - 1}`);
-  }
-  const r3 = walkUpstream(nodes.N9, nodes, links, { maxDepth: 3 });
-  // Depth 0: N9 visits N8. Depth 1: N8 visits N7. Depth 2: N7 visits N6.
-  // Depth 3 would visit N5 but we stop. So we should have N9..N6.
-  assert.deepEqual([...r3].sort(), ["N6", "N7", "N8", "N9"], "Test 8: depth cap");
-  console.log("PASS Test 8: maxDepth honored");
+  const X = node("X");
+  const SW = muteSwitch("SW", [
+    { enabled: false, link: null },  // OFF but disconnected
+    { enabled: false, link: 1 },     // OFF and wired
+  ]);
+  const links = { 1: link(1, "X") };
+  const nodesById = { X, SW };
+  const set = cascadeMuteSet(SW, nodesById, links, isMuteSwitch);
+  assert.deepEqual([...set], ["X"], "Test 10: disconnected OFF row is no-op");
+  console.log("PASS Test 10: disconnected OFF row contributes nothing");
 }
 
-console.log("\nAll mute_switch tests passed.");
+console.log("\nAll mute_switch v2 tests passed.");

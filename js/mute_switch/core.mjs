@@ -12,7 +12,7 @@
 
 import { app } from "/scripts/app.js";
 import { ROW_H, TOP_PAD, MODE_BAR_H } from "./render.mjs";
-import { resolveMuteSet } from "./upstream.mjs";
+import { resolveAllMutes } from "./upstream.mjs";
 
 export const STATE_PROP = "muteSwitchState";
 export const ORIGINAL_MODES_PROP = "muteSwitchOriginalModes";
@@ -259,91 +259,97 @@ export function setMuteMode(node, newMode /* "mute" | "bypass" */) {
   app.graph?.setDirtyCanvas?.(true, true);
 }
 
-// Walks upstream from each row's wire, computes the refcount-style "should
-// be muted" set, and writes node.mode = 2 (Mute) or 4 (Bypass) on each.
-// Saved original modes in node.properties.muteSwitchOriginalModes so the
-// restore is exact when the row toggles back ON.
+// v2: mute ONLY the directly wired upstream node (not the whole upstream
+// chain). ComfyUI's executor is lazy - it skips any node whose output is
+// not consumed by a non-muted output node, so the rest of the upstream
+// branch is skipped automatically.
+//
+// Chaining: when the directly wired upstream IS another Mute Switch,
+// cascade through it - mute that switch AND every node wired into IT.
+// Recursive, cycle-protected (see upstream.mjs::cascadeMuteSet).
+//
+// Coordination across multiple Mute Switches in the same graph:
+// resolveAllMutes computes the UNION of every switch's wantMuted set, so
+// any switch's "OFF" wins over another switch's "ON" for the same node.
+// originalModes is distributed across switches - whichever switch first
+// muted a node owns its original mode. The cleanup pass restores nodes
+// no longer wanted by ANY switch.
 export function applyMuteState(node) {
   if (!node.graph) return;
-  // Don't re-apply during a configure replay - saved node.mode values are
-  // already correct, and rewriting them would falsely flag the workflow
-  // modified (Vue Compat #18).
   if (node._pixMsConfiguring) return;
+  applyAllMuteSwitches(node.graph);
+}
 
-  pruneOrphanedOriginalModes(node);
+function isMuteSwitchNode(n) {
+  return n != null && (n.type === "PixaromaMuteSwitch" || n.comfyClass === "PixaromaMuteSwitch");
+}
 
-  const state = readState(node);
-  const originalModes = readOriginalModes(node);
-  const targetMode = state.muteMode === "bypass" ? 4 : 2;
-
-  // For each row find the upstream START NODE (the origin of the row's link).
-  // Disconnected rows contribute nothing to either bucket.
-  const onWires = [];
-  const offWires = [];
-  for (let i = 0; i < state.rows.length; i++) {
-    const slot = node.inputs?.[i];
-    const linkId = slot?.link;
-    if (linkId == null) continue;
-    let link = node.graph.links?.[linkId];
-    if (!link && typeof node.graph.links?.get === "function") {
-      link = node.graph.links.get(linkId);
-    }
-    if (!link) continue;
-    const upstream = node.graph.getNodeById?.(link.origin_id);
-    if (!upstream) continue;
-    if (state.rows[i].enabled) onWires.push(upstream);
-    else offWires.push(upstream);
+function findAllMuteSwitches(graph, excludeId /* optional */) {
+  const out = [];
+  const nodes = graph?._nodes || graph?.nodes || [];
+  for (const n of nodes) {
+    if (!n || !isMuteSwitchNode(n)) continue;
+    if (excludeId != null && n.id === excludeId) continue;
+    out.push(n);
   }
+  return out;
+}
 
-  // Build nodesById from app.graph._nodes for the walker.
-  const allNodes = node.graph._nodes || node.graph.nodes || [];
+// Graph-wide recompute. Walks every Mute Switch in the graph, computes the
+// union of want-muted node IDs, then writes node.mode for every affected
+// node. originalModes is preserved across switches via the "first one to
+// save wins" rule below.
+export function applyAllMuteSwitches(graph, excludeId /* optional */) {
+  if (!graph) return;
+  const switches = findAllMuteSwitches(graph, excludeId);
+
+  const allNodes = graph._nodes || graph.nodes || [];
   const nodesById = {};
   for (const n of allNodes) {
     if (n && n.id != null) nodesById[n.id] = n;
   }
 
-  const toMute = resolveMuteSet(
-    onWires,
-    offWires,
-    nodesById,
-    node.graph.links,
-    node.id,
-  );
+  // Compute the union of want-muted sets across every Mute Switch.
+  const wantMuted = resolveAllMutes(switches, nodesById, graph.links, isMuteSwitchNode);
 
-  // 1. Mute every node in toMute that we haven't already muted, saving its
-  //    original mode the first time. Use String keys consistently because
-  //    LiteGraph node ids can be numbers or strings depending on context;
-  //    JSON.stringify would coerce them to strings on save anyway.
-  for (const id of toMute) {
-    const n = nodesById[id];
-    if (!n) continue;
-    const key = String(id);
-    if (originalModes[key] == null) {
-      originalModes[key] = n.mode || 0;
+  // ── Restore phase ──────────────────────────────────────────────────────
+  // For each switch's saved originalModes, restore any entry whose node is
+  // no longer wanted muted by ANY switch.
+  for (const sw of switches) {
+    const om = sw.properties?.[ORIGINAL_MODES_PROP];
+    if (!om) continue;
+    for (const key of Object.keys(om)) {
+      if (wantMuted.has(key)) continue;
+      const n = nodesById[key];
+      if (n) n.mode = om[key];
+      delete om[key];
     }
+  }
+
+  // ── Mute phase ─────────────────────────────────────────────────────────
+  // For each node wanted muted: ensure its mode matches the target. Save
+  // its true original on the FIRST switch that doesn't already have it.
+  for (const [key, targetMode] of wantMuted) {
+    const n = nodesById[key];
+    if (!n) continue;
+
+    // Find a switch holding the original, if any.
+    let alreadySaved = false;
+    for (const sw of switches) {
+      const om = sw.properties?.[ORIGINAL_MODES_PROP];
+      if (om && om[key] !== undefined) { alreadySaved = true; break; }
+    }
+
+    if (!alreadySaved && n.mode !== targetMode && switches.length > 0) {
+      const sw = switches[0];
+      if (!sw.properties[ORIGINAL_MODES_PROP]) sw.properties[ORIGINAL_MODES_PROP] = {};
+      sw.properties[ORIGINAL_MODES_PROP][key] = n.mode;
+    }
+
     if (n.mode !== targetMode) n.mode = targetMode;
   }
 
-  // 2. Restore every previously-muted node that is no longer in toMute.
-  const toMuteKeySet = new Set();
-  for (const id of toMute) toMuteKeySet.add(String(id));
-  for (const key of Object.keys(originalModes)) {
-    if (toMuteKeySet.has(key)) continue; // still muted
-    const n = nodesById[key];
-    if (n) {
-      n.mode = originalModes[key];
-    }
-    delete originalModes[key];
-  }
-
-  // 3. Make sure muted nodes carry the CURRENT targetMode (handles Mute <->
-  //    Bypass switches that don't change the muted set, only the value).
-  for (const id of toMute) {
-    const n = nodesById[id];
-    if (n && n.mode !== targetMode) n.mode = targetMode;
-  }
-
-  node.graph.setDirtyCanvas?.(true, true);
+  graph.setDirtyCanvas?.(true, true);
 }
 
 function actuallyDisconnect(node, slotIdx1) {
@@ -394,27 +400,35 @@ function actuallyDisconnect(node, slotIdx1) {
   node.graph?.setDirtyCanvas?.(true, true);
 }
 
-// Called from onRemoved. Restores every node we muted to its original mode,
-// then clears originalModes. Without this, deleting the Mute Switch while
-// rows were OFF would leave the upstream chain permanently muted (the
-// source-of-truth pill is gone).
+// Called from onRemoved. Restores every node we saved an original for,
+// then re-runs the global apply so any OTHER Mute Switch in the graph
+// can re-mute nodes it still wants muted (taking over ownership of the
+// originalModes since we're going away).
+//
+// Two-step restore-then-reapply is needed because the originalModes that
+// LIVED on this switch is about to be deleted with the node. If another
+// switch still wants those nodes muted, applyAllMuteSwitches (excluding
+// this node) will re-save the originals on the next surviving switch.
 export function restoreAllOnRemove(node) {
   if (!node.graph) return;
   const originalModes = node.properties?.[ORIGINAL_MODES_PROP];
-  if (!originalModes) return;
-
-  const allNodes = node.graph._nodes || node.graph.nodes || [];
-  const nodesById = {};
-  for (const n of allNodes) {
-    if (n && n.id != null) nodesById[String(n.id)] = n;
+  if (originalModes) {
+    const allNodes = node.graph._nodes || node.graph.nodes || [];
+    const nodesById = {};
+    for (const n of allNodes) {
+      if (n && n.id != null) nodesById[String(n.id)] = n;
+    }
+    for (const key of Object.keys(originalModes)) {
+      const n = nodesById[key];
+      if (n) n.mode = originalModes[key];
+    }
+    node.properties[ORIGINAL_MODES_PROP] = {};
   }
 
-  for (const key of Object.keys(originalModes)) {
-    const n = nodesById[key];
-    if (n) n.mode = originalModes[key];
-  }
-  node.properties[ORIGINAL_MODES_PROP] = {};
-  node.graph.setDirtyCanvas?.(true, true);
+  // Re-run global apply, excluding the about-to-be-removed node. Any
+  // surviving switch that still wants any of these nodes muted will
+  // re-mute them and save the original on itself.
+  applyAllMuteSwitches(node.graph, node.id);
 }
 
 // Drop originalModes entries whose node no longer exists in the graph.

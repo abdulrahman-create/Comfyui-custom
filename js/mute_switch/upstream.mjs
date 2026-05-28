@@ -1,5 +1,10 @@
 // Pure-function graph helpers for Mute Switch Pixaroma.
 // No browser globals - safe to import under both ComfyUI and Node.
+//
+// v2: "mute only the directly connected node, cascade through Mute Switch
+// targets". No BFS up the whole chain - we rely on ComfyUI's lazy executor
+// to skip the upstream chain naturally (a node with no consumer doesn't run).
+// The only walk that DOES happen is through inner Mute Switches (chaining).
 
 // graphLinks may be a plain object keyed by id, OR a Map (Vue Compat #3).
 function getLink(graphLinks, linkId) {
@@ -8,75 +13,70 @@ function getLink(graphLinks, linkId) {
   return graphLinks[linkId] || null;
 }
 
-// Walk every node upstream of startNode (following INPUT links).
-// startNode is included in the returned set ONLY if `includeStart` is true.
-// Cap depth defensively.
+// Returns the upstream node wired into `slot`, or null when disconnected.
+export function getUpstreamNode(slot, nodesById, graphLinks) {
+  if (!slot) return null;
+  const linkId = slot.link;
+  if (linkId == null) return null;
+  const link = getLink(graphLinks, linkId);
+  if (!link) return null;
+  return nodesById[link.origin_id] || null;
+}
+
+// Compute the set of node IDs that `switchNode` wants muted.
+// For each OFF row, cascade-mute the directly-wired upstream node:
+//   - regular node:  add it to the set, stop.
+//   - Mute Switch:   add it AND every node wired into ITS inputs (recursive).
 //
-// nodesById: { [id]: node }   - node has .id, .inputs (array of {link})
-// graphLinks: same shape as graph.links
-//
-// Returns a Set<nodeId>.
-export function walkUpstream(startNode, nodesById, graphLinks, options = {}) {
-  const { includeStart = true, maxDepth = 64 } = options;
+// Cycle protection via visited set. `isMuteSwitch(node)` is the predicate.
+export function cascadeMuteSet(switchNode, nodesById, graphLinks, isMuteSwitch) {
   const out = new Set();
-  if (!startNode) return out;
+  if (!switchNode) return out;
+  const state = switchNode.properties?.muteSwitchState;
+  if (!state || !Array.isArray(state.rows)) return out;
 
-  if (includeStart) out.add(startNode.id);
-  const queue = [{ node: startNode, depth: 0 }];
+  const visited = new Set();
+  // Don't ever cascade-mute the calling switch itself - we'd be muting
+  // the source of truth.
+  visited.add(switchNode.id);
 
-  while (queue.length) {
-    const { node, depth } = queue.shift();
-    if (depth >= maxDepth) continue;
-    const inputs = node?.inputs || [];
-    for (const slot of inputs) {
-      const linkId = slot?.link;
-      if (linkId == null) continue;
-      const link = getLink(graphLinks, linkId);
-      if (!link) continue;
-      const upId = link.origin_id;
-      if (upId == null) continue;
-      if (out.has(upId)) continue; // already visited
-      out.add(upId);
-      const upNode = nodesById[upId];
-      if (upNode) queue.push({ node: upNode, depth: depth + 1 });
+  function cascade(target) {
+    if (!target || visited.has(target.id)) return;
+    visited.add(target.id);
+    out.add(target.id);
+
+    if (isMuteSwitch(target)) {
+      // Recurse into target's wired inputs.
+      for (const slot of target.inputs || []) {
+        const upstream = getUpstreamNode(slot, nodesById, graphLinks);
+        if (upstream) cascade(upstream);
+      }
     }
   }
+
+  for (let i = 0; i < state.rows.length; i++) {
+    if (state.rows[i].enabled) continue;
+    const slot = switchNode.inputs?.[i];
+    const upstream = getUpstreamNode(slot, nodesById, graphLinks);
+    if (upstream) cascade(upstream);
+  }
+
   return out;
 }
 
-// Compute the set of nodes that should be muted, given:
-//   onWires:  array of starting-node objects (each row's wired upstream node)
-//             for rows that are ON
-//   offWires: same shape, for rows that are OFF
-// A node is in the result iff it is upstream of some OFF row but NOT upstream
-// of any ON row (refcount-style "shared nodes spared").
-//
-// startNode for a row is the ORIGIN node of the row's input link (the upstream
-// node the wire reaches first), NOT the Mute Switch itself. Skip
-// disconnected rows at the call site.
-//
-// Excludes the Mute Switch node itself defensively.
-export function resolveMuteSet(onWires, offWires, nodesById, graphLinks, muteSwitchId, options = {}) {
-  const onSet = new Set();
-  for (const start of onWires) {
-    if (!start) continue;
-    const set = walkUpstream(start, nodesById, graphLinks, options);
-    for (const id of set) onSet.add(id);
-  }
-
-  const offSet = new Set();
-  for (const start of offWires) {
-    if (!start) continue;
-    const set = walkUpstream(start, nodesById, graphLinks, options);
-    for (const id of set) offSet.add(id);
-  }
-
-  // TO_MUTE = OFF_NODES \ ON_NODES
-  const toMute = new Set();
-  for (const id of offSet) {
-    if (!onSet.has(id) && id !== muteSwitchId) {
-      toMute.add(id);
+// Union of every Mute Switch's wantMuted set in the graph. Returns
+// Map<nodeId(string), targetMode> where targetMode is 2 (mute) or 4 (bypass).
+// On collisions, the later switch's mode wins; functionally either works.
+export function resolveAllMutes(switches, nodesById, graphLinks, isMuteSwitch) {
+  const wantMuted = new Map();
+  for (const sw of switches) {
+    const state = sw.properties?.muteSwitchState;
+    if (!state) continue;
+    const targetMode = state.muteMode === "bypass" ? 4 : 2;
+    const set = cascadeMuteSet(sw, nodesById, graphLinks, isMuteSwitch);
+    for (const id of set) {
+      wantMuted.set(String(id), targetMode);
     }
   }
-  return toMute;
+  return wantMuted;
 }
