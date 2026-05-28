@@ -230,6 +230,10 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 > 💡 **After updating Pixaroma:** hard-refresh your ComfyUI browser tab with **Ctrl+Shift+R** (or **Cmd+Shift+R** on Mac). The browser keeps old node visuals cached, and without a hard refresh you may still see the previous version of a node even though the update installed correctly.
 
+### **May 28, 2026 · v1.3.62**
+- **NEW: Switch Source Pixaroma.** Flip a whole pipeline (or any set of wires) between two sources with one click. Wire your A bank and B bank for as many rows as you need (works for any wire type: MODEL, CLIP, VAE, IMAGE, LATENT, STRING…), then toggle A/B to swap them all at once. Two common setups: swap a combined Load Checkpoint against three separate model/CLIP/VAE loaders, or flip a "local" pipeline against an "api" one without ticking ten little switches. Output labels are editable per row, and you can pick whether empty rows leave the output blank or show a clear error.
+- **Prompt Reader sees through Switch Source.** Drop a saved image whose workflow ran through a Switch Source and the prompt comes back correctly, instead of "no prompt found".
+
 ### **May 27, 2026 · v1.3.59–1.3.61**
 - **Fixed: Prompt Multi / Prompt Pack no longer make too many images when wired into one Switch together.** With several prompt nodes feeding a single Switch, clicking Run now makes exactly the prompts from the one the Switch is pointing at (for example 3, not 9) — the others sit out instead of multiplying.
 - **NEW: Text Watermark node.** Stamp text onto an image or a whole batch in a fixed spot — pick a corner / edge / center on a 3×3 grid plus a margin, and it lands in the same place on every image no matter its size. Set the size in pixels or as a percentage of the image width (so mixed-size batches stay consistent), with font, color, opacity, rotation and an optional background bar. No separate editor to open.
