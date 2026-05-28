@@ -47,16 +47,28 @@ class PixaromaMuteSwitch:
         }
         return {"required": {}, "optional": optional}
 
-    RETURN_TYPES = ()
+    # Phantom output for chaining: wire this into another Mute Switch's
+    # input so the outer switch can cascade through this one. The value is
+    # always None at runtime - muting is JS-side, the output exists only as
+    # a canvas-side hook.
+    RETURN_TYPES = (ANY,)
+    RETURN_NAMES = ("out",)
+    OUTPUT_TOOLTIPS = (
+        "Phantom pass-through used to CHAIN Mute Switches. Wire this into "
+        "another Mute Switch's input row; toggling that outer row OFF will "
+        "then also mute every node THIS switch controls (cascade). For "
+        "normal data flow, wire your real nodes directly into Mute Switch "
+        "rows - this output carries no real data.",
+    )
     FUNCTION = "noop"
     OUTPUT_NODE = True
     CATEGORY = "👑 Pixaroma"
 
     def noop(self, **kwargs):
-        # All muting happens in the JS frontend BEFORE this node is reached
-        # (or this node is never reached, because the upstream chain is
-        # muted). Nothing to do here.
-        return {}
+        # All muting happens in the JS frontend BEFORE this node is reached.
+        # The (None,) return matches RETURN_TYPES arity; downstream consumers
+        # that aren't Mute Switches will receive None.
+        return (None,)
 
 
 NODE_CLASS_MAPPINGS = {"PixaromaMuteSwitch": PixaromaMuteSwitch}

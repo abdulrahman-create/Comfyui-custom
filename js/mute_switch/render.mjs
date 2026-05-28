@@ -367,6 +367,16 @@ export function drawMuteSwitch(node, ctx) {
   updateHoverTooltip(node);
 
   const w = node.size[0];
+
+  // Keep the phantom "out" output dot pinned just below the mode bar and
+  // glued to the right edge - covers the resize case where normalizeSlots
+  // doesn't re-fire (Vue Compat #13: onResize is unreliable).
+  if (node.outputs?.[0]) {
+    const oy = MODE_BAR_H + TOP_PAD + ROW_H / 2;
+    if (node.outputs[0].pos?.[0] !== w || node.outputs[0].pos?.[1] !== oy) {
+      node.outputs[0].pos = [w, oy];
+    }
+  }
   const state = node.properties?.muteSwitchState;
   const selectMode = state?.selectMode || "multi";
   const muteMode = state?.muteMode || "mute";

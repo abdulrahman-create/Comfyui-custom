@@ -108,6 +108,20 @@ export function normalizeSlots(node) {
     node.inputs[i].pos = [10, y];
   }
 
+  // Schema migration: workflows saved before the phantom "out" output was
+  // added still have outputs: []. Re-add it. LiteGraph happily appends.
+  if (!node.outputs || node.outputs.length === 0) {
+    node.addOutput("out", "*");
+  }
+  // Suppress the "out" label (it would otherwise overlap with the mode bar
+  // pill text) and pin the dot just below the mode bar.
+  for (const out of node.outputs) {
+    if (out.label !== "​") out.label = "​";
+  }
+  if (node.outputs[0]) {
+    node.outputs[0].pos = [node.size[0], MODE_BAR_H + TOP_PAD + ROW_H / 2];
+  }
+
   // Sync state.rows length to slot count.
   while (state.rows.length < node.inputs.length) {
     // New row default: ON in multi mode, OFF in single mode.
