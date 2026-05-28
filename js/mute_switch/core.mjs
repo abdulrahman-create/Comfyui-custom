@@ -12,6 +12,7 @@
 
 import { app } from "/scripts/app.js";
 import { ROW_H, TOP_PAD, MODE_BAR_H } from "./render.mjs";
+import { resolveMuteSet } from "./upstream.mjs";
 
 export const STATE_PROP = "muteSwitchState";
 export const ORIGINAL_MODES_PROP = "muteSwitchOriginalModes";
@@ -172,6 +173,7 @@ export function handleConnect(node, slotIdx1) {
     }
   }
 
+  applyMuteState(node);
   app.graph?.setDirtyCanvas?.(true, true);
 }
 
@@ -257,10 +259,89 @@ export function setMuteMode(node, newMode /* "mute" | "bypass" */) {
   app.graph?.setDirtyCanvas?.(true, true);
 }
 
-// Stub - Task 7 replaces this with the real upstream walker + refcount.
+// Walks upstream from each row's wire, computes the refcount-style "should
+// be muted" set, and writes node.mode = 2 (Mute) or 4 (Bypass) on each.
+// Saved original modes in node.properties.muteSwitchOriginalModes so the
+// restore is exact when the row toggles back ON.
 export function applyMuteState(node) {
-  // Intentionally empty for Task 5. Clicks update state correctly so the
-  // paint reflects them; the actual node.mode writes land in Task 7.
+  if (!node.graph) return;
+  // Don't re-apply during a configure replay - saved node.mode values are
+  // already correct, and rewriting them would falsely flag the workflow
+  // modified (Vue Compat #18).
+  if (node._pixMsConfiguring) return;
+
+  const state = readState(node);
+  const originalModes = readOriginalModes(node);
+  const targetMode = state.muteMode === "bypass" ? 4 : 2;
+
+  // For each row find the upstream START NODE (the origin of the row's link).
+  // Disconnected rows contribute nothing to either bucket.
+  const onWires = [];
+  const offWires = [];
+  for (let i = 0; i < state.rows.length; i++) {
+    const slot = node.inputs?.[i];
+    const linkId = slot?.link;
+    if (linkId == null) continue;
+    let link = node.graph.links?.[linkId];
+    if (!link && typeof node.graph.links?.get === "function") {
+      link = node.graph.links.get(linkId);
+    }
+    if (!link) continue;
+    const upstream = node.graph.getNodeById?.(link.origin_id);
+    if (!upstream) continue;
+    if (state.rows[i].enabled) onWires.push(upstream);
+    else offWires.push(upstream);
+  }
+
+  // Build nodesById from app.graph._nodes for the walker.
+  const allNodes = node.graph._nodes || node.graph.nodes || [];
+  const nodesById = {};
+  for (const n of allNodes) {
+    if (n && n.id != null) nodesById[n.id] = n;
+  }
+
+  const toMute = resolveMuteSet(
+    onWires,
+    offWires,
+    nodesById,
+    node.graph.links,
+    node.id,
+  );
+
+  // 1. Mute every node in toMute that we haven't already muted, saving its
+  //    original mode the first time. Use String keys consistently because
+  //    LiteGraph node ids can be numbers or strings depending on context;
+  //    JSON.stringify would coerce them to strings on save anyway.
+  for (const id of toMute) {
+    const n = nodesById[id];
+    if (!n) continue;
+    const key = String(id);
+    if (originalModes[key] == null) {
+      originalModes[key] = n.mode || 0;
+    }
+    if (n.mode !== targetMode) n.mode = targetMode;
+  }
+
+  // 2. Restore every previously-muted node that is no longer in toMute.
+  const toMuteKeySet = new Set();
+  for (const id of toMute) toMuteKeySet.add(String(id));
+  for (const key of Object.keys(originalModes)) {
+    if (toMuteKeySet.has(key)) continue; // still muted
+    const n = nodesById[key];
+    if (n) {
+      n.mode = originalModes[key];
+    }
+    delete originalModes[key];
+  }
+
+  // 3. Make sure muted nodes carry the CURRENT targetMode (handles Mute <->
+  //    Bypass switches that don't change the muted set, only the value).
+  for (const id of toMute) {
+    const n = nodesById[id];
+    if (n && n.mode !== targetMode) n.mode = targetMode;
+  }
+
+  node.graph.setDirtyCanvas?.(true, true);
 }
 
 function actuallyDisconnect(node, slotIdx1) {
@@ -307,5 +388,6 @@ function actuallyDisconnect(node, slotIdx1) {
   // 5. Resize.
   node.size[1] = computeNodeHeight(node.inputs.length);
 
+  applyMuteState(node);
   node.graph?.setDirtyCanvas?.(true, true);
 }
