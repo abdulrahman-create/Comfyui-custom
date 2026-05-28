@@ -1195,3 +1195,188 @@ def build_workflow_4_v2():
 w4 = build_workflow_4_v2()
 overlap_check(w4, "04 - chaining")
 write(w4, "04 - Chaining (groups of scenes).json")
+
+
+def build_workflow_5_simple_chaining():
+    """Text-only chaining demo - no model loading, immediate Run.
+    Inner Switch A wires Text A1, Text A2.
+    Inner Switch B wires Text B1, Text B2.
+    Outer Switch C wires Switch A + Switch B (Single mode - pick a group).
+    Each Text has a Show Text downstream so you can SEE which ones ran.
+    """
+    nodes = []
+    links = []
+    next_link = [1]
+
+    def new_link(from_id, from_slot, to_id, to_slot, ltype):
+        lid = next_link[0]
+        next_link[0] += 1
+        links.append([lid, from_id, from_slot, to_id, to_slot, ltype])
+        return lid
+
+    TEXT_X      = 0
+    SHOWTEXT_X  = 320
+    INNER_X     = 720
+    OUTER_X     = 1080
+
+    nodes.append(title_label(TEXT_X, 40, 920, "Mute Switch - Simple Chaining Test (text only)"))
+    nodes.append(subtitle_label(TEXT_X, 91,
+        "Outer switch picks GROUP A or GROUP B. Click Run: only the active group's Show Text fills in.\n"
+        "Toggle the outer Single pill rows to swap groups. Inner switches let you mute individual rows."))
+
+    def add_pair(base_id, label_letter, x, y):
+        """Add a Text + ShowText pair. Returns (text_node, showtext_node)."""
+        t = {
+            "id": base_id,
+            "type": "PixaromaText",
+            "pos": [x, y],
+            "size": [260, 158],
+            "flags": {},
+            "order": 0,
+            "mode": 0,
+            "inputs": [],
+            "outputs": [
+                {"name": "text", "type": "STRING", "links": [], "slot_index": 0},
+            ],
+            "properties": {
+                "cnr_id": "ComfyUI-Pixaroma",
+                "Node name for S&R": "PixaromaText",
+            },
+            "widgets_values": [f"Text {label_letter}"],
+            **COL_PROC,
+        }
+        nodes.append(t)
+
+        s = {
+            "id": base_id + 1,
+            "type": "PixaromaShowText",
+            "pos": [x + 320, y],
+            "size": [240, 158],
+            "flags": {},
+            "order": 0,
+            "mode": 0,
+            "inputs": [
+                {"name": "source", "type": "*", "link": None},
+            ],
+            "outputs": [
+                {"name": "text", "type": "STRING", "links": [], "slot_index": 0},
+            ],
+            "properties": {
+                "cnr_id": "ComfyUI-Pixaroma",
+                "Node name for S&R": "PixaromaShowText",
+            },
+            "widgets_values": [""],
+            **COL_PROC,
+        }
+        nodes.append(s)
+
+        # Text -> Show Text
+        l = new_link(base_id, 0, base_id + 1, 0, "STRING")
+        t["outputs"][0]["links"].append(l)
+        s["inputs"][0]["link"] = l
+
+        return t, s
+
+    # Four Text + Show Text pairs
+    tA1, _ = add_pair(101, "A1", TEXT_X,  220)
+    tA2, _ = add_pair(201, "A2", TEXT_X,  430)
+    tB1, _ = add_pair(301, "B1", TEXT_X,  680)
+    tB2, _ = add_pair(401, "B2", TEXT_X,  890)
+
+    # Helper to make a Mute Switch
+    def make_switch(node_id, pos, rows_labels, wired_node_ids, wired_node_slots,
+                    select_mode="multi", row_states=None):
+        """rows_labels: list of labels (incl. None for trailing)
+        wired_node_ids[i] = upstream node id for row i; None = unwired
+        wired_node_slots[i] = upstream output slot index for row i
+        row_states[i] = True/False enabled (defaults to True for connected, False for trailing/unwired)
+        """
+        # state.rows includes ALL rows (visible)
+        n_visible = len(rows_labels)
+        # Decide enabled per row
+        if row_states is None:
+            row_states = []
+            for i in range(n_visible):
+                if i < len(wired_node_ids) and wired_node_ids[i] is not None:
+                    row_states.append(True)
+                else:
+                    row_states.append(False)
+
+        sw = {
+            "id": node_id,
+            "type": "PixaromaMuteSwitch",
+            "pos": list(pos),
+            "size": [260, 130],
+            "flags": {},
+            "order": 0,
+            "mode": 0,
+            "inputs": [
+                {"name": f"input_{i+1}", "type": "*", "link": None, "label": "​",
+                 "pos": [10, 42 + i*20]}
+                for i in range(n_visible)
+            ],
+            "outputs": [
+                {"name": "out", "type": "*", "links": [], "label": "​"},
+            ],
+            "properties": {
+                "cnr_id": "ComfyUI-Pixaroma",
+                "Node name for S&R": "PixaromaMuteSwitch",
+                "muteSwitchState": {
+                    "version": 1,
+                    "selectMode": select_mode,
+                    "muteMode": "mute",
+                    "rows": [{"enabled": row_states[i], "label": rows_labels[i]}
+                             for i in range(n_visible)],
+                },
+                "muteSwitchOriginalModes": {},
+            },
+            "widgets_values": [],
+            **COL_PROC,
+        }
+        nodes.append(sw)
+        for i, upid in enumerate(wired_node_ids):
+            if upid is None:
+                continue
+            l = new_link(upid, wired_node_slots[i], node_id, i, "*")
+            upstream_node = next(n for n in nodes if n["id"] == upid)
+            upstream_node["outputs"][wired_node_slots[i]]["links"].append(l)
+            sw["inputs"][i]["link"] = l
+        return sw
+
+    # Inner Switch A: wires Text A1, Text A2 (+ trailing)
+    swA = make_switch(
+        node_id=510,
+        pos=(INNER_X, 280),
+        rows_labels=["A1", "A2", None],
+        wired_node_ids=[101, 201, None],
+        wired_node_slots=[0, 0, 0],
+        select_mode="multi",
+    )
+
+    # Inner Switch B: wires Text B1, Text B2 (+ trailing)
+    swB = make_switch(
+        node_id=610,
+        pos=(INNER_X, 730),
+        rows_labels=["B1", "B2", None],
+        wired_node_ids=[301, 401, None],
+        wired_node_slots=[0, 0, 0],
+        select_mode="multi",
+    )
+
+    # Outer Switch C: wires Switch A + Switch B (Single mode, row 1 active)
+    swC = make_switch(
+        node_id=710,
+        pos=(OUTER_X, 500),
+        rows_labels=["Group A", "Group B", None],
+        wired_node_ids=[510, 610, None],
+        wired_node_slots=[0, 0, 0],
+        select_mode="single",
+        row_states=[True, False, False],
+    )
+
+    return _assemble(nodes, links)
+
+
+w5 = build_workflow_5_simple_chaining()
+overlap_check(w5, "05 - simple chaining")
+write(w5, "05 - Simple chaining (text only).json")
