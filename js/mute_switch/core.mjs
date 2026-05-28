@@ -309,6 +309,27 @@ export function setSelectMode(node, newMode /* "single" | "multi" */) {
   app.graph?.setDirtyCanvas?.(true, true);
 }
 
+// Bulk-toggle helper for the right-click "Enable all rows" / "Disable all rows"
+// menu items. Only flips WIRED rows (unwired rows can't meaningfully mute
+// anything anyway). Only valid in Multi mode - in Single the "exactly one
+// ON" invariant forbids all-ON or all-OFF, so the caller must gate.
+export function setAllRowsEnabled(node, enabled) {
+  const state = readState(node);
+  if (state.selectMode !== "multi") return;
+  let changed = false;
+  for (let i = 0; i < state.rows.length; i++) {
+    const slot = node.inputs?.[i];
+    if (!slot || slot.link == null) continue;
+    if (state.rows[i].enabled !== enabled) {
+      state.rows[i].enabled = enabled;
+      changed = true;
+    }
+  }
+  if (!changed) return;
+  applyMuteState(node);
+  app.graph?.setDirtyCanvas?.(true, true);
+}
+
 export function setMuteMode(node, newMode /* "mute" | "bypass" */) {
   const state = readState(node);
   if (state.muteMode === newMode) return;
