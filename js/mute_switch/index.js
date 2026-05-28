@@ -21,6 +21,12 @@ app.registerExtension({
 
   async beforeRegisterNodeDef(nodeType, nodeData) {
     if (nodeData.name !== "PixaromaMuteSwitch") return;
+    // Idempotent guard - if the extension is hot-reloaded, beforeRegisterNodeDef
+    // can fire more than once for the same nodeType. Without this flag every
+    // re-fire would wrap each hook over the last (each "original" is the
+    // previous wrap), producing exponential call chains.
+    if (nodeType.prototype._pixMsPatched) return;
+    nodeType.prototype._pixMsPatched = true;
 
     // Creation
     const _origCreated = nodeType.prototype.onNodeCreated;

@@ -10,6 +10,7 @@
 //   Opening another editor auto-commits the previous one.
 
 import { app } from "/scripts/app.js";
+import { installGraphUndoGuard } from "../shared/graph_undo_guard.mjs";
 
 const STATE_PROP = "muteSwitchState";
 const BRAND = "#f66744";
@@ -43,6 +44,12 @@ function cleanup(state) {
   }
   if (state.blurHandler) state.input.removeEventListener("blur", state.blurHandler);
   state.input.remove();
+  // Release the graph-undo guard so Ctrl+Z works normally on the canvas
+  // again after the editor closes.
+  if (state.undoGuardOff) {
+    state.undoGuardOff();
+    state.undoGuardOff = null;
+  }
   if (activeEditor === state) activeEditor = null;
 }
 
@@ -98,6 +105,15 @@ export function openLabelEditor(node, slotIdx, rect) {
   state.blurHandler = () => commit(state);
 
   window.addEventListener("keydown", state.windowKeyHandler, true);
+
+  // Vue Compat #6: install the shared graph-undo guard while the input is
+  // open. Without it, Ctrl+Z inside the input would escape to ComfyUI's
+  // Vue undo (via requestAnimationFrame-scheduled loadGraphData) and could
+  // tear the underlying node out from under us. The guard self-heals and
+  // is reference-counted so multiple Mute Switch labels (or any other
+  // editor) can be open simultaneously.
+  state.undoGuardOff = installGraphUndoGuard(() => input.isConnected);
+
   activeEditor = state;
 
   setTimeout(() => {

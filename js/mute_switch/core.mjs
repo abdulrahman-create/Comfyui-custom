@@ -17,6 +17,9 @@ import { resolveAllMutes } from "./upstream.mjs";
 export const STATE_PROP = "muteSwitchState";
 export const ORIGINAL_MODES_PROP = "muteSwitchOriginalModes";
 export const MAX_INPUTS = 32;
+// Bump this whenever the schema of muteSwitchState changes. _migrateState
+// is the single point where old versions get upgraded to current.
+export const STATE_VERSION = 1;
 
 const SLOT_NAME = (i) => `input_${i}`; // 1-based
 
@@ -26,11 +29,22 @@ const MIN_BODY_H = MODE_BAR_H + ROW_H + BOT_PAD;
 
 export function defaultState() {
   return {
-    version: 1,
+    version: STATE_VERSION,
     selectMode: "multi",
     muteMode: "mute",
     rows: [],
   };
+}
+
+// Forward-migrate an older state to the current schema. Called from
+// readState so every read goes through migration. Currently a no-op
+// because we are at v1 - when a future version ships, add the migration
+// branches HERE rather than scattering defaults across every reader.
+function _migrateState(s) {
+  if (typeof s.version !== "number") s.version = STATE_VERSION;
+  // Example shape for future migrations:
+  //   if (s.version < 2) { s.newField = "default"; s.version = 2; }
+  return s;
 }
 
 export function readState(node) {
@@ -40,15 +54,9 @@ export function readState(node) {
   }
   const s = node.properties[STATE_PROP];
   if (!Array.isArray(s.rows)) s.rows = [];
-  return s;
-}
-
-export function readOriginalModes(node) {
-  if (!node.properties) node.properties = {};
-  if (!node.properties[ORIGINAL_MODES_PROP]) {
-    node.properties[ORIGINAL_MODES_PROP] = {};
-  }
-  return node.properties[ORIGINAL_MODES_PROP];
+  if (typeof s.selectMode !== "string") s.selectMode = "multi";
+  if (typeof s.muteMode !== "string") s.muteMode = "mute";
+  return _migrateState(s);
 }
 
 // Walk backwards to avoid index shifts.
@@ -340,10 +348,14 @@ export function applyAllMuteSwitches(graph, excludeId /* optional */) {
   if (!graph) return;
   const switches = findAllMuteSwitches(graph, excludeId);
 
+  // Build nodesById with String keys to match wantMuted's String keys
+  // (resolveAllMutes uses String(id)) and originalModes' String keys (LG
+  // stringifies object keys at JSON serialize). JS auto-coerces on read
+  // either way; explicit String() avoids surprise for future maintainers.
   const allNodes = graph._nodes || graph.nodes || [];
   const nodesById = {};
   for (const n of allNodes) {
-    if (n && n.id != null) nodesById[n.id] = n;
+    if (n && n.id != null) nodesById[String(n.id)] = n;
   }
 
   // Prune stale originalModes entries on every switch (their upstream node
@@ -397,6 +409,15 @@ export function applyAllMuteSwitches(graph, excludeId /* optional */) {
     }
 
     if (n.mode !== targetMode) n.mode = targetMode;
+  }
+
+  // Drop empty originalModes objects so they don't bloat the saved JSON.
+  // Lazy-recreated on the next write at line 391.
+  for (const sw of switches) {
+    const om = sw.properties?.[ORIGINAL_MODES_PROP];
+    if (om && Object.keys(om).length === 0) {
+      delete sw.properties[ORIGINAL_MODES_PROP];
+    }
   }
 
   graph.setDirtyCanvas?.(true, true);
