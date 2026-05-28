@@ -1295,8 +1295,6 @@ window.addEventListener("keydown", (e) => {
 }, true);
 
 api.addEventListener("executed", ({ detail }) => {
-  const frames = detail?.output?.pixaroma_preview_frames;
-  if (!frames || !frames.length) return;
   // Cross-version node-id resolution: Vue may pass detail.node as a
   // string, legacy as a number — try both.
   let node = app.graph.getNodeById(detail.node);
@@ -1305,16 +1303,28 @@ api.addEventListener("executed", ({ detail }) => {
   }
   if (!node || node.type !== "PixaromaPreview") return;
 
+  // Save mode emits `ui.images` (so the Media Assets panel refreshes);
+  // preview mode emits `ui.pixaroma_preview_frames`. Either way it's the
+  // SAME shape (`[{filename, subfolder, type, _pixaroma_meta?}]`), so we
+  // read whichever key is present. This single-key-per-mode design keeps
+  // the Assets stack-count badge at 1 (server counts items across all
+  // list-keyed arrays - see node_preview.py comment).
+  const frames =
+    detail?.output?.pixaroma_preview_frames ||
+    detail?.output?.images;
+  if (!frames || !frames.length) return;
+
   // Note: node.imgs is permanently locked to [] via Object.defineProperty
   // in onNodeCreated (so ComfyUI's native canvas-image-preview widget
-  // never gets added). The `ui.images` payload we emit in save_mode=save
-  // exists purely to trigger the Media Assets panel's refresh signal.
+  // never gets added even though we emit ui.images in save mode).
 
-  // Capture the EXECUTION-time prompt + workflow (the seed that actually made
-  // this image) so the Save buttons embed it instead of the live, post-
-  // "randomize" graph state. Runtime-only (NOT persisted to node.properties —
-  // that would recursively bloat the saved workflow with a copy of itself).
-  const execMeta = detail?.output?.pixaroma_preview_meta?.[0];
+  // Capture the EXECUTION-time prompt + workflow (the seed that actually
+  // made this image) so the Save buttons embed it instead of the live,
+  // post-"randomize" graph state. Now embedded as a field on the first
+  // frame entry (instead of a separate ui.pixaroma_preview_meta key) so
+  // the Assets stack-count stays at 1. Runtime-only (NOT persisted to
+  // node.properties - that would recursively bloat the saved workflow).
+  const execMeta = frames[0]?._pixaroma_meta;
   if (execMeta) {
     node._pixaromaExecPrompt = execMeta.prompt ?? null;
     node._pixaromaExecWorkflow = execMeta.workflow ?? null;
