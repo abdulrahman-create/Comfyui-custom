@@ -188,7 +188,39 @@ function drawRowPill(ctx, rect, on) {
   ctx.restore();
 }
 
-function drawRowLabel(ctx, nodeWidth, slotIdx0, text, isTrailing, upstreamType) {
+// Per-row truncation cache (Map keyed on slot ref). Invalidated when the
+// display string, max width, or font changes - so a fresh truncate runs
+// only when something actually moved, not every paint frame.
+const _labelCache = new WeakMap();
+
+function fitLabel(ctx, slot, display, maxW, font) {
+  const cached = _labelCache.get(slot);
+  if (cached
+    && cached.display === display
+    && cached.maxW === maxW
+    && cached.font === font) {
+    return cached.painted;
+  }
+  let painted = display;
+  if (ctx.measureText(painted).width > maxW) {
+    // Binary search for the cut point instead of char-by-char slicing -
+    // O(log n) measureText calls instead of O(n).
+    let lo = 1, hi = painted.length;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >>> 1;
+      if (ctx.measureText(painted.slice(0, mid) + "...").width <= maxW) {
+        lo = mid;
+      } else {
+        hi = mid - 1;
+      }
+    }
+    painted = painted.slice(0, lo) + "...";
+  }
+  _labelCache.set(slot, { display, maxW, font, painted });
+  return painted;
+}
+
+function drawRowLabel(ctx, nodeWidth, slotIdx0, slot, text, isTrailing, upstreamType) {
   const cy = rowCenterY(slotIdx0);
   const lx = DOT_GUTTER + 4;
   const maxW = nodeWidth - ROW_PILL_RIGHT_PAD - ROW_PILL_W - 8 - lx;
@@ -213,34 +245,38 @@ function drawRowLabel(ctx, nodeWidth, slotIdx0, text, isTrailing, upstreamType) 
     color = "#5a5a5a";
   }
 
+  const font = "12px 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif";
   ctx.fillStyle = color;
-  ctx.font = "12px 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif";
+  ctx.font = font;
   ctx.textBaseline = "middle";
   ctx.textAlign = "left";
 
-  let painted = display;
-  if (ctx.measureText(painted).width > maxW) {
-    while (painted.length > 1 && ctx.measureText(painted + "...").width > maxW) {
-      painted = painted.slice(0, -1);
-    }
-    painted += "...";
-  }
+  const painted = slot ? fitLabel(ctx, slot, display, maxW, font) : display;
   ctx.fillText(painted, lx, cy);
   ctx.restore();
 }
 
 // Vue Compat #3: graph.links may be a Map.
+// Cached on the slot itself - invalidated when the slot's link id changes
+// (we check link id equality), so connect/disconnect/wire-replace all
+// produce a fresh lookup naturally without a separate invalidation hook.
 function getUpstreamType(node, slotIdx1) {
   const slot = node.inputs?.[slotIdx1 - 1];
   const linkId = slot?.link;
   if (linkId == null) return null;
+  // Hit the cache if the link id hasn't changed since last lookup.
+  if (slot._pixMsTypeCache && slot._pixMsTypeCache.linkId === linkId) {
+    return slot._pixMsTypeCache.type;
+  }
   let link = node.graph?.links?.[linkId];
   if (!link && typeof node.graph?.links?.get === "function") {
     link = node.graph.links.get(linkId);
   }
   if (!link) return null;
   const upstream = node.graph?.getNodeById?.(link.origin_id);
-  return upstream?.outputs?.[link.origin_slot]?.type || null;
+  const type = upstream?.outputs?.[link.origin_slot]?.type || null;
+  slot._pixMsTypeCache = { linkId, type };
+  return type;
 }
 
 // ── Canvas tooltip helper (Pixaroma UI Convention #8) ────────────────────
@@ -415,17 +451,48 @@ export function drawMuteSwitch(node, ctx) {
   );
 
   // Rows.
+  let wiredRows = 0;
   for (let i = 0; i < inputs.length; i++) {
     const slotIdx1 = i + 1;
     const slot = inputs[i];
     const connected = slot != null && slot.link != null;
+    if (connected) wiredRows++;
     const isTrailing = !connected && slotIdx1 === inputs.length;
     const row = rows[i];
     const on = connected && row && row.enabled;
 
     const labelTxt = (row && row.label) || "";
     const upType = connected ? getUpstreamType(node, slotIdx1) : null;
-    drawRowLabel(ctx, w, i, labelTxt, isTrailing, upType);
+    drawRowLabel(ctx, w, i, slot, labelTxt, isTrailing, upType);
     drawRowPill(ctx, rowPillRect(w, i), on);
+  }
+
+  // Empty-state hint: when no row is wired yet, paint a faint line under
+  // the trailing "(empty)" row explaining what to do. Helps first-time
+  // discovery (a fresh node lands with just one greyed empty row and the
+  // pills, with no obvious next step).
+  if (wiredRows === 0 && inputs.length === 1) {
+    const hintY = rowCenterY(0) + ROW_H * 0.75;
+    ctx.save();
+    ctx.fillStyle = "#5a5a5a";
+    ctx.font = "10px 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif";
+    ctx.textBaseline = "middle";
+    ctx.textAlign = "left";
+    ctx.fillText("Wire any node into the row above", DOT_GUTTER + 4, hintY);
+    ctx.restore();
+  }
+
+  // Small "out" caption next to the phantom output dot so chaining is
+  // discoverable. The output dot itself has its label suppressed (zero-
+  // width space) so the user wouldn't otherwise know it's a chain hook.
+  if (node.outputs?.[0]) {
+    const oy = MODE_BAR_H + TOP_PAD + ROW_H / 2;
+    ctx.save();
+    ctx.fillStyle = "#888";
+    ctx.font = "9px 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif";
+    ctx.textBaseline = "middle";
+    ctx.textAlign = "right";
+    ctx.fillText("out", w - OUTPUT_X_INSET - 8, oy);
+    ctx.restore();
   }
 }
