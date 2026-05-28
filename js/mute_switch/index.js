@@ -7,8 +7,9 @@ import {
 } from "./core.mjs";
 import {
   drawMuteSwitch,
-  hitSelectModePill, hitMutePill, hitRowPill,
+  hitSelectModePill, hitMutePill, hitRowPill, hitLabel, labelScreenRect,
 } from "./render.mjs";
+import { openLabelEditor, cancelEditorForNode } from "./editor.mjs";
 
 // Mute Switch Pixaroma - dynamic N-row mute control. See:
 //   js/switch/index.js     for the structural reference
@@ -98,9 +99,32 @@ app.registerExtension({
               return true;
             }
           }
+          // Row label hit-test (only on connected rows).
+          for (let i = 0; i < inputs.length; i++) {
+            const slot = inputs[i];
+            if (slot == null || slot.link == null) continue;
+            if (hitLabel(pos, w, i)) {
+              const rect = labelScreenRect(this, i + 1);
+              openLabelEditor(this, i + 1, rect);
+              return true;
+            }
+          }
         }
       }
       if (_origDown) return _origDown.call(this, e, pos);
+    };
+
+    // Removal - cancel any open editor + clear pending disconnects.
+    const _origRemoved = nodeType.prototype.onRemoved;
+    nodeType.prototype.onRemoved = function () {
+      cancelEditorForNode(this);
+      if (this._pendingDisconnects?.size) {
+        for (const timerId of this._pendingDisconnects.values()) {
+          clearTimeout(timerId);
+        }
+        this._pendingDisconnects.clear();
+      }
+      return _origRemoved?.apply(this, arguments);
     };
   },
 });
