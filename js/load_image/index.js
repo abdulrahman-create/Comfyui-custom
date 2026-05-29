@@ -483,9 +483,13 @@ function injectLoadImageNodes2CSS() {
 }
 
 // Cards strip height + image-area clamp constants for the Nodes 2.0 preview.
-const LI_CARDS_H = 132;
-const LI_PREVIEW_MIN_IMG_H = 90;
-const LI_PREVIEW_MAX_IMG_H = 1200;
+// LI_PREVIEW_MAX_IMG_H caps the image preview so the node stays COMPACT in Nodes
+// 2.0 (where it auto-grows to content): a square/portrait image is contained
+// within this height rather than ballooning to full-width-aspect. Legacy is
+// untouched (drag-to-resize fill). Tune for a bigger/smaller default preview.
+const LI_CARDS_H = 124;
+const LI_PREVIEW_MIN_IMG_H = 80;
+const LI_PREVIEW_MAX_IMG_H = 240;
 
 // Compute the image-area height for the Nodes 2.0 preview: fit the selected
 // image to the node's content width at its OWN aspect (so the picture fills the
