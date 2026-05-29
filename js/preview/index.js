@@ -22,33 +22,16 @@ function repaint(node) {
   }
 }
 
-// In Nodes 2.0, save_mode=save emits ui.images so the Media Assets panel
-// refreshes (Pattern #14). ComfyUI then renders its OWN native .image-preview
-// panel inside the node body, duplicating our custom strip widget. Hide that
-// native panel for our node only. The marker class is added to the lg-node DOM
-// from the strip widget's draw() (where we have ctx.canvas to walk up from).
-function injectPreviewCSS() {
-  if (document.getElementById("pix-preview-nodes2-css")) return;
-  const style = document.createElement("style");
-  style.id = "pix-preview-nodes2-css";
-  style.textContent =
-    ".lg-node.pix-preview-node .image-preview{display:none !important;}";
-  document.head.appendChild(style);
-}
-
-// Add the marker class (used by injectPreviewCSS) to this node's lg-node DOM.
-// The strip widget stores its bridged <canvas> on node._pixStripCanvas each
-// draw; we walk up from it. Vue can strip a manually-added class when it
-// re-renders the node (e.g. on the executed update that also inserts the
-// native .image-preview), so callers re-apply this for a few frames after a
-// run to avoid a 1-frame duplicate-preview flash.
-function tagPreviewNodeDom(node) {
-  if (!window.LiteGraph?.vueNodesMode) return;
-  const lg = node?._pixStripCanvas?.closest?.(".lg-node");
-  if (lg && !lg.classList.contains("pix-preview-node")) {
-    lg.classList.add("pix-preview-node");
-  }
-}
+// In save_mode=save the node emits ui.images so the Media Assets panel
+// refreshes (Pattern #14). ComfyUI would then render its OWN native preview
+// panel inside the node body, duplicating our custom strip (and in Nodes 2.0
+// that native panel is a flex element that compounds the node height on every
+// run). ComfyUI exposes node.hideOutputImages as the official suppression flag:
+// the Vue node's preview-media computed early-returns when it's truthy
+// (verified in GraphView bundle: `if (!images.length || node.hideOutputImages) return`),
+// and ui.images still fires for the Assets refresh. Set once in onNodeCreated.
+// In the legacy renderer the native strip is gated on node.imgs (locked to []
+// elsewhere), so this flag is simply a harmless no-op there.
 
 // ---- button / node sizing ----
 const BTN_H = 26;
@@ -912,13 +895,6 @@ function createStripWidget() {
     },
     draw(ctx, node, widget_width, y, h) {
       this._node = node;
-      // Nodes 2.0: remember the bridged canvas and tag the node DOM so CSS can
-      // hide ComfyUI's native .image-preview panel (which save_mode=save's
-      // ui.images triggers, duplicating our custom strip).
-      if (window.LiteGraph?.vueNodesMode) {
-        node._pixStripCanvas = ctx.canvas;
-        tagPreviewNodeDom(node);
-      }
       const frames = node._pixaromaFrames || [];
       if (!frames.length) return;
       // Height resolution:
@@ -1185,7 +1161,10 @@ app.registerExtension({
     const origNodeCreated = nodeType.prototype.onNodeCreated;
     nodeType.prototype.onNodeCreated = function () {
       if (origNodeCreated) origNodeCreated.apply(this, arguments);
-      injectPreviewCSS();
+      // Suppress ComfyUI's native output-image preview (see the note above the
+      // imports). We render our own strip; the native one would duplicate it
+      // and, in Nodes 2.0, grow the node on every run.
+      this.hideOutputImages = true;
       // applyAdaptiveCanvasOnly: keep these out of the legacy Parameters tab
       // (canvasOnly true) while still rendering them in the Nodes 2.0 Vue body
       // (canvasOnly false). addCustomWidget returns the widget it added.
@@ -1445,19 +1424,8 @@ api.addEventListener("executed", ({ detail }) => {
   // was on) so suggested filename will be naturally newer; reset the local
   // offset so we don't double-jump.
   node._pixaromaDiskOffset = 0;
+  // Belt-and-braces: ensure the native preview stays suppressed even if a
+  // restored/older node instance missed the onNodeCreated assignment.
+  node.hideOutputImages = true;
   hydrateFrames(node, node.properties.pixaromaFrames);
-
-  // Nodes 2.0: save_mode=save returns ui.images, which makes ComfyUI render its
-  // own native .image-preview panel (a duplicate of our strip). The CSS hide
-  // depends on our marker class, which Vue can strip when it re-renders the
-  // node on this very update. Re-apply the marker over the next few frames so
-  // the native panel never flashes visible.
-  if (window.LiteGraph?.vueNodesMode) {
-    let n = 0;
-    const reTag = () => {
-      tagPreviewNodeDom(node);
-      if (++n < 6) requestAnimationFrame(reTag);
-    };
-    requestAnimationFrame(reTag);
-  }
 });
