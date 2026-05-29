@@ -40,11 +40,15 @@ const MIN_H = IMG_Y + 100;
 // both read isVueNodes(), so they always agree within a renderer.
 function rowLayout(W) {
   const gap = BTN_GAP;
-  const leftPad = isVueNodes() ? 12 : BTN_X;
-  const rightPad = 6;
+  const vue = isVueNodes();
+  const leftPad = vue ? 12 : BTN_X;
+  const rightPad = vue ? 12 : 6;
   const n = 6; // Show toggle + 5 mode buttons
   let bw = Math.floor((W - leftPad - rightPad - gap * (n - 1)) / n);
-  bw = Math.max(30, Math.min(BTN_W, bw));
+  // Legacy caps at the classic 56px (keeps the legacy node byte-identical);
+  // Nodes 2.0 lets the buttons FILL the body width so there's no trailing gap
+  // on a wide node (the canvas is the whole body width there).
+  bw = Math.max(30, vue ? bw : Math.min(BTN_W, bw));
   return { leftPad, gap, bw };
 }
 function showRect(W) {
@@ -593,7 +597,15 @@ function createCompareDOMWidget(node) {
 
   const localPos = (e) => {
     const r = root.getBoundingClientRect();
-    return [e.clientX - r.left, e.clientY - r.top];
+    // The Vue node is CSS-transform-scaled by the graph zoom, so
+    // getBoundingClientRect() returns SCREEN px while render() draws in layout
+    // px (root.clientWidth/Height). Convert the click offset back to layout px
+    // (divide by the zoom scale) so clicks line up with the drawn rects at ANY
+    // zoom level. Without this, zooming in shifts every hit-test to the right /
+    // down (e.g. clicking Overlay selects Difference; the Copy button is missed).
+    const sx = r.width ? root.clientWidth / r.width : 1;
+    const sy = r.height ? root.clientHeight / r.height : 1;
+    return [(e.clientX - r.left) * sx, (e.clientY - r.top) * sy];
   };
   const W = () => node._cmpDomW || root.clientWidth;
   const H = () => node._cmpDomH || root.clientHeight;
