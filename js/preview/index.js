@@ -14,11 +14,12 @@ function repaint(node) {
   if (!node) return;
   node.setDirtyCanvas?.(true, true);
   if (window.LiteGraph?.vueNodesMode) {
+    // Buttons stay a bridged canvas widget (triggerDraw); the strip is a DOM
+    // widget that repaints via its own render fn.
     for (const w of node.widgets || []) {
-      if (w.name === "pixaroma_buttons" || w.name === "pixaroma_strip") {
-        w.triggerDraw?.();
-      }
+      if (w.name === "pixaroma_buttons") w.triggerDraw?.();
     }
+    node._pixStripRender?.();
   }
 }
 
@@ -692,14 +693,6 @@ function createButtonsWidget() {
 // whatever rect the user-resized node gives the widget. No node.setSize
 // calls — that's what caused resize flicker.
 const IMG_STRIP_MIN_H = 220;
-// Nodes 2.0: approximate height consumed ABOVE the strip widget inside the node
-// body (header + image input slot + filename_prefix + save_mode + buttons widget
-// + paddings). The strip's computeSize returns node.size[1] - this so the strip
-// canvas fills the rest of the node and grows when the node is resized - WITHOUT
-// the flex/computeLayoutSize path that caused the +2 growth loop. Tune if a gap
-// or slight overflow appears; making it a touch LARGER errs toward a small gap
-// (safe) rather than growth.
-const VUE_STRIP_CHROME = 172;
 const IMG_STRIP_GAP = 4;
 const IMG_STRIP_V_PAD = 4;
 const IMG_STRIP_BORDER_W = 2;       // selection border thickness
@@ -877,25 +870,12 @@ function createStripWidget() {
     value: null,
     serialize: false,
     // canvasOnly: skip this widget in the Parameters tab (Vue Compat #15).
-    // Made adaptive after addCustomWidget so Nodes 2.0 still renders it in
-    // the Vue body (applyAdaptiveCanvasOnly: true legacy / false Nodes 2.0).
     options: {},
-    // Both renderers expose computeSize, and we deliberately DO NOT provide
-    // computeLayoutSize. Why: declaring computeLayoutSize flags the widget as a
-    // flex/`auto` grid row in Nodes 2.0, but the WidgetLegacy bridge sizes the
-    // canvas to computedHeight + 2 — so an `auto` cell grows 2px every layout
-    // pass, compounding into unbounded node growth on every run AND resize.
-    // Instead we keep ONLY computeSize (no flex) and, in Nodes 2.0, return a
-    // height derived from node.size so the strip canvas FILLS the node and grows
-    // on resize like the legacy renderer does - but as a fixed (non-flex) value,
-    // so there's no +2 snowball. node.size in Nodes 2.0 is honored from the
-    // user's resize (not recomputed from content), so this is stable.
-    // Legacy is unchanged (220 min; draw() fills node.size[1]-y as before).
+    // This canvas custom widget is used ONLY by the legacy renderer now (Nodes
+    // 2.0 uses a DOM-widget strip instead - see createStripDOMWidget). Legacy
+    // fills the node via draw()'s `node.size[1] - y`, so computeSize just
+    // reserves the minimum height.
     computeSize(width) {
-      if (window.LiteGraph?.vueNodesMode) {
-        const nodeH = this._node?.size?.[1] ?? DEFAULT_H;
-        return [width, Math.max(IMG_STRIP_MIN_H, nodeH - VUE_STRIP_CHROME)];
-      }
       return [width, IMG_STRIP_MIN_H];
     },
     draw(ctx, node, widget_width, y, h) {
@@ -1119,6 +1099,72 @@ function createStripWidget() {
   };
 }
 
+// ---- Nodes 2.0 strip: a real DOM widget ----
+// In Nodes 2.0 a bridged-canvas custom widget CANNOT fill-and-resize: tying its
+// height to node.size feeds back (node height is content-derived there) and the
+// WidgetLegacy bridge's canvas+2 makes a flex row snowball. ComfyUI's own image
+// preview avoids this by being a DOM element that fills via CSS flex. We mirror
+// that: a <div> + <canvas> DOM widget with computeLayoutSize (flex), whose inner
+// canvas is sized by a ResizeObserver to the element's box (NO +2). It reuses the
+// EXACT same draw()/mouse() logic as the legacy canvas widget via a throwaway
+// strip-logic object, so the two renderers render identically. The legacy path
+// is left untouched on the canvas widget above.
+function createStripDOMWidget(node) {
+  const logic = createStripWidget(); // reuse draw()/mouse() unchanged
+
+  const root = document.createElement("div");
+  root.className = "pix-preview-strip-root";
+  root.style.cssText =
+    `position:relative;width:100%;height:100%;min-height:${IMG_STRIP_MIN_H}px;box-sizing:border-box;`;
+  const canvas = document.createElement("canvas");
+  canvas.style.cssText = "position:absolute;inset:0;width:100%;height:100%;display:block;";
+  root.appendChild(canvas);
+
+  const widget = node.addDOMWidget("pixaroma_strip", "pixaroma_preview_strip", root, {
+    serialize: false,
+    hideOnZoom: false,
+    getMinHeight: () => IMG_STRIP_MIN_H,
+  });
+  // Flex/fill in the Vue node-layout (free of the canvas-bridge +2 loop because
+  // WidgetDOM sizes the element via CSS, not a backing canvas).
+  widget.computeLayoutSize = () => ({ minHeight: IMG_STRIP_MIN_H, minWidth: 1 });
+  applyAdaptiveCanvasOnly(widget);
+
+  const render = () => {
+    const cssW = root.clientWidth;
+    const cssH = root.clientHeight;
+    if (cssW <= 0 || cssH <= 0) return;
+    const dpr = window.devicePixelRatio || 1;
+    const bw = Math.round(cssW * dpr);
+    const bh = Math.round(cssH * dpr);
+    if (canvas.width !== bw) canvas.width = bw;
+    if (canvas.height !== bh) canvas.height = bh;
+    const ctx = canvas.getContext("2d");
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, cssW, cssH);
+    // y=0 origin (the canvas IS the strip area); height = the element's box.
+    logic.draw(ctx, node, cssW, 0, cssH);
+  };
+  node._pixStripRender = render;
+
+  const ro = new ResizeObserver(() => render());
+  ro.observe(root);
+  node._pixStripRO = ro;
+
+  // Click: container-local coords share the y=0 origin that render() draws with,
+  // so they hit-test directly against node._pixaromaCells.
+  root.addEventListener("pointerdown", (e) => {
+    const r = root.getBoundingClientRect();
+    if (handleStripClick(node, e.clientX - r.left, e.clientY - r.top)) {
+      e.stopPropagation();
+    }
+  });
+
+  // initial paint once laid out
+  requestAnimationFrame(render);
+  return widget;
+}
+
 // ---- extension ----
 app.registerExtension({
   name: "Pixaroma.Preview",
@@ -1174,10 +1220,15 @@ app.registerExtension({
       // (canvasOnly true) while still rendering them in the Nodes 2.0 Vue body
       // (canvasOnly false). addCustomWidget returns the widget it added.
       applyAdaptiveCanvasOnly(this.addCustomWidget(createButtonsWidget()));
-      const stripW = applyAdaptiveCanvasOnly(this.addCustomWidget(createStripWidget()));
-      // computeSize reads this._node.size; ensure it's set before the first
-      // layout pass (draw() also sets it, but may run after computeSize).
-      stripW._node = this;
+      // Strip: Nodes 2.0 gets a DOM-widget strip (fills + resizes via CSS flex,
+      // no growth loop); legacy keeps the canvas custom widget (fills via
+      // draw()'s node.size[1]-y). The renderer is fixed per page load, so only
+      // one path is ever active for a given node instance.
+      if (isVueNodes()) {
+        createStripDOMWidget(this);
+      } else {
+        applyAdaptiveCanvasOnly(this.addCustomWidget(createStripWidget()));
+      }
 
       // Suppress ComfyUI's native canvas-image-preview widget. Since
       // node_preview.py now emits `ui.images` in save_mode=save (so the
@@ -1261,6 +1312,10 @@ app.registerExtension({
     const origRemoved = nodeType.prototype.onRemoved;
     nodeType.prototype.onRemoved = function () {
       if (_activePreviewNode === this) _activePreviewNode = null;
+      // Release the DOM-widget strip's ResizeObserver (Nodes 2.0 only).
+      try { this._pixStripRO?.disconnect(); } catch {}
+      this._pixStripRO = null;
+      this._pixStripRender = null;
       return origRemoved ? origRemoved.apply(this, arguments) : undefined;
     };
 
