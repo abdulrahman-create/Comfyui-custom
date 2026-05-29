@@ -57,6 +57,13 @@ function injectCSS() {
     .pix-sw-name:hover { border-color:rgba(255,255,255,0.18); }
     .pix-sw-name:focus { border-color:${BRAND}; background:#1d1d1d; }
     .pix-sw-name::placeholder { color:#888; }
+    /* Dim wire-type tag (STRING / IMAGE / MODEL ...) so each row shows what is
+       plugged in even after it gets a custom name. */
+    .pix-sw-type {
+      flex:none; color:rgba(255,255,255,0.4); letter-spacing:0.5px; text-transform:uppercase;
+      font:600 9px 'Segoe UI',-apple-system,sans-serif;
+      white-space:nowrap; max-width:90px; overflow:hidden; text-overflow:ellipsis;
+    }
     .pix-sw-toggle {
       position:relative; width:28px; height:14px; border-radius:7px; flex:none; box-sizing:border-box;
       border:1px solid rgba(255,255,255,0.18); background:rgba(255,255,255,0.06);
@@ -121,7 +128,7 @@ export function buildSwitchVueList(node) {
         labelEl.maxLength = 64;
         labelEl.spellcheck = false;
         labelEl.value = custom || "";
-        labelEl.placeholder = usefulType || `input ${slotIdx1}`;
+        labelEl.placeholder = "name";
         labelEl.title = "Click to rename this input";
         labelEl.addEventListener("keydown", (e) => {
           e.stopPropagation(); // keep typing instead of triggering canvas shortcuts
@@ -150,13 +157,24 @@ export function buildSwitchVueList(node) {
         labelEl.title = labelEl.textContent;
       }
 
+      // Wire-type tag so each connected row shows what kind of data is plugged
+      // in (STRING / IMAGE / MODEL ...), even once it has a custom name.
+      let typeEl = null;
+      if (connected && !isTrailing && usefulType) {
+        typeEl = document.createElement("span");
+        typeEl.className = "pix-sw-type";
+        typeEl.textContent = usefulType;
+        typeEl.title = `Input type: ${usefulType}`;
+      }
+
       const toggleEl = document.createElement("span");
       toggleEl.className = "pix-sw-toggle";
       const knob = document.createElement("span");
       knob.className = "pix-sw-knob";
       toggleEl.appendChild(knob);
 
-      rowEl.append(numEl, labelEl, toggleEl);
+      if (typeEl) rowEl.append(numEl, labelEl, typeEl, toggleEl);
+      else rowEl.append(numEl, labelEl, toggleEl);
 
       if (connected && !isTrailing) {
         rowEl.title = "Click to route this input through (the name field renames it)";
