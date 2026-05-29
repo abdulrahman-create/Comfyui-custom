@@ -692,9 +692,14 @@ function createButtonsWidget() {
 // whatever rect the user-resized node gives the widget. No node.setSize
 // calls — that's what caused resize flicker.
 const IMG_STRIP_MIN_H = 220;
-// Fixed strip height used ONLY in Nodes 2.0 (see the computeSize getter below
-// for why the preview can't safely fill remaining space there).
-const VUE_STRIP_H = 300;
+// Nodes 2.0: approximate height consumed ABOVE the strip widget inside the node
+// body (header + image input slot + filename_prefix + save_mode + buttons widget
+// + paddings). The strip's computeSize returns node.size[1] - this so the strip
+// canvas fills the rest of the node and grows when the node is resized - WITHOUT
+// the flex/computeLayoutSize path that caused the +2 growth loop. Tune if a gap
+// or slight overflow appears; making it a touch LARGER errs toward a small gap
+// (safe) rather than growth.
+const VUE_STRIP_CHROME = 172;
 const IMG_STRIP_GAP = 4;
 const IMG_STRIP_V_PAD = 4;
 const IMG_STRIP_BORDER_W = 2;       // selection border thickness
@@ -879,14 +884,19 @@ function createStripWidget() {
     // computeLayoutSize. Why: declaring computeLayoutSize flags the widget as a
     // flex/`auto` grid row in Nodes 2.0, but the WidgetLegacy bridge sizes the
     // canvas to computedHeight + 2 — so an `auto` cell grows 2px every layout
-    // pass, compounding into unbounded node growth on every run AND resize
-    // (native PreviewImage avoids this because its preview is a pure-DOM Vue
-    // component, not a bridged canvas). Keeping ONLY computeSize pins the widget
-    // to a fixed height in the Vue layout (no flex, no growth). Trade-off: in
-    // Nodes 2.0 the preview is a fixed height instead of filling the node on
-    // resize. Legacy is unchanged (220 min, draw() fills node.size[1]-y).
+    // pass, compounding into unbounded node growth on every run AND resize.
+    // Instead we keep ONLY computeSize (no flex) and, in Nodes 2.0, return a
+    // height derived from node.size so the strip canvas FILLS the node and grows
+    // on resize like the legacy renderer does - but as a fixed (non-flex) value,
+    // so there's no +2 snowball. node.size in Nodes 2.0 is honored from the
+    // user's resize (not recomputed from content), so this is stable.
+    // Legacy is unchanged (220 min; draw() fills node.size[1]-y as before).
     computeSize(width) {
-      return [width, window.LiteGraph?.vueNodesMode ? VUE_STRIP_H : IMG_STRIP_MIN_H];
+      if (window.LiteGraph?.vueNodesMode) {
+        const nodeH = this._node?.size?.[1] ?? DEFAULT_H;
+        return [width, Math.max(IMG_STRIP_MIN_H, nodeH - VUE_STRIP_CHROME)];
+      }
+      return [width, IMG_STRIP_MIN_H];
     },
     draw(ctx, node, widget_width, y, h) {
       this._node = node;
@@ -1164,7 +1174,10 @@ app.registerExtension({
       // (canvasOnly true) while still rendering them in the Nodes 2.0 Vue body
       // (canvasOnly false). addCustomWidget returns the widget it added.
       applyAdaptiveCanvasOnly(this.addCustomWidget(createButtonsWidget()));
-      applyAdaptiveCanvasOnly(this.addCustomWidget(createStripWidget()));
+      const stripW = applyAdaptiveCanvasOnly(this.addCustomWidget(createStripWidget()));
+      // computeSize reads this._node.size; ensure it's set before the first
+      // layout pass (draw() also sets it, but may run after computeSize).
+      stripW._node = this;
 
       // Suppress ComfyUI's native canvas-image-preview widget. Since
       // node_preview.py now emits `ui.images` in save_mode=save (so the
