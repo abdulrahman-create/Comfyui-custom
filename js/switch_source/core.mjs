@@ -12,7 +12,6 @@
 
 import { app } from "/scripts/app.js";
 import { isGraphLoading } from "../shared/graph_loading.mjs";
-import { isVueNodes } from "../shared/nodes2.mjs";
 
 export const STATE_PROP = "switchSourceState";
 export const MAX_ROWS = 16;
@@ -163,17 +162,8 @@ export function updateOutputLabels(node) {
 // Min node height for a given row count. ONE place for the formula so the
 // resizeToRows write and the onDrawForeground/onResize self-heal (index.js)
 // can never disagree.
-// Per-row output-name field height. Nodes 2.0 ONLY - the legacy renderer
-// renames an output by clicking its label on the canvas, so it has no inline
-// name fields and this band is 0 (legacy layout is completely unchanged).
-export const NAME_ROW_H = 26;
-export function namesBandHeight(rows) {
-  if (!isVueNodes()) return 0;
-  return rows > 0 ? rows * NAME_ROW_H + 6 : 0;
-}
-
 export function minNodeHeight(rows) {
-  return TOP_PAD + rows * 2 * ROW_H + CONTROL_BAND + namesBandHeight(rows) + BOT_PAD;
+  return TOP_PAD + rows * 2 * ROW_H + CONTROL_BAND + BOT_PAD;
 }
 
 function resizeToRows(node, rows) {
