@@ -12,6 +12,7 @@
 
 import { app } from "/scripts/app.js";
 import { isGraphLoading } from "../shared/graph_loading.mjs";
+import { isVueNodes } from "../shared/nodes2.mjs";
 
 export const STATE_PROP = "switchSourceState";
 export const MAX_ROWS = 16;
@@ -162,8 +163,17 @@ export function updateOutputLabels(node) {
 // Min node height for a given row count. ONE place for the formula so the
 // resizeToRows write and the onDrawForeground/onResize self-heal (index.js)
 // can never disagree.
+// Per-row output-name field height. Nodes 2.0 ONLY - the legacy renderer
+// renames an output by clicking its label on the canvas, so it has no inline
+// name fields and this band is 0 (legacy layout is completely unchanged).
+export const NAME_ROW_H = 26;
+export function namesBandHeight(rows) {
+  if (!isVueNodes()) return 0;
+  return rows > 0 ? rows * NAME_ROW_H + 6 : 0;
+}
+
 export function minNodeHeight(rows) {
-  return TOP_PAD + rows * 2 * ROW_H + CONTROL_BAND + BOT_PAD;
+  return TOP_PAD + rows * 2 * ROW_H + CONTROL_BAND + namesBandHeight(rows) + BOT_PAD;
 }
 
 function resizeToRows(node, rows) {
@@ -174,8 +184,18 @@ function resizeToRows(node, rows) {
   if (isGraphLoading()) return;
   const h = minNodeHeight(rows);
   const w = Math.max(node.size[0] || 0, DEFAULT_W);
-  if (node.size[0] !== w) node.size[0] = w;
-  if (node.size[1] !== h) node.size[1] = h;
+  // node.setSize goes through the official resize path so the new height sticks
+  // in BOTH renderers - a raw node.size[1] = h write can be silently reverted in
+  // Nodes 2.0 when the layout was last committed under the other renderer
+  // (CLAUDE.md Nodes 2.0 resize gotcha). Needed here so lowering Rows in Nodes
+  // 2.0 actually shrinks the node instead of leaving a gap. Array write fallback
+  // for older builds without setSize.
+  if (typeof node.setSize === "function") {
+    if (node.size[0] !== w || node.size[1] !== h) node.setSize([w, h]);
+  } else {
+    if (node.size[0] !== w) node.size[0] = w;
+    if (node.size[1] !== h) node.size[1] = h;
+  }
 }
 
 export function clearAllSlots(node) {

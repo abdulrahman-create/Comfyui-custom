@@ -3,7 +3,7 @@ import {
   STATE_PROP, MAX_ROWS, CONTROL_BAND,
   readState, writeState,
   setupNode, restoreFromProperties, rebuildSlots,
-  updateOutputLabels, rowCount, highestWiredRow, minNodeHeight,
+  updateOutputLabels, rowCount, highestWiredRow, minNodeHeight, namesBandHeight,
   outputLabelRect, outputLabelScreenRect, pointInRect,
 } from "./core.mjs";
 import { openLabelEditor, cancelEditorForNode } from "./editor.mjs";
@@ -101,6 +101,22 @@ function injectCSS() {
     }
     .pix-ss-rowsfield .pix-li-spin-up::before { content:"▲"; }
     .pix-ss-rowsfield .pix-li-spin-down::before { content:"▼"; }
+    /* Per-row output-name fields (Nodes 2.0 only - legacy renames via canvas
+       click). Matches the Rows field interior: #1d1d1d box, BRAND focus ring. */
+    .pix-ss-names { display:flex; flex-direction:column; gap:4px; margin-top:2px; }
+    .pix-ss-namerow { display:flex; align-items:center; gap:6px; }
+    .pix-ss-namelabel {
+      color:${BRAND}; font-size:10px; font-weight:600; letter-spacing:0.5px;
+      text-transform:uppercase; min-width:38px; white-space:nowrap;
+    }
+    .pix-ss-nameinput {
+      flex:1; min-width:0; height:22px; box-sizing:border-box;
+      background:#1d1d1d; border:1px solid #444; border-radius:6px;
+      color:#e0e0e0; font:12px 'Segoe UI', -apple-system, sans-serif;
+      padding:0 8px; outline:none;
+    }
+    .pix-ss-nameinput:focus { border-color:${BRAND}; }
+    .pix-ss-nameinput::placeholder { color:#5a5a5a; }
   `;
   document.head.appendChild(s);
 }
@@ -136,7 +152,7 @@ function buildControls(node) {
         setTimeout(() => { rowsField.classList.remove("is-blocked"); }, 700);
       }
       if (rowsBuilt.input.value !== String(target)) rowsBuilt.input.value = String(target);
-      if (target !== rowCount(node)) rebuildSlots(node, target);
+      if (target !== rowCount(node)) { rebuildSlots(node, target); renderNames(); }
     },
   });
   rowsField.appendChild(rowsBuilt.wrap);
@@ -172,6 +188,69 @@ function buildControls(node) {
   row2.append(mLabel, mToggle);
   root.appendChild(row2);
 
+  // Row 3 (Nodes 2.0 ONLY): one inline name field per output row. The legacy
+  // renderer renames an output by clicking its label on the canvas, which Vue
+  // won't let us catch, so we offer these fields instead. namesBandHeight()
+  // returns 0 in legacy, so this section is hidden there and the node keeps its
+  // compact legacy height.
+  const namesWrap = document.createElement("div");
+  namesWrap.className = "pix-ss-names";
+  root.appendChild(namesWrap);
+
+  // Placeholder = what the output label would show with no custom name: the
+  // resolved wire type, else "out r".
+  function autoLabel(r) {
+    const out = (node.outputs || []).find((o) => o.name === `output_${r}`);
+    const t = out?.type;
+    return (t && t !== "*") ? t : `out ${r}`;
+  }
+
+  function renderNames() {
+    if (!isVueNodes()) { namesWrap.style.display = "none"; namesWrap.innerHTML = ""; return; }
+    namesWrap.style.display = "flex";
+    namesWrap.innerHTML = "";
+    const s = readState(node);
+    const n = rowCount(node);
+    for (let r = 1; r <= n; r++) {
+      const rowEl = document.createElement("div");
+      rowEl.className = "pix-ss-namerow";
+      const lbl = document.createElement("span");
+      lbl.className = "pix-ss-namelabel";
+      lbl.textContent = `Out ${r}`;
+      const inp = document.createElement("input");
+      inp.type = "text";
+      inp.className = "pix-ss-nameinput";
+      inp.maxLength = 64;
+      inp.spellcheck = false;
+      inp.value = s.labels?.[r] || "";
+      inp.placeholder = autoLabel(r);
+      inp.title = `Custom name for output ${r}. Leave empty to show the wire type.`;
+      inp.addEventListener("keydown", (e) => {
+        // Keep typing in the field instead of triggering canvas shortcuts.
+        e.stopPropagation();
+        if (e.key === "Enter") { e.preventDefault(); inp.blur(); }
+        else if (e.key === "Escape") {
+          e.preventDefault();
+          inp.value = readState(node).labels?.[r] || "";
+          inp.blur();
+        }
+      });
+      const commitName = () => {
+        const v = inp.value.trim();
+        const st = readState(node);
+        if (!st.labels) st.labels = {};
+        if (v) st.labels[r] = v; else delete st.labels[r];
+        writeState(node, st);
+        updateOutputLabels(node);
+        node.graph?.setDirtyCanvas?.(true, true);
+      };
+      inp.addEventListener("change", commitName);
+      inp.addEventListener("blur", commitName);
+      rowEl.append(lbl, inp);
+      namesWrap.appendChild(rowEl);
+    }
+  }
+
   function refresh() {
     const s = readState(node);
     btnA.classList.toggle("active", s.active === "A");
@@ -179,6 +258,7 @@ function buildControls(node) {
     btnConn.classList.toggle("active", s.missing === "connected");
     btnStrict.classList.toggle("active", s.missing === "strict");
     if (rowsBuilt.input.value !== String(s.rows)) rowsBuilt.input.value = String(s.rows);
+    renderNames();
   }
 
   for (const b of [btnA, btnB]) {
@@ -224,8 +304,10 @@ app.registerExtension({
       node._pixSsRefresh = refresh;
       const ssWidget = node.addDOMWidget("pixaroma_switch_source_ui", "custom", root, {
         serialize: false,
-        getMinHeight: () => CONTROL_BAND,
-        getMaxHeight: () => CONTROL_BAND,
+        // Grow the strip by the per-row name fields in Nodes 2.0 (namesBandHeight
+        // is 0 in legacy, so the strip stays the compact CONTROL_BAND there).
+        getMinHeight: () => CONTROL_BAND + namesBandHeight(rowCount(node)),
+        getMaxHeight: () => CONTROL_BAND + namesBandHeight(rowCount(node)),
         getValue: () => null,
         setValue: () => {},
       });
