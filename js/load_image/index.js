@@ -276,9 +276,7 @@ function updateLoadPreview(node) {
     }
   }
   renderLoadPreviewCanvas(node);
-  // The preview canvas lives inside the controls panel; setting its height grows
-  // the panel's content, which grows the node (same mechanism that sizes the
-  // controls). Nudge a repaint.
+  fitLoadNodeNodes2(node); // grow/shrink node.size[1] to fit the current content
   node.setDirtyCanvas?.(true, true);
 }
 
@@ -522,6 +520,27 @@ function liPreviewImgH(node) {
   return Math.max(LI_PREVIEW_MIN_IMG_H, Math.min(Math.round(cw * aspect), cap));
 }
 
+// Nodes 2.0: resize node.size[1] to fit the current content. The Vue node frame
+// auto-GROWS to content but does NOT auto-SHRINK (verified: hiding the image in
+// Compact left node.size at 966 with an empty gap), so we set it explicitly to
+// both grow and shrink. Gated on !isGraphLoading so it only runs on user actions
+// (pick / mode change / preview-size change), never on workflow load - so it
+// can't dirty a saved workflow (Vue Compat #18). Call AFTER renderLoadPreviewCanvas
+// so the canvas heights (which measureContentHeight reads) are up to date.
+function fitLoadNodeNodes2(node) {
+  if (!isVueNodes() || isGraphLoading() || !node._pixLiMeasureHeight) return;
+  const SLOT_H = (window.LiteGraph?.NODE_SLOT_HEIGHT) || 20;
+  const headerH = (window.LiteGraph?.NODE_TITLE_HEIGHT) || 30;
+  const slotsH = (node.outputs?.length || 7) * SLOT_H;
+  const contentH = node._pixLiMeasureHeight() || 300; // controls + cards + image (visible canvases)
+  const target = Math.round(headerH + slotsH + contentH + 12);
+  if (Math.abs((node.size?.[1] || 0) - target) > 2) {
+    if (node.setSize) node.setSize([node.size[0], target]);
+    else node.size[1] = target;
+    node.setDirtyCanvas?.(true, true);
+  }
+}
+
 
 // Nodes 2.0 preview: a second DOM widget's host collapses to 0 on this node (the
 // 7 outputs / hidden image-upload widgets break the second widget's grid row,
@@ -550,7 +569,7 @@ function createLoadImagePreviewCanvas(node) {
 
   // Width changes (node resize) → repaint at the new width (onResize unreliable
   // for DOM widgets, Compat #13).
-  const ro = new ResizeObserver(() => renderLoadPreviewCanvas(node));
+  const ro = new ResizeObserver(() => { renderLoadPreviewCanvas(node); fitLoadNodeNodes2(node); });
   ro.observe(imgCv);
   node._pixLiPreviewRO = ro;
 
@@ -922,6 +941,7 @@ app.registerExtension({
           for (const n of (app.graph?._nodes || [])) {
             if (n?.comfyClass !== "PixaromaLoadImage") continue;
             renderLoadPreviewCanvas(n);
+            fitLoadNodeNodes2(n); // resize the node to fit the new preview size
             n.setDirtyCanvas?.(true, true);
           }
         } catch (e) { /* settings can fire before the graph exists */ }
