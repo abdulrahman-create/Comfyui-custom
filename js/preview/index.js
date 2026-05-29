@@ -1,6 +1,7 @@
 import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
 import { BRAND } from "../shared/utils.mjs";
+import { applyAdaptiveCanvasOnly } from "../shared/nodes2.mjs";
 
 // ---- button / node sizing ----
 const BTN_H = 26;
@@ -580,7 +581,10 @@ function createButtonsWidget() {
     // tab. Without this flag, the Vue frontend draws every widget there too,
     // and each draw() call corrupts node._pixaromaCells with stale Parameters-
     // panel coords - causing the node body's layout to break on tab switch.
-    options: { canvasOnly: true },
+    // In Nodes 2.0 a static `true` would hide the widget from the node body
+    // too, so the flag is made adaptive via applyAdaptiveCanvasOnly() after
+    // addCustomWidget (true in legacy, false in Nodes 2.0).
+    options: {},
     computeSize(width) {
       return [width, BTN_H + STRIP_V_PAD * 2];
     },
@@ -831,7 +835,9 @@ function createStripWidget() {
     value: null,
     serialize: false,
     // canvasOnly: skip this widget in the Parameters tab (Vue Compat #15).
-    options: { canvasOnly: true },
+    // Made adaptive after addCustomWidget so Nodes 2.0 still renders it in
+    // the Vue body (applyAdaptiveCanvasOnly: true legacy / false Nodes 2.0).
+    options: {},
     computeSize(width) {
       // Constant minimum height (native PreviewImage pattern). The actual
       // rendered height is whatever the user-resized node grants — see draw().
@@ -1100,8 +1106,11 @@ app.registerExtension({
     const origNodeCreated = nodeType.prototype.onNodeCreated;
     nodeType.prototype.onNodeCreated = function () {
       if (origNodeCreated) origNodeCreated.apply(this, arguments);
-      this.addCustomWidget(createButtonsWidget());
-      this.addCustomWidget(createStripWidget());
+      // applyAdaptiveCanvasOnly: keep these out of the legacy Parameters tab
+      // (canvasOnly true) while still rendering them in the Nodes 2.0 Vue body
+      // (canvasOnly false). addCustomWidget returns the widget it added.
+      applyAdaptiveCanvasOnly(this.addCustomWidget(createButtonsWidget()));
+      applyAdaptiveCanvasOnly(this.addCustomWidget(createStripWidget()));
 
       // Suppress ComfyUI's native canvas-image-preview widget. Since
       // node_preview.py now emits `ui.images` in save_mode=save (so the
