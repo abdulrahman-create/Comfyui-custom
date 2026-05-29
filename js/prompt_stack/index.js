@@ -10,6 +10,7 @@ import {
   resetToDefault,
 } from "./core.mjs";
 import { injectCSS, buildRoot, renderRows, measureContentHeight } from "./render.mjs";
+import { applyAdaptiveCanvasOnly } from "../shared/index.mjs";
 import { pixConfirm } from "./interaction.mjs";
 
 const DEFAULT_W = 400;
@@ -194,11 +195,13 @@ app.registerExtension({
         // handlers (add/delete/text) where a size change is legitimate.
         node._pixPsRenderOnly = () => renderRows(node, root, handlers);
 
-        node.addDOMWidget("promptstack", "div", root, {
+        const _psWidget = node.addDOMWidget("promptstack", "div", root, {
           serialize: false,
-          canvasOnly: true,
+          // canvasOnly set adaptively below (CLAUDE.md Nodes 2.0): true in
+          // legacy (out of Parameters tab), false in Nodes 2.0 (Vue body).
           getMinHeight: () => measureContentHeight(root),
         });
+        applyAdaptiveCanvasOnly(_psWidget);
 
         // Expose a tiny grow helper so interaction handlers (textarea
         // autogrow) can ask the node to expand without doing a full rerender.
