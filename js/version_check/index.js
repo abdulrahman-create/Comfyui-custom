@@ -166,10 +166,13 @@ app.registerExtension({
       // --- Copy button ---
       copyBtn.addEventListener("click", async (e) => {
         e.stopPropagation();
+        // Compute the Node UI value cleanly (the displayed text carries a
+        // trailing "⇄" switch glyph that must NOT end up in the copied text).
+        const nodeUi = window.LiteGraph?.vueNodesMode ? "Nodes 2.0" : "Legacy";
         const text =
           `ComfyUI:  ${rComfy.value.textContent}\n` +
           `Frontend: ${rFront.value.textContent}\n` +
-          `Node UI:  ${rNodes.value.textContent}\n` +
+          `Node UI:  ${nodeUi}\n` +
           `Pixaroma: ${rPix.value.textContent}`;
         try {
           if (navigator.clipboard?.writeText) {
