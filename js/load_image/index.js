@@ -242,6 +242,7 @@ function updateLoadPreview(node) {
   const dims = node._pixLiPreviewDims;
   if (dims) dims.textContent = im?.naturalWidth ? `${im.naturalWidth} × ${im.naturalHeight}` : "";
   renderLoadCards(node);
+  fitLoadNodeNodes2(node); // grow node.size[1] so the preview row isn't clipped to 0
   node.setDirtyCanvas?.(true, true);
 }
 
@@ -462,6 +463,28 @@ function liPreviewImgH(node) {
   return Math.max(LI_PREVIEW_MIN_IMG_H, Math.min(Math.round(cw * aspect), LI_PREVIEW_MAX_IMG_H));
 }
 
+// Nodes 2.0: grow node.size[1] so the (content-sized) controls + preview rows
+// actually fit. The Vue node frame does NOT auto-grow when we add a widget after
+// creation (verified: node stayed 478 tall, preview row clipped to 0). Compute a
+// deterministic target = header + output-slot rows + controls content + preview
+// content, and set it. Deterministic (same image + node width => same height) so
+// a reload recomputes the same value and won't dirty once saved (one-time dirty
+// when migrating a node saved at the old height — acceptable, like Pattern #17).
+function fitLoadNodeNodes2(node) {
+  if (!isVueNodes() || !node._pixLiPreviewImg) return;
+  const SLOT_H = (window.LiteGraph?.NODE_SLOT_HEIGHT) || 20;
+  const headerH = (window.LiteGraph?.NODE_TITLE_HEIGHT) || 30;
+  const slotsH = (node.outputs?.length || 7) * SLOT_H;
+  const controlsH = node._pixLiMeasureHeight?.() || 300;
+  const previewH = LI_CARDS_H + liPreviewImgH(node) + 26; // cards + image + dims + gaps
+  const target = Math.round(headerH + slotsH + controlsH + previewH + 20);
+  if (Math.abs((node.size?.[1] || 0) - target) > 2) {
+    if (node.setSize) node.setSize([node.size[0], target]);
+    else node.size[1] = target;
+    node.setDirtyCanvas?.(true, true);
+  }
+}
+
 // Nodes 2.0 preview widget: a content-sized (min-content row) DOM widget holding
 // the INPUT→OUTPUT cards (fixed canvas) + our own <img> (height = image aspect
 // at node width) + a dims label. We do NOT flex-fill here: a flex:1 root
@@ -519,6 +542,7 @@ function createLoadImagePreviewWidget(node) {
   const ro = new ResizeObserver(() => {
     renderLoadCards(node);
     if (node._pixLiPreviewImgWrap) node._pixLiPreviewImgWrap.style.height = liPreviewImgH(node) + "px";
+    fitLoadNodeNodes2(node);
   });
   ro.observe(cardsCv);
   node._pixLiPreviewRO = ro;
