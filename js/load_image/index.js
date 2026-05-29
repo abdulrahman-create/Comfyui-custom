@@ -494,8 +494,10 @@ function fitLoadNodeNodes2(node) {
 function createLoadImagePreviewWidget(node) {
   const root = document.createElement("div");
   root.className = "pix-li-preview-root";
+  // flex:0 0 auto overrides the WidgetDOM host's `*:flex-1` (flex:1 1 0%) so the
+  // element sizes to its CONTENT instead of a 0 flex-basis (which collapsed it).
   root.style.cssText =
-    "position:relative;width:100%;display:flex;flex-direction:column;gap:4px;box-sizing:border-box;";
+    "position:relative;width:100%;flex:0 0 auto;display:flex;flex-direction:column;gap:4px;box-sizing:border-box;";
 
   const cardsCv = document.createElement("canvas");
   cardsCv.className = "pix-li-cards";
@@ -519,7 +521,9 @@ function createLoadImagePreviewWidget(node) {
   // updateLoadPreview, so they stay in lockstep.
   const measureH = () => LI_CARDS_H + liPreviewImgH(node) + 18 + 8;
 
-  const widget = node.addDOMWidget("pixaroma_load_image_preview", "custom", root, {
+  // Unique type (NOT "custom", which the controls widget already uses) per the
+  // house rule — two DOM widgets sharing a type can collide in the Vue dispatch.
+  const widget = node.addDOMWidget("pixaroma_load_image_preview", "pixaroma_li_preview", root, {
     getMinHeight: measureH,
     serialize: false,
   });
