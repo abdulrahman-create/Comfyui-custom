@@ -10,6 +10,7 @@ import {
   resetToDefault,
 } from "./core.mjs";
 import { injectCSS, buildRoot, renderRows, measureContentHeight } from "./render.mjs";
+import { applyAdaptiveCanvasOnly } from "../shared/index.mjs";
 import { pixConfirm } from "./interaction.mjs";
 
 const DEFAULT_W = 400;
@@ -40,13 +41,25 @@ function stripLegacyWireSlots(node) {
 // DOM widget content. Uses measureContentHeight (sum of children) rather than
 // node.computeSize (which can over-report). Adds an allowance for title + top
 // padding. Never shrinks (so a user-resized-bigger node stays the size they chose).
+// Commit a new node height. A bare `node.size[1] = h` array-index write can
+// be silently reverted by Nodes 2.0's reactive layout when the node was last
+// sized in the OTHER renderer (the cross-renderer shrink-on-reset bug: rows
+// grown in legacy, switch to Nodes 2.0, Reset → node stayed tall because the
+// height write didn't stick). LiteGraph's setSize() commits through the
+// official resize path so the new height holds in both renderers. Keep the
+// direct write too as a belt-and-braces for builds without setSize.
+function setNodeHeight(node, h) {
+  node.size[1] = h;
+  node.setSize?.([node.size[0], h]);
+}
+
 function growNodeToContent(node) {
   const root = node._pixPsRoot;
   if (!root) return;
   const contentH = measureContentHeight(root);
   // ~30 title + ~10 body top padding + ~10 body bottom padding (breathing room)
   const desired = contentH + 50;
-  if (desired > node.size[1]) node.size[1] = desired;
+  if (desired > node.size[1]) setNodeHeight(node, desired);
 }
 
 // fitNodeToContent: shrink-and-grow. Used after explicit user actions (e.g.
@@ -57,7 +70,7 @@ function fitNodeToContent(node) {
   if (!root) return;
   const contentH = measureContentHeight(root);
   const desired = Math.max(DEFAULT_H, contentH + 50);
-  node.size[1] = desired;
+  setNodeHeight(node, desired);
 }
 
 function makeHandlers(node, root) {
@@ -194,11 +207,13 @@ app.registerExtension({
         // handlers (add/delete/text) where a size change is legitimate.
         node._pixPsRenderOnly = () => renderRows(node, root, handlers);
 
-        node.addDOMWidget("promptstack", "div", root, {
+        const _psWidget = node.addDOMWidget("promptstack", "div", root, {
           serialize: false,
-          canvasOnly: true,
+          // canvasOnly set adaptively below (CLAUDE.md Nodes 2.0): true in
+          // legacy (out of Parameters tab), false in Nodes 2.0 (Vue body).
           getMinHeight: () => measureContentHeight(root),
         });
+        applyAdaptiveCanvasOnly(_psWidget);
 
         // Expose a tiny grow helper so interaction handlers (textarea
         // autogrow) can ask the node to expand without doing a full rerender.

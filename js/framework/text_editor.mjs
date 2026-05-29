@@ -972,32 +972,46 @@ function injectCSS() {
     .pix-to-spin-up::before   { content: "▲"; }
     .pix-to-spin-down::before { content: "▼"; }
 
-    /* Color cell: [swatch LABEL hex] */
+    /* Color cell: [swatch LABEL hex]. Tightened so a 7-char hex (#000000)
+       fits the half-width 2-column layout without overflowing under the
+       LABEL — the cell only ever showed the short "(none)" before, which
+       masked the cramping. */
     .pix-to-color-cell {
       display: flex;
       align-items: center;
-      gap: 6px;
+      gap: 5px;
       background: #1d1d1d;
       border: 1px solid #444;
       border-radius: 4px;
-      padding: 4px 8px;
+      padding: 4px 6px;
       cursor: pointer;
       min-height: 28px;
+      overflow: hidden;   /* clip to rounded corner; the freed space below keeps the hex from ever reaching here */
     }
     .pix-to-color-cell:hover { border-color: #666; }
     .pix-to-color-cell-swatch {
-      width: 18px; height: 18px;
+      width: 15px; height: 15px;
       border-radius: 3px;
       border: 1px solid #555;
       flex-shrink: 0;
       background: #fff;
     }
+    /* The shared input-label adds its own left padding (for numeric cells);
+       inside a color cell the cell already pads, so zero it out and shrink
+       the type a touch to give the hex value its room. */
+    .pix-to-color-cell .pix-to-input-label {
+      padding-left: 0;
+      font-size: 9px;
+      letter-spacing: 0.2px;
+    }
     .pix-to-color-cell-val {
       flex: 1;
+      min-width: 0;
       text-align: right;
+      white-space: nowrap;
       font: 600 11px ui-sans-serif, system-ui, sans-serif;
       color: ${BRAND};
-      letter-spacing: 0.3px;
+      letter-spacing: 0;
     }
     .pix-to-swatch-checker {
       background: repeating-conic-gradient(#333 0% 25%, #444 0% 50%) 0 0 / 8px 8px !important;

@@ -10,7 +10,7 @@
 // reload and Vue tab switching (CLAUDE.md Vue Compat #9, Preview Pattern #4).
 
 import { app } from "/scripts/app.js";
-import { BRAND } from "../shared/index.mjs";
+import { BRAND, applyAdaptiveCanvasOnly } from "../shared/index.mjs";
 
 const STATE_PROP = "promptReaderState";
 
@@ -40,6 +40,14 @@ function injectCSS() {
   const style = document.createElement("style");
   style.id = "pix-pr-css";
   style.textContent = `
+    /* Nodes 2.0 renders its own .image-preview panel (fed by ComfyUI's
+       internal node-preview state, NOT node.imgs which we lock to []). It
+       goes stale on programmatic file changes and we don't want an image
+       preview on this text-readout node anyway. Hide it, scoped to our node
+       via :has() so no other node is affected. Legacy has no .lg-node /
+       .image-preview, so this rule is a no-op there. */
+    .lg-node:has(.pix-pr-root) .image-preview { display: none !important; }
+
     .pix-pr-root {
       width: 100%;
       box-sizing: border-box;
@@ -683,14 +691,16 @@ function setupNode(node) {
     return total + padding + gaps;
   }
 
-  node.addDOMWidget("pixaroma_prompt_reader_ui", "custom", root, {
-    canvasOnly: true,
+  const _prWidget = node.addDOMWidget("pixaroma_prompt_reader_ui", "custom", root, {
+    // canvasOnly set adaptively below (CLAUDE.md Nodes 2.0): true in legacy
+    // (out of the Parameters tab), false in Nodes 2.0 (renders in Vue body).
     getValue: () => null,
     setValue: () => {},
     getMinHeight: measureHeight,
     margin: 4,
     serialize: false,
   });
+  applyAdaptiveCanvasOnly(_prWidget);
 
   // Default node size for fresh-on-canvas placements. LiteGraph's configure
   // (workflow restore) runs AFTER nodeCreated and overwrites node.size with

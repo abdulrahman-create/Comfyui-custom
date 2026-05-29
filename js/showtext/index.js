@@ -1,5 +1,5 @@
 import { app } from "/scripts/app.js";
-import { BRAND } from "../shared/index.mjs";
+import { BRAND, applyAdaptiveCanvasOnly } from "../shared/index.mjs";
 
 // Resize clamp - user verified 210 x 118 as the smallest comfortable
 // size for a compact label/readout. WIDGET_MIN_H is kept smaller than
@@ -143,8 +143,16 @@ app.registerExtension({
 
       this._pixTextEl = ta;
 
-      const widget = this.addDOMWidget("text", "customtext", wrap, {
-        canvasOnly: true,  // hide from Parameters tab (Vue Compat #15)
+      // Widget TYPE must NOT collide with a Nodes 2.0 registered widget type
+      // (customtext / textarea / multiline / string / etc. all map to native
+      // Vue components in widgetRegistry.ts). A registered type makes Nodes 2.0
+      // render ITS OWN Vue widget and orphan our DOM element off-screen (our
+      // value lands on a detached node). A unique type falls through to
+      // WidgetDOM.vue, which re-parents OUR element. See CLAUDE.md Nodes 2.0.
+      const widget = this.addDOMWidget("text", "pixaroma_showtext", wrap, {
+        // canvasOnly is set ADAPTIVELY below (applyAdaptiveCanvasOnly):
+        // true in legacy (hide from Parameters tab, Vue Compat #15), false
+        // in Nodes 2.0 (else shouldRenderAsVue excludes it → empty body).
         getValue: () => ta.value,
         setValue: (v) => {
           ta.value = v == null ? "" : String(v);
@@ -154,6 +162,7 @@ app.registerExtension({
         // force ComfyUI's natural floor above the explicit MIN_H clamp.
         getMinHeight: () => WIDGET_MIN_H,
       });
+      applyAdaptiveCanvasOnly(widget);
       this._pixTextWidget = widget;
 
       // Set default size unconditionally on fresh placement. configure()

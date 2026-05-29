@@ -15,6 +15,7 @@ import {
   restoreNodePreview,
   activateNodePreview,
   downloadDataURL,
+  applyAdaptiveCanvasOnly,
 } from "../shared/index.mjs";
 
 // ─── Upstream-image resolver ──────────────────────────────────────────────
@@ -421,17 +422,18 @@ app.registerExtension({
     });
     // Resolution Pixaroma pattern — set BOTH min and max to the same constant
     // so ComfyUI doesn't stretch the widget to fill leftover node height.
-    node.addDOMWidget("CropPanel", "custom", panel.el, {
-      canvasOnly: true,  // hide from Parameters tab (Vue Compat #15)
+    const _cropPanelWidget = node.addDOMWidget("CropPanel", "custom", panel.el, {
+      // canvasOnly set adaptively below (CLAUDE.md Nodes 2.0)
       serialize: false,
       getMinHeight: () => PANEL_H,
       getMaxHeight: () => PANEL_H,
       margin: 5, // match the CropWidget mini-preview's gutter
     });
+    applyAdaptiveCanvasOnly(_cropPanelWidget);
 
     // ── DOM widget (mini-preview) ──
     widget = node.addDOMWidget("CropWidget", "custom", parts.container, {
-      canvasOnly: true,  // hide from Parameters tab (Vue Compat #15)
+      // canvasOnly set adaptively below (CLAUDE.md Nodes 2.0)
       getValue: () => ({ crop_json: cropJson }),
       setValue: (v) => {
         if (!v || typeof v !== "object") return;
@@ -463,6 +465,7 @@ app.registerExtension({
       getMinHeight: () => 210,
       margin: 5,
     });
+    applyAdaptiveCanvasOnly(widget);
 
     activateNodePreview(parts, node);
 

@@ -34,9 +34,30 @@ export function injectCSS() {
       color: #e0e0e0;
       font: 12px sans-serif;
     }
-    /* Paragraph / Line pills are now painted on the canvas at the
-       slot-row Y so the DOM widget body stays compact. CSS for them
-       lives in the canvas paintPill helper in index.js. */
+    /* Paragraph / Line mode pills — a DOM segmented toggle at the top of
+       the body. (Were canvas-painted on the slot row; moved to DOM so they
+       render in Nodes 2.0. Style matches the .pix-pp-actbtn family.) */
+    .pix-pp-modebar {
+      display: flex;
+      gap: 4px;
+      flex: 0 0 auto;
+      user-select: none;
+    }
+    .pix-pp-modepill {
+      flex: 1;
+      box-sizing: border-box;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 4px;
+      color: rgba(255, 255, 255, 0.85);
+      cursor: pointer;
+      font: 11px sans-serif;
+      padding: 4px 0;
+      text-align: center;
+      transition: background 0.1s, color 0.1s, border-color 0.1s;
+    }
+    .pix-pp-modepill:hover { background: ${BRAND}; border-color: ${BRAND}; color: #fff; }
+    .pix-pp-modepill.active { background: ${BRAND}; border-color: ${BRAND}; color: #fff; }
     .pix-pp-tawrap {
       position: relative;
       flex: 1 1 auto;
@@ -154,6 +175,23 @@ export function buildRoot() {
   const root = document.createElement("div");
   root.className = "pix-pp-root";
 
+  // Mode pills (Paragraph / Line) — DOM segmented toggle at the top.
+  const modebar = document.createElement("div");
+  modebar.className = "pix-pp-modebar";
+  const paraPill = document.createElement("button");
+  paraPill.type = "button";
+  paraPill.className = "pix-pp-modepill";
+  paraPill.textContent = "Paragraph";
+  paraPill.dataset.mode = "paragraph";
+  paraPill.title = "Paragraph mode: each prompt is separated by a blank line. Best for long, multi-line prompts.";
+  const linePill = document.createElement("button");
+  linePill.type = "button";
+  linePill.className = "pix-pp-modepill";
+  linePill.textContent = "Line";
+  linePill.dataset.mode = "line";
+  linePill.title = "Line mode: one prompt per line. Best for short prompts or quick lists.";
+  modebar.append(paraPill, linePill);
+
   const tawrap = document.createElement("div");
   tawrap.className = "pix-pp-tawrap";
 
@@ -201,10 +239,11 @@ export function buildRoot() {
   bottombar.appendChild(actions);
   bottombar.appendChild(counter);
 
+  root.appendChild(modebar);
   root.appendChild(tawrap);
   root.appendChild(bottombar);
 
-  root._pixPp = { ta, counter, copyBtn, replaceBtn, clearBtn };
+  root._pixPp = { ta, counter, copyBtn, replaceBtn, clearBtn, paraPill, linePill };
 
   return root;
 }
@@ -219,6 +258,11 @@ export function applyState(root, state, runState) {
   const els = root._pixPp;
   if (!els) return;
   if (els.ta.value !== state.text) els.ta.value = state.text;
+  if (els.paraPill && els.linePill) {
+    const isLine = state.mode === "line";
+    els.paraPill.classList.toggle("active", !isLine);
+    els.linePill.classList.toggle("active", isLine);
+  }
   updateCounter(root, state, runState);
   updateClearButton(root, state);
 }

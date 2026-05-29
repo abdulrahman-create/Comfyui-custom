@@ -25,6 +25,8 @@ export {
 
 export { injectLabelCSS } from "./label_css.mjs";
 
+export { isVueNodes, applyAdaptiveCanvasOnly } from "./nodes2.mjs";
+
 export {
   createPixaromaColorPicker,
   openPixaromaColorPickerPopup,
