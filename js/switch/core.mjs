@@ -26,27 +26,19 @@ export const MAX_INPUTS = 32;
 //    change after the load-race once links resolve and dirty the workflow; the
 //    type is shown in the DOM list tag instead.
 export function slotDisplayLabel(node, slotIdx1) {
-  if (!isVueNodes()) return "​"; // zero-width space
-  const custom = readState(node).labels?.[slotIdx1];
-  if (custom) return custom;
-  const slot = node.inputs?.[slotIdx1 - 1];
-  const connected = slot && slot.link != null;
-  if (!connected) return `input ${slotIdx1}`;
-  const t = getUpstreamType(node, slotIdx1);
-  if (t && t !== "*") return `${t.toLowerCase()} ${slotIdx1}`; // e.g. "string 1"
-  // Connected but type not resolved yet (the configure/load race - links are
-  // restored a tick AFTER onConfigure). Keep the current non-blank label so we
-  // don't transiently downgrade it to "input N" and dirty the workflow; the
-  // deferred refresh in onConfigure re-runs this once links resolve to land on
-  // "<type> N".
-  const cur = slot.label;
-  return cur && cur !== "​" ? cur : `input ${slotIdx1}`;
+  // Legacy: zero-width space so LiteGraph doesn't draw a native label over the
+  // one we canvas-paint (legacy byte-identical). Nodes 2.0: a STABLE "input N"
+  // (slot index). Deliberately NOT the wire type or custom name: Vue only
+  // re-reads a dot label on (re)load, so a type/name dot would show stale info
+  // after a live rewire/rename. The live name + type live in the DOM list
+  // (vue_list.mjs); "input N" can never go stale.
+  return isVueNodes() ? `input ${slotIdx1}` : "​";
 }
 
 // Re-apply slotDisplayLabel to every input slot (diff-gated so unchanged labels
 // are not rewritten - keeps a correctly-saved workflow from being flagged
-// "modified" on load). Called after connect/disconnect and on the deferred
-// post-load pass once wire types have resolved.
+// "modified" on load). Called after a disconnect so the index-based labels
+// track slots that shifted down.
 export function refreshSlotLabels(node) {
   if (!node.inputs) return;
   for (let i = 0; i < node.inputs.length; i++) {
@@ -213,7 +205,7 @@ export function normalizeSlots(node) {
 // while the input name (input_N) stays intact for Python kwarg routing.
 function addInputSlot(node, idx1) {
   const slot = node.addInput(SLOT_NAME(idx1), "*");
-  slot.label = slotDisplayLabel(node, idx1); // "​" in legacy, real name in 2.0
+  slot.label = slotDisplayLabel(node, idx1); // "​" in legacy, "input N" in 2.0
   return slot;
 }
 
@@ -336,7 +328,6 @@ export function handleConnect(node, slotIdx1) {
   }
 
   updateOutputType(node);
-  refreshSlotLabels(node); // type just resolved on the new wire -> "string N"
   app.graph?.setDirtyCanvas?.(true, true);
   node._pixSwRefresh?.(); // re-render the Nodes 2.0 DOM list (no-op in legacy)
 }
