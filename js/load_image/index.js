@@ -1,6 +1,7 @@
 import { app } from "/scripts/app.js";
 import { hideJsonWidget, BRAND } from "../shared/index.mjs";
 import { isGraphLoading } from "../shared/graph_loading.mjs";
+import { applyAdaptiveCanvasOnly, isVueNodes } from "../shared/nodes2.mjs";
 import {
   injectCSS, buildRoot, hideNativeImageCombo, openImageDropdown,
   renderChips, renderGlobalControls,
@@ -342,7 +343,9 @@ function setupLoadImageNode(node) {
   node._pixLiMeasureHeight = measureContentHeight;
 
   const widget = node.addDOMWidget("pixaroma_load_image_ui", "custom", root, {
-    canvasOnly: true,  // Vue Compat #15 — hide from Parameters tab
+    // canvasOnly made adaptive below (applyAdaptiveCanvasOnly): true in legacy
+    // (hide from Parameters tab, Vue Compat #15), false in Nodes 2.0 (else the
+    // whole panel is excluded from the Vue body → empty node).
     getValue: () => null,
     setValue: () => {},
     getMinHeight: measureContentHeight,
@@ -358,6 +361,7 @@ function setupLoadImageNode(node) {
     margin: 0,
     serialize: false,
   });
+  applyAdaptiveCanvasOnly(widget);
   node._pixLiWidget = widget;
 
   // Default node width for fresh-on-canvas placements. Wider than the
