@@ -704,6 +704,60 @@ ComfyUI's new Vue 3 frontend introduces several behavioral differences from the 
     - **Node default colors:** `LiteGraph.NODE_DEFAULT_COLOR = "#333"`, `LiteGraph.NODE_DEFAULT_BGCOLOR = "#353535"`.
     - **Unregistered settings DO persist.** `app.ui.settings.setSettingValueAsync(id, val)` / `getSettingValue(id)` work for an id that is NOT in any extension's `settings[]` array — the backend saves `comfy.settings.json` as a plain JSON merge with NO allow-list, and `getSettingValue` returns the stored value (or `undefined` if unset). This is how `Pixaroma.NodeColors.Favorites` stores 4 favorite color pairs as one compact JSON blob with zero Settings-panel rows. Removing a setting's registration does NOT erase its stored value (one-time migrations can still read the old key).
 
+### ComfyUI Nodes 2.0 Migration (LIVING SECTION — append what we learn)
+
+ComfyUI is gradually making **Nodes 2.0** the default node renderer. It replaces LiteGraph's canvas painting of node bodies with **Vue/DOM components**. Today it is opt-in (Settings > Rendering, the `Comfy.VueNodes.Enabled` setting → flips `LiteGraph.vueNodesMode`), coexists with legacy mode, and is not forced. The plan: migrate Pixaroma node-by-node, testing each with the renderer toggled BOTH ways, and grow this section with every concrete fact we learn. Official migration docs were not released as of 2026-05, so the **reference implementations ARE the documentation**: ComfyUI core frontend (`Comfy-Org/ComfyUI_frontend`) and KJNodes (`kijai/ComfyUI-KJNodes`). Add new findings here as we hit them (per [[feedback_document_patterns_immediately]]).
+
+**The renderer toggle / how to branch in code.** The setting `Comfy.VueNodes.Enabled` drives `LiteGraph.vueNodesMode` (boolean, globally readable). For behavior that genuinely must differ between renderers, branch on it: `if (LiteGraph.vueNodesMode) { …vue path… } else { …canvas path… }` (KJNodes' `nodeswap.js` / `setgetnodes.js` pattern). Prefer approaches that need NO branch (see survival matrix).
+
+**What survives vs breaks (verified from `ComfyUI_frontend` source, 2026-05).** In `vueNodesMode`, `LGraphCanvas.drawNode()` returns early after syncing slot metrics — so ALL node-body canvas painting is silently skipped (no warning). Widgets are re-dispatched by `useProcessedWidgets.ts`: `getComponent(widget.type) || (widget.isDOMWidget ? WidgetDOM : WidgetLegacy)`, gated first by `shouldRenderAsVue = !widget.options?.canvasOnly && !!widget.type`.
+
+| Pattern | Legacy | Nodes 2.0 | Notes |
+|---|---|---|---|
+| `addDOMWidget(name,type,el)` | ✅ | ✅ | **Best dual-mode strategy.** `WidgetDOM.vue` re-parents your `el` into the Vue node body. Zero branching. |
+| `addCustomWidget` w/ `draw()`+`mouse()` | ✅ | ✅ | Bridged by `WidgetLegacy.vue` — it makes a Vue-managed `<canvas>` and calls `widget.draw(ctx,node,w,y,h)` + `widget.mouse(e,pos,node)`. **No code change needed.** Caveat: `draw` gets a fresh canvas ctx, NOT the main LiteGraph canvas, so `this.canvas`-global tricks don't apply. |
+| `nodeType.prototype.onDrawForeground` (body paint) | ✅ | ❌ **silently skipped** | The big one. Painting controls directly on the node body (not via a widget) is NEVER bridged. No fallback. |
+| `onDrawBackground` | ✅ | ❌ skipped | Same early-return. |
+| `onMouseDown` hit-testing painted rects | ✅ | ⚠️ fires but rects are gone | Handler still runs, but there's nothing painted to hit-test against. |
+| `widget.options.canvasOnly = true` | hidden from Parameters tab | ❌ **also excluded from the Vue body** | **TENSION — see below.** `shouldRenderAsVue` returns false → the widget renders NOWHERE in Nodes 2.0. |
+| Monkey-patching `LGraphCanvas.prototype` (menus, `drawFrontCanvas`) | ✅ | ⚠️/❌ unreliable | Officially discouraged. Canvas-level overlays may still paint, but per-node painting won't. Right-click menu patches need per-case testing. |
+| `node.color` / `node.bgcolor` | ✅ | ❓ verify | Likely maps to a Vue style but unconfirmed — test Brand + Node Colors early. |
+
+**⚠️ The `canvasOnly` tension (affects MANY Pixaroma nodes).** Vue Compat #15 told us to set `canvasOnly: true` on internal widgets to stop them duplicating into the right-sidebar Parameters tab. But in Nodes 2.0 that SAME flag excludes the widget from the node body entirely → it vanishes. So nodes that rely on `canvasOnly` (Preview Image strip+buttons, Prompt Stack/Multi/Pack rows, Switch family, etc.) will show EMPTY bodies in Nodes 2.0 until reworked. Resolution is TBD and must be settled on the first migrated node — likely either (a) drop `canvasOnly` and accept/curate how the widget renders in the Parameters tab, or (b) branch the flag on `vueNodesMode`. Decide the house pattern on node #1 and reuse it.
+
+**The genuinely hard case: per-slot UI aligned with input dots.** Switch / Mute Switch / Switch Source paint toggles + labels on the SAME row as each input dot via `onDrawForeground` + slot-Y math (Vue Compat #16). In Nodes 2.0 the slots are Vue-rendered and there is no canvas to align to. These need a real rethink (DOM widget per row, or the new Vue widget approach), not a mechanical port. Expect these to be the slowest.
+
+**Migration playbook (default approach per node):**
+1. Toggle Nodes 2.0 ON, observe the node, note exactly what's missing/broken (screenshot).
+2. If the node already uses `addDOMWidget` → likely fine; just resolve the `canvasOnly` flag.
+3. If it paints via `onDrawForeground` body painting → move that UI into either a proper `addCustomWidget` with `draw()`+`mouse()` (bridged for free) OR a DOM widget with its own render loop (`requestAnimationFrame`/`ResizeObserver`, since `onDrawForeground`'s polling tick is gone).
+4. If it's a canvas-wide patch (Align guides, Connection FX) → branch on `vueNodesMode` or accept it only runs in legacy.
+5. Verify with the toggle BOTH ways; saved-workflow load must stay clean (Vue Compat #18 still applies).
+6. Record the concrete pattern + gotchas back here.
+
+**`getCustomWidgets()` extension hook** — official way to register a custom widget TYPE: return `{ MY_TYPE: (node,inputName,inputData,app) => node.addDOMWidget(inputName,"MY_TYPE",el) }`. The result is a DOM widget → goes through `WidgetDOM.vue`. Useful if we ever want a Python-declared input to mount a Pixaroma DOM widget.
+
+**Per-node migration status** (update as we go; all NOT STARTED at kickoff 2026-05):
+
+| Node | Render approach today | 2.0 risk | Status |
+|---|---|---|---|
+| Switch / Switch Source / Switch WH | `onDrawForeground` slot-aligned + DOM strip | 🔴 hard (slot align) | not started |
+| Mute Switch | `onDrawForeground` pills | 🔴 hard (slot align) | not started |
+| Preview Image | custom canvas widgets + painted buttons | 🔴 high (+canvasOnly) | not started |
+| Compare / Reference | full canvas node draw | 🔴 high | not started |
+| Prompt Pack / Prompt Multi | DOM rows + canvas pills | 🟡 partial | not started |
+| Load Image | DOM panel + `onDrawForeground` cards | 🟡 partial | not started |
+| Note / Show Text / Text / Prompt Stack / Prompt Reader / Resolution / Text Overlay / Text Watermark | DOM widgets | 🟢 likely fine (+canvasOnly) | not started |
+| Fullscreen editors (Paint/3D/Composer/Crop/AudioReact) | button + DOM/WebGL overlay | 🟢 likely fine | not started |
+| Align / Connection FX | `drawFrontCanvas` wrap | 🔴 canvas paint | not started |
+| Node Colors / Brand | `LGraphCanvas` menu + `node.color` | ❓ verify | not started |
+| Run Button FX | DOM toolbar (no node) | 🟢 safe | n/a |
+
+**Reference sources (re-check; they evolve):**
+- `Comfy-Org/ComfyUI_frontend`: `src/lib/litegraph/src/LGraphCanvas.ts` (`drawNode` vueNodesMode early-return ~L5614), `src/renderer/extensions/vueNodes/widgets/components/WidgetLegacy.vue` (canvas-widget bridge), `WidgetDOM.vue` (DOM bridge), `widgets/registry/widgetRegistry.ts` (`shouldRenderAsVue` + type table), `composables/useProcessedWidgets.ts` (dispatch), `composables/useVueFeatureFlags.ts` (the flag).
+- KJNodes: `web/js/nodeswap.js` + `setgetnodes.js` (`LiteGraph.vueNodesMode` dual-branch), `image_transform.js` (`addDOMWidget` + onDrawForeground-as-polling, breaks in 2.0).
+- Docs (when published): `docs.comfy.org/interface/nodes-2`, `docs.comfy.org/custom-nodes/v3_migration`.
+
 ### ComfyUI Settings Integration
 Pixaroma registers user-facing settings in ComfyUI's Settings panel using the `settings` array inside `app.registerExtension()`. Settings appear under the **👑 Pixaroma** category.
 
