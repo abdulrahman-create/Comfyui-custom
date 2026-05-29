@@ -11,6 +11,7 @@ import {
   restoreNodePreview,
   activateNodePreview,
   downloadDataURL,
+  applyAdaptiveCanvasOnly,
 } from "../shared/index.mjs";
 
 // Import core class first, then mixins as side-effects
@@ -178,7 +179,7 @@ app.registerExtension({
       "custom",
       parts.container,
       {
-        canvasOnly: true,  // hide from Parameters tab (Vue Compat #15)
+        // canvasOnly set adaptively below (CLAUDE.md Nodes 2.0)
         getValue: () => ({ project_json: projectJson }),
         setValue: (v) => {
           dbg("setValue called", { type: typeof v, hasProjectJson: !!(v && v.project_json), projectJsonLen: v?.project_json?.length });
@@ -207,6 +208,7 @@ app.registerExtension({
         margin: 5,
       },
     );
+    applyAdaptiveCanvasOnly(widget);
 
     // cleanup handled in API listener section below
 

@@ -771,8 +771,9 @@ ComfyUI is gradually making **Nodes 2.0** the default node renderer. It replaces
 | Note | DOM rich-text body (type `custom`) + fullscreen editor + hidden `note_json` STRING | 🟢 (+canvasOnly) | ✅ DONE + VERIFIED both renderers 2026-05 — `applyAdaptiveCanvasOnly` on the body widget + `hideJsonWidget` now sets `canvasOnly` so the raw `note_json` JSON no longer shows at the top in Nodes 2.0. Editor + rendered content confirmed. |
 | Image Crop | native button + 2 DOM widgets (panel + mini-preview, type `custom`) | 🟢 (+canvasOnly) | ✅ DONE + VERIFIED both renderers 2026-05 — `applyAdaptiveCanvasOnly` on BOTH widgets; "Open Crop" native button; node body + fullscreen crop editor + placeholder state + width/height outputs all confirmed. |
 | Paint | native button + 1 DOM widget (mini-preview, type `custom`) | 🟢 (+canvasOnly) | ✅ DONE + VERIFIED both renderers 2026-05 — `applyAdaptiveCanvasOnly`; "Open Paint" native button; node body + full Paint Studio editor (brushes/layers/AI bg removal/transforms) + image+w/h outputs all confirmed. |
-| 3D Builder | native button + 1 DOM widget (SceneWidget preview, type `custom`) | 🟢 (+canvasOnly) | ✅ DONE 2026-05 — `applyAdaptiveCanvasOnly`; "Open 3D Builder" native button; WebGL editor is an overlay (renderer-agnostic). Pending user test. |
-| Fullscreen editors (Composer/AudioReact) | button + DOM/WebGL overlay | 🟢 likely fine | not started (Crop + Paint + 3D done as template) |
+| 3D Builder | native button + 1 DOM widget (SceneWidget preview, type `custom`) | 🟢 (+canvasOnly) | ✅ DONE + VERIFIED both renderers 2026-05 — `applyAdaptiveCanvasOnly`; "Open 3D Builder" native button; node body + full WebGL 3D editor (shapes/transform/camera/materials) + image+w/h outputs all confirmed. |
+| Image Composer | native button + 1 DOM widget (ComposerWidget preview, type `custom`) | 🟢 (+canvasOnly) | ✅ DONE 2026-05 — `applyAdaptiveCanvasOnly`; "Open Image Composer" native button; uses setInterval polling (no `onDrawForeground` painting). Pending user test. |
+| AudioReact | button + WebGL overlay | 🟢 likely fine | not started (Crop + Paint + 3D + Composer done as template) |
 | Align / Connection FX | `drawFrontCanvas` wrap | 🔴 canvas paint | not started |
 | Node Colors / Brand | `LGraphCanvas` menu + `node.color` | ❓ verify | not started |
 | Run Button FX | DOM toolbar (no node) | 🟢 safe | n/a |
