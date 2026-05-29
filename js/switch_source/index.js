@@ -8,6 +8,7 @@ import {
 } from "./core.mjs";
 import { openLabelEditor, cancelEditorForNode } from "./editor.mjs";
 import { makeNumericInput, injectResizePanelCSS } from "../shared/resize_panel.mjs";
+import { applyAdaptiveCanvasOnly, isVueNodes } from "../shared/nodes2.mjs";
 
 // Switch Source Pixaroma - two banks (A/B), one toggle flips every row.
 // Slot count is set by the Rows field (not by wiring); editable output labels;
@@ -221,14 +222,18 @@ app.registerExtension({
       setupNode(node);        // strip raw Python slots -> initial rows
       const { root, refresh } = buildControls(node);
       node._pixSsRefresh = refresh;
-      node.addDOMWidget("pixaroma_switch_source_ui", "custom", root, {
-        canvasOnly: true, // Vue Compat #15 - keep out of the Parameters tab
+      const ssWidget = node.addDOMWidget("pixaroma_switch_source_ui", "custom", root, {
         serialize: false,
         getMinHeight: () => CONTROL_BAND,
         getMaxHeight: () => CONTROL_BAND,
         getValue: () => null,
         setValue: () => {},
       });
+      // Adaptive canvasOnly: true in the legacy renderer (kept out of the
+      // Parameters tab, Vue Compat #15) but false in Nodes 2.0 so the Vue body
+      // actually renders the control strip - with a static canvasOnly:true the
+      // entire strip (Rows / A-B / Missing) vanished in Nodes 2.0.
+      applyAdaptiveCanvasOnly(ssWidget);
       node.setDirtyCanvas(true, true);
       // Defer restore so node.properties is populated from workflow JSON first
       // (Vue Compat #8). onConfigure also restores (belt and braces).
@@ -273,10 +278,12 @@ app.registerExtension({
       return _origConn?.apply(this, arguments);
     };
 
-    // Click an output label to rename that row.
+    // Click an output label to rename that row. Canvas-only: in Nodes 2.0 the
+    // slots are Vue-rendered and our painted-rect hit-test would misfire, so we
+    // skip it there (a Nodes 2.0 rename path is handled separately).
     const _origDown = nodeType.prototype.onMouseDown;
     nodeType.prototype.onMouseDown = function (e, pos) {
-      if (!this.flags?.collapsed) {
+      if (!this.flags?.collapsed && !isVueNodes()) {
         const n = rowCount(this);
         for (let r = 1; r <= n; r++) {
           if (pointInRect(pos, outputLabelRect(this, r))) {
