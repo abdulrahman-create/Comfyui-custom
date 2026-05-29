@@ -8,7 +8,7 @@
 // onMouseDown on the nodeType prototype).
 
 import { app } from "/scripts/app.js";
-import { setText, readState } from "./core.mjs";
+import { setText, setMode, readState, MODE_PARAGRAPH, MODE_LINE } from "./core.mjs";
 import { applyState, updateCounter, updateClearButton } from "./render.mjs";
 
 function flashBtnText(btn, label) {
@@ -107,8 +107,21 @@ export function wireEvents(node, root) {
     node.setDirtyCanvas(true, true);
   });
 
+  // Mode pills (Paragraph / Line) — DOM segmented toggle (was canvas-painted
+  // via onDrawForeground; moved to DOM so it renders in Nodes 2.0).
+  els.paraPill?.addEventListener("click", () => {
+    setMode(node, MODE_PARAGRAPH);
+    applyState(root, readState(node));
+    node.setDirtyCanvas(true, true);
+  });
+  els.linePill?.addEventListener("click", () => {
+    setMode(node, MODE_LINE);
+    applyState(root, readState(node));
+    node.setDirtyCanvas(true, true);
+  });
+
   // Don't let pointer events on the buttons start a node drag.
-  for (const b of [els.copyBtn, els.replaceBtn, els.clearBtn]) {
+  for (const b of [els.copyBtn, els.replaceBtn, els.clearBtn, els.paraPill, els.linePill]) {
     b.addEventListener("pointerdown", (e) => e.stopPropagation());
     b.addEventListener("mousedown", (e) => e.stopPropagation());
   }
