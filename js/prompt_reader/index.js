@@ -40,6 +40,14 @@ function injectCSS() {
   const style = document.createElement("style");
   style.id = "pix-pr-css";
   style.textContent = `
+    /* Nodes 2.0 renders its own .image-preview panel (fed by ComfyUI's
+       internal node-preview state, NOT node.imgs which we lock to []). It
+       goes stale on programmatic file changes and we don't want an image
+       preview on this text-readout node anyway. Hide it, scoped to our node
+       via :has() so no other node is affected. Legacy has no .lg-node /
+       .image-preview, so this rule is a no-op there. */
+    .lg-node:has(.pix-pr-root) .image-preview { display: none !important; }
+
     .pix-pr-root {
       width: 100%;
       box-sizing: border-box;
