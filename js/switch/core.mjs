@@ -11,9 +11,41 @@
 
 import { app } from "/scripts/app.js";
 import { ROW_H, TOP_PAD } from "./render.mjs";
+import { isVueNodes } from "../shared/nodes2.mjs";
 
 export const STATE_PROP = "switchState";
 export const MAX_INPUTS = 32;
+
+// The label LiteGraph / Vue shows next to an input dot.
+//  - Legacy: a zero-width space (truthy + invisible) so LiteGraph does NOT draw
+//    a native label over the one we canvas-paint ourselves. Legacy is byte-
+//    identical to before.
+//  - Nodes 2.0: the real name (custom label if set, else "input N"), because
+//    Vue renders slot.label next to the dot (InputSlot.vue) and we paint nothing
+//    there, so a blank dot looks unfinished. NOT the upstream type - that would
+//    change after the load-race once links resolve and dirty the workflow; the
+//    type is shown in the DOM list tag instead.
+export function slotDisplayLabel(node, slotIdx1) {
+  // Legacy: zero-width space so LiteGraph doesn't draw a native label over the
+  // one we canvas-paint (legacy byte-identical). Nodes 2.0: a STABLE "input N"
+  // (slot index). Deliberately NOT the wire type or custom name: Vue only
+  // re-reads a dot label on (re)load, so a type/name dot would show stale info
+  // after a live rewire/rename. The live name + type live in the DOM list
+  // (vue_list.mjs); "input N" can never go stale.
+  return isVueNodes() ? `input ${slotIdx1}` : "​";
+}
+
+// Re-apply slotDisplayLabel to every input slot (diff-gated so unchanged labels
+// are not rewritten - keeps a correctly-saved workflow from being flagged
+// "modified" on load). Called after a disconnect so the index-based labels
+// track slots that shifted down.
+export function refreshSlotLabels(node) {
+  if (!node.inputs) return;
+  for (let i = 0; i < node.inputs.length; i++) {
+    const lbl = slotDisplayLabel(node, i + 1);
+    if (node.inputs[i].label !== lbl) node.inputs[i].label = lbl;
+  }
+}
 
 const SLOT_NAME = (i) => `input_${i}`; // 1-based
 
@@ -108,7 +140,8 @@ export function normalizeSlots(node) {
   for (let i = 0; i < node.inputs.length; i++) {
     const nm = SLOT_NAME(i + 1);
     if (node.inputs[i].name !== nm) node.inputs[i].name = nm;
-    if (node.inputs[i].label !== "​") node.inputs[i].label = "​"; // zero-width space
+    const lbl = slotDisplayLabel(node, i + 1);
+    if (node.inputs[i].label !== lbl) node.inputs[i].label = lbl;
   }
 
   if (state.visibleCount !== node.inputs.length) state.visibleCount = node.inputs.length;
@@ -164,6 +197,7 @@ export function normalizeSlots(node) {
 
   updateOutputType(node);
   app.graph?.setDirtyCanvas?.(true, true);
+  node._pixSwRefresh?.(); // re-render the Nodes 2.0 DOM list (no-op in legacy)
 }
 
 // Add a single input slot. slot.label = zero-width space so LiteGraph's
@@ -171,7 +205,7 @@ export function normalizeSlots(node) {
 // while the input name (input_N) stays intact for Python kwarg routing.
 function addInputSlot(node, idx1) {
   const slot = node.addInput(SLOT_NAME(idx1), "*");
-  slot.label = "​"; // zero-width space: truthy, invisible
+  slot.label = slotDisplayLabel(node, idx1); // "​" in legacy, "input N" in 2.0
   return slot;
 }
 
@@ -247,6 +281,26 @@ export function updateOutputType(node) {
   // flags the workflow "modified" on a plain open (issue #39).
 }
 
+// Make slotIdx1 the active (routed) input. Mutex: only one row active at a
+// time. No-op for unconnected / trailing rows or when already active. Shared by
+// the legacy onMouseDown toggle (index.js) and the Nodes 2.0 DOM list click
+// (vue_list.mjs). node._pixSwRefresh re-renders the Vue list when present
+// (undefined in legacy, where setDirtyCanvas repaints the canvas instead).
+export function setActiveRow(node, slotIdx1) {
+  const inputs = node.inputs || [];
+  const slot = inputs[slotIdx1 - 1];
+  const connected = slot != null && slot.link != null;
+  const isTrailing = !connected && slotIdx1 === inputs.length;
+  if (!connected || isTrailing) return false;
+  const state = readState(node);
+  if (state.activeIndex === slotIdx1) return false; // already active - no-op
+  state.activeIndex = slotIdx1;
+  updateOutputType(node);
+  app.graph?.setDirtyCanvas?.(true, true);
+  node._pixSwRefresh?.();
+  return true;
+}
+
 export function handleConnect(node, slotIdx1) {
   const state = readState(node);
 
@@ -275,6 +329,7 @@ export function handleConnect(node, slotIdx1) {
 
   updateOutputType(node);
   app.graph?.setDirtyCanvas?.(true, true);
+  node._pixSwRefresh?.(); // re-render the Nodes 2.0 DOM list (no-op in legacy)
 }
 
 export function handleDisconnect(node, slotIdx /* 1-based */) {
@@ -305,9 +360,11 @@ function actuallyDisconnect(node, slotIdx /* 1-based */) {
 
   // 2. Rename every remaining slot so suffixes stay contiguous.
   if (node.inputs) {
+    // Names only here; labels are re-applied at the end via refreshSlotLabels,
+    // AFTER state.labels has been shifted down (step 3) so a custom name follows
+    // its row to the new index.
     for (let i = 0; i < node.inputs.length; i++) {
       node.inputs[i].name = `input_${i + 1}`;
-      node.inputs[i].label = "​"; // zero-width space
     }
   }
 
@@ -358,7 +415,9 @@ function actuallyDisconnect(node, slotIdx /* 1-based */) {
   node.size[1] = computeNodeHeight(state.visibleCount);
 
   updateOutputType(node);
+  refreshSlotLabels(node); // labels re-applied with shifted indices + names
 
   // 7. Redraw.
   node.graph?.setDirtyCanvas?.(true, true);
+  node._pixSwRefresh?.(); // re-render the Nodes 2.0 DOM list (no-op in legacy)
 }

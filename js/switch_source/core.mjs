@@ -174,8 +174,18 @@ function resizeToRows(node, rows) {
   if (isGraphLoading()) return;
   const h = minNodeHeight(rows);
   const w = Math.max(node.size[0] || 0, DEFAULT_W);
-  if (node.size[0] !== w) node.size[0] = w;
-  if (node.size[1] !== h) node.size[1] = h;
+  // node.setSize goes through the official resize path so the new height sticks
+  // in BOTH renderers - a raw node.size[1] = h write can be silently reverted in
+  // Nodes 2.0 when the layout was last committed under the other renderer
+  // (CLAUDE.md Nodes 2.0 resize gotcha). Needed here so lowering Rows in Nodes
+  // 2.0 actually shrinks the node instead of leaving a gap. Array write fallback
+  // for older builds without setSize.
+  if (typeof node.setSize === "function") {
+    if (node.size[0] !== w || node.size[1] !== h) node.setSize([w, h]);
+  } else {
+    if (node.size[0] !== w) node.size[0] = w;
+    if (node.size[1] !== h) node.size[1] = h;
+  }
 }
 
 export function clearAllSlots(node) {
