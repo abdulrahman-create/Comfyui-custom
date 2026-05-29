@@ -201,7 +201,13 @@ function computeButtonRects(widgetWidth, stripY) {
   const gap = BTN_GAP;
   const maxTotal = widgetWidth - SIDE_PAD * 2;
   let btnW = Math.floor((maxTotal - gap * (BTN_COUNT - 1)) / BTN_COUNT);
-  btnW = Math.max(BTN_MIN_W, Math.min(BTN_MAX_W, btnW));
+  // Cap the max, but only a SOFT floor (not BTN_MIN_W): if we floored at
+  // BTN_MIN_W the row could become wider than the node and the last button
+  // would clip past the frame on a narrow node. Letting btnW shrink keeps the
+  // whole row inside widgetWidth (the MIN_W self-heal in the buttons widget
+  // keeps it readable at >= BTN_MIN_W in normal use).
+  btnW = Math.min(BTN_MAX_W, btnW);
+  btnW = Math.max(28, btnW);
   const totalW = btnW * BTN_COUNT + gap * (BTN_COUNT - 1);
   const x0 = Math.max(SIDE_PAD, (widgetWidth - totalW) / 2);
   const y = stripY + STRIP_V_PAD;
@@ -628,15 +634,17 @@ function createButtonsWidget() {
       // paint at the corrected width. Legacy only: in Nodes 2.0 the node width
       // is CSS-driven (min-w-(--min-node-width)) and mutating node.size fights
       // the Vue layout, so we leave sizing to the renderer there.
-      if (!isVueNodes()) {
-        if (node.size[0] < MIN_W) {
-          node.size[0] = MIN_W;
-          node.setDirtyCanvas(true, true);
-        }
-        if (node.size[1] < MIN_H) {
-          node.size[1] = MIN_H;
-          node.setDirtyCanvas(true, true);
-        }
+      // Width self-heal in BOTH renderers (keeps the 4 buttons readable; the
+      // computeButtonRects soft-floor already prevents clipping). Height
+      // self-heal is LEGACY-ONLY - in Nodes 2.0 the body height is flex-managed
+      // and writing node.size[1] re-introduces the growth loop.
+      if (node.size[0] < MIN_W) {
+        node.size[0] = MIN_W;
+        node.setDirtyCanvas(true, true);
+      }
+      if (!isVueNodes() && node.size[1] < MIN_H) {
+        node.size[1] = MIN_H;
+        node.setDirtyCanvas(true, true);
       }
       const active = !!(node._pixaromaFrames?.length || node.imgs?.length);
       const rects = computeButtonRects(widget_width, y);
