@@ -692,6 +692,9 @@ function createButtonsWidget() {
 // whatever rect the user-resized node gives the widget. No node.setSize
 // calls — that's what caused resize flicker.
 const IMG_STRIP_MIN_H = 220;
+// Fixed strip height used ONLY in Nodes 2.0 (see the computeSize getter below
+// for why the preview can't safely fill remaining space there).
+const VUE_STRIP_H = 300;
 const IMG_STRIP_GAP = 4;
 const IMG_STRIP_V_PAD = 4;
 const IMG_STRIP_BORDER_W = 2;       // selection border thickness
@@ -872,26 +875,18 @@ function createStripWidget() {
     // Made adaptive after addCustomWidget so Nodes 2.0 still renders it in
     // the Vue body (applyAdaptiveCanvasOnly: true legacy / false Nodes 2.0).
     options: {},
-    // computeSize is exposed ONLY in the legacy renderer. The Nodes 2.0
-    // node-layout (api bundle getLayoutWidgets) checks `if (widget.computeSize)`
-    // FIRST and, when present, pins the widget to a FIXED height
-    // (computedHeight = computeSize()[1]+4) and EXCLUDES it from the flex
-    // free-space pool - so the preview could never grow when the node is
-    // resized. By returning undefined in Nodes 2.0, the layout falls through to
-    // computeLayoutSize and treats the strip as a flex/fill widget. In legacy
-    // we still need computeSize to reserve the widget's minimum height (draw
-    // then fills node.size[1]-y as before).
-    get computeSize() {
-      if (window.LiteGraph?.vueNodesMode) return undefined;
-      return (width) => [width, IMG_STRIP_MIN_H];
-    },
-    // Nodes 2.0: declaring computeLayoutSize (and NOT computeSize, above) makes
-    // this a flex/fill widget exactly like native PreviewImage
-    // (`computeLayoutSize(){return{minHeight:220}}`). The Vue node-layout then
-    // distributes the node body's free space into widget.computedHeight, which
-    // the bridge passes as the 5th arg to draw().
-    computeLayoutSize() {
-      return { minHeight: IMG_STRIP_MIN_H, minWidth: 1 };
+    // Both renderers expose computeSize, and we deliberately DO NOT provide
+    // computeLayoutSize. Why: declaring computeLayoutSize flags the widget as a
+    // flex/`auto` grid row in Nodes 2.0, but the WidgetLegacy bridge sizes the
+    // canvas to computedHeight + 2 — so an `auto` cell grows 2px every layout
+    // pass, compounding into unbounded node growth on every run AND resize
+    // (native PreviewImage avoids this because its preview is a pure-DOM Vue
+    // component, not a bridged canvas). Keeping ONLY computeSize pins the widget
+    // to a fixed height in the Vue layout (no flex, no growth). Trade-off: in
+    // Nodes 2.0 the preview is a fixed height instead of filling the node on
+    // resize. Legacy is unchanged (220 min, draw() fills node.size[1]-y).
+    computeSize(width) {
+      return [width, window.LiteGraph?.vueNodesMode ? VUE_STRIP_H : IMG_STRIP_MIN_H];
     },
     draw(ctx, node, widget_width, y, h) {
       this._node = node;
