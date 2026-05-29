@@ -43,6 +43,15 @@ function injectCSS() {
     .pix-vc-value { color: #fff; font-weight: 700; font-variant-numeric: tabular-nums; }
     .pix-vc-value.is-v2 { color: #4cd07d; }
     .pix-vc-value.is-legacy { color: #6f9be0; }
+    /* Node UI value doubles as a one-click renderer switch. */
+    .pix-vc-value.pix-vc-toggle {
+      cursor: pointer; padding: 2px 9px; border-radius: 6px;
+      border: 1px solid rgba(255,255,255,0.16); background: rgba(255,255,255,0.05);
+      transition: background 0.12s, border-color 0.12s;
+    }
+    .pix-vc-value.pix-vc-toggle:hover {
+      background: rgba(255,255,255,0.12); border-color: rgba(255,255,255,0.34);
+    }
     .pix-vc-copy {
       box-sizing: border-box; width: 100%; min-height: 28px;
       border-radius: 6px; cursor: pointer; user-select: none;
@@ -107,12 +116,29 @@ app.registerExtension({
         const v2 = !!window.LiteGraph?.vueNodesMode;
         if (v2 === lastV2) return;
         lastV2 = v2;
-        rNodes.value.textContent = v2 ? "Nodes 2.0" : "Legacy";
+        rNodes.value.textContent = (v2 ? "Nodes 2.0" : "Legacy") + "  ⇄";
         rNodes.value.classList.toggle("is-v2", v2);
         rNodes.value.classList.toggle("is-legacy", !v2);
       };
       refreshNodeUI();
       this._pixVcTimer = setInterval(refreshNodeUI, 600);
+
+      // Make the Node UI value a one-click renderer switch, so the user can
+      // flip Nodes 2.0 <-> Legacy without trekking into Settings. The setting
+      // Comfy.VueNodes.Enabled drives LiteGraph.vueNodesMode (verified in the
+      // frontend's useVueFeatureFlags.ts); flipping it re-renders the canvas.
+      rNodes.value.classList.add("pix-vc-toggle");
+      rNodes.value.title = "Click to switch the node renderer (Nodes 2.0 ⇄ Legacy)";
+      rNodes.value.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        const cur = !!window.LiteGraph?.vueNodesMode;
+        try {
+          await app.ui.settings.setSettingValueAsync("Comfy.VueNodes.Enabled", !cur);
+          setTimeout(refreshNodeUI, 50);
+        } catch (err) {
+          console.error("[PixaromaVersionCheck] renderer toggle failed:", err);
+        }
+      });
 
       // --- Frontend (synchronous global) ---
       rFront.value.textContent = window.__COMFYUI_FRONTEND_VERSION__ || "unknown";
