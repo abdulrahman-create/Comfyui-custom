@@ -52,8 +52,9 @@ function injectCSS() {
     .pix-vc-value.pix-vc-toggle:hover {
       background: rgba(255,255,255,0.12); border-color: rgba(255,255,255,0.34);
     }
+    .pix-vc-btnrow { display: flex; gap: 6px; }
     .pix-vc-copy {
-      box-sizing: border-box; width: 100%; min-height: 28px;
+      box-sizing: border-box; flex: 1; min-width: 0; min-height: 28px;
       border-radius: 6px; cursor: pointer; user-select: none;
       font: 600 12px 'Segoe UI', -apple-system, sans-serif;
       color: rgba(255,255,255,0.75);
@@ -108,7 +109,36 @@ app.registerExtension({
       copyBtn.textContent = "Copy";
       copyBtn.title = "Copy all versions as text (for bug reports)";
 
-      wrap.append(rows, copyBtn);
+      const refreshBtn = document.createElement("button");
+      refreshBtn.type = "button";
+      refreshBtn.className = "pix-vc-copy";
+      refreshBtn.textContent = "⟳ Refresh";
+      refreshBtn.title =
+        "Clear the app cache and reload the page (like Ctrl+Shift+R). " +
+        "Note: browsers don't let a button force a full hard-reload — for a " +
+        "guaranteed cache bypass use Ctrl+Shift+R.";
+      refreshBtn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        refreshBtn.textContent = "⟳ …";
+        try {
+          // Clear Cache Storage (service-worker / PWA caches) — the only cache
+          // JS can actually purge. The HTTP disk cache can't be cleared from a
+          // page; location.reload() revalidates per cache headers.
+          if (window.caches?.keys) {
+            const keys = await caches.keys();
+            await Promise.all(keys.map((k) => caches.delete(k)));
+          }
+        } catch (err) {
+          console.warn("[PixaromaVersionCheck] cache clear failed:", err);
+        }
+        location.reload();
+      });
+
+      const btnRow = document.createElement("div");
+      btnRow.className = "pix-vc-btnrow";
+      btnRow.append(copyBtn, refreshBtn);
+
+      wrap.append(rows, btnRow);
 
       // --- Node UI row: live, color-coded ---
       let lastV2 = null;
