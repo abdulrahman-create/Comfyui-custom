@@ -36,6 +36,20 @@ function injectPreviewCSS() {
   document.head.appendChild(style);
 }
 
+// Add the marker class (used by injectPreviewCSS) to this node's lg-node DOM.
+// The strip widget stores its bridged <canvas> on node._pixStripCanvas each
+// draw; we walk up from it. Vue can strip a manually-added class when it
+// re-renders the node (e.g. on the executed update that also inserts the
+// native .image-preview), so callers re-apply this for a few frames after a
+// run to avoid a 1-frame duplicate-preview flash.
+function tagPreviewNodeDom(node) {
+  if (!window.LiteGraph?.vueNodesMode) return;
+  const lg = node?._pixStripCanvas?.closest?.(".lg-node");
+  if (lg && !lg.classList.contains("pix-preview-node")) {
+    lg.classList.add("pix-preview-node");
+  }
+}
+
 // ---- button / node sizing ----
 const BTN_H = 26;
 const BTN_GAP = 6;
@@ -875,32 +889,35 @@ function createStripWidget() {
     // Made adaptive after addCustomWidget so Nodes 2.0 still renders it in
     // the Vue body (applyAdaptiveCanvasOnly: true legacy / false Nodes 2.0).
     options: {},
-    computeSize(width) {
-      // Legacy renderer: constant minimum height (native PreviewImage pattern).
-      // The actual rendered height is whatever the user-resized node grants —
-      // see draw() (node.size[1] - y). Nodes 2.0 ignores this in favour of
-      // computeLayoutSize below.
-      return [width, IMG_STRIP_MIN_H];
+    // computeSize is exposed ONLY in the legacy renderer. The Nodes 2.0
+    // node-layout (api bundle getLayoutWidgets) checks `if (widget.computeSize)`
+    // FIRST and, when present, pins the widget to a FIXED height
+    // (computedHeight = computeSize()[1]+4) and EXCLUDES it from the flex
+    // free-space pool - so the preview could never grow when the node is
+    // resized. By returning undefined in Nodes 2.0, the layout falls through to
+    // computeLayoutSize and treats the strip as a flex/fill widget. In legacy
+    // we still need computeSize to reserve the widget's minimum height (draw
+    // then fills node.size[1]-y as before).
+    get computeSize() {
+      if (window.LiteGraph?.vueNodesMode) return undefined;
+      return (width) => [width, IMG_STRIP_MIN_H];
     },
-    // Nodes 2.0 only: declaring computeLayoutSize makes this a flex/fill widget
-    // (exactly like native PreviewImage's `computeLayoutSize(){return{minHeight:220}}`).
-    // The Vue node-layout then sets widget.computedHeight to fill the remaining
-    // node body, and passes that height as the 5th arg to draw(). Without this
-    // the bridge would size the canvas to computeSize()[1] (a constant 220) and
-    // the preview could never grow with the node.
+    // Nodes 2.0: declaring computeLayoutSize (and NOT computeSize, above) makes
+    // this a flex/fill widget exactly like native PreviewImage
+    // (`computeLayoutSize(){return{minHeight:220}}`). The Vue node-layout then
+    // distributes the node body's free space into widget.computedHeight, which
+    // the bridge passes as the 5th arg to draw().
     computeLayoutSize() {
       return { minHeight: IMG_STRIP_MIN_H, minWidth: 1 };
     },
     draw(ctx, node, widget_width, y, h) {
       this._node = node;
-      // Nodes 2.0: tag the node DOM so CSS can hide ComfyUI's native
-      // .image-preview panel (which save_mode=save's ui.images triggers,
-      // duplicating our custom strip). ctx.canvas is the bridge's <canvas>.
+      // Nodes 2.0: remember the bridged canvas and tag the node DOM so CSS can
+      // hide ComfyUI's native .image-preview panel (which save_mode=save's
+      // ui.images triggers, duplicating our custom strip).
       if (window.LiteGraph?.vueNodesMode) {
-        const lgNode = ctx.canvas?.closest?.(".lg-node");
-        if (lgNode && !lgNode.classList.contains("pix-preview-node")) {
-          lgNode.classList.add("pix-preview-node");
-        }
+        node._pixStripCanvas = ctx.canvas;
+        tagPreviewNodeDom(node);
       }
       const frames = node._pixaromaFrames || [];
       if (!frames.length) return;
@@ -1304,6 +1321,7 @@ function hydrateFrames(node, framesMeta) {
       filename: f.filename,
       subfolder: f.subfolder || "",
       type: f.type || "temp",
+      url,
       // repaint (not setDirtyCanvas) so the image actually appears in Nodes 2.0,
       // where the bridged canvas only repaints via widget.triggerDraw.
       img: loadFrameImage(url, () => repaint(node)),
@@ -1428,4 +1446,18 @@ api.addEventListener("executed", ({ detail }) => {
   // offset so we don't double-jump.
   node._pixaromaDiskOffset = 0;
   hydrateFrames(node, node.properties.pixaromaFrames);
+
+  // Nodes 2.0: save_mode=save returns ui.images, which makes ComfyUI render its
+  // own native .image-preview panel (a duplicate of our strip). The CSS hide
+  // depends on our marker class, which Vue can strip when it re-renders the
+  // node on this very update. Re-apply the marker over the next few frames so
+  // the native panel never flashes visible.
+  if (window.LiteGraph?.vueNodesMode) {
+    let n = 0;
+    const reTag = () => {
+      tagPreviewNodeDom(node);
+      if (++n < 6) requestAnimationFrame(reTag);
+    };
+    requestAnimationFrame(reTag);
+  }
 });
