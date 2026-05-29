@@ -769,8 +769,9 @@ ComfyUI is gradually making **Nodes 2.0** the default node renderer. It replaces
 | Text Watermark | shared text_editor panel (type `div`, fixed getMinHeight) | 🟢 (+canvasOnly) | ✅ DONE + VERIFIED both renderers 2026-05 — `applyAdaptiveCanvasOnly`; `onDrawForeground` is min-width clamp only. Full panel + watermark render confirmed. |
 | Text Overlay | shared text_editor panel (type `div`, fixed getMinHeight) + fullscreen editor | 🟢 (+canvasOnly) | ✅ DONE + VERIFIED both renderers 2026-05 — `applyAdaptiveCanvasOnly`; node body panel renders AND the fullscreen editor opens + works under Nodes 2.0 (first editor confirmed in 2.0 — see editor note below). |
 | Note | DOM rich-text body (type `custom`) + fullscreen editor + hidden `note_json` STRING | 🟢 (+canvasOnly) | ✅ DONE + VERIFIED both renderers 2026-05 — `applyAdaptiveCanvasOnly` on the body widget + `hideJsonWidget` now sets `canvasOnly` so the raw `note_json` JSON no longer shows at the top in Nodes 2.0. Editor + rendered content confirmed. |
-| Image Crop | native button + 2 DOM widgets (panel + mini-preview, type `custom`) | 🟢 (+canvasOnly) | ✅ DONE 2026-05 — `applyAdaptiveCanvasOnly` on BOTH widgets; "Open Crop" is a native `addWidget("button")` (renders in Vue). Pending user test. |
-| Fullscreen editors (Paint/3D/Composer/AudioReact) | button + DOM/WebGL overlay | 🟢 likely fine | not started (Crop done as template) |
+| Image Crop | native button + 2 DOM widgets (panel + mini-preview, type `custom`) | 🟢 (+canvasOnly) | ✅ DONE + VERIFIED both renderers 2026-05 — `applyAdaptiveCanvasOnly` on BOTH widgets; "Open Crop" native button; node body + fullscreen crop editor + placeholder state + width/height outputs all confirmed. |
+| Paint | native button + 1 DOM widget (mini-preview, type `custom`) | 🟢 (+canvasOnly) | ✅ DONE 2026-05 — `applyAdaptiveCanvasOnly`; "Open Paint" native button; no `onDrawForeground` painting. Pending user test. |
+| Fullscreen editors (3D/Composer/AudioReact) | button + DOM/WebGL overlay | 🟢 likely fine | not started (Crop + Paint done as template) |
 | Align / Connection FX | `drawFrontCanvas` wrap | 🔴 canvas paint | not started |
 | Node Colors / Brand | `LGraphCanvas` menu + `node.color` | ❓ verify | not started |
 | Run Button FX | DOM toolbar (no node) | 🟢 safe | n/a |

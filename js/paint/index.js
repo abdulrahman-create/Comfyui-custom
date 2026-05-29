@@ -20,6 +20,7 @@ import {
   restoreNodePreview,
   activateNodePreview,
   downloadDataURL,
+  applyAdaptiveCanvasOnly,
 } from "../shared/index.mjs";
 
 app.registerExtension({
@@ -89,7 +90,7 @@ app.registerExtension({
 
     // ── DOM widget ──
     let widget = node.addDOMWidget("PaintWidget", "custom", parts.container, {
-      canvasOnly: true,  // hide from Parameters tab (Vue Compat #15)
+      // canvasOnly set adaptively below (CLAUDE.md Nodes 2.0)
       getValue: () => ({ paint_json: paintJson }),
       setValue: (v) => {
         if (v && typeof v === "object") {
@@ -100,6 +101,7 @@ app.registerExtension({
       getMinHeight: () => 210,
       margin: 5,
     });
+    applyAdaptiveCanvasOnly(widget);
 
     // ── Drag-and-drop on the closed node ──
     // Drops always add as a NEW layer on top — never replace, never delete.
