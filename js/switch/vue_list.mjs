@@ -46,6 +46,17 @@ function injectCSS() {
       white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
     }
     .pix-sw-row.trailing .pix-sw-label { color:#aaa; font-style:italic; }
+    /* Editable input name: looks like plain label text until hovered/focused,
+       so a row of these doesn't read as busy input boxes. */
+    .pix-sw-name {
+      flex:1; min-width:0; box-sizing:border-box; height:18px;
+      background:transparent; border:1px solid transparent; border-radius:4px;
+      color:#d8d8d8; font:12px 'Segoe UI',-apple-system,sans-serif;
+      padding:1px 4px; outline:none; cursor:text; text-overflow:ellipsis;
+    }
+    .pix-sw-name:hover { border-color:rgba(255,255,255,0.18); }
+    .pix-sw-name:focus { border-color:${BRAND}; background:#1d1d1d; }
+    .pix-sw-name::placeholder { color:#888; }
     .pix-sw-toggle {
       position:relative; width:28px; height:14px; border-radius:7px; flex:none; box-sizing:border-box;
       border:1px solid rgba(255,255,255,0.18); background:rgba(255,255,255,0.06);
@@ -96,14 +107,48 @@ export function buildSwitchVueList(node) {
       numEl.className = "pix-sw-num";
       numEl.textContent = String(slotIdx1);
 
-      const labelEl = document.createElement("span");
-      labelEl.className = "pix-sw-label";
       const custom = labels[slotIdx1];
       const type = connected ? getUpstreamType(node, slotIdx1) : null;
       const usefulType = type && type !== "*" ? type : null;
-      labelEl.textContent =
-        custom || (isTrailing ? "(empty)" : usefulType || `input ${slotIdx1}`);
-      labelEl.title = labelEl.textContent;
+
+      // Connected rows get an editable name field; the trailing empty row gets
+      // a plain dim "(empty)" label.
+      let labelEl;
+      if (connected && !isTrailing) {
+        labelEl = document.createElement("input");
+        labelEl.type = "text";
+        labelEl.className = "pix-sw-name";
+        labelEl.maxLength = 64;
+        labelEl.spellcheck = false;
+        labelEl.value = custom || "";
+        labelEl.placeholder = usefulType || `input ${slotIdx1}`;
+        labelEl.title = "Click to rename this input";
+        labelEl.addEventListener("keydown", (e) => {
+          e.stopPropagation(); // keep typing instead of triggering canvas shortcuts
+          if (e.key === "Enter") { e.preventDefault(); labelEl.blur(); }
+          else if (e.key === "Escape") {
+            e.preventDefault();
+            labelEl.value = readState(node).labels?.[slotIdx1] || "";
+            labelEl.blur();
+          }
+        });
+        const commitName = () => {
+          const v = labelEl.value.trim();
+          const st = readState(node);
+          if (!st.labels) st.labels = {};
+          if (v) st.labels[slotIdx1] = v; else delete st.labels[slotIdx1];
+          // Same state.labels the legacy canvas paint reads, so the name shows
+          // in both renderers. No re-render here (it would drop focus mid-edit).
+          node.graph?.setDirtyCanvas?.(true, true);
+        };
+        labelEl.addEventListener("change", commitName);
+        labelEl.addEventListener("blur", commitName);
+      } else {
+        labelEl = document.createElement("span");
+        labelEl.className = "pix-sw-label";
+        labelEl.textContent = isTrailing ? "(empty)" : usefulType || `input ${slotIdx1}`;
+        labelEl.title = labelEl.textContent;
+      }
 
       const toggleEl = document.createElement("span");
       toggleEl.className = "pix-sw-toggle";
@@ -114,8 +159,9 @@ export function buildSwitchVueList(node) {
       rowEl.append(numEl, labelEl, toggleEl);
 
       if (connected && !isTrailing) {
-        rowEl.title = "Click to route this input through";
+        rowEl.title = "Click to route this input through (the name field renames it)";
         rowEl.addEventListener("click", (e) => {
+          if (e.target === labelEl) return; // clicking the name field = edit, not activate
           e.stopPropagation();
           setActiveRow(node, slotIdx1);
         });
