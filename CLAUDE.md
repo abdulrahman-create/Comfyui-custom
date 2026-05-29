@@ -723,7 +723,9 @@ ComfyUI is gradually making **Nodes 2.0** the default node renderer. It replaces
 | Monkey-patching `LGraphCanvas.prototype` (menus, `drawFrontCanvas`) | ✅ | ⚠️/❌ unreliable | Officially discouraged. Canvas-level overlays may still paint, but per-node painting won't. Right-click menu patches need per-case testing. |
 | `node.color` / `node.bgcolor` | ✅ | ❓ verify | Likely maps to a Vue style but unconfirmed — test Brand + Node Colors early. |
 
-**⚠️ The `canvasOnly` tension (affects MANY Pixaroma nodes).** Vue Compat #15 told us to set `canvasOnly: true` on internal widgets to stop them duplicating into the right-sidebar Parameters tab. But in Nodes 2.0 that SAME flag excludes the widget from the node body entirely → it vanishes. So nodes that rely on `canvasOnly` (Preview Image strip+buttons, Prompt Stack/Multi/Pack rows, Switch family, etc.) will show EMPTY bodies in Nodes 2.0 until reworked. Resolution is TBD and must be settled on the first migrated node — likely either (a) drop `canvasOnly` and accept/curate how the widget renders in the Parameters tab, or (b) branch the flag on `vueNodesMode`. Decide the house pattern on node #1 and reuse it.
+**⚠️ The `canvasOnly` tension (affects MANY Pixaroma nodes) — RESOLVED, house rule below.** Vue Compat #15 told us to set `canvasOnly: true` on internal widgets to stop them duplicating into the right-sidebar Parameters tab. But in Nodes 2.0 that SAME flag (`shouldRenderAsVue = !options.canvasOnly`) excludes the widget from the node body entirely → it vanishes (verified empirically 2026-05 on Show Text: empty body in Nodes 2.0 while ComfyUI's own "Preview as Text" rendered fine).
+
+**HOUSE RULE (settled on node #1 = Show Text):** make `canvasOnly` an ADAPTIVE LIVE getter — `true` in legacy, `false` in Nodes 2.0. In legacy the node body draws DOM widgets regardless of the flag, so `true` only hides it from the Parameters tab (still want that); in Nodes 2.0 `false` lets the Vue body render it. Use the shared helper: after `addDOMWidget`/`addCustomWidget`, call `applyAdaptiveCanvasOnly(widget)` (from `js/shared/nodes2.mjs`, re-exported by the shared barrel) and do NOT pass `canvasOnly` in the widget's own options literal. The helper defines `canvasOnly` as a getter on `widget.options` returning `!window.LiteGraph?.vueNodesMode`, evaluated fresh each render (also exports `isVueNodes()` for dual-branch code). Apply this to every node that currently sets `canvasOnly: true`: Preview Image (strip+buttons), Prompt Stack / Prompt Multi / Prompt Pack (rows), Switch family, Resolution, Note, Text, etc. — it's the standard first step of each node's migration.
 
 **The genuinely hard case: per-slot UI aligned with input dots.** Switch / Mute Switch / Switch Source paint toggles + labels on the SAME row as each input dot via `onDrawForeground` + slot-Y math (Vue Compat #16). In Nodes 2.0 the slots are Vue-rendered and there is no canvas to align to. These need a real rethink (DOM widget per row, or the new Vue widget approach), not a mechanical port. Expect these to be the slowest.
 
@@ -747,7 +749,8 @@ ComfyUI is gradually making **Nodes 2.0** the default node renderer. It replaces
 | Compare / Reference | full canvas node draw | 🔴 high | not started |
 | Prompt Pack / Prompt Multi | DOM rows + canvas pills | 🟡 partial | not started |
 | Load Image | DOM panel + `onDrawForeground` cards | 🟡 partial | not started |
-| Note / Show Text / Text / Prompt Stack / Prompt Reader / Resolution / Text Overlay / Text Watermark | DOM widgets | 🟢 likely fine (+canvasOnly) | not started |
+| Show Text | DOM textarea widget | 🟢 (+canvasOnly) | ✅ DONE 2026-05 — `applyAdaptiveCanvasOnly`; pending user toggle-test both ways |
+| Note / Text / Prompt Stack / Prompt Reader / Resolution / Text Overlay / Text Watermark | DOM widgets | 🟢 likely fine (+canvasOnly) | not started |
 | Fullscreen editors (Paint/3D/Composer/Crop/AudioReact) | button + DOM/WebGL overlay | 🟢 likely fine | not started |
 | Align / Connection FX | `drawFrontCanvas` wrap | 🔴 canvas paint | not started |
 | Node Colors / Brand | `LGraphCanvas` menu + `node.color` | ❓ verify | not started |
