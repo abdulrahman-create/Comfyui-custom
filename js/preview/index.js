@@ -1180,13 +1180,15 @@ function createButtonsDOMWidget(node) {
     getMinHeight: () => BTN_BAND,
   });
   applyAdaptiveCanvasOnly(widget);
-  // Pin the buttons row to a FIXED height by overriding computeLayoutSize with
-  // minHeight === maxHeight (the same direct-override the strip uses for flex).
-  // A DOM widget's default computeLayoutSize has NO maxHeight, so it would grow
-  // to share the node's free space and leave an asymmetric gap below the buttons
-  // and above the image. With min===max the buttons can't grow, so the strip is
-  // the only flex widget and the image hugs the buttons.
-  widget.computeLayoutSize = () => ({ minHeight: BTN_BAND, maxHeight: BTN_BAND, minWidth: 0 });
+  // The node body is a CSS grid: a widget WITH a computeLayoutSize method gets a
+  // flexible `auto` grid row, while one WITHOUT gets a fixed `min-content` row.
+  // addDOMWidget assigns a default computeLayoutSize, which made the buttons row
+  // ALSO grab free space (so the grid split the slack between buttons and strip,
+  // and the strip never filled). Removing it makes the buttons a fixed
+  // (content-height) row, leaving the strip as the ONLY growable row so it
+  // absorbs all the node's free vertical space.
+  try { delete widget.computeLayoutSize; } catch {}
+  widget.computeLayoutSize = undefined;
 
   node._pixBtnToastEl = toast;
   node._pixUpdateBtns = () => {
