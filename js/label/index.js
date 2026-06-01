@@ -1,6 +1,7 @@
 import { app } from "/scripts/app.js";
 import { allow_debug, hideJsonWidget } from "../shared/index.mjs";
-import { DEFAULTS, fontStr, measureLabel } from "./render.mjs";
+import { isVueNodes, applyAdaptiveCanvasOnly } from "../shared/nodes2.mjs";
+import { DEFAULTS, fontStr, measureLabel, applyLabelToDom, injectVueLabelCSS } from "./render.mjs";
 import { parseCfg, LabelEditor } from "./core.mjs";
 
 // ─── Setup helpers ───────────────────────────────────────────
@@ -38,6 +39,41 @@ function setupLabel(node, withResize = false) {
   }
 }
 
+// Nodes 2.0 only: render the label as a crisp-HTML DOM widget in the node body
+// (onDrawForeground is skipped in 2.0). Double-click opens the same editor.
+// Legacy is untouched and keeps the canvas paint.
+function setupVueLabel(node) {
+  injectVueLabelCSS();
+  const div = document.createElement("div");
+  div.className = "pix-lbl-vue";
+  node._pixLblVueEl = div;
+
+  const render = () => applyLabelToDom(div, node._labelCfg || DEFAULTS);
+  node._pixLblRender = render;
+  render();
+
+  const w = node.addDOMWidget("label_dom", "pixaroma_label", div, {
+    serialize: false,
+    getMinHeight: () => Math.max(measureLabel(node._labelCfg || DEFAULTS).h, 16),
+  });
+  applyAdaptiveCanvasOnly(w);
+
+  // Double-click the label to open the editor. In Nodes 2.0 LiteGraph's
+  // onDblClick is unreliable, but the DOM event fires; stopPropagation so the
+  // node's own dblclick (rename, etc.) doesn't also fire, and a single-open
+  // guard prevents stacking two editor overlays.
+  div.addEventListener("dblclick", (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (node._pixLblEditorOpen) return;
+    node._pixLblEditorOpen = true;
+    const ed = new LabelEditor(node);
+    const origClose = ed.close.bind(ed);
+    ed.close = () => { node._pixLblEditorOpen = false; origClose(); };
+    ed.open();
+  });
+}
+
 // ─── Extension Registration ──────────────────────────────────
 app.registerExtension({
   name: "Pixaroma.Label",
@@ -52,6 +88,7 @@ app.registerExtension({
     nodeType.prototype.onNodeCreated = function () {
       const r = _origCreated?.apply(this, arguments);
       setupLabel(this, true); // fresh node: size it to the default text
+      if (isVueNodes()) setupVueLabel(this); // Nodes 2.0: crisp-HTML body widget
       this.badges = [];
       if (allow_debug) console.log("PixaromaLabel", this);
       return r;
@@ -62,6 +99,7 @@ app.registerExtension({
     nodeType.prototype.onConfigure = function (data) {
       const r = _origCfg?.apply(this, arguments);
       setupLabel(this); // load: trust the saved node.size, do NOT re-measure
+      if (isVueNodes()) this._pixLblRender?.(); // re-render the DOM label from loaded cfg
       return r;
     };
 
@@ -96,6 +134,10 @@ app.registerExtension({
     const _origDraw = nodeType.prototype.onDrawForeground;
     nodeType.prototype.onDrawForeground = function (ctx) {
       if (_origDraw) _origDraw.call(this, ctx);
+      // Nodes 2.0 renders the label via the crisp-HTML DOM widget, not the
+      // canvas. setupVueLabel + setupLabel already handle transparency + slot
+      // stripping there, so skip the canvas paint entirely.
+      if (isVueNodes()) return;
       this.color = "transparent";
       this.bgcolor = "transparent";
 

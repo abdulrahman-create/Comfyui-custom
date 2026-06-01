@@ -40,10 +40,13 @@ export function saveCfg(node, cfg) {
   // see setupLabel in index.js - so this is the place that keeps the box
   // fitted to the text).
   const m = measureLabel(cfg);
-  if (node.size) {
-    node.size[0] = Math.max(m.w, 60);
-    node.size[1] = Math.max(m.h, 30);
-  }
+  const nw = Math.max(m.w, 60), nh = Math.max(m.h, 30);
+  // setSize goes through the official resize path so the new size sticks in
+  // Nodes 2.0 too (a bare node.size[] write can be reverted there); falls back
+  // to a direct write on older builds without setSize.
+  if (typeof node.setSize === "function") node.setSize([nw, nh]);
+  else if (node.size) { node.size[0] = nw; node.size[1] = nh; }
+  node._pixLblRender?.(); // Nodes 2.0: refresh the crisp-HTML label (no-op in legacy)
   if (app.graph) {
     app.graph.setDirtyCanvas(true, true);
     if (typeof app.graph.change === "function") app.graph.change();

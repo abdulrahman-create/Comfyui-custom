@@ -104,6 +104,56 @@ export function renderLabelToCanvas(ctx, cfg, m, w, h) {
   ctx.globalAlpha = 1;
 }
 
+// ─── DOM rendering (Nodes 2.0 node body) ─────────────────────
+// The crisp-HTML mirror of renderLabelToCanvas. Maps the SAME cfg to CSS, so
+// the Nodes 2.0 label matches the Legacy canvas paint closely (and stays sharp
+// at any zoom / large font). white-space:pre preserves the \n line breaks +
+// spaces; the background pill is the element background + border-radius.
+export function applyLabelToDom(el, cfg) {
+  el.textContent = cfg.text || "";
+  el.style.fontFamily = `'${cfg.fontFamily}', 'Segoe UI Emoji', 'Noto Color Emoji', system-ui, sans-serif`;
+  el.style.fontSize = `${cfg.fontSize}px`;
+  el.style.fontWeight = cfg.fontWeight === "bold" ? "bold" : "normal";
+  el.style.lineHeight = String(cfg.lineHeight);
+  el.style.color = cfg.fontColor;
+  el.style.textAlign = cfg.textAlign;
+  el.style.padding = `${cfg.padding}px`;
+  el.style.opacity = String(cfg.opacity);
+  if (cfg.backgroundColor && cfg.backgroundColor !== "transparent") {
+    el.style.background = cfg.backgroundColor;
+    el.style.borderRadius = `${cfg.borderRadius}px`;
+  } else {
+    el.style.background = "transparent";
+    el.style.borderRadius = "0";
+  }
+}
+
+// CSS for the Nodes 2.0 label box + the node-frame hide (once).
+let _vueCssInjected = false;
+export function injectVueLabelCSS() {
+  if (_vueCssInjected) return;
+  _vueCssInjected = true;
+  const s = document.createElement("style");
+  s.id = "pix-lbl-vue-css";
+  s.textContent = `
+.pix-lbl-vue {
+    display: inline-block; box-sizing: border-box; white-space: pre;
+    cursor: pointer; user-select: none; overflow: hidden; max-width: 100%;
+}
+/* Make the Label node read as FLOATING TEXT in Nodes 2.0: hide the Vue node
+   card/frame at rest so only the label shows (the hover toolbar + resize
+   handles are a separate Vue overlay and stay). Scoped via :has() so it only
+   touches Label nodes; no-op in legacy (no .lg-node there). */
+.lg-node:has(.pix-lbl-vue) {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+.lg-node:has(.pix-lbl-vue) .lg-node-content { padding: 0 !important; }
+`;
+  document.head.appendChild(s);
+}
+
 // ─── CSS injection (once) ────────────────────────────────────
 let _cssInjected = false;
 export function injectCSS() {
