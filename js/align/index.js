@@ -434,13 +434,28 @@ function onWindowPointerMove(e) {
     if (c.pointer && c.pointer.dragStarted === false) { resetDrag(); return; }
   }
 
-  // Find the dragged/resized node. The MOST reliable signal is "which node
-  // did LiteGraph just modify this tick?" - found by comparing pos/size to
-  // the previous-tick cache. We try that first because selected_nodes can
-  // point to the wrong node (e.g. user has node B selected but is resizing
-  // an unselected node A; the resize handle click doesn't update selection).
+  // Find the node being dragged.
+  //  LEGACY: "which node did LiteGraph just move this tick?" via the change-
+  //    detection cache (selected_nodes can point at the wrong node, e.g. resizing
+  //    an unselected node, so change-detect is primary).
+  //  NODES 2.0: the Vue drag moves the node through a reactive LAYOUT STORE and
+  //    NEVER mutates node._pos - only OUR snap write does. So change-detection
+  //    (which reads node.pos) fires only on the odd tick where _pos happens to
+  //    differ, making the snap engage then fall off = the VIBRATION the user saw.
+  //    Instead, once the drag session exists, look the node up directly by its
+  //    stored id (keeps the session alive EVERY frame); on tick 0 use
+  //    selected_nodes (marquee/pan already bailed above). Agent-verified 2026-06-01.
   let draggedNode = null;
-  if (state._prevNodeStates && c.graph?._nodes) {
+  if (vue) {
+    if (state.dragInfo?.nodeId != null) {
+      const id = state.dragInfo.nodeId;
+      draggedNode = c.graph?._nodes?.find((n) => n.id === id) || null;
+    } else {
+      const sel = c.selected_nodes;
+      const keys = sel ? Object.keys(sel) : [];
+      if (keys.length >= 1) draggedNode = sel[keys[0]];
+    }
+  } else if (state._prevNodeStates && c.graph?._nodes) {
     for (const n of c.graph._nodes) {
       const p = state._prevNodeStates.get(n.id);
       if (p && (p.x !== n.pos[0] || p.y !== n.pos[1] || p.w !== n.size[0] || p.h !== n.size[1])) {
@@ -449,10 +464,7 @@ function onWindowPointerMove(e) {
       }
     }
   }
-  // LEGACY-ONLY fallbacks for tick 0 (no cache yet) / very-slow drags. In Vue
-  // these cause marquee false-positives (a marquee sweeping over a node would
-  // pick it as "dragged"), so Vue relies on the change-detection above - snap
-  // just engages one tick (~16ms) after movement starts.
+  // Legacy-only fallbacks for tick 0 (no cache yet) / very-slow drags.
   if (!draggedNode && !vue) {
     const sel = c.selected_nodes;
     const selKeys = sel ? Object.keys(sel) : [];
@@ -578,10 +590,19 @@ function onWindowPointerMove(e) {
   // Classify the drag once, lock that classification for the rest of the drag.
   if (!state.dragInfo.lockType) {
     const sizeChanged = draggedNode.size[0] !== state.dragInfo.sizeW || draggedNode.size[1] !== state.dragInfo.sizeH;
-    const posChanged = draggedNode.pos[0] !== state.dragInfo.posX || draggedNode.pos[1] !== state.dragInfo.posY;
-    if (sizeChanged)         state.dragInfo.lockType = "resize";
-    else if (posChanged)     state.dragInfo.lockType = "move";
-    // else: neither has changed yet; wait
+    if (vue) {
+      // Vue's MOVE drag doesn't mutate node._pos (it writes the reactive layout
+      // store), so the posChanged test can never fire. Lock to "move" unless
+      // node._size changed (a RESIZE does update _size) - then leave it null so
+      // we never move a node mid-resize. (Vue resize uses a separate mechanism
+      // Align doesn't snap; move is the supported case.)
+      if (!sizeChanged) state.dragInfo.lockType = "move";
+    } else {
+      const posChanged = draggedNode.pos[0] !== state.dragInfo.posX || draggedNode.pos[1] !== state.dragInfo.posY;
+      if (sizeChanged)         state.dragInfo.lockType = "resize";
+      else if (posChanged)     state.dragInfo.lockType = "move";
+      // else: neither has changed yet; wait
+    }
   }
 
   if (state.dragInfo.lockType === null) return;
