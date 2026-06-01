@@ -56,6 +56,14 @@ function injectCSS() {
         rgba(246,103,68,0.30) 55%,
         rgba(246,103,68,0) 75%);
     }
+    .pix-conn-fx-particle {
+      position: fixed;
+      pointer-events: none;
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(255, 180, 95, 0.95);
+      box-shadow: 0 0 4px 1px rgba(255, 170, 80, 0.65);
+    }
   `;
   document.head.appendChild(style);
 }
@@ -338,6 +346,7 @@ function spawnConnectionSparkles(node, slotIndex) {
 let magnetRafId = null;
 let magnetContainer = null;
 const magnetPool = [];
+const particlePool = [];
 let pointerIsDown = false;
 let lastPointerX = 0;
 let lastPointerY = 0;
@@ -352,6 +361,7 @@ function ensureMagnetContainer() {
 
 function clearMagnets() {
   for (const el of magnetPool) el.style.display = "none";
+  for (const el of particlePool) el.style.display = "none";
 }
 
 function renderVueMagnets() {
@@ -371,9 +381,12 @@ function renderVueMagnets() {
   const t = performance.now() / 1000;
   const pulse = 0.5 + 0.5 * Math.sin(t * 5);
 
+  const FLOW_HZ = 1.3;
+  const PARTICLE_COUNT = 6;
   const map = buildVueSlotMap();
   ensureMagnetContainer();
   let used = 0;
+  let pUsed = 0;
   for (const node of graph._nodes) {
     if (node === info.sourceNode) continue;
     const slots = info.lookingForInputs ? node.inputs : node.outputs;
@@ -404,9 +417,37 @@ function renderVueMagnets() {
       el.style.height = size + "px";
       el.style.opacity = alpha.toFixed(3);
       used++;
+
+      // Particles streaming back-and-forth between the wire end and the slot.
+      const partD = (1.8 + proximity * 0.8) * 2;
+      for (let p = 0; p < PARTICLE_COUNT; p++) {
+        const isReverse = p % 2 === 1;
+        const phaseOff = p / PARTICLE_COUNT;
+        let progress = (t * FLOW_HZ + phaseOff) % 1.0;
+        if (isReverse) progress = 1 - progress;
+        const px = curVX + (vp.x - curVX) * progress;
+        const py = curVY + (vp.y - curVY) * progress;
+        const fade = Math.sin(progress * Math.PI);
+        const pAlpha = proximity * fade * 0.9;
+        let pel = particlePool[pUsed];
+        if (!pel) {
+          pel = document.createElement("div");
+          pel.className = "pix-conn-fx-particle";
+          ensureMagnetContainer().appendChild(pel);
+          particlePool.push(pel);
+        }
+        pel.style.display = "block";
+        pel.style.left = px + "px";
+        pel.style.top = py + "px";
+        pel.style.width = partD + "px";
+        pel.style.height = partD + "px";
+        pel.style.opacity = pAlpha.toFixed(3);
+        pUsed++;
+      }
     }
   }
   for (let k = used; k < magnetPool.length; k++) magnetPool[k].style.display = "none";
+  for (let k = pUsed; k < particlePool.length; k++) particlePool[k].style.display = "none";
 }
 
 function magnetLoop() {
