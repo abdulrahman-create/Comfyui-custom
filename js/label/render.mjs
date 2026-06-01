@@ -184,10 +184,12 @@ export function injectVueLabelCSS() {
    padding (pt-1 pb-3 gap-1), and a selection outline drawn 7px OUTSIDE the node.
    Combined with _pixLblFit writing node.size = the real label size, this makes
    the box wrap the label. */
-/* 1. Kill the 225px min-width on the node + its frame wrappers. */
+/* 1. Kill the min-WIDTH (225px) AND min-HEIGHT (node.size[1] + ~30px title
+   height) on the node + its frame wrappers, so the box shrinks to the label in
+   both dimensions. The min-height is what left the bottom handles low. */
 .lg-node:has(.pix-lbl-vue),
 .lg-node:has(.pix-lbl-vue) > div,
-.lg-node:has(.pix-lbl-vue) > div > div { min-width: 0 !important; }
+.lg-node:has(.pix-lbl-vue) > div > div { min-width: 0 !important; min-height: 0 !important; }
 /* 2. Collapse the widget grid to a single content-sized column (drops the
    80px+125px column minimums, the right padding, row gaps, and the gutter). */
 .lg-node:has(.pix-lbl-vue) .lg-node-widgets {
@@ -198,8 +200,9 @@ export function injectVueLabelCSS() {
 }
 .lg-node:has(.pix-lbl-vue) .lg-node-widget { gap: 0 !important; }
 .lg-node:has(.pix-lbl-vue) .lg-node-widget > *:first-child { display: none !important; }
-/* 3. Remove the node body's vertical padding + gap (pt-1 pb-3 gap-1). */
-.lg-node:has(.pix-lbl-vue) [class*="bg-component-node-background"] {
+/* 3. Remove the node body's vertical padding + gap (pt-1 pb-3 gap-1) that adds
+   space below the label. Broad substring match in case the class prefix varies. */
+.lg-node:has(.pix-lbl-vue) [class*="component-node-background"] {
     padding: 0 !important;
     gap: 0 !important;
 }
