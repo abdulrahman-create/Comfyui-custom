@@ -339,6 +339,8 @@ let magnetRafId = null;
 let magnetContainer = null;
 const magnetPool = [];
 let pointerIsDown = false;
+let lastPointerX = 0;
+let lastPointerY = 0;
 
 function ensureMagnetContainer() {
   if (magnetContainer && magnetContainer.isConnected) return magnetContainer;
@@ -357,16 +359,14 @@ function renderVueMagnets() {
   const graph = app.graph;
   const c = app.canvas;
   if (!info || !graph || !graph._nodes || !c) { clearMagnets(); return; }
-  const cursor = c.graph_mouse;
   const ds = c.ds;
-  const canvasEl = c.canvas;
-  if (!cursor || !ds || !canvasEl) { clearMagnets(); return; }
-
+  if (!ds) { clearMagnets(); return; }
+  // Use the LIVE pointer position (viewport px). graph_mouse can go stale
+  // during a Nodes 2.0 wire drag because the pointer events are handled by
+  // the Vue slot layer, not the LiteGraph canvas.
+  const curVX = lastPointerX;
+  const curVY = lastPointerY;
   const scale = ds.scale || 1;
-  const offset = ds.offset || [0, 0];
-  const crect = canvasEl.getBoundingClientRect();
-  const curVX = crect.left + (cursor[0] + offset[0]) * scale;
-  const curVY = crect.top + (cursor[1] + offset[1]) * scale;
   const radiusPx = PROXIMITY_RADIUS * scale;
   const t = performance.now() / 1000;
   const pulse = 0.5 + 0.5 * Math.sin(t * 5);
@@ -411,9 +411,14 @@ function renderVueMagnets() {
 
 function magnetLoop() {
   if (!enabled || !isVueNodes()) { magnetRafId = null; clearMagnets(); return; }
-  const dragging = !!getConnectingInfo();
-  if (dragging) renderVueMagnets();
-  else clearMagnets();
+  let dragging = false;
+  try {
+    dragging = !!getConnectingInfo();
+    if (dragging) renderVueMagnets();
+    else clearMagnets();
+  } catch (e) {
+    /* swallow so a bad frame doesn't kill the loop */
+  }
   // Keep animating while the pointer is down or a wire is being dragged; the
   // rAF self-sustains independent of the (non-continuous) canvas redraw.
   if (pointerIsDown || dragging) {
@@ -429,16 +434,24 @@ function startMagnetLoop() {
   if (magnetRafId == null) magnetRafId = requestAnimationFrame(magnetLoop);
 }
 
-function onWinPointerDown() { pointerIsDown = true; startMagnetLoop(); }
+function onWinPointerDown(e) {
+  pointerIsDown = true;
+  lastPointerX = e.clientX;
+  lastPointerY = e.clientY;
+  startMagnetLoop();
+}
 function onWinPointerUp() { pointerIsDown = false; }
+function onWinPointerMove(e) { lastPointerX = e.clientX; lastPointerY = e.clientY; }
 
 function installPointerHooks() {
   window.addEventListener("pointerdown", onWinPointerDown, true);
   window.addEventListener("pointerup", onWinPointerUp, true);
+  window.addEventListener("pointermove", onWinPointerMove, true);
 }
 function removePointerHooks() {
   window.removeEventListener("pointerdown", onWinPointerDown, true);
   window.removeEventListener("pointerup", onWinPointerUp, true);
+  window.removeEventListener("pointermove", onWinPointerMove, true);
   pointerIsDown = false;
   if (magnetRafId != null) { cancelAnimationFrame(magnetRafId); magnetRafId = null; }
   clearMagnets();
