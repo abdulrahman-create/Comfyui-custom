@@ -287,7 +287,7 @@ const GROUP_SWATCHES = GROUP_COLORS.map((c) => c.color);
 // managed entirely through the right-click menu). Each slot is either
 // null (empty) or { title, body }.
 const FAVORITES_ID = "Pixaroma.NodeColors.Favorites";
-const FAVORITE_SLOTS = 4;
+const FAVORITE_SLOTS = 8;
 // Legacy single-favorite settings (no longer shown in the panel). Read
 // once for migration into slot 1 if a user had customized them.
 const LEGACY_FAV_TITLE_ID = "Pixaroma.NodeColors.FavoriteTitle";
@@ -955,151 +955,7 @@ function pickCustomGroup(groups) {
   });
 }
 
-// Inline swatch HTML for a menu entry: a small "node-shaped" chip that
-// shows the title color on top (50%) and the body color on bottom (50%).
-// Mimics what an actual ComfyUI node looks like at a glance.
-function swatchHTML(titleHex, bodyHex) {
-  return `<span style="display:inline-block; width:32px; height:14px; border:1px solid rgba(255,255,255,0.18); border-radius:3px; vertical-align:middle; margin-right:10px; background: linear-gradient(to bottom, ${titleHex} 0%, ${titleHex} 50%, ${bodyHex} 50%, ${bodyHex} 100%);"></span>`;
-}
-
-// Solid single-color chip for group menu entries.
-function swatchHTMLSingle(hex) {
-  return `<span style="display:inline-block; width:32px; height:14px; border:1px solid rgba(255,255,255,0.18); border-radius:3px; vertical-align:middle; margin-right:10px; background:${hex};"></span>`;
-}
-
-// Sub-submenu listing the 4 favorite slots; picking one writes the
-// right-clicked node's colors into that slot.
-function buildSaveSubmenu(node) {
-  const favs = getFavorites();
-  return favs.map((f, i) => ({
-    content: f
-      ? `${swatchHTML(f.title, f.body)}Favorite ${i + 1}`
-      : `Favorite ${i + 1} (empty)`,
-    callback: () => {
-      const c = captureColors(node);
-      saveFavoriteSlot(i, c.title, c.body);
-    },
-  }));
-}
-
-// A hue folder rendered as its own sub-submenu — lists that hue's shades.
-function buildPresetGroupSubmenu(targets, presets) {
-  return presets.map((p) => ({
-    content: `${swatchHTML(p.title, p.body)}${p.label}`,
-    callback: () => applyColors(targets, p.title, p.body),
-  }));
-}
-
-function buildSubmenuOptions(targets, node) {
-  const items = [];
-
-  // Personal / quick items on top — fastest to reach.
-  // Favorites (only the filled slots are applyable here).
-  const favs = getFavorites();
-  const filled = favs.map((f, i) => ({ f, i })).filter((x) => x.f);
-  for (const { f, i } of filled) {
-    items.push({
-      content: `${swatchHTML(f.title, f.body)}Favorite ${i + 1}`,
-      callback: () => applyColors(targets, f.title, f.body),
-    });
-  }
-  if (filled.length) items.push(null); // separator: favorites -> save/custom
-
-  items.push({
-    content: "Save these colors to",
-    has_submenu: true,
-    callback: function (value, opts, e, menu) {
-      new LiteGraph.ContextMenu(
-        buildSaveSubmenu(node),
-        { event: e, parentMenu: menu, node: node }
-      );
-    },
-  });
-  items.push({
-    content: "Pick custom...",
-    callback: () => pickCustom(targets),
-  });
-
-  items.push(null); // separator: personal -> hue folders
-
-  // One folder per hue; each opens that hue's shades (dark -> light).
-  for (const g of HUE_FOLDERS) {
-    items.push({
-      content: g.label,
-      has_submenu: true,
-      callback: function (value, opts, e, menu) {
-        new LiteGraph.ContextMenu(
-          buildPresetGroupSubmenu(targets, g.presets),
-          { event: e, parentMenu: menu, node: node }
-        );
-      },
-    });
-  }
-
-  return items;
-}
-
-// ── Group menu builders (single color) ──────────────────────────────────
-// Save the group's current color into one of the 4 SHARED favorite slots,
-// stored as a flat title==body pair so the slot is still usable from the
-// node menu.
-function buildGroupSaveSubmenu(group) {
-  const favs = getFavorites();
-  return favs.map((f, i) => ({
-    content: f
-      ? `${swatchHTML(f.title, f.body)}Favorite ${i + 1}`
-      : `Favorite ${i + 1} (empty)`,
-    callback: () => {
-      const c = captureGroupColor(group);
-      saveFavoriteSlot(i, c, c);
-    },
-  }));
-}
-
-// The "👑 Pixaroma Group Colors" submenu for a group: filled Favorites on top,
-// then Save / Pick custom, then the hand-picked group colors listed
-// DIRECTLY (no Neutrals/Hues subfolders). Copy / Paste / Reset are
-// top-level siblings (see setup()).
-function buildGroupColorsSubmenu(targets, group) {
-  const items = [];
-
-  // Favorites (filled only) — applies each favorite's identity color.
-  const filled = getFavorites().map((f, i) => ({ f, i })).filter((x) => x.f);
-  for (const { f, i } of filled) {
-    items.push({
-      content: `${swatchHTML(f.title, f.body)}Favorite ${i + 1}`,
-      callback: () => applyGroupColor(targets, pickGroupColor(f)),
-    });
-  }
-  if (filled.length) items.push(null); // separator: favorites -> save/custom
-
-  items.push({
-    content: "Save this color to",
-    has_submenu: true,
-    callback: function (value, opts, e, menu) {
-      new LiteGraph.ContextMenu(
-        buildGroupSaveSubmenu(group),
-        { event: e, parentMenu: menu }
-      );
-    },
-  });
-  items.push({
-    content: "Pick custom...",
-    callback: () => pickCustomGroup(targets),
-  });
-  items.push(null); // separator: save/custom -> colors
-
-  // Hand-picked group colors, listed directly.
-  for (const c of GROUP_COLORS) {
-    items.push({
-      content: `${swatchHTMLSingle(c.color)}${c.label}`,
-      callback: () => applyGroupColor(targets, c.color),
-    });
-  }
-  return items;
-}
-
-// ── Nodes 2.0 swatch-palette popup ──────────────────────────────────────
+// ── Swatch-palette popup (both renderers) ───────────────────────────────
 // The Vue (Nodes 2.0) right-click menu renders only ONE fly-out level and
 // strips inline swatch HTML to plain text, so the legacy 3-level nested color
 // menu can't work there. In Nodes 2.0 the "Pixaroma Node/Group Colors" entry
@@ -1125,15 +981,18 @@ function makeSingleSwatch(hex) {
   return el;
 }
 
-// Shared shell: backdrop + modal + header(title, ✕) + close handling
-// (Esc, click-outside with the mousedown guard so a drag-release off the
-// modal doesn't dismiss). Returns the modal element to fill + a close fn.
+// Shared shell: a free-floating panel (NO dimming backdrop) so the canvas
+// stays visible and the node recolors live as you pick. Opens beside the
+// target node/group (via place()), is draggable by its header, and closes
+// on ✕, Escape, or a pointerdown anywhere outside it.
 function makePalShell(titleText) {
   injectCSS();
-  const backdrop = document.createElement("div");
-  backdrop.className = "pix-nc-backdrop";
   const modal = document.createElement("div");
   modal.className = "pix-nc-modal pix-nc-pal";
+  modal.style.position = "fixed";
+  modal.style.zIndex = "10000";
+  modal.style.left = "-9999px";
+  modal.style.top = "0px";
 
   const header = document.createElement("div");
   header.className = "pix-nc-pal-header";
@@ -1149,26 +1008,111 @@ function makePalShell(titleText) {
   header.appendChild(closeX);
   modal.appendChild(header);
 
-  backdrop.appendChild(modal);
-  document.body.appendChild(backdrop);
+  document.body.appendChild(modal);
 
   function close() {
+    document.removeEventListener("pointerdown", onDocDown, true);
     window.removeEventListener("keydown", onKey, true);
-    if (backdrop.parentNode) backdrop.remove();
+    if (modal.parentNode) modal.remove();
   }
   closeX.addEventListener("click", close);
-  let downOnBackdrop = false;
-  backdrop.addEventListener("mousedown", (e) => { downOnBackdrop = (e.target === backdrop); });
-  backdrop.addEventListener("click", (e) => {
-    if (e.target === backdrop && downOnBackdrop) close();
-    downOnBackdrop = false;
-  });
+  function onDocDown(e) { if (!modal.contains(e.target)) close(); }
   function onKey(e) {
     if (e.key === "Escape") { e.stopImmediatePropagation(); e.preventDefault(); close(); }
   }
+  // Defer the outside-pointerdown listener so the click that opened the
+  // popup doesn't immediately close it (Load Image popup pattern).
+  setTimeout(() => document.addEventListener("pointerdown", onDocDown, true), 0);
   window.addEventListener("keydown", onKey, true);
 
-  return { modal, close };
+  makeDraggable(modal, header);
+
+  return { modal, close, place: (rect) => placeBeside(modal, rect) };
+}
+
+// Drag the panel by its header so the user can move it off whatever it
+// overlaps. Pointer capture keeps the drag smooth and stops the
+// outside-pointerdown close from firing mid-drag.
+function makeDraggable(modal, handle) {
+  handle.style.cursor = "move";
+  let sx = 0, sy = 0, sl = 0, st = 0, dragging = false;
+  handle.addEventListener("pointerdown", (e) => {
+    if (e.target.closest(".pix-nc-pal-close")) return;
+    dragging = true;
+    sx = e.clientX; sy = e.clientY;
+    const r = modal.getBoundingClientRect();
+    sl = r.left; st = r.top;
+    try { handle.setPointerCapture(e.pointerId); } catch (_) {}
+    e.preventDefault();
+  });
+  handle.addEventListener("pointermove", (e) => {
+    if (!dragging) return;
+    modal.style.left = (sl + e.clientX - sx) + "px";
+    modal.style.top = (st + e.clientY - sy) + "px";
+  });
+  const end = (e) => {
+    dragging = false;
+    try { handle.releasePointerCapture(e.pointerId); } catch (_) {}
+  };
+  handle.addEventListener("pointerup", end);
+  handle.addEventListener("pointercancel", end);
+}
+
+// Position the panel beside a screen rect (the node/group): to its right,
+// flipping to the left or clamping into the viewport as needed. No rect →
+// center it.
+function placeBeside(modal, rect) {
+  const vw = window.innerWidth, vh = window.innerHeight;
+  const mw = modal.offsetWidth, mh = modal.offsetHeight;
+  const gap = 12, pad = 8;
+  if (!rect) {
+    modal.style.left = Math.max(pad, (vw - mw) / 2) + "px";
+    modal.style.top = Math.max(pad, (vh - mh) / 2) + "px";
+    return;
+  }
+  let left = rect.right + gap;
+  if (left + mw > vw - pad) left = rect.left - gap - mw; // flip to the left
+  if (left < pad) left = Math.max(pad, vw - mw - pad);   // last resort: pin right
+  let top = rect.top;
+  if (top + mh > vh - pad) top = vh - mh - pad;
+  if (top < pad) top = pad;
+  modal.style.left = left + "px";
+  modal.style.top = top + "px";
+}
+
+// Screen-pixel rect of a node (DOM in Nodes 2.0, geometry math in legacy).
+function getNodeScreenRect(node) {
+  if (isVueNodes() && node?.id != null) {
+    const el = document.querySelector('[data-node-id="' + node.id + '"]');
+    if (el) return el.getBoundingClientRect();
+  }
+  const c = app.canvas;
+  const ds = c?.ds, canvasEl = c?.canvas;
+  if (!ds || !canvasEl || !node?.pos || !node?.size) return null;
+  const cr = canvasEl.getBoundingClientRect();
+  const titleH = (window.LiteGraph && window.LiteGraph.NODE_TITLE_HEIGHT) || 30;
+  const scale = ds.scale || 1, off = ds.offset || [0, 0];
+  const left = cr.left + (node.pos[0] + off[0]) * scale;
+  const top = cr.top + (node.pos[1] - titleH + off[1]) * scale;
+  const width = node.size[0] * scale;
+  const height = (node.size[1] + titleH) * scale;
+  return { left, top, right: left + width, bottom: top + height, width, height };
+}
+
+// Screen-pixel rect of a group (canvas-painted in both renderers → math).
+function getGroupScreenRect(group) {
+  const c = app.canvas;
+  const ds = c?.ds, canvasEl = c?.canvas;
+  if (!ds || !canvasEl) return null;
+  const b = group?._bounding
+    || (group?.pos && group?.size ? [group.pos[0], group.pos[1], group.size[0], group.size[1]] : null);
+  if (!b) return null;
+  const cr = canvasEl.getBoundingClientRect();
+  const scale = ds.scale || 1, off = ds.offset || [0, 0];
+  const left = cr.left + (b[0] + off[0]) * scale;
+  const top = cr.top + (b[1] + off[1]) * scale;
+  const width = b[2] * scale, height = b[3] * scale;
+  return { left, top, right: left + width, bottom: top + height, width, height };
 }
 
 function palSection(label) {
@@ -1197,7 +1141,7 @@ function palToolBtn(text, onClick) {
 
 function openNodeColorsPalette(targets, node) {
   const suffix = targets.length > 1 ? ` (${targets.length} nodes)` : "";
-  const { modal, close } = makePalShell(`Pixaroma Node Colors${suffix}`);
+  const { modal, close, place } = makePalShell(`Pixaroma Node Colors${suffix}`);
 
   // Live preview node — updates on hover, persists the applied combo.
   let applied = captureColors(node);
@@ -1289,11 +1233,13 @@ function openNodeColorsPalette(targets, node) {
     grid.addEventListener("mouseleave", showApplied);
     scroll.appendChild(sec);
   }
+
+  place(getNodeScreenRect(node));
 }
 
 function openGroupColorsPalette(targets, group) {
   const suffix = targets.length > 1 ? ` (${targets.length} groups)` : "";
-  const { modal, close } = makePalShell(`Pixaroma Group Colors${suffix}`);
+  const { modal, close, place } = makePalShell(`Pixaroma Group Colors${suffix}`);
 
   let applied = captureGroupColor(group);
   const previewWrap = document.createElement("div");
@@ -1381,6 +1327,8 @@ function openGroupColorsPalette(targets, group) {
   }
   grid.addEventListener("mouseleave", showApplied);
   scroll.appendChild(sec);
+
+  place(getGroupScreenRect(group));
 }
 
 app.registerExtension({
@@ -1395,25 +1343,12 @@ app.registerExtension({
         const targets = getTargetNodes(node);
         const count   = targets.length;
         const suffix  = count > 1 ? ` (${count} nodes)` : "";
-        if (isVueNodes()) {
-          // Nodes 2.0: the Vue menu can't render the nested submenu, so open
-          // the swatch-palette popup on click instead.
-          options.push(null, {
-            content: `👑 Pixaroma Node Colors${suffix}`,
-            callback: () => openNodeColorsPalette(targets, node),
-          });
-        } else {
-          options.push(null, {
-            content: `👑 Pixaroma Node Colors${suffix}`,
-            has_submenu: true,
-            callback: function (value, opts, e, menu) {
-              new LiteGraph.ContextMenu(
-                buildSubmenuOptions(targets, node),
-                { event: e, parentMenu: menu, node: node }
-              );
-            },
-          });
-        }
+        // Both renderers open the swatch-palette popup (the Vue menu can't
+        // render the old nested submenu, and the popup is the unified UI).
+        options.push(null, {
+          content: `👑 Pixaroma Node Colors${suffix}`,
+          callback: () => openNodeColorsPalette(targets, node),
+        });
         options.push({
           content: `👑 Copy Node Colors`,
           callback: () => { colorClipboard = captureColors(node); },
@@ -1458,23 +1393,10 @@ app.registerExtension({
         const targets = getTargetGroups(group);
         const suffix = targets.length > 1 ? ` (${targets.length} groups)` : "";
         options.push(null);
-        if (isVueNodes()) {
-          options.push({
-            content: `👑 Pixaroma Group Colors${suffix}`,
-            callback: () => openGroupColorsPalette(targets, group),
-          });
-        } else {
-          options.push({
-            content: `👑 Pixaroma Group Colors${suffix}`,
-            has_submenu: true,
-            callback: function (value, opts, e, menu) {
-              new LiteGraph.ContextMenu(
-                buildGroupColorsSubmenu(targets, group),
-                { event: e, parentMenu: menu }
-              );
-            },
-          });
-        }
+        options.push({
+          content: `👑 Pixaroma Group Colors${suffix}`,
+          callback: () => openGroupColorsPalette(targets, group),
+        });
         options.push({
           content: `👑 Copy Group Color`,
           callback: () => {
