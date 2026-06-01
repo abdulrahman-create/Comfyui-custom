@@ -18,9 +18,21 @@ export const TOP_PAD = 4;            // gap between mode bar and first row
 export const SIDE_PAD = 8;
 export const OUTPUT_X_INSET = 10;    // pulls phantom output dot 10 px inside
 
-// Mode bar layout
-const MODE_PILL_W = 92;
+// Mode bar layout. Pill width is RESPONSIVE: full MODE_PILL_MAX_W on a
+// comfortably-wide node, shrinking toward MODE_PILL_MIN_W as the node narrows
+// so the two pills (anchored to the left + right edges) can never overflow the
+// frame. The onResize clamp keeps the node >= MIN_W=260, where this returns the
+// full width, so at normal sizes the look is unchanged; this only shrinks
+// during a transient narrow drag frame.
+const MODE_PILL_MAX_W = 92;
+const MODE_PILL_MIN_W = 56;
+const MODE_PILL_GAP = 12; // minimum gap kept between the two pills
 const MODE_PILL_H = 18;
+
+function modePillWidth(nodeWidth) {
+  const avail = (nodeWidth - 2 * SIDE_PAD - MODE_PILL_GAP) / 2;
+  return Math.max(MODE_PILL_MIN_W, Math.min(MODE_PILL_MAX_W, avail));
+}
 
 // Row layout
 const ROW_PILL_W = 28;
@@ -40,16 +52,17 @@ export function selectModePillRect(nodeWidth) {
   return {
     x: SIDE_PAD,
     y: (MODE_BAR_H - MODE_PILL_H) / 2,
-    w: MODE_PILL_W,
+    w: modePillWidth(nodeWidth),
     h: MODE_PILL_H,
   };
 }
 
 export function mutePillRect(nodeWidth) {
+  const w = modePillWidth(nodeWidth);
   return {
-    x: nodeWidth - SIDE_PAD - MODE_PILL_W,
+    x: nodeWidth - SIDE_PAD - w,
     y: (MODE_BAR_H - MODE_PILL_H) / 2,
-    w: MODE_PILL_W,
+    w,
     h: MODE_PILL_H,
   };
 }

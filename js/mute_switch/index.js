@@ -144,6 +144,23 @@ app.registerExtension({
       if (_origDown) return _origDown.call(this, e, pos);
     };
 
+    // Resize clamp (legacy only) - belt-and-braces with the onDrawForeground
+    // self-heal (Pixaroma UI convention #7). Clamping here stops the resize-
+    // handle drag at the minimum, so the node FRAME is never drawn narrower
+    // than the mode-bar content (which let the pills spill past the frame for a
+    // frame during an active drag). In Nodes 2.0 the DOM widget drives the
+    // body size, so leave it alone there.
+    const _origResize = nodeType.prototype.onResize;
+    nodeType.prototype.onResize = function (size) {
+      if (!isVueNodes()) {
+        const MIN_W = 260;
+        const MIN_H = 80;
+        if (this.size[0] < MIN_W) this.size[0] = MIN_W;
+        if (this.size[1] < MIN_H) this.size[1] = MIN_H;
+      }
+      return _origResize?.apply(this, arguments);
+    };
+
     // Removal - hide tooltip + restore muted nodes + cancel editor + clear pending.
     const _origRemoved = nodeType.prototype.onRemoved;
     nodeType.prototype.onRemoved = function () {
