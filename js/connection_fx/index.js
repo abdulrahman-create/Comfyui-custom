@@ -41,6 +41,29 @@ function injectCSS() {
       35%  { opacity: 1; stroke-width: 1.5; }
       100% { opacity: 0; stroke-width: 0.5; }
     }
+    .pix-conn-fx-magnets {
+      position: fixed; left: 0; top: 0; width: 0; height: 0;
+      pointer-events: none; z-index: 99998;
+    }
+    .pix-conn-fx-magnet {
+      position: fixed;
+      pointer-events: none;
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+      background: radial-gradient(circle,
+        rgba(255,205,160,0.95) 0%,
+        rgba(246,103,68,0.85) 30%,
+        rgba(246,103,68,0.30) 55%,
+        rgba(246,103,68,0) 75%);
+    }
+    .pix-conn-fx-particle {
+      position: fixed;
+      pointer-events: none;
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(255, 180, 95, 0.95);
+      box-shadow: 0 0 4px 1px rgba(255, 170, 80, 0.65);
+    }
   `;
   document.head.appendChild(style);
 }
@@ -72,8 +95,85 @@ function typesCompatible(a, b) {
   return a === b;
 }
 
+function isVueNodes() {
+  return !!(window.LiteGraph && window.LiteGraph.vueNodesMode);
+}
+
+// ── Nodes 2.0 slot positions ─────────────────────────────────────────────
+// In the Vue renderer the node body is DOM, so node.getConnectionPos() drifts
+// ~10px from where the slot dot actually renders. We read the dot's DOM rect
+// instead. Verified slot-dot key format: "<nodeId>-<in|out>-<slotIndex>"
+// (e.g. "3-in-0", "2-out-5"); the dot itself is [data-testid="slot-dot"].
+function vueSlotKey(node, slotIndex, isInput) {
+  return node.id + (isInput ? "-in-" : "-out-") + slotIndex;
+}
+
+function findVueSlotDot(node, slotIndex, isInput) {
+  if (!node || node.id == null) return null;
+  const keyed = document.querySelector(
+    '[data-slot-key="' + vueSlotKey(node, slotIndex, isInput) + '"]'
+  );
+  if (keyed) return keyed.querySelector('[data-testid="slot-dot"]') || keyed;
+  // Fallback: ordered query inside the node frame.
+  const frame = document.querySelector('[data-node-id="' + node.id + '"]');
+  if (!frame) return null;
+  const rows = frame.querySelectorAll(
+    isInput ? ".lg-slot--input" : ".lg-slot--output"
+  );
+  const row = rows[slotIndex];
+  if (!row) return null;
+  return row.querySelector('[data-testid="slot-dot"]') || row;
+}
+
+// One querySelectorAll per frame (only while a wire is being dragged), keyed by
+// each dot's data-slot-key, value = viewport-pixel center of the dot.
+function buildVueSlotMap() {
+  const map = new Map();
+  const keyed = document.querySelectorAll("[data-slot-key]");
+  for (const el of keyed) {
+    const key = el.getAttribute("data-slot-key");
+    if (!key) continue;
+    const dot = el.querySelector('[data-testid="slot-dot"]') || el;
+    const r = dot.getBoundingClientRect();
+    if (!r.width && !r.height) continue;
+    map.set(key, { x: r.left + r.width / 2, y: r.top + r.height / 2 });
+  }
+  return map;
+}
+
+// Viewport-pixel center of a slot dot, renderer-aware. Used for the sparkle
+// burst (a fixed-position DOM overlay).
+function slotViewportPos(node, slotIndex, isInput) {
+  if (isVueNodes()) {
+    const el = findVueSlotDot(node, slotIndex, isInput);
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    if (!r.width && !r.height) return null;
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  }
+  let pos;
+  try {
+    pos = node.getConnectionPos(isInput, slotIndex);
+  } catch (e) {
+    return null;
+  }
+  if (!pos) return null;
+  const c = app.canvas;
+  const ds = c?.ds;
+  const canvasEl = c?.canvas;
+  if (!ds || !canvasEl) return null;
+  const rect = canvasEl.getBoundingClientRect();
+  return {
+    x: rect.left + (pos[0] + ds.offset[0]) * ds.scale,
+    y: rect.top + (pos[1] + ds.offset[1]) * ds.scale,
+  };
+}
+
 function drawApproachIndicators(canvas) {
-  if (!enabled) return;
+  // Nodes 2.0 uses the DOM magnet overlay (renderVueMagnets) instead: the
+  // front-canvas ctx space doesn't match the Vue DOM slot positions, and the
+  // canvas doesn't redraw continuously during a wire drag.
+  if (!enabled || isVueNodes()) return;
   const info = getConnectingInfo();
   if (!info) return;
   const graph = app.graph;
@@ -187,21 +287,11 @@ function spawnConnectionSparkles(node, slotIndex) {
   const c = app.canvas;
   if (!c) return;
 
-  let pos;
-  try {
-    pos = node.getConnectionPos(true, slotIndex);
-  } catch (e) {
-    return;
-  }
-  if (!pos) return;
-
-  const ds = c.ds;
-  const canvasEl = c.canvas;
-  if (!ds || !canvasEl) return;
-
-  const rect = canvasEl.getBoundingClientRect();
-  const cx = rect.left + (pos[0] + ds.offset[0]) * ds.scale;
-  const cy = rect.top + (pos[1] + ds.offset[1]) * ds.scale;
+  // Target of a new connection is always an input slot.
+  const vp = slotViewportPos(node, slotIndex, true);
+  if (!vp) return;
+  const cx = vp.x;
+  const cy = vp.y;
 
   const pad = 60;
   const svgNS = "http://www.w3.org/2000/svg";
@@ -246,6 +336,166 @@ function spawnConnectionSparkles(node, slotIndex) {
 
   document.body.appendChild(svg);
   setTimeout(() => svg.remove(), 500);
+}
+
+// ── Nodes 2.0 magnet overlay ────────────────────────────────────────────
+// In Nodes 2.0 the approach indicators are DOM overlays anchored to each
+// compatible slot dot (same idea as the sparkles), driven by our own rAF loop
+// instead of the front canvas — which neither positions correctly against the
+// Vue DOM slots nor redraws continuously during a wire drag.
+let magnetRafId = null;
+let magnetContainer = null;
+const magnetPool = [];
+const particlePool = [];
+let pointerIsDown = false;
+let lastPointerX = 0;
+let lastPointerY = 0;
+
+function ensureMagnetContainer() {
+  if (magnetContainer && magnetContainer.isConnected) return magnetContainer;
+  magnetContainer = document.createElement("div");
+  magnetContainer.className = "pix-conn-fx-magnets";
+  document.body.appendChild(magnetContainer);
+  return magnetContainer;
+}
+
+function clearMagnets() {
+  for (const el of magnetPool) el.style.display = "none";
+  for (const el of particlePool) el.style.display = "none";
+}
+
+function renderVueMagnets() {
+  const info = getConnectingInfo();
+  const graph = app.graph;
+  const c = app.canvas;
+  if (!info || !graph || !graph._nodes || !c) { clearMagnets(); return; }
+  const ds = c.ds;
+  if (!ds) { clearMagnets(); return; }
+  // Use the LIVE pointer position (viewport px). graph_mouse can go stale
+  // during a Nodes 2.0 wire drag because the pointer events are handled by
+  // the Vue slot layer, not the LiteGraph canvas.
+  const curVX = lastPointerX;
+  const curVY = lastPointerY;
+  const scale = ds.scale || 1;
+  const radiusPx = PROXIMITY_RADIUS * scale;
+  const t = performance.now() / 1000;
+  const pulse = 0.5 + 0.5 * Math.sin(t * 5);
+
+  const FLOW_HZ = 1.3;
+  const PARTICLE_COUNT = 6;
+  const map = buildVueSlotMap();
+  ensureMagnetContainer();
+  let used = 0;
+  let pUsed = 0;
+  for (const node of graph._nodes) {
+    if (node === info.sourceNode) continue;
+    const slots = info.lookingForInputs ? node.inputs : node.outputs;
+    if (!slots) continue;
+    for (let i = 0; i < slots.length; i++) {
+      const slot = slots[i];
+      if (!typesCompatible(info.sourceType, slot.type)) continue;
+      const vp = map.get(vueSlotKey(node, i, info.lookingForInputs));
+      if (!vp) continue;
+      const dx = vp.x - curVX;
+      const dy = vp.y - curVY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist >= radiusPx) continue;
+      const proximity = 1 - dist / radiusPx;
+      const alpha = proximity * (0.55 + pulse * 0.45);
+      const size = 16 + proximity * 18 + pulse * 8;
+      let el = magnetPool[used];
+      if (!el) {
+        el = document.createElement("div");
+        el.className = "pix-conn-fx-magnet";
+        ensureMagnetContainer().appendChild(el);
+        magnetPool.push(el);
+      }
+      el.style.display = "block";
+      el.style.left = vp.x + "px";
+      el.style.top = vp.y + "px";
+      el.style.width = size + "px";
+      el.style.height = size + "px";
+      el.style.opacity = alpha.toFixed(3);
+      used++;
+
+      // Particles streaming back-and-forth between the wire end and the slot.
+      const partD = (1.8 + proximity * 0.8) * 2;
+      for (let p = 0; p < PARTICLE_COUNT; p++) {
+        const isReverse = p % 2 === 1;
+        const phaseOff = p / PARTICLE_COUNT;
+        let progress = (t * FLOW_HZ + phaseOff) % 1.0;
+        if (isReverse) progress = 1 - progress;
+        const px = curVX + (vp.x - curVX) * progress;
+        const py = curVY + (vp.y - curVY) * progress;
+        const fade = Math.sin(progress * Math.PI);
+        const pAlpha = proximity * fade * 0.9;
+        let pel = particlePool[pUsed];
+        if (!pel) {
+          pel = document.createElement("div");
+          pel.className = "pix-conn-fx-particle";
+          ensureMagnetContainer().appendChild(pel);
+          particlePool.push(pel);
+        }
+        pel.style.display = "block";
+        pel.style.left = px + "px";
+        pel.style.top = py + "px";
+        pel.style.width = partD + "px";
+        pel.style.height = partD + "px";
+        pel.style.opacity = pAlpha.toFixed(3);
+        pUsed++;
+      }
+    }
+  }
+  for (let k = used; k < magnetPool.length; k++) magnetPool[k].style.display = "none";
+  for (let k = pUsed; k < particlePool.length; k++) particlePool[k].style.display = "none";
+}
+
+function magnetLoop() {
+  if (!enabled || !isVueNodes()) { magnetRafId = null; clearMagnets(); return; }
+  let dragging = false;
+  try {
+    dragging = !!getConnectingInfo();
+    if (dragging) renderVueMagnets();
+    else clearMagnets();
+  } catch (e) {
+    /* swallow so a bad frame doesn't kill the loop */
+  }
+  // Keep animating while the pointer is down or a wire is being dragged; the
+  // rAF self-sustains independent of the (non-continuous) canvas redraw.
+  if (pointerIsDown || dragging) {
+    magnetRafId = requestAnimationFrame(magnetLoop);
+  } else {
+    magnetRafId = null;
+    clearMagnets();
+  }
+}
+
+function startMagnetLoop() {
+  if (!enabled || !isVueNodes()) return;
+  if (magnetRafId == null) magnetRafId = requestAnimationFrame(magnetLoop);
+}
+
+function onWinPointerDown(e) {
+  pointerIsDown = true;
+  lastPointerX = e.clientX;
+  lastPointerY = e.clientY;
+  startMagnetLoop();
+}
+function onWinPointerUp() { pointerIsDown = false; }
+function onWinPointerMove(e) { lastPointerX = e.clientX; lastPointerY = e.clientY; }
+
+function installPointerHooks() {
+  window.addEventListener("pointerdown", onWinPointerDown, true);
+  window.addEventListener("pointerup", onWinPointerUp, true);
+  window.addEventListener("pointermove", onWinPointerMove, true);
+}
+function removePointerHooks() {
+  window.removeEventListener("pointerdown", onWinPointerDown, true);
+  window.removeEventListener("pointerup", onWinPointerUp, true);
+  window.removeEventListener("pointermove", onWinPointerMove, true);
+  pointerIsDown = false;
+  if (magnetRafId != null) { cancelAnimationFrame(magnetRafId); magnetRafId = null; }
+  clearMagnets();
 }
 
 function collectLinkIds() {
@@ -369,9 +619,11 @@ function onSettingChange(v) {
     injectCSS();
     installDrawHook();
     installLoadHook();
+    installPointerHooks();
     lastLinkIds = collectLinkIds();
   } else {
     lastLinkIds = null;
+    removePointerHooks();
   }
 }
 

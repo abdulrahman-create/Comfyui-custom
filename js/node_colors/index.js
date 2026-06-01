@@ -48,14 +48,21 @@ const HUE_FOLDERS = [
     { label: "Onyx", title: "#060606", body: "#141414" },
     { label: "Charcoal", title: "#262220", body: "#36312f" },
     { label: "Red", title: "#231011", body: "#351d1d" },
+    { label: "Orange", title: "#231510", body: "#352620" },
     { label: "Amber", title: "#231a10", body: "#352a1d" },
+    { label: "Gold", title: "#232010", body: "#35301d" },
+    { label: "Lime", title: "#1a2310", body: "#28351d" },
     { label: "Green", title: "#102316", body: "#1d3525" },
     { label: "Teal", title: "#102223", body: "#1d3435" },
+    { label: "Cyan", title: "#102123", body: "#1d3235" },
     { label: "Blue", title: "#101923", body: "#1d2835" },
+    { label: "Indigo", title: "#131023", body: "#211d35" },
     { label: "Purple", title: "#1b1023", body: "#2b1d35" },
+    { label: "Pink", title: "#23101c", body: "#35202f" },
   ] },
   { label: "Red", presets: [
     { label: "Deepest", title: "#2f0a0b", body: "#521416" },
+    { label: "Moody", title: "#330b0c", body: "#5a1719" },
     { label: "Deep", title: "#360c0d", body: "#62181b" },
     { label: "Jewel", title: "#3c0b0d", body: "#6d181b" },
     { label: "Mid", title: "#491214", body: "#7f2427" },
@@ -72,6 +79,7 @@ const HUE_FOLDERS = [
   ] },
   { label: "Orange", presets: [
     { label: "Deepest", title: "#2f180a", body: "#522d14" },
+    { label: "Moody", title: "#331b0b", body: "#5a3216" },
     { label: "Deep", title: "#361d0c", body: "#623618" },
     { label: "Jewel", title: "#3c1f0b", body: "#6d3a18" },
     { label: "Mid", title: "#492812", body: "#7f4824" },
@@ -88,6 +96,7 @@ const HUE_FOLDERS = [
   ] },
   { label: "Gold", presets: [
     { label: "Deepest", title: "#2f250a", body: "#524114" },
+    { label: "Moody", title: "#332909", body: "#5a4816" },
     { label: "Deep", title: "#362b0c", body: "#624e18" },
     { label: "Jewel", title: "#3c2f0b", body: "#6d5618" },
     { label: "Mid", title: "#493b12", body: "#7f6724" },
@@ -96,8 +105,11 @@ const HUE_FOLDERS = [
     { label: "Vivid", title: "#614e1a", body: "#ad8c34" },
     { label: "Bright", title: "#735e26", body: "#dab349" },
     { label: "Muted Deep", title: "#332e1e", body: "#544c36" },
+    { label: "Slate", title: "#393423", body: "#5f543f" },
     { label: "Muted", title: "#494027", body: "#746744" },
     { label: "Muted Light", title: "#584c2d", body: "#958350" },
+    { label: "Two-tone", title: "#59491c", body: "#9d8a2f" },
+    { label: "Accent", title: "#a9912a", body: "#242424" },
   ] },
   { label: "Green", presets: [
     { label: "Deepest", title: "#0a2f13", body: "#145224" },
@@ -113,6 +125,8 @@ const HUE_FOLDERS = [
     { label: "Slate", title: "#233928", body: "#3f5f47" },
     { label: "Muted", title: "#274930", body: "#447450" },
     { label: "Muted Light", title: "#2d5838", body: "#509562" },
+    { label: "Two-tone", title: "#1c5921", body: "#2f9d4f" },
+    { label: "Accent", title: "#38a83f", body: "#242424" },
   ] },
   { label: "Teal", presets: [
     { label: "Deepest", title: "#0a2f27", body: "#145245" },
@@ -129,6 +143,7 @@ const HUE_FOLDERS = [
     { label: "Muted", title: "#274942", body: "#44746a" },
     { label: "Muted Light", title: "#2d584f", body: "#509587" },
     { label: "Two-tone", title: "#18594c", body: "#2f9d57" },
+    { label: "Accent", title: "#1f9d8a", body: "#242424" },
   ] },
   { label: "Cyan", presets: [
     { label: "Deepest", title: "#0a282f", body: "#144752" },
@@ -145,6 +160,7 @@ const HUE_FOLDERS = [
     { label: "Muted", title: "#274349", body: "#446c74" },
     { label: "Muted Light", title: "#2d5058", body: "#508a95" },
     { label: "Two-tone", title: "#184e59", body: "#2f9d80" },
+    { label: "Accent", title: "#1f9eb2", body: "#242424" },
   ] },
   { label: "Blue", presets: [
     { label: "Deepest", title: "#0a1b2f", body: "#143152" },
@@ -164,6 +180,12 @@ const HUE_FOLDERS = [
     { label: "Accent", title: "#2864a9", body: "#242424" },
   ] },
   { label: "Indigo", presets: [
+    { label: "Deepest", title: "#140e2f", body: "#281452" },
+    { label: "Moody", title: "#130e35", body: "#261454" },
+    { label: "Deep", title: "#16103a", body: "#2d1862" },
+    { label: "Jewel", title: "#181140", body: "#33196d" },
+    { label: "Mid", title: "#1d1649", body: "#3f257f" },
+    { label: "Rich", title: "#211a55", body: "#472d97" },
     { label: "Bold", title: "#221b5f", body: "#3d329f" },
     { label: "Vivid", title: "#211a61", body: "#4034ad" },
     { label: "Bright", title: "#2e2673", body: "#5749da" },
@@ -175,6 +197,10 @@ const HUE_FOLDERS = [
     { label: "Accent Dark", title: "#382bab", body: "#1f1f1f" },
   ] },
   { label: "Purple", presets: [
+    { label: "Deepest", title: "#29092f", body: "#4a1452" },
+    { label: "Moody", title: "#2c0935", body: "#50145a" },
+    { label: "Deep", title: "#310b3c", body: "#591868" },
+    { label: "Jewel", title: "#360b42", body: "#651879" },
     { label: "Mid", title: "#371249", body: "#61247f" },
     { label: "Rich", title: "#3d1551", body: "#732b97" },
     { label: "Bold", title: "#491b5f", body: "#7b329f" },
@@ -185,10 +211,13 @@ const HUE_FOLDERS = [
     { label: "Muted", title: "#3e2749", body: "#644474" },
     { label: "Muted Light", title: "#492d58", body: "#7e5095" },
     { label: "Two-tone", title: "#431859", body: "#9d2f92" },
+    { label: "Accent", title: "#8f28a9", body: "#242424" },
   ] },
   { label: "Pink", presets: [
     { label: "Deepest", title: "#2f0a21", body: "#52143b" },
+    { label: "Moody", title: "#340b24", body: "#5a1542" },
     { label: "Deep", title: "#360c27", body: "#621847" },
+    { label: "Jewel", title: "#3d0c2d", body: "#6d1852" },
     { label: "Mid", title: "#491235", body: "#7f245e" },
     { label: "Rich", title: "#51153b", body: "#972b6f" },
     { label: "Bold", title: "#5f1b46", body: "#9f3277" },
@@ -279,6 +308,26 @@ const GROUP_COLORS = [
   { label: "Light Pink",   color: "#d57bba" },
   { label: "Soft Pink",    color: "#d350ac" },
   { label: "Mid Pink",     color: "#cf2a9e" },
+  // Row 2 fill + Row 3 → 3 full rows of 15 (May 2026, Pixaroma palette).
+  { label: "Light Indigo", color: "#9b8ad5" },
+  { label: "Soft Indigo",  color: "#6a5fd3" },
+  { label: "Mid Indigo",   color: "#4a3fcf" },
+  { label: "Light Aqua",   color: "#8ad5cf" },
+  { label: "Rich Red",     color: "#b52833" },
+  { label: "Rich Orange",  color: "#b5602a" },
+  { label: "Rich Amber",   color: "#b5862a" },
+  { label: "Rich Gold",    color: "#9e8a2a" },
+  { label: "Rich Lime",    color: "#7a9e2a" },
+  { label: "Rich Green",   color: "#2f9e3f" },
+  { label: "Rich Emerald", color: "#1f9e6a" },
+  { label: "Rich Teal",    color: "#1f9285" },
+  { label: "Rich Cyan",    color: "#1f85a8" },
+  { label: "Rich Sky",     color: "#2f7fc0" },
+  { label: "Rich Blue",    color: "#2a55cf" },
+  { label: "Rich Violet",  color: "#6a3fcf" },
+  { label: "Rich Purple",  color: "#9e3fc0" },
+  { label: "Rich Magenta", color: "#c03f9e" },
+  { label: "Rich Rose",    color: "#c03f5f" },
 ];
 const GROUP_SWATCHES = GROUP_COLORS.map((c) => c.color);
 
@@ -287,7 +336,9 @@ const GROUP_SWATCHES = GROUP_COLORS.map((c) => c.color);
 // managed entirely through the right-click menu). Each slot is either
 // null (empty) or { title, body }.
 const FAVORITES_ID = "Pixaroma.NodeColors.Favorites";
-const FAVORITE_SLOTS = 4;
+// Matches the widest hue row (15 swatches) so the favorites fill exactly one
+// line at the top of the palette.
+const FAVORITE_SLOTS = 15;
 // Legacy single-favorite settings (no longer shown in the panel). Read
 // once for migration into slot 1 if a user had customized them.
 const LEGACY_FAV_TITLE_ID = "Pixaroma.NodeColors.FavoriteTitle";
@@ -398,8 +449,19 @@ function applyColors(nodes, titleHex, bodyHex) {
 
 function resetColors(nodes) {
   for (const n of nodes) {
-    delete n.color;
-    delete n.bgcolor;
+    if (isVueNodes()) {
+      // Nodes 2.0 instruments node.color/bgcolor as reactive accessor
+      // properties. `delete` removes the accessor itself, so the Vue node
+      // never re-renders AND every later color assignment becomes a plain
+      // (non-reactive) property — colors silently stop updating until reload.
+      // Assign undefined through the setter instead: it fires the reactive
+      // update, reverts to the theme default, and keeps the property live.
+      n.color = undefined;
+      n.bgcolor = undefined;
+    } else {
+      delete n.color;
+      delete n.bgcolor;
+    }
   }
   app.graph?.setDirtyCanvas(true, true);
 }
@@ -616,6 +678,64 @@ function injectCSS() {
   font: 12px Tahoma, system-ui, sans-serif;
   color: rgba(255,255,255,0.7);
 }
+/* ── Nodes 2.0 swatch-palette popup ── */
+.pix-nc-pal {
+  width: 760px;          /* fits the widest hue (15 swatches) on one line */
+  max-width: 96vw;
+  min-width: 0;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  padding: 14px 16px 16px;
+}
+.pix-nc-pal-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 12px;
+}
+.pix-nc-pal-title { font-size: 15px; font-weight: 600; color: #e0e0e0; }
+.pix-nc-pal-close {
+  background: transparent; border: none; color: #999;
+  font-size: 15px; line-height: 1; cursor: pointer;
+  padding: 3px 7px; border-radius: 4px;
+}
+.pix-nc-pal-close:hover { color: #fff; background: rgba(255,255,255,0.08); }
+.pix-nc-pal-previewwrap { display: flex; justify-content: center; padding: 0 0 14px; }
+.pix-nc-pal-scroll { overflow-y: auto; overflow-x: hidden; padding-right: 4px; }
+.pix-nc-pal-section { margin-bottom: 10px; }
+.pix-nc-pal-grouplabel {
+  font: 11px system-ui, sans-serif; letter-spacing: 0.06em;
+  text-transform: uppercase; color: #888; margin: 0 0 5px;
+}
+.pix-nc-pal-grid { display: flex; flex-wrap: wrap; gap: 6px; }
+.pix-nc-pal-swatch {
+  width: 40px; height: 30px; border-radius: 5px;
+  border: 1px solid rgba(255,255,255,0.15);
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,0.25);
+  cursor: pointer; transition: border-color 0.1s;
+}
+.pix-nc-pal-swatch:hover { border-color: #f66744; }
+.pix-nc-pal-empty {
+  display: flex; align-items: center; justify-content: center;
+  color: #555; background: rgba(255,255,255,0.03);
+  cursor: default; box-shadow: none;
+}
+.pix-nc-pal-empty:hover { border-color: rgba(255,255,255,0.15); }
+.pix-nc-pal-fav { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 40px; }
+.pix-nc-pal-favsave {
+  width: 40px; box-sizing: border-box; text-align: center;
+  font: 9px system-ui, sans-serif;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.14);
+  color: rgba(255,255,255,0.7);
+  border-radius: 3px; padding: 2px 0; cursor: pointer;
+  transition: background 0.1s, border-color 0.1s, color 0.1s;
+}
+.pix-nc-pal-favsave:hover { background: #f66744; border-color: #f66744; color: #fff; }
+/* 684 = 15*40 + 14*6: match the swatch-grid width so the buttons line up
+   under the swatches and never overflow past them. border-box keeps flex:1
+   from overshooting once padding/border are added. */
+.pix-nc-pal-tools { display: flex; gap: 8px; margin-bottom: 14px; width: 684px; max-width: 100%; }
+.pix-nc-pal-tools .pix-nc-btn { min-width: 0; flex: 1; padding: 6px 12px; box-sizing: border-box; }
   `;
   document.head.appendChild(s);
 }
@@ -628,6 +748,10 @@ function buildPreviewNode(initialTitle, initialBody) {
   titleBar.className = "pix-nc-preview-titlebar";
   titleBar.textContent = "Example Node";
   titleBar.style.background = initialTitle;
+  // Match the actual title-text color of the current renderer: Nodes 2.0
+  // draws node titles near-white; legacy draws them dim gray (the #999 CSS
+  // default on .pix-nc-preview-titlebar).
+  if (isVueNodes()) titleBar.style.color = "#e6e6e6";
   el.appendChild(titleBar);
 
   const body = document.createElement("div");
@@ -659,15 +783,23 @@ function buildPreviewNode(initialTitle, initialBody) {
 
 function openCustomColorsModal(opts) {
   injectCSS();
-  const { initialTitle, initialBody, onApply, onCancel = () => {} } = opts;
+  const { initialTitle, initialBody, anchorRect = null, onPreview = () => {}, onApply, onCancel = () => {} } = opts;
   let titleHex = initialTitle;
   let bodyHex  = initialBody;
 
+  // Side-floating (transparent overlay) so the node stays visible beside the
+  // picker and recolors live as you drag. The overlay still captures an
+  // outside click for cancel.
   const backdrop = document.createElement("div");
   backdrop.className = "pix-nc-backdrop";
+  backdrop.style.background = "transparent";
+  backdrop.style.display = "block";
 
   const modal = document.createElement("div");
   modal.className = "pix-nc-modal";
+  modal.style.position = "fixed";
+  modal.style.left = "-9999px";
+  modal.style.top = "0px";
 
   const titleEl = document.createElement("div");
   titleEl.className = "pix-nc-modal-title";
@@ -694,7 +826,7 @@ function openCustomColorsModal(opts) {
     initialColor: titleHex,
     swatches: TITLE_SWATCHES,
     hideReset: true,
-    onChange: (c) => { titleHex = c; preview.setTitle(c); },
+    onChange: (c) => { titleHex = c; preview.setTitle(c); onPreview(titleHex, bodyHex); },
   });
   titleCol.appendChild(titlePicker.element);
   pickers.appendChild(titleCol);
@@ -710,7 +842,7 @@ function openCustomColorsModal(opts) {
     initialColor: bodyHex,
     swatches: BODY_SWATCHES,
     hideReset: true,
-    onChange: (c) => { bodyHex = c; preview.setBody(c); },
+    onChange: (c) => { bodyHex = c; preview.setBody(c); onPreview(titleHex, bodyHex); },
   });
   bodyCol.appendChild(bodyPicker.element);
   pickers.appendChild(bodyCol);
@@ -734,6 +866,8 @@ function openCustomColorsModal(opts) {
 
   backdrop.appendChild(modal);
   document.body.appendChild(backdrop);
+  makeDraggable(modal, titleEl);
+  placeBeside(modal, anchorRect);
 
   function close() {
     window.removeEventListener("keydown", onKey, true);
@@ -773,16 +907,24 @@ function openCustomColorsModal(opts) {
   window.addEventListener("keydown", onKey, true);
 }
 
-function pickCustom(nodes) {
+function pickCustom(nodes, anchorNode) {
   const seed = colorClipboard
     || getFavorites().find((f) => f)
     || { title: "#1d1d1d", body: "#2a2a2a" };
+  // Snapshot raw colors so Cancel can restore exactly what was there before.
+  const originals = nodes.map((n) => ({ color: n.color, bgcolor: n.bgcolor }));
   openCustomColorsModal({
     initialTitle: seed.title,
     initialBody:  seed.body,
+    anchorRect: getNodeScreenRect(anchorNode || nodes[0]),
+    onPreview: (titleHex, bodyHex) => applyColors(nodes, titleHex, bodyHex),
     onApply: (titleHex, bodyHex) => {
       applyColors(nodes, titleHex, bodyHex);
       colorClipboard = { title: titleHex, body: bodyHex };
+    },
+    onCancel: () => {
+      nodes.forEach((n, i) => { n.color = originals[i].color; n.bgcolor = originals[i].bgcolor; });
+      app.graph?.setDirtyCanvas(true, true);
     },
   });
 }
@@ -807,14 +949,19 @@ function buildGroupPreview(initial) {
 
 function openGroupColorModal(opts) {
   injectCSS();
-  const { initial, onApply, onCancel = () => {} } = opts;
+  const { initial, anchorRect = null, onPreview = () => {}, onApply, onCancel = () => {} } = opts;
   let hex = initial;
 
   const backdrop = document.createElement("div");
   backdrop.className = "pix-nc-backdrop";
+  backdrop.style.background = "transparent";
+  backdrop.style.display = "block";
 
   const modal = document.createElement("div");
   modal.className = "pix-nc-modal pix-nc-modal-single";
+  modal.style.position = "fixed";
+  modal.style.left = "-9999px";
+  modal.style.top = "0px";
 
   const titleEl = document.createElement("div");
   titleEl.className = "pix-nc-modal-title";
@@ -839,7 +986,7 @@ function openGroupColorModal(opts) {
     initialColor: hex,
     swatches: GROUP_SWATCHES,
     hideReset: true,
-    onChange: (c) => { hex = c; preview.setColor(c); },
+    onChange: (c) => { hex = c; preview.setColor(c); onPreview(c); },
   });
   col.appendChild(picker.element);
   pickers.appendChild(col);
@@ -861,6 +1008,8 @@ function openGroupColorModal(opts) {
 
   backdrop.appendChild(modal);
   document.body.appendChild(backdrop);
+  makeDraggable(modal, titleEl);
+  placeBeside(modal, anchorRect);
 
   function close() {
     window.removeEventListener("keydown", onKey, true);
@@ -888,162 +1037,406 @@ function openGroupColorModal(opts) {
   window.addEventListener("keydown", onKey, true);
 }
 
-function pickCustomGroup(groups) {
+function pickCustomGroup(groups, anchorGroup) {
   const fav = getFavorites().find((f) => f);
   const seed = colorClipboard
     ? pickGroupColor(colorClipboard)
     : (fav ? pickGroupColor(fav) : GROUP_DEFAULT_COLOR);
+  const originals = groups.map((g) => g.color);
   openGroupColorModal({
     initial: seed,
+    anchorRect: getGroupScreenRect(anchorGroup || groups[0]),
+    onPreview: (hex) => applyGroupColor(groups, hex),
     onApply: (hex) => {
       applyGroupColor(groups, hex);
       colorClipboard = { title: hex, body: hex };
     },
+    onCancel: () => {
+      groups.forEach((g, i) => {
+        g.color = originals[i];
+        if (typeof g.setDirtyCanvas === "function") g.setDirtyCanvas(false, true);
+      });
+      app.graph?.setDirtyCanvas(true, true);
+    },
   });
 }
 
-// Inline swatch HTML for a menu entry: a small "node-shaped" chip that
-// shows the title color on top (50%) and the body color on bottom (50%).
-// Mimics what an actual ComfyUI node looks like at a glance.
-function swatchHTML(titleHex, bodyHex) {
-  return `<span style="display:inline-block; width:32px; height:14px; border:1px solid rgba(255,255,255,0.18); border-radius:3px; vertical-align:middle; margin-right:10px; background: linear-gradient(to bottom, ${titleHex} 0%, ${titleHex} 50%, ${bodyHex} 50%, ${bodyHex} 100%);"></span>`;
+// ── Swatch-palette popup (both renderers) ───────────────────────────────
+// The Vue (Nodes 2.0) right-click menu renders only ONE fly-out level and
+// strips inline swatch HTML to plain text, so the legacy 3-level nested color
+// menu can't work there. In Nodes 2.0 the "Pixaroma Node/Group Colors" entry
+// is a single click that opens this popup instead: a live preview + a visual
+// grid of real color swatches (favorites + hue folders), plus Pick custom and
+// Reset. The classic-renderer nested menu is left untouched.
+function isVueNodes() {
+  return !!(window.LiteGraph && window.LiteGraph.vueNodesMode);
 }
 
-// Solid single-color chip for group menu entries.
-function swatchHTMLSingle(hex) {
-  return `<span style="display:inline-block; width:32px; height:14px; border:1px solid rgba(255,255,255,0.18); border-radius:3px; vertical-align:middle; margin-right:10px; background:${hex};"></span>`;
+function makeTwoToneSwatch(titleHex, bodyHex) {
+  const el = document.createElement("div");
+  el.className = "pix-nc-pal-swatch";
+  el.style.background =
+    `linear-gradient(to bottom, ${titleHex} 0%, ${titleHex} 45%, ${bodyHex} 45%, ${bodyHex} 100%)`;
+  return el;
 }
 
-// Sub-submenu listing the 4 favorite slots; picking one writes the
-// right-clicked node's colors into that slot.
-function buildSaveSubmenu(node) {
-  const favs = getFavorites();
-  return favs.map((f, i) => ({
-    content: f
-      ? `${swatchHTML(f.title, f.body)}Favorite ${i + 1}`
-      : `Favorite ${i + 1} (empty)`,
-    callback: () => {
-      const c = captureColors(node);
-      saveFavoriteSlot(i, c.title, c.body);
-    },
-  }));
+function makeSingleSwatch(hex) {
+  const el = document.createElement("div");
+  el.className = "pix-nc-pal-swatch";
+  el.style.background = hex;
+  return el;
 }
 
-// A hue folder rendered as its own sub-submenu — lists that hue's shades.
-function buildPresetGroupSubmenu(targets, presets) {
-  return presets.map((p) => ({
-    content: `${swatchHTML(p.title, p.body)}${p.label}`,
-    callback: () => applyColors(targets, p.title, p.body),
-  }));
-}
+// Shared shell: a free-floating panel (NO dimming backdrop) so the canvas
+// stays visible and the node recolors live as you pick. Opens beside the
+// target node/group (via place()), is draggable by its header, and closes
+// on ✕, Escape, or a pointerdown anywhere outside it.
+function makePalShell(titleText) {
+  injectCSS();
+  const modal = document.createElement("div");
+  modal.className = "pix-nc-modal pix-nc-pal";
+  modal.style.position = "fixed";
+  modal.style.zIndex = "10000";
+  modal.style.left = "-9999px";
+  modal.style.top = "0px";
 
-function buildSubmenuOptions(targets, node) {
-  const items = [];
+  const header = document.createElement("div");
+  header.className = "pix-nc-pal-header";
+  const titleEl = document.createElement("div");
+  titleEl.className = "pix-nc-pal-title";
+  titleEl.textContent = titleText;
+  const closeX = document.createElement("button");
+  closeX.type = "button";
+  closeX.className = "pix-nc-pal-close";
+  closeX.textContent = "✕";
+  closeX.title = "Close";
+  header.appendChild(titleEl);
+  header.appendChild(closeX);
+  modal.appendChild(header);
 
-  // Personal / quick items on top — fastest to reach.
-  // Favorites (only the filled slots are applyable here).
-  const favs = getFavorites();
-  const filled = favs.map((f, i) => ({ f, i })).filter((x) => x.f);
-  for (const { f, i } of filled) {
-    items.push({
-      content: `${swatchHTML(f.title, f.body)}Favorite ${i + 1}`,
-      callback: () => applyColors(targets, f.title, f.body),
-    });
+  document.body.appendChild(modal);
+
+  function close() {
+    document.removeEventListener("pointerdown", onDocDown, true);
+    window.removeEventListener("keydown", onKey, true);
+    if (modal.parentNode) modal.remove();
   }
-  if (filled.length) items.push(null); // separator: favorites -> save/custom
+  closeX.addEventListener("click", close);
+  function onDocDown(e) { if (!modal.contains(e.target)) close(); }
+  function onKey(e) {
+    if (e.key === "Escape") { e.stopImmediatePropagation(); e.preventDefault(); close(); }
+  }
+  // Defer the outside-pointerdown listener so the click that opened the
+  // popup doesn't immediately close it (Load Image popup pattern).
+  setTimeout(() => document.addEventListener("pointerdown", onDocDown, true), 0);
+  window.addEventListener("keydown", onKey, true);
 
-  items.push({
-    content: "Save these colors to",
-    has_submenu: true,
-    callback: function (value, opts, e, menu) {
-      new LiteGraph.ContextMenu(
-        buildSaveSubmenu(node),
-        { event: e, parentMenu: menu, node: node }
-      );
-    },
+  makeDraggable(modal, header);
+
+  return { modal, close, place: (rect) => placeBeside(modal, rect) };
+}
+
+// Drag the panel by its header so the user can move it off whatever it
+// overlaps. Pointer capture keeps the drag smooth and stops the
+// outside-pointerdown close from firing mid-drag.
+function makeDraggable(modal, handle) {
+  handle.style.cursor = "move";
+  let sx = 0, sy = 0, sl = 0, st = 0, dragging = false;
+  handle.addEventListener("pointerdown", (e) => {
+    if (e.target.closest(".pix-nc-pal-close")) return;
+    dragging = true;
+    sx = e.clientX; sy = e.clientY;
+    const r = modal.getBoundingClientRect();
+    sl = r.left; st = r.top;
+    try { handle.setPointerCapture(e.pointerId); } catch (_) {}
+    e.preventDefault();
+    e.stopPropagation();
   });
-  items.push({
-    content: "Pick custom...",
-    callback: () => pickCustom(targets),
+  handle.addEventListener("pointermove", (e) => {
+    if (!dragging) return;
+    e.stopPropagation();
+    modal.style.left = (sl + e.clientX - sx) + "px";
+    modal.style.top = (st + e.clientY - sy) + "px";
   });
+  const end = (e) => {
+    dragging = false;
+    try { handle.releasePointerCapture(e.pointerId); } catch (_) {}
+  };
+  handle.addEventListener("pointerup", end);
+  handle.addEventListener("pointercancel", end);
+}
 
-  items.push(null); // separator: personal -> hue folders
+// Position the panel beside a screen rect (the node/group): to its right,
+// flipping to the left or clamping into the viewport as needed. No rect →
+// center it.
+function placeBeside(modal, rect) {
+  const vw = window.innerWidth, vh = window.innerHeight;
+  const mw = modal.offsetWidth, mh = modal.offsetHeight;
+  const gap = 12, pad = 8;
+  if (!rect) {
+    modal.style.left = Math.max(pad, (vw - mw) / 2) + "px";
+    modal.style.top = Math.max(pad, (vh - mh) / 2) + "px";
+    return;
+  }
+  let left = rect.right + gap;
+  if (left + mw > vw - pad) left = rect.left - gap - mw; // flip to the left
+  if (left < pad) left = Math.max(pad, vw - mw - pad);   // last resort: pin right
+  let top = rect.top;
+  if (top + mh > vh - pad) top = vh - mh - pad;
+  if (top < pad) top = pad;
+  modal.style.left = left + "px";
+  modal.style.top = top + "px";
+}
 
-  // One folder per hue; each opens that hue's shades (dark -> light).
+// Screen-pixel rect of a node (DOM in Nodes 2.0, geometry math in legacy).
+function getNodeScreenRect(node) {
+  if (isVueNodes() && node?.id != null) {
+    const el = document.querySelector('[data-node-id="' + node.id + '"]');
+    if (el) return el.getBoundingClientRect();
+  }
+  const c = app.canvas;
+  const ds = c?.ds, canvasEl = c?.canvas;
+  if (!ds || !canvasEl || !node?.pos || !node?.size) return null;
+  const cr = canvasEl.getBoundingClientRect();
+  const titleH = (window.LiteGraph && window.LiteGraph.NODE_TITLE_HEIGHT) || 30;
+  const scale = ds.scale || 1, off = ds.offset || [0, 0];
+  const left = cr.left + (node.pos[0] + off[0]) * scale;
+  const top = cr.top + (node.pos[1] - titleH + off[1]) * scale;
+  const width = node.size[0] * scale;
+  const height = (node.size[1] + titleH) * scale;
+  return { left, top, right: left + width, bottom: top + height, width, height };
+}
+
+// Screen-pixel rect of a group (canvas-painted in both renderers → math).
+function getGroupScreenRect(group) {
+  const c = app.canvas;
+  const ds = c?.ds, canvasEl = c?.canvas;
+  if (!ds || !canvasEl) return null;
+  const b = group?._bounding
+    || (group?.pos && group?.size ? [group.pos[0], group.pos[1], group.size[0], group.size[1]] : null);
+  if (!b) return null;
+  const cr = canvasEl.getBoundingClientRect();
+  const scale = ds.scale || 1, off = ds.offset || [0, 0];
+  const left = cr.left + (b[0] + off[0]) * scale;
+  const top = cr.top + (b[1] + off[1]) * scale;
+  const width = b[2] * scale, height = b[3] * scale;
+  return { left, top, right: left + width, bottom: top + height, width, height };
+}
+
+function palSection(label) {
+  const sec = document.createElement("div");
+  sec.className = "pix-nc-pal-section";
+  if (label) {
+    const l = document.createElement("div");
+    l.className = "pix-nc-pal-grouplabel";
+    l.textContent = label;
+    sec.appendChild(l);
+  }
+  const grid = document.createElement("div");
+  grid.className = "pix-nc-pal-grid";
+  sec.appendChild(grid);
+  return { sec, grid };
+}
+
+function palToolBtn(text, onClick) {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = "pix-nc-btn";
+  b.textContent = text;
+  b.addEventListener("click", onClick);
+  return b;
+}
+
+function openNodeColorsPalette(targets, node) {
+  const suffix = targets.length > 1 ? ` (${targets.length} nodes)` : "";
+  const { modal, close, place } = makePalShell(`Pixaroma Node Colors${suffix}`);
+
+  // Live preview node — updates on hover, persists the applied combo.
+  let applied = captureColors(node);
+  const previewWrap = document.createElement("div");
+  previewWrap.className = "pix-nc-pal-previewwrap";
+  const preview = buildPreviewNode(applied.title, applied.body);
+  previewWrap.appendChild(preview.el);
+  modal.appendChild(previewWrap);
+  const showApplied = () => { preview.setTitle(applied.title); preview.setBody(applied.body); };
+
+  const scroll = document.createElement("div");
+  scroll.className = "pix-nc-pal-scroll";
+  scroll.addEventListener("mouseleave", showApplied);
+  modal.appendChild(scroll);
+
+  const applyPair = (t, b) => { applyColors(targets, t, b); applied = { title: t, body: b }; showApplied(); };
+
+  // Favorites: click a filled swatch to apply; per-slot Save captures the
+  // node's CURRENT colors (so apply-then-Save stores the chosen combo).
+  const favSec = document.createElement("div");
+  favSec.className = "pix-nc-pal-section";
+  const favLbl = document.createElement("div");
+  favLbl.className = "pix-nc-pal-grouplabel";
+  favLbl.textContent = "Favorites";
+  favSec.appendChild(favLbl);
+  const favGrid = document.createElement("div");
+  favGrid.className = "pix-nc-pal-grid";
+  favSec.appendChild(favGrid);
+  function renderFavorites() {
+    favGrid.innerHTML = "";
+    const favs = getFavorites();
+    for (let i = 0; i < FAVORITE_SLOTS; i++) {
+      const f = favs[i];
+      const tile = document.createElement("div");
+      tile.className = "pix-nc-pal-fav";
+      let sw;
+      if (f) {
+        sw = makeTwoToneSwatch(f.title, f.body);
+        sw.title = `Favorite ${i + 1} — apply`;
+        sw.addEventListener("mouseenter", () => { preview.setTitle(f.title); preview.setBody(f.body); });
+        sw.addEventListener("click", () => applyPair(f.title, f.body));
+      } else {
+        sw = document.createElement("div");
+        sw.className = "pix-nc-pal-swatch pix-nc-pal-empty";
+        sw.textContent = "—";
+        sw.title = `Favorite ${i + 1} (empty)`;
+      }
+      tile.appendChild(sw);
+      const save = document.createElement("button");
+      save.type = "button";
+      save.className = "pix-nc-pal-favsave";
+      save.textContent = "Save";
+      save.title = `Save the node's current colors to slot ${i + 1}`;
+      save.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const c = captureColors(node);
+        saveFavoriteSlot(i, c.title, c.body);
+        renderFavorites();
+      });
+      tile.appendChild(save);
+      favGrid.appendChild(tile);
+    }
+  }
+  renderFavorites();
+  favGrid.addEventListener("mouseleave", showApplied);
+  scroll.appendChild(favSec);
+
+  // Tools: Pick custom… / Reset.
+  const tools = document.createElement("div");
+  tools.className = "pix-nc-pal-tools";
+  tools.appendChild(palToolBtn("Pick custom…", () => { close(); pickCustom(targets, node); }));
+  tools.appendChild(palToolBtn("Reset colors", () => {
+    resetColors(targets);
+    applied = captureColors(node);
+    showApplied();
+  }));
+  scroll.appendChild(tools);
+
+  // Hue folders (Dark + the 10 hues), exactly the legacy preset set.
   for (const g of HUE_FOLDERS) {
-    items.push({
-      content: g.label,
-      has_submenu: true,
-      callback: function (value, opts, e, menu) {
-        new LiteGraph.ContextMenu(
-          buildPresetGroupSubmenu(targets, g.presets),
-          { event: e, parentMenu: menu, node: node }
-        );
-      },
-    });
+    const { sec, grid } = palSection(g.label);
+    for (const p of g.presets) {
+      const sw = makeTwoToneSwatch(p.title, p.body);
+      sw.title = `${g.label} — ${p.label}`;
+      sw.addEventListener("mouseenter", () => { preview.setTitle(p.title); preview.setBody(p.body); });
+      sw.addEventListener("click", () => applyPair(p.title, p.body));
+      grid.appendChild(sw);
+    }
+    grid.addEventListener("mouseleave", showApplied);
+    scroll.appendChild(sec);
   }
 
-  return items;
+  place(getNodeScreenRect(node));
 }
 
-// ── Group menu builders (single color) ──────────────────────────────────
-// Save the group's current color into one of the 4 SHARED favorite slots,
-// stored as a flat title==body pair so the slot is still usable from the
-// node menu.
-function buildGroupSaveSubmenu(group) {
-  const favs = getFavorites();
-  return favs.map((f, i) => ({
-    content: f
-      ? `${swatchHTML(f.title, f.body)}Favorite ${i + 1}`
-      : `Favorite ${i + 1} (empty)`,
-    callback: () => {
-      const c = captureGroupColor(group);
-      saveFavoriteSlot(i, c, c);
-    },
+function openGroupColorsPalette(targets, group) {
+  const suffix = targets.length > 1 ? ` (${targets.length} groups)` : "";
+  const { modal, close, place } = makePalShell(`Pixaroma Group Colors${suffix}`);
+
+  let applied = captureGroupColor(group);
+  const previewWrap = document.createElement("div");
+  previewWrap.className = "pix-nc-pal-previewwrap";
+  const preview = buildGroupPreview(applied);
+  previewWrap.appendChild(preview.el);
+  modal.appendChild(previewWrap);
+  const showApplied = () => preview.setColor(applied);
+
+  const scroll = document.createElement("div");
+  scroll.className = "pix-nc-pal-scroll";
+  scroll.addEventListener("mouseleave", showApplied);
+  modal.appendChild(scroll);
+
+  const applyOne = (hex) => { applyGroupColor(targets, hex); applied = hex; showApplied(); };
+
+  // Favorites mapped to a single color via pickGroupColor; Save stores the
+  // group's current color as a flat title==body pair (shared with nodes).
+  const favSec = document.createElement("div");
+  favSec.className = "pix-nc-pal-section";
+  const favLbl = document.createElement("div");
+  favLbl.className = "pix-nc-pal-grouplabel";
+  favLbl.textContent = "Favorites";
+  favSec.appendChild(favLbl);
+  const favGrid = document.createElement("div");
+  favGrid.className = "pix-nc-pal-grid";
+  favSec.appendChild(favGrid);
+  function renderFavorites() {
+    favGrid.innerHTML = "";
+    const favs = getFavorites();
+    for (let i = 0; i < FAVORITE_SLOTS; i++) {
+      const f = favs[i];
+      const tile = document.createElement("div");
+      tile.className = "pix-nc-pal-fav";
+      let sw;
+      if (f) {
+        const hex = pickGroupColor(f);
+        sw = makeSingleSwatch(hex);
+        sw.title = `Favorite ${i + 1} — apply`;
+        sw.addEventListener("mouseenter", () => preview.setColor(hex));
+        sw.addEventListener("click", () => applyOne(hex));
+      } else {
+        sw = document.createElement("div");
+        sw.className = "pix-nc-pal-swatch pix-nc-pal-empty";
+        sw.textContent = "—";
+        sw.title = `Favorite ${i + 1} (empty)`;
+      }
+      tile.appendChild(sw);
+      const save = document.createElement("button");
+      save.type = "button";
+      save.className = "pix-nc-pal-favsave";
+      save.textContent = "Save";
+      save.title = `Save the group's current color to slot ${i + 1}`;
+      save.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const c = captureGroupColor(group);
+        saveFavoriteSlot(i, c, c);
+        renderFavorites();
+      });
+      tile.appendChild(save);
+      favGrid.appendChild(tile);
+    }
+  }
+  renderFavorites();
+  favGrid.addEventListener("mouseleave", showApplied);
+  scroll.appendChild(favSec);
+
+  const tools = document.createElement("div");
+  tools.className = "pix-nc-pal-tools";
+  tools.appendChild(palToolBtn("Pick custom…", () => { close(); pickCustomGroup(targets, group); }));
+  tools.appendChild(palToolBtn("Reset color", () => {
+    resetGroupColor(targets);
+    applied = captureGroupColor(group);
+    showApplied();
   }));
-}
+  scroll.appendChild(tools);
 
-// The "👑 Pixaroma Group Colors" submenu for a group: filled Favorites on top,
-// then Save / Pick custom, then the hand-picked group colors listed
-// DIRECTLY (no Neutrals/Hues subfolders). Copy / Paste / Reset are
-// top-level siblings (see setup()).
-function buildGroupColorsSubmenu(targets, group) {
-  const items = [];
-
-  // Favorites (filled only) — applies each favorite's identity color.
-  const filled = getFavorites().map((f, i) => ({ f, i })).filter((x) => x.f);
-  for (const { f, i } of filled) {
-    items.push({
-      content: `${swatchHTML(f.title, f.body)}Favorite ${i + 1}`,
-      callback: () => applyGroupColor(targets, pickGroupColor(f)),
-    });
-  }
-  if (filled.length) items.push(null); // separator: favorites -> save/custom
-
-  items.push({
-    content: "Save this color to",
-    has_submenu: true,
-    callback: function (value, opts, e, menu) {
-      new LiteGraph.ContextMenu(
-        buildGroupSaveSubmenu(group),
-        { event: e, parentMenu: menu }
-      );
-    },
-  });
-  items.push({
-    content: "Pick custom...",
-    callback: () => pickCustomGroup(targets),
-  });
-  items.push(null); // separator: save/custom -> colors
-
-  // Hand-picked group colors, listed directly.
+  const { sec, grid } = palSection("Group colors");
   for (const c of GROUP_COLORS) {
-    items.push({
-      content: `${swatchHTMLSingle(c.color)}${c.label}`,
-      callback: () => applyGroupColor(targets, c.color),
-    });
+    const sw = makeSingleSwatch(c.color);
+    sw.title = c.label;
+    sw.addEventListener("mouseenter", () => preview.setColor(c.color));
+    sw.addEventListener("click", () => applyOne(c.color));
+    grid.appendChild(sw);
   }
-  return items;
+  grid.addEventListener("mouseleave", showApplied);
+  scroll.appendChild(sec);
+
+  place(getGroupScreenRect(group));
 }
 
 app.registerExtension({
@@ -1058,23 +1451,16 @@ app.registerExtension({
         const targets = getTargetNodes(node);
         const count   = targets.length;
         const suffix  = count > 1 ? ` (${count} nodes)` : "";
-        options.push(
-          null,
-          {
-            content: `👑 Pixaroma Node Colors${suffix}`,
-            has_submenu: true,
-            callback: function (value, opts, e, menu) {
-              new LiteGraph.ContextMenu(
-                buildSubmenuOptions(targets, node),
-                { event: e, parentMenu: menu, node: node }
-              );
-            },
-          },
-          {
-            content: `👑 Copy Node Colors`,
-            callback: () => { colorClipboard = captureColors(node); },
-          }
-        );
+        // Both renderers open the swatch-palette popup (the Vue menu can't
+        // render the old nested submenu, and the popup is the unified UI).
+        options.push(null, {
+          content: `👑 Pixaroma Node Colors${suffix}`,
+          callback: () => openNodeColorsPalette(targets, node),
+        });
+        options.push({
+          content: `👑 Copy Node Colors`,
+          callback: () => { colorClipboard = captureColors(node); },
+        });
         // Paste only appears once colors have been copied this session.
         if (colorClipboard) {
           options.push({
@@ -1117,13 +1503,7 @@ app.registerExtension({
         options.push(null);
         options.push({
           content: `👑 Pixaroma Group Colors${suffix}`,
-          has_submenu: true,
-          callback: function (value, opts, e, menu) {
-            new LiteGraph.ContextMenu(
-              buildGroupColorsSubmenu(targets, group),
-              { event: e, parentMenu: menu }
-            );
-          },
+          callback: () => openGroupColorsPalette(targets, group),
         });
         options.push({
           content: `👑 Copy Group Color`,
