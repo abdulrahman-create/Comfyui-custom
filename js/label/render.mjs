@@ -138,7 +138,7 @@ export function injectVueLabelCSS() {
   s.textContent = `
 .pix-lbl-vue {
     display: inline-block; box-sizing: border-box; white-space: pre;
-    user-select: none; overflow: hidden; max-width: 100%;
+    user-select: none;
     /* pointer-events:none is CRITICAL: Label is a title-less node, so its whole
        body is this element. If it captured the mouse, the place-on-canvas click
        (and node dragging) would land on it instead of the node, and the node
@@ -167,6 +167,10 @@ export function injectVueLabelCSS() {
 .lg-node:has(.pix-lbl-vue) .lg-node-widgets,
 .lg-node:has(.pix-lbl-vue) .lg-node-widgets * {
     pointer-events: none !important;
+    /* overflow:visible so the widget wrappers never clip the label text when
+       the node is momentarily a hair narrower than the rendered text (the node
+       is resized to the real text width a frame later by _pixLblFit). */
+    overflow: visible !important;
 }
 `;
   document.head.appendChild(s);

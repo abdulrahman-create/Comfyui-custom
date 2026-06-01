@@ -47,6 +47,7 @@ export function saveCfg(node, cfg) {
   if (typeof node.setSize === "function") node.setSize([nw, nh]);
   else if (node.size) { node.size[0] = nw; node.size[1] = nh; }
   node._pixLblRender?.(); // Nodes 2.0: refresh the crisp-HTML label (no-op in legacy)
+  node._pixLblFit?.();    // Nodes 2.0: snap node width to the real text (no-op in legacy)
   if (app.graph) {
     app.graph.setDirtyCanvas(true, true);
     if (typeof app.graph.change === "function") app.graph.change();

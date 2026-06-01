@@ -52,6 +52,25 @@ function setupVueLabel(node) {
   node._pixLblRender = render;
   render();
 
+  // Resize the node to the ACTUAL rendered text. measureLabel uses canvas
+  // measureText, which comes out a few px narrower than the real HTML text, so
+  // the canvas-sized node clipped the text. Measure the laid-out element next
+  // frame and snap the node to it. Called from saveCfg after an edit (a genuine
+  // user action) - NOT on load, so it never dirties a saved workflow.
+  node._pixLblFit = () => {
+    requestAnimationFrame(() => {
+      const el = node._pixLblVueEl;
+      if (!el || !el.isConnected) return;
+      const nw = Math.max(Math.ceil(el.scrollWidth), 60);
+      const nh = Math.max(Math.ceil(el.scrollHeight), 30);
+      if (Math.abs((node.size?.[0] || 0) - nw) > 1 || Math.abs((node.size?.[1] || 0) - nh) > 1) {
+        if (typeof node.setSize === "function") node.setSize([nw, nh]);
+        else if (node.size) { node.size[0] = nw; node.size[1] = nh; }
+        node.graph?.setDirtyCanvas?.(true, true);
+      }
+    });
+  };
+
   const w = node.addDOMWidget("label_dom", "pixaroma_label", div, {
     serialize: false,
     getMinHeight: () => Math.max(measureLabel(node._labelCfg || DEFAULTS).h, 16),
@@ -203,4 +222,25 @@ if (typeof LGraphCanvas !== "undefined"
     }
     return options;
   };
+}
+
+// ── Double-click to edit, restored for Nodes 2.0 ────────────────
+// The label body is pointer-events:none (so the node can be placed/dragged), so
+// LiteGraph's onDblClick never fires for it in Nodes 2.0. The dblclick passes
+// through to the canvas (which keeps app.canvas.graph_mouse current), so listen
+// at the document level and hit-test the Label node under the cursor. Gated to
+// Nodes 2.0 - legacy still uses the onDblClick hook (avoids a redundant open).
+if (typeof window !== "undefined" && !window._pixLblDblWired) {
+  window._pixLblDblWired = true;
+  document.addEventListener("dblclick", () => {
+    if (!isVueNodes()) return;
+    const c = app?.canvas;
+    const g = c?.graph;
+    const gm = c?.graph_mouse;
+    if (!g || !gm || typeof g.getNodeOnPos !== "function") return;
+    const node = g.getNodeOnPos(gm[0], gm[1], g._nodes);
+    if (node && (node.comfyClass === "PixaromaLabel" || node.type === "PixaromaLabel")) {
+      openLabelEditor(node);
+    }
+  }, true);
 }
