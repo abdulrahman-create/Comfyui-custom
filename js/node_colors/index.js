@@ -398,8 +398,19 @@ function applyColors(nodes, titleHex, bodyHex) {
 
 function resetColors(nodes) {
   for (const n of nodes) {
-    delete n.color;
-    delete n.bgcolor;
+    if (isVueNodes()) {
+      // Nodes 2.0 instruments node.color/bgcolor as reactive accessor
+      // properties. `delete` removes the accessor itself, so the Vue node
+      // never re-renders AND every later color assignment becomes a plain
+      // (non-reactive) property — colors silently stop updating until reload.
+      // Assign undefined through the setter instead: it fires the reactive
+      // update, reverts to the theme default, and keeps the property live.
+      n.color = undefined;
+      n.bgcolor = undefined;
+    } else {
+      delete n.color;
+      delete n.bgcolor;
+    }
   }
   app.graph?.setDirtyCanvas(true, true);
 }
@@ -681,6 +692,10 @@ function buildPreviewNode(initialTitle, initialBody) {
   titleBar.className = "pix-nc-preview-titlebar";
   titleBar.textContent = "Example Node";
   titleBar.style.background = initialTitle;
+  // Match the actual title-text color of the current renderer: Nodes 2.0
+  // draws node titles near-white; legacy draws them dim gray (the #999 CSS
+  // default on .pix-nc-preview-titlebar).
+  if (isVueNodes()) titleBar.style.color = "#e6e6e6";
   el.appendChild(titleBar);
 
   const body = document.createElement("div");
