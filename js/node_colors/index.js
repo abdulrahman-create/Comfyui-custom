@@ -287,7 +287,9 @@ const GROUP_SWATCHES = GROUP_COLORS.map((c) => c.color);
 // managed entirely through the right-click menu). Each slot is either
 // null (empty) or { title, body }.
 const FAVORITES_ID = "Pixaroma.NodeColors.Favorites";
-const FAVORITE_SLOTS = 8;
+// Matches the widest hue row (15 swatches) so the favorites fill exactly one
+// line at the top of the palette.
+const FAVORITE_SLOTS = 15;
 // Legacy single-favorite settings (no longer shown in the panel). Read
 // once for migration into slot 1 if a user had customized them.
 const LEGACY_FAV_TITLE_ID = "Pixaroma.NodeColors.FavoriteTitle";
@@ -629,9 +631,10 @@ function injectCSS() {
 }
 /* ── Nodes 2.0 swatch-palette popup ── */
 .pix-nc-pal {
-  min-width: 460px;
-  max-width: 560px;
-  max-height: 86vh;
+  width: 760px;          /* fits the widest hue (15 swatches) on one line */
+  max-width: 96vw;
+  min-width: 0;
+  max-height: 90vh;
   display: flex;
   flex-direction: column;
   padding: 14px 16px 16px;
@@ -649,10 +652,10 @@ function injectCSS() {
 .pix-nc-pal-close:hover { color: #fff; background: rgba(255,255,255,0.08); }
 .pix-nc-pal-previewwrap { display: flex; justify-content: center; padding: 0 0 14px; }
 .pix-nc-pal-scroll { overflow-y: auto; overflow-x: hidden; padding-right: 4px; }
-.pix-nc-pal-section { margin-bottom: 14px; }
+.pix-nc-pal-section { margin-bottom: 10px; }
 .pix-nc-pal-grouplabel {
   font: 11px system-ui, sans-serif; letter-spacing: 0.06em;
-  text-transform: uppercase; color: #888; margin: 0 0 7px;
+  text-transform: uppercase; color: #888; margin: 0 0 5px;
 }
 .pix-nc-pal-grid { display: flex; flex-wrap: wrap; gap: 6px; }
 .pix-nc-pal-swatch {
@@ -668,13 +671,14 @@ function injectCSS() {
   cursor: default; box-shadow: none;
 }
 .pix-nc-pal-empty:hover { border-color: rgba(255,255,255,0.15); }
-.pix-nc-pal-fav { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.pix-nc-pal-fav { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 40px; }
 .pix-nc-pal-favsave {
-  font: 10px system-ui, sans-serif;
+  width: 40px; box-sizing: border-box; text-align: center;
+  font: 9px system-ui, sans-serif;
   background: rgba(255,255,255,0.05);
   border: 1px solid rgba(255,255,255,0.14);
   color: rgba(255,255,255,0.7);
-  border-radius: 3px; padding: 1px 8px; cursor: pointer;
+  border-radius: 3px; padding: 2px 0; cursor: pointer;
   transition: background 0.1s, border-color 0.1s, color 0.1s;
 }
 .pix-nc-pal-favsave:hover { background: #f66744; border-color: #f66744; color: #fff; }
