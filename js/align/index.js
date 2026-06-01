@@ -447,10 +447,22 @@ function onWindowPointerMove(e) {
   //    selected_nodes (marquee/pan already bailed above). Agent-verified 2026-06-01.
   let draggedNode = null;
   if (vue) {
+    // Use the existing session's node, but VALIDATE it's still the one being
+    // dragged: it must still be SELECTED. Otherwise the session is stale - a
+    // previous drag whose pointerup we missed (the Vue node's captured pointer
+    // can swallow the release) - and the by-id lookup would keep moving that OLD
+    // node while the user drags a new one (the "move one node, another moves
+    // too" leak). A stale session is dropped and we re-pick from the current
+    // selection.
     if (state.dragInfo?.nodeId != null) {
       const id = state.dragInfo.nodeId;
-      draggedNode = c.graph?._nodes?.find((n) => n.id === id) || null;
-    } else {
+      const node = c.graph?._nodes?.find((n) => n.id === id) || null;
+      const stillSelected = node && c.selected_nodes &&
+        Object.values(c.selected_nodes).some((s) => s && s.id === id);
+      if (stillSelected) draggedNode = node;
+      else state.dragInfo = null;
+    }
+    if (!draggedNode) {
       const sel = c.selected_nodes;
       const keys = sel ? Object.keys(sel) : [];
       if (keys.length >= 1) draggedNode = sel[keys[0]];
