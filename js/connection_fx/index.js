@@ -72,6 +72,80 @@ function typesCompatible(a, b) {
   return a === b;
 }
 
+function isVueNodes() {
+  return !!(window.LiteGraph && window.LiteGraph.vueNodesMode);
+}
+
+// ── Nodes 2.0 slot positions ─────────────────────────────────────────────
+// In the Vue renderer the node body is DOM, so node.getConnectionPos() drifts
+// ~10px from where the slot dot actually renders. We read the dot's DOM rect
+// instead. Verified slot-dot key format: "<nodeId>-<in|out>-<slotIndex>"
+// (e.g. "3-in-0", "2-out-5"); the dot itself is [data-testid="slot-dot"].
+function vueSlotKey(node, slotIndex, isInput) {
+  return node.id + (isInput ? "-in-" : "-out-") + slotIndex;
+}
+
+function findVueSlotDot(node, slotIndex, isInput) {
+  if (!node || node.id == null) return null;
+  const keyed = document.querySelector(
+    '[data-slot-key="' + vueSlotKey(node, slotIndex, isInput) + '"]'
+  );
+  if (keyed) return keyed.querySelector('[data-testid="slot-dot"]') || keyed;
+  // Fallback: ordered query inside the node frame.
+  const frame = document.querySelector('[data-node-id="' + node.id + '"]');
+  if (!frame) return null;
+  const rows = frame.querySelectorAll(
+    isInput ? ".lg-slot--input" : ".lg-slot--output"
+  );
+  const row = rows[slotIndex];
+  if (!row) return null;
+  return row.querySelector('[data-testid="slot-dot"]') || row;
+}
+
+// One querySelectorAll per frame (only while a wire is being dragged), keyed by
+// each dot's data-slot-key, value = viewport-pixel center of the dot.
+function buildVueSlotMap() {
+  const map = new Map();
+  const keyed = document.querySelectorAll("[data-slot-key]");
+  for (const el of keyed) {
+    const key = el.getAttribute("data-slot-key");
+    if (!key) continue;
+    const dot = el.querySelector('[data-testid="slot-dot"]') || el;
+    const r = dot.getBoundingClientRect();
+    if (!r.width && !r.height) continue;
+    map.set(key, { x: r.left + r.width / 2, y: r.top + r.height / 2 });
+  }
+  return map;
+}
+
+// Viewport-pixel center of a slot dot, renderer-aware. Used for the sparkle
+// burst (a fixed-position DOM overlay).
+function slotViewportPos(node, slotIndex, isInput) {
+  if (isVueNodes()) {
+    const el = findVueSlotDot(node, slotIndex, isInput);
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    if (!r.width && !r.height) return null;
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  }
+  let pos;
+  try {
+    pos = node.getConnectionPos(isInput, slotIndex);
+  } catch (e) {
+    return null;
+  }
+  if (!pos) return null;
+  const c = app.canvas;
+  const ds = c?.ds;
+  const canvasEl = c?.canvas;
+  if (!ds || !canvasEl) return null;
+  const rect = canvasEl.getBoundingClientRect();
+  return {
+    x: rect.left + (pos[0] + ds.offset[0]) * ds.scale,
+    y: rect.top + (pos[1] + ds.offset[1]) * ds.scale,
+  };
+}
+
 function drawApproachIndicators(canvas) {
   if (!enabled) return;
   const info = getConnectingInfo();
@@ -90,6 +164,17 @@ function drawApproachIndicators(canvas) {
   const toScreenX = (gx) => (gx + offset[0]) * scale;
   const toScreenY = (gy) => (gy + offset[1]) * scale;
 
+  // Nodes 2.0: slot dots are DOM, so getConnectionPos() drifts. Snapshot the
+  // rendered dot positions once per frame and convert viewport -> graph.
+  const vue = isVueNodes();
+  let vueMap = null;
+  let crect = null;
+  if (vue) {
+    vueMap = buildVueSlotMap();
+    const canvasEl = canvas.canvas;
+    crect = canvasEl ? canvasEl.getBoundingClientRect() : { left: 0, top: 0 };
+  }
+
   const t = performance.now() / 1000;
   const pulse = 0.5 + 0.5 * Math.sin(t * 5);
 
@@ -103,13 +188,22 @@ function drawApproachIndicators(canvas) {
       const slot = slots[i];
       if (!typesCompatible(info.sourceType, slot.type)) continue;
 
-      let pos;
-      try {
-        pos = node.getConnectionPos(info.lookingForInputs, i);
-      } catch (e) {
-        continue;
+      let pos; // graph coords
+      if (vue) {
+        const vp = vueMap.get(vueSlotKey(node, i, info.lookingForInputs));
+        if (!vp) continue;
+        pos = [
+          (vp.x - crect.left) / scale - offset[0],
+          (vp.y - crect.top) / scale - offset[1],
+        ];
+      } else {
+        try {
+          pos = node.getConnectionPos(info.lookingForInputs, i);
+        } catch (e) {
+          continue;
+        }
+        if (!pos) continue;
       }
-      if (!pos) continue;
 
       const dx = pos[0] - cursor[0];
       const dy = pos[1] - cursor[1];
@@ -187,21 +281,11 @@ function spawnConnectionSparkles(node, slotIndex) {
   const c = app.canvas;
   if (!c) return;
 
-  let pos;
-  try {
-    pos = node.getConnectionPos(true, slotIndex);
-  } catch (e) {
-    return;
-  }
-  if (!pos) return;
-
-  const ds = c.ds;
-  const canvasEl = c.canvas;
-  if (!ds || !canvasEl) return;
-
-  const rect = canvasEl.getBoundingClientRect();
-  const cx = rect.left + (pos[0] + ds.offset[0]) * ds.scale;
-  const cy = rect.top + (pos[1] + ds.offset[1]) * ds.scale;
+  // Target of a new connection is always an input slot.
+  const vp = slotViewportPos(node, slotIndex, true);
+  if (!vp) return;
+  const cx = vp.x;
+  const cy = vp.y;
 
   const pad = 60;
   const svgNS = "http://www.w3.org/2000/svg";
