@@ -138,7 +138,13 @@ export function injectVueLabelCSS() {
   s.textContent = `
 .pix-lbl-vue {
     display: inline-block; box-sizing: border-box; white-space: pre;
-    cursor: pointer; user-select: none; overflow: hidden; max-width: 100%;
+    user-select: none; overflow: hidden; max-width: 100%;
+    /* pointer-events:none is CRITICAL: Label is a title-less node, so its whole
+       body is this element. If it captured the mouse, the place-on-canvas click
+       (and node dragging) would land on it instead of the node, and the node
+       would get stuck to the cursor. With none, clicks pass through to the node;
+       editing is via double-click (legacy) / right-click "Edit Label". */
+    pointer-events: none;
 }
 /* Make the Label node read as FLOATING TEXT in Nodes 2.0: hide the Vue node
    card/frame at rest so only the label shows (the hover toolbar + resize

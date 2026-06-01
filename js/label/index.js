@@ -57,21 +57,20 @@ function setupVueLabel(node) {
     getMinHeight: () => Math.max(measureLabel(node._labelCfg || DEFAULTS).h, 16),
   });
   applyAdaptiveCanvasOnly(w);
+  // No DOM listener on the div: it's pointer-events:none so placement/drag work.
+  // Editing opens via onDblClick (legacy double-click) + the right-click "Edit
+  // Label" menu (reliable in both renderers - see openLabelEditor below).
+}
 
-  // Double-click the label to open the editor. In Nodes 2.0 LiteGraph's
-  // onDblClick is unreliable, but the DOM event fires; stopPropagation so the
-  // node's own dblclick (rename, etc.) doesn't also fire, and a single-open
-  // guard prevents stacking two editor overlays.
-  div.addEventListener("dblclick", (e) => {
-    e.stopPropagation();
-    e.preventDefault();
-    if (node._pixLblEditorOpen) return;
-    node._pixLblEditorOpen = true;
-    const ed = new LabelEditor(node);
-    const origClose = ed.close.bind(ed);
-    ed.close = () => { node._pixLblEditorOpen = false; origClose(); };
-    ed.open();
-  });
+// Open the editor for a Label node, guarded so a second trigger doesn't stack
+// two overlays. Shared by onDblClick (legacy) and the right-click menu (Vue).
+function openLabelEditor(node) {
+  if (node._pixLblEditorOpen) return;
+  node._pixLblEditorOpen = true;
+  const ed = new LabelEditor(node);
+  const origClose = ed.close.bind(ed);
+  ed.close = () => { node._pixLblEditorOpen = false; origClose(); };
+  ed.open();
 }
 
 // ─── Extension Registration ──────────────────────────────────
@@ -178,9 +177,30 @@ app.registerExtension({
     // ── Double-click → open editor ───────────────────────
     const _origDblClick = nodeType.prototype.onDblClick;
     nodeType.prototype.onDblClick = function (e, pos) {
-      const editor = new LabelEditor(this);
-      editor.open();
+      openLabelEditor(this);
       return true;
     };
   },
 });
+
+// ── Right-click menu: "Edit Label" ──────────────────────────────
+// A reliable edit path in BOTH renderers (double-click via onDblClick is not
+// guaranteed to fire in Nodes 2.0, and the label body is pointer-events:none so
+// it can't host its own dblclick). Patches LGraphCanvas.getNodeMenuOptions once
+// (same pattern as Mute Switch); the _patched flag guards extension hot-reload.
+if (typeof LGraphCanvas !== "undefined"
+    && LGraphCanvas?.prototype?.getNodeMenuOptions
+    && !LGraphCanvas.prototype._pixLblMenuPatched) {
+  LGraphCanvas.prototype._pixLblMenuPatched = true;
+  const _origGetNodeMenu = LGraphCanvas.prototype.getNodeMenuOptions;
+  LGraphCanvas.prototype.getNodeMenuOptions = function (node) {
+    const options = _origGetNodeMenu.apply(this, arguments);
+    if (node && (node.type === "PixaromaLabel" || node.comfyClass === "PixaromaLabel")) {
+      options.push(null, {
+        content: "✏️ Edit Label",
+        callback: () => openLabelEditor(node),
+      });
+    }
+    return options;
+  };
+}
