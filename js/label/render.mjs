@@ -156,6 +156,18 @@ export function injectVueLabelCSS() {
     box-shadow: none !important;
 }
 .lg-node:has(.pix-lbl-vue) .lg-node-content { padding: 0 !important; }
+/* THE PLACEMENT FIX: ComfyUI wraps our label in widget containers
+   (.lg-node-widgets > .lg-node-widget > a flex host) that are ALL
+   pointer-events:auto, so they eat the place-on-canvas / drag click (the node
+   itself is pointer-events:none - all node interaction goes through the canvas
+   by hit-test). Make the ENTIRE widget subtree of a Label node click-through so
+   placement / drag / right-click reach the canvas. Safe because a Label has no
+   interactive controls in its body - it's display-only text. Verified via the
+   ancestor-chain console diagnostic (2026-06-01). */
+.lg-node:has(.pix-lbl-vue) .lg-node-widgets,
+.lg-node:has(.pix-lbl-vue) .lg-node-widgets * {
+    pointer-events: none !important;
+}
 `;
   document.head.appendChild(s);
 }
