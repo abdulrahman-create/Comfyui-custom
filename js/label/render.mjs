@@ -177,6 +177,16 @@ export function injectVueLabelCSS() {
        is resized to the real text width a frame later by _pixLblFit). */
     overflow: visible !important;
 }
+/* Tighten the selection / resize box to HUG the label (console diagnostic
+   2026-06-01 showed the node sat in a larger box): drop the Vue node min-width
+   so node.size can match the label, remove the widget-grid gaps, and hide the
+   14px opacity-0 reorder-handle gutter that offsets the label right. Combined
+   with _pixLblFit setting node.size to the real label size, the handles wrap
+   the label instead of a wider node box. */
+.lg-node:has(.pix-lbl-vue) { min-width: 0 !important; }
+.lg-node:has(.pix-lbl-vue) .lg-node-widgets,
+.lg-node:has(.pix-lbl-vue) .lg-node-widget { gap: 0 !important; }
+.lg-node:has(.pix-lbl-vue) .lg-node-widget > *:first-child { display: none !important; }
 `;
   document.head.appendChild(s);
 }

@@ -1,6 +1,7 @@
 import { app } from "/scripts/app.js";
 import { allow_debug, hideJsonWidget } from "../shared/index.mjs";
 import { isVueNodes, applyAdaptiveCanvasOnly } from "../shared/nodes2.mjs";
+import { isGraphLoading } from "../shared/graph_loading.mjs";
 import { DEFAULTS, fontStr, measureLabel, applyLabelToDom, injectVueLabelCSS } from "./render.mjs";
 import { parseCfg, LabelEditor } from "./core.mjs";
 
@@ -59,10 +60,14 @@ function setupVueLabel(node) {
   // user action) - NOT on load, so it never dirties a saved workflow.
   node._pixLblFit = () => {
     requestAnimationFrame(() => {
+      // Never resize during a workflow load - the saved node.size is trusted
+      // (resizing on load would falsely flag the workflow modified, Vue Compat
+      // #18). Only fresh creation + genuine edits (saveCfg) resize.
+      if (isGraphLoading()) return;
       const el = node._pixLblVueEl;
       if (!el || !el.isConnected) return;
-      const nw = Math.max(Math.ceil(el.scrollWidth), 60);
-      const nh = Math.max(Math.ceil(el.scrollHeight), 30);
+      const nw = Math.max(Math.ceil(el.scrollWidth), 30);
+      const nh = Math.max(Math.ceil(el.scrollHeight), 20);
       if (Math.abs((node.size?.[0] || 0) - nw) > 1 || Math.abs((node.size?.[1] || 0) - nh) > 1) {
         if (typeof node.setSize === "function") node.setSize([nw, nh]);
         else if (node.size) { node.size[0] = nw; node.size[1] = nh; }
@@ -76,6 +81,9 @@ function setupVueLabel(node) {
     getMinHeight: () => Math.max(measureLabel(node._labelCfg || DEFAULTS).h, 16),
   });
   applyAdaptiveCanvasOnly(w);
+  // Snap the node to the real rendered label on a fresh drop too (not just on
+  // edit), so the selection box hugs it. Gated by isGraphLoading inside _pixLblFit.
+  node._pixLblFit();
   // No DOM listener on the div: it's pointer-events:none so placement/drag work.
   // Editing opens via onDblClick (legacy double-click) + the right-click "Edit
   // Label" menu (reliable in both renderers - see openLabelEditor below).
