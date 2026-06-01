@@ -177,16 +177,35 @@ export function injectVueLabelCSS() {
        is resized to the real text width a frame later by _pixLblFit). */
     overflow: visible !important;
 }
-/* Tighten the selection / resize box to HUG the label (console diagnostic
-   2026-06-01 showed the node sat in a larger box): drop the Vue node min-width
-   so node.size can match the label, remove the widget-grid gaps, and hide the
-   14px opacity-0 reorder-handle gutter that offsets the label right. Combined
-   with _pixLblFit setting node.size to the real label size, the handles wrap
-   the label instead of a wider node box. */
-.lg-node:has(.pix-lbl-vue) { min-width: 0 !important; }
-.lg-node:has(.pix-lbl-vue) .lg-node-widgets,
+/* Tighten the selection / resize box to HUG the label. Every floor below was
+   found by reading the compiled frontend (agent investigation 2026-06-01):
+   a hardcoded 225px node min-width, a widget grid that forces 80px+125px
+   columns, a 12px reorder-handle gutter + 12px right padding, ~20px of body
+   padding (pt-1 pb-3 gap-1), and a selection outline drawn 7px OUTSIDE the node.
+   Combined with _pixLblFit writing node.size = the real label size, this makes
+   the box wrap the label. */
+/* 1. Kill the 225px min-width on the node + its frame wrappers. */
+.lg-node:has(.pix-lbl-vue),
+.lg-node:has(.pix-lbl-vue) > div,
+.lg-node:has(.pix-lbl-vue) > div > div { min-width: 0 !important; }
+/* 2. Collapse the widget grid to a single content-sized column (drops the
+   80px+125px column minimums, the right padding, row gaps, and the gutter). */
+.lg-node:has(.pix-lbl-vue) .lg-node-widgets {
+    grid-template-columns: max-content !important;
+    padding-right: 0 !important;
+    row-gap: 0 !important;
+    gap: 0 !important;
+}
 .lg-node:has(.pix-lbl-vue) .lg-node-widget { gap: 0 !important; }
 .lg-node:has(.pix-lbl-vue) .lg-node-widget > *:first-child { display: none !important; }
+/* 3. Remove the node body's vertical padding + gap (pt-1 pb-3 gap-1). */
+.lg-node:has(.pix-lbl-vue) [class*="bg-component-node-background"] {
+    padding: 0 !important;
+    gap: 0 !important;
+}
+/* 4. Pull the selection outline in from -7px so the handles hug the box. */
+.lg-node:has(.pix-lbl-vue) [data-testid="node-state-outline-overlay"],
+.lg-node:has(.pix-lbl-vue) > div.absolute.outline-none { inset: -2px !important; }
 `;
   document.head.appendChild(s);
 }

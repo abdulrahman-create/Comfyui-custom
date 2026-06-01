@@ -69,8 +69,12 @@ function setupVueLabel(node) {
       const nw = Math.max(Math.ceil(el.scrollWidth), 30);
       const nh = Math.max(Math.ceil(el.scrollHeight), 20);
       if (Math.abs((node.size?.[0] || 0) - nw) > 1 || Math.abs((node.size?.[1] || 0) - nh) > 1) {
-        if (typeof node.setSize === "function") node.setSize([nw, nh]);
-        else if (node.size) { node.size[0] = nw; node.size[1] = nh; }
+        // Write node.size DIRECTLY, not via setSize: the frontend's resize path
+        // clamps width to a hardcoded 225px minimum (Math.max(width, 225)), which
+        // would block shrinking a short label below 225. A direct write sets the
+        // --node-width var the renderer reads, and the CSS above lifts the 225
+        // min-width floor so it actually renders narrow.
+        if (node.size) { node.size[0] = nw; node.size[1] = nh; }
         node.graph?.setDirtyCanvas?.(true, true);
       }
     });
