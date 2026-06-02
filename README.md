@@ -67,6 +67,9 @@ The best way to see the difference between two images. Easily compare them side-
 ![Image Compare Node](workflows/Image%20Compare%20Pixaroma%20Workflow.jpg?v=2)
 ![Image Compare Editor](workflows/Image%20Compare%20Pixaroma%20Workflow%20v2.jpg?v=2)
 
+### ⏸️ Pause Image Pixaroma
+A checkpoint you drop into your workflow to stop and look at the image before running the slow part (like an upscale or a second pass). Press Run and it pauses there, showing you the image while the rest of the workflow waits. Like what you see? Hit **Continue** and only the steps after it run - the heavy generation is skipped, so it's fast, and you upscale the exact image you saw. Don't like it? Hit **Regenerate** for a fresh one, or change something upstream and run again. Flip the toggle to **Pass** to run everything in one go. **Copy**, **Save to disk**, **Save to output**, and **Open** buttons act right on the previewed image. Works in both the classic and the new node interface.
+
 ### 🖼️ Load Image Pixaroma
 A drop-in replacement for ComfyUI's native LoadImage with everything you'd want in one node. Same upload / drag-drop / Ctrl+V paste / multi-frame / alpha-to-mask behavior as native, plus inline resize: pick from **Off**, **Max megapixels**, **Longest side**, **Scale by ×**, **Fit inside**, **Crop to fill**, or **Match aspect ratio** with a sub-toggle for Crop or Pad (12 ratio presets + Custom, with a Pixaroma color picker for the Pad color). **Snap to /8/16/32/64**, **Resample picker** (Auto / Nearest / Bilinear / Bicubic / Lanczos with one-line hints under each), and an **Allow upscaling** toggle apply on top. Numeric fields accept math expressions (`1024+64`, `512*2`), ↑↓ arrow stepping (Shift = 10×), and have visible +/- spinner buttons. A live **Input → Output** info bar with tiny aspect-ratio rectangles shows you exactly what dimensions the workflow will produce as you tweak settings. Outputs include `IMAGE`, `MASK`, `WIDTH`, `HEIGHT`, `FILENAME` (no extension), `ORIGINAL_WIDTH`, `ORIGINAL_HEIGHT` - eliminates downstream Get Image Size + Image Scale chains in most workflows.
 
@@ -244,6 +247,12 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 ## 🛠 Changelog
 
 > 💡 **After updating Pixaroma:** hard-refresh your ComfyUI browser tab with **Ctrl+Shift+R** (or **Cmd+Shift+R** on Mac). The browser keeps old node visuals cached, and without a hard refresh you may still see the previous version of a node even though the update installed correctly.
+
+### **June 2, 2026 · v1.3.72**
+- **NEW: Pause Image Pixaroma.** Drop it into your workflow to pause and preview the image before running the slow part (like an upscale or a second pass). Press Run and it stops there and shows you the image; the rest of the workflow waits. Happy with it? Hit **Continue** and only the steps after it run - the heavy generation is skipped, so it's fast and you upscale the exact image you saw. Not happy? Hit **Regenerate** for a new one, or change something upstream and run again. Flip the toggle to **Pass** to run everything in one go. You can **Copy**, **Save to disk**, **Save to output**, or **Open** the previewed image right from the node.
+- **Image Compare: sharper preview + save buttons.** The compared image now stays crisp when you zoom into the node. Added **Save to disk** and **Save to output** buttons (next to Copy) that save whichever image you're currently showing.
+- **Image Crop now appears when you drag an image wire.** Before, you could only find it by double-clicking the canvas; now it shows up in the search when you drag a wire out of any image output.
+- **Align: nodes no longer jump or move the wrong node when you resize.** With Align on in the new node interface, resizing a node no longer makes it jump, and resizing one node no longer drags a different selected node along with it.
 
 ### **June 1, 2026 · v1.3.70–1.3.71**
 - **Every Pixaroma node now works in ComfyUI's new "Nodes 2.0" interface.** The last few were finished off: **Mute Switch** (the on/off scene switcher now shows its mode pills and per-row switches in the new interface), **Image Resize** (its INPUT→OUTPUT size cards and live readout), and **Label** (the floating text label — the trickiest one, since it has no title bar and sizes itself to your text; placing, dragging, double-click-to-edit, and a snug box around the text all work now). All of these display and behave correctly in both the classic and the new interface.
