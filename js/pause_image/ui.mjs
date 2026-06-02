@@ -9,11 +9,12 @@ import { getState } from "./state.mjs";
 
 const HEADER_H = 96;        // toggle + status + buttons block
 const PREVIEW_MIN_H = 150;  // minimum preview area
+const DIMS_H = 16;          // the dimensions line under the preview
 export const NODE_MIN_W = 240;
 // Constant getMinHeight (Vue Compat #18): a fixed number is byte-identical on
 // every save/load, so node.size never jitters and the workflow is never
 // falsely flagged "modified".
-export const NODE_MIN_H = HEADER_H + PREVIEW_MIN_H;
+export const NODE_MIN_H = HEADER_H + PREVIEW_MIN_H + DIMS_H;
 
 function injectCSS() {
   if (document.getElementById("pix-pause-css")) return;
@@ -42,8 +43,8 @@ function injectCSS() {
     .pix-pi-img { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; display:none; }
     .pix-pi-empty { position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
       text-align:center; color:#777; font-size:11px; padding:8px; box-sizing:border-box; }
-    .pix-pi-dims { position:absolute; left:0; right:0; bottom:4px; text-align:center; font-size:10px;
-      color:#aaa; text-shadow:0 1px 2px #000; pointer-events:none; }
+    .pix-pi-dims { flex:0 0 auto; text-align:center; font-size:10px; color:#aaa;
+      min-height:13px; line-height:13px; }
   `;
   document.head.appendChild(s);
 }
@@ -94,11 +95,13 @@ export function buildPauseWidget(node, callbacks) {
   const empty = document.createElement("div");
   empty.className = "pix-pi-empty";
   empty.textContent = "Press Run to preview the image here";
+  preview.append(img, empty);
+
+  // Dimensions line sits BELOW the preview (its own row), not over the image.
   const dims = document.createElement("div");
   dims.className = "pix-pi-dims";
-  preview.append(img, empty, dims);
 
-  root.append(toggle, status, btns, preview);
+  root.append(toggle, status, btns, preview, dims);
 
   node._pixPauseEls = { segPause, segPass, status, btnContinue, btnRegen, img, empty, dims };
   return root;

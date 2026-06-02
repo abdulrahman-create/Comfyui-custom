@@ -174,6 +174,30 @@ function collectDownstream(consumers, startId) {
   return seen;
 }
 
+// Grow `keep` to include every ancestor of every node already in it (walk the
+// input link arrays [originId, originSlot] backward to closure). Continue uses
+// this so a kept downstream node also keeps its OWN side dependencies (e.g. an
+// upscaler's separate model / vae loaders), which are NOT downstream of the
+// gate but are needed to run the downstream branch.
+function addAncestors(output, keep) {
+  const stack = [...keep];
+  while (stack.length) {
+    const cur = stack.pop();
+    const inputs = output[cur]?.inputs;
+    if (!inputs) continue;
+    for (const k in inputs) {
+      const v = inputs[k];
+      if (Array.isArray(v) && v.length >= 1) {
+        const origin = String(v[0]);
+        if (output[origin] && !keep.has(origin)) {
+          keep.add(origin);
+          stack.push(origin);
+        }
+      }
+    }
+  }
+}
+
 const _origGraphToPrompt = app.graphToPrompt.bind(app);
 app.graphToPrompt = async function (...args) {
   const result = await _origGraphToPrompt(...args);
@@ -207,11 +231,23 @@ app.graphToPrompt = async function (...args) {
         for (const d of downstream) delete out[d];
         entry.inputs[HIDDEN_INPUT] = JSON.stringify({ mode: "pause" });
       } else if (mode === "continue") {
-        // Skip the upstream: remove the gate's own image input link so the
-        // heavy upstream is orphaned (ComfyUI runs only ancestors of output
-        // nodes -> it's skipped). Python reloads the snapshot instead.
+        // Skip the upstream ENTIRELY and run only the rest from the snapshot.
+        // Detaching the gate's own image link is not enough on its own: any
+        // OTHER node that consumed the gate's upstream (e.g. a Save Image wired
+        // directly off VAE Decode, in parallel with the gate) is still an
+        // output and would pull the whole model -> sampler -> decode chain
+        // again. So keep ONLY the gate, its downstream branch, and that
+        // branch's own side dependencies (e.g. the upscaler's model / vae
+        // loaders), and delete everything else. The gate reloads the snapshot.
         delete entry.inputs.image;
         entry.inputs[HIDDEN_INPUT] = JSON.stringify({ mode: "continue" });
+        const consumers2 = buildConsumers(out);
+        const keep = collectDownstream(consumers2, id);  // strings
+        keep.add(String(id));                            // the gate itself
+        addAncestors(out, keep);                         // + downstream's deps
+        for (const nid of Object.keys(out)) {
+          if (!keep.has(String(nid))) delete out[nid];
+        }
       } else {
         // Pass: no prune, whole workflow runs.
         entry.inputs[HIDDEN_INPUT] = JSON.stringify({ mode: "pass" });
