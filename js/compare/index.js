@@ -462,12 +462,11 @@ function paintCompare(ctx, node, W, H, mouse) {
   ctx.restore();
 
   // ── Utility buttons (Show 1 / Show 2 only): Save · Disk · Copy ──
-  // Right side of row 2, aligned under Up Down / Overlay / Difference. They act
-  // on the CURRENTLY SHOWN image (Save N -> output, Disk N -> file dialog,
-  // Copy N -> clipboard). Same height as row 1 so the node never changes height
-  // when toggling Show 1/2. Hidden in comparison modes so the hint / slider keep
-  // full width (mutually exclusive with the slider, which only renders when
-  // _cmpShowWhich === 0). The shortened SHOW_HINTS leave room on the left.
+  // Fill the full width of row 2 (utilBtnRects), each spanning two of row 1's
+  // columns. They act on the CURRENTLY SHOWN image (Save N -> output, Disk N ->
+  // file dialog, Copy N -> clipboard). Same height as row 1 so the node never
+  // changes height when toggling Show 1/2. Hidden in comparison modes, where
+  // row 2 is the mode hint / opacity slider instead.
   if (node._cmpShowWhich !== 0) {
     const which = node._cmpShowWhich;
     const fk = node._cmpFlashKey;
