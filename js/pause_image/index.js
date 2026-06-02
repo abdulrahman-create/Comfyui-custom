@@ -239,12 +239,44 @@ app.graphToPrompt = async function (...args) {
         // again. So keep ONLY the gate, its downstream branch, and that
         // branch's own side dependencies (e.g. the upscaler's model / vae
         // loaders), and delete everything else. The gate reloads the snapshot.
+
+        // Capture the gate's own image SOURCE (origin node + slot) before
+        // detaching it - needed for the diamond reroute below.
+        const gateSrc = Array.isArray(entry.inputs.image)
+          ? [String(entry.inputs.image[0]), entry.inputs.image[1]]
+          : null;
+
         delete entry.inputs.image;
         entry.inputs[HIDDEN_INPUT] = JSON.stringify({ mode: "continue" });
+
         const consumers2 = buildConsumers(out);
-        const keep = collectDownstream(consumers2, id);  // strings
-        keep.add(String(id));                            // the gate itself
-        addAncestors(out, keep);                         // + downstream's deps
+        const downstream = collectDownstream(consumers2, id);  // strings
+
+        // Diamond reroute: a node AFTER the gate (e.g. an Image Compare's
+        // "before" input) might also read the gate's EXACT original-image
+        // source (the pre-gate image, e.g. VAE Decode). Left alone, that one
+        // link pulls the whole upstream back alive on Continue. Since the
+        // gate's snapshot IS that same image, reroute those downstream links to
+        // the gate's own output so nothing after the gate reaches back before
+        // it - the upstream then drops out of `keep` and is skipped. Only an
+        // EXACT (origin, slot) match is rerouted, so a different pre-gate image
+        // is never silently swapped.
+        if (gateSrc) {
+          for (const dId of downstream) {
+            const dInputs = out[dId]?.inputs;
+            if (!dInputs) continue;
+            for (const k in dInputs) {
+              const v = dInputs[k];
+              if (Array.isArray(v) && String(v[0]) === gateSrc[0] && v[1] === gateSrc[1]) {
+                dInputs[k] = [String(id), 0];  // read the gate's snapshot output
+              }
+            }
+          }
+        }
+
+        const keep = new Set(downstream);
+        keep.add(String(id));    // the gate itself
+        addAncestors(out, keep); // + downstream's remaining side deps
         for (const nid of Object.keys(out)) {
           if (!keep.has(String(nid))) delete out[nid];
         }
