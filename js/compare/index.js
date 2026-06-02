@@ -69,8 +69,9 @@ function utilBtnRects(W) {
   const bw = Math.floor((rightEdge - L.leftPad - L.gap * 2) / 3);
   return [0, 1, 2].map((i) => ({ x: L.leftPad + i * (bw + L.gap), y: ROW2_Y, w: bw, h: BTN_H }));
 }
-function saveRect(W) { return utilBtnRects(W)[0]; }
-function diskRect(W) { return utilBtnRects(W)[1]; }
+// Left -> right: Save to disk · Save to output · Copy image.
+function diskRect(W) { return utilBtnRects(W)[0]; }
+function saveRect(W) { return utilBtnRects(W)[1]; }
 function copyRect(W) { return utilBtnRects(W)[2]; }
 // Opacity-slider track geometry, derived PURELY from the body width. The
 // hit-test (cmpDown/cmpMove) computes this on demand instead of reading a value
@@ -471,10 +472,10 @@ function paintCompare(ctx, node, W, H, mouse) {
     const which = node._cmpShowWhich;
     const fk = node._cmpFlashKey;
     const ft = node._cmpFlashText;
-    const sR = saveRect(W), dR = diskRect(W), cR = copyRect(W);
-    paintUtilBtn(ctx, sR, fk === "save" ? ft : `Save ${which}`, hov(sR), fk === "save");
-    paintUtilBtn(ctx, dR, fk === "disk" ? ft : `Disk ${which}`, hov(dR), fk === "disk");
-    paintUtilBtn(ctx, cR, fk === "copy" ? ft : `Copy ${which}`, hov(cR), fk === "copy");
+    const dR = diskRect(W), sR = saveRect(W), cR = copyRect(W);
+    paintUtilBtn(ctx, dR, fk === "disk" ? ft : `Save to disk ${which}`, hov(dR), fk === "disk");
+    paintUtilBtn(ctx, sR, fk === "save" ? ft : `Save to output ${which}`, hov(sR), fk === "save");
+    paintUtilBtn(ctx, cR, fk === "copy" ? ft : `Copy image ${which}`, hov(cR), fk === "copy");
   }
 
   // ── Image area ──
@@ -610,8 +611,8 @@ function cmpDown(node, lx, ly, W, H) {
   // Save / Disk / Copy (only visible in Show 1/2). Checked first; their rects
   // don't overlap the toggle/mode buttons so this is just belt-and-braces.
   if (node._cmpShowWhich !== 0) {
-    if (inside(pos, saveRect(W))) { saveShownToOutput(node); return true; }
     if (inside(pos, diskRect(W))) { saveShownToDisk(node); return true; }
+    if (inside(pos, saveRect(W))) { saveShownToOutput(node); return true; }
     if (inside(pos, copyRect(W))) { copyShownImage(node); return true; }
   }
   // Show toggle: toggles between Show 1 and Show 2
