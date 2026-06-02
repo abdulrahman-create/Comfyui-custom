@@ -12,11 +12,6 @@ const MODE_HINTS = [
   "",
   "Shows pixel differences between images",
 ];
-const SHOW_HINTS = [
-  "Showing image 1",
-  "Showing image 2",
-];
-
 // Layout constants
 const BTN_GAP = 3;
 const BTN_H = 18;
@@ -63,16 +58,20 @@ function hintRect(W) {
   const L = rowLayout(W);
   return { x: L.leftPad, y: ROW2_Y, w: L.bw * 6 + L.gap * 5, h: BTN_H };
 }
-function copyRect(W) {
-  // Stacks directly under Difference (modeRect(4)), same width.
-  const last = modeRect(W, 4);
-  return { x: last.x, y: ROW2_Y, w: last.w, h: BTN_H };
+// In Show 1 / Show 2 the three utility buttons (Save -> output, Disk -> file
+// dialog, Copy -> clipboard) fill the FULL width of row 2 - each spans two of
+// row 1's six columns, so they align to the grid with no dead gap. They act on
+// the CURRENTLY SHOWN image. Hidden in comparison modes, where row 2 is the
+// mode hint / opacity slider.
+function utilBtnRects(W) {
+  const L = rowLayout(W);
+  const rightEdge = L.leftPad + L.bw * 6 + L.gap * 5; // matches row 1's right edge
+  const bw = Math.floor((rightEdge - L.leftPad - L.gap * 2) / 3);
+  return [0, 1, 2].map((i) => ({ x: L.leftPad + i * (bw + L.gap), y: ROW2_Y, w: bw, h: BTN_H }));
 }
-// Save (-> output) and Disk (-> file dialog) sit under Up Down (modeRect 2) and
-// Overlay (modeRect 3) on row 2, left of Copy (under Difference). All three only
-// show in Show 1 / Show 2 and act on the CURRENTLY SHOWN image.
-function saveRect(W) { const r = modeRect(W, 2); return { x: r.x, y: ROW2_Y, w: r.w, h: BTN_H }; }
-function diskRect(W) { const r = modeRect(W, 3); return { x: r.x, y: ROW2_Y, w: r.w, h: BTN_H }; }
+function saveRect(W) { return utilBtnRects(W)[0]; }
+function diskRect(W) { return utilBtnRects(W)[1]; }
+function copyRect(W) { return utilBtnRects(W)[2]; }
 // Opacity-slider track geometry, derived PURELY from the body width. The
 // hit-test (cmpDown/cmpMove) computes this on demand instead of reading a value
 // stashed during the last paint — important in Nodes 2.0 where the canvas only
@@ -451,15 +450,14 @@ function paintCompare(ctx, node, W, H, mouse) {
       r2.y + r2.h / 2,
     );
 
-  } else {
+  } else if (node._cmpShowWhich === 0) {
+    // Compare mode: row 2 shows the mode hint. (In Show 1 / Show 2 the
+    // Save/Disk/Copy buttons fill row 2 instead, so no hint is drawn there.)
     ctx.fillStyle = "#999";
     ctx.font = "9px 'Segoe UI',sans-serif";
     ctx.textAlign = "left";
     ctx.textBaseline = "middle";
-    const hint = node._cmpShowWhich !== 0
-      ? SHOW_HINTS[node._cmpShowWhich - 1]
-      : (MODE_HINTS[node._cmpMode] || "");
-    ctx.fillText(hint, r2.x, r2.y + r2.h / 2);
+    ctx.fillText(MODE_HINTS[node._cmpMode] || "", r2.x, r2.y + r2.h / 2);
   }
   ctx.restore();
 
