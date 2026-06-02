@@ -8,6 +8,39 @@ import folder_paths
 from .node_ref import any_type, FlexibleOptionalInputType
 
 
+class _CropOptionalInputs(FlexibleOptionalInputType):
+    """FlexibleOptionalInputType that ALSO declares a concrete optional IMAGE
+    'image' input.
+
+    The base FlexibleOptionalInputType is an empty dict (it only overrides
+    __contains__ / __getitem__), so the node's registered schema lists NO inputs
+    and the node never appears when you drag from an IMAGE output and search for
+    a compatible node. By storing a real 'image' entry, the schema sent to the
+    frontend includes an IMAGE input (so the drag-search finds it), while every
+    OTHER input name (the crop-data widget, etc.) still resolves to any_type
+    exactly as before - so drag-drop / paste / the dynamic widget all keep
+    working unchanged.
+    """
+
+    def __init__(self, type):
+        super().__init__(type)
+        self["image"] = ("IMAGE", {
+            "tooltip": (
+                "Wire any upstream IMAGE here to crop it (Load Image, VAE "
+                "Decode, ControlNet output, anything). You can also drag-drop an "
+                "image file onto the node body or paste one with Ctrl+V - those "
+                "load the image directly and disconnect this wire."
+            ),
+        })
+
+    def __getitem__(self, key):
+        # A real declared key ('image') returns its real type; anything else
+        # falls back to any_type so unknown inputs still validate.
+        if dict.__contains__(self, key):
+            return dict.__getitem__(self, key)
+        return (self.type,)
+
+
 class PixaromaCrop:
     DESCRIPTION = (
         "Image Crop Pixaroma - crop any image visually instead of typing pixel "
@@ -28,15 +61,16 @@ class PixaromaCrop:
         "wire).\n\n"
         "Outputs the cropped IMAGE plus its new width and height for downstream "
         "nodes.\n\n"
-        "The 'image' input slot is dynamic (added by the editor when you wire "
-        "an upstream IMAGE); its tooltip lives on the JS side."
+        "The 'image' input is optional - wire an upstream IMAGE into it, or load "
+        "an image directly via drag-drop, Ctrl+V paste, or the editor's Load "
+        "Image button (those override the wire)."
     )
 
     @classmethod
     def INPUT_TYPES(self):
         return {
             "required": {},
-            "optional": FlexibleOptionalInputType(any_type),
+            "optional": _CropOptionalInputs(any_type),
         }
 
     RETURN_TYPES = ("IMAGE", "INT", "INT")
