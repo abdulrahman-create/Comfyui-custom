@@ -35,7 +35,7 @@ function injectCSS() {
       border:1px solid rgba(255,255,255,0.18); background:rgba(255,255,255,0.05);
       color:rgba(255,255,255,0.85); font:12px sans-serif; cursor:pointer; padding:0 6px;
       box-sizing:border-box; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; user-select:none; }
-    .pix-pi-btn:hover:not(:disabled) { background:${BRAND}; border-color:${BRAND}; color:#fff; }
+    .pix-pi-btn:hover:not(:disabled) { border-color:${BRAND}; color:#fff; }
     .pix-pi-btn.primary:not(:disabled) { background:${BRAND}; border-color:${BRAND}; color:#fff; }
     .pix-pi-btn.primary:hover:not(:disabled) { background:#ff8a5e; border-color:#ff8a5e; }
     .pix-pi-btn:disabled { opacity:0.45; cursor:default; }

@@ -140,7 +140,9 @@ function paintBtn(ctx, r, label, on, hovered) {
 // the border BRAND + brightens the text (Pixaroma node UI convention #13).
 function paintUtilBtn(ctx, r, label, hover, flash) {
   ctx.save();
-  ctx.fillStyle = flash ? "#3ec371" : (hover ? BRAND : "#2a2c2e");
+  // Hover = border BRAND + brighter text, NO fill (same as the mode buttons /
+  // Pixaroma convention #13). Fill is reserved for state: green flash = success.
+  ctx.fillStyle = flash ? "#3ec371" : "#2a2c2e";
   ctx.strokeStyle = flash ? "#3ec371" : (hover ? BRAND : "#444");
   ctx.lineWidth = 1;
   ctx.beginPath();
@@ -148,7 +150,7 @@ function paintUtilBtn(ctx, r, label, hover, flash) {
   else ctx.rect(r.x, r.y, r.w, r.h);
   ctx.fill();
   ctx.stroke();
-  ctx.fillStyle = (flash || hover) ? "#fff" : "#999";
+  ctx.fillStyle = flash ? "#fff" : (hover ? "#ddd" : "#999");
   ctx.font = "9px 'Segoe UI',sans-serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
