@@ -3,7 +3,7 @@ import { api } from "/scripts/api.js";
 import { applyAdaptiveCanvasOnly } from "../shared/nodes2.mjs";
 import { getState, setGate, STATE_PROP } from "./state.mjs";
 import {
-  buildPauseWidget, renderPause, showFrame, NODE_MIN_W, NODE_MIN_H,
+  buildPauseWidget, renderPause, showFrame, frameViewUrl, NODE_MIN_W, NODE_MIN_H,
 } from "./ui.mjs";
 
 const CLASS = "PixaromaPauseImage";
@@ -30,11 +30,59 @@ async function queueWithMode(node, mode) {
   }
 }
 
+// Brief message in the status line, cleared after 2s (used by Copy / Open).
+function flash(node, msg) {
+  node._pixPauseFlash = msg;
+  renderPause(node);
+  clearTimeout(node._pixPauseFlashTimer);
+  node._pixPauseFlashTimer = setTimeout(() => {
+    node._pixPauseFlash = null;
+    renderPause(node);
+  }, 2000);
+}
+
+// Copy the previewed snapshot to the OS clipboard as PNG (one-click, like
+// Preview Image Pixaroma - not ComfyUI's internal clipspace copy).
+async function copySnapshot(node) {
+  const frame = getState(node).frame;
+  if (!frame?.filename) { flash(node, "Run once to capture an image"); return; }
+  if (!navigator.clipboard?.write || typeof ClipboardItem === "undefined") {
+    flash(node, "Clipboard not supported here");
+    return;
+  }
+  try {
+    const resp = await fetch(frameViewUrl(frame));
+    if (!resp.ok) {
+      flash(node, resp.status === 404 ? "Snapshot expired - run again" : "Copy failed");
+      return;
+    }
+    const blob = await resp.blob();
+    // Force image/png - some servers report image/x-png and ClipboardItem is strict.
+    const png = blob.type === "image/png" ? blob : new Blob([blob], { type: "image/png" });
+    await navigator.clipboard.write([new ClipboardItem({ "image/png": png })]);
+    flash(node, "Copied to clipboard");
+  } catch (err) {
+    if (err?.name === "NotAllowedError") { flash(node, "Click the page, then Copy again"); return; }
+    flash(node, "Copy failed");
+  }
+}
+
+// Open the previewed snapshot in a new browser tab for full-screen viewing.
+function openSnapshot(node) {
+  const frame = getState(node).frame;
+  if (!frame?.filename) { flash(node, "Run once to capture an image"); return; }
+  // noopener so the new tab can't reach back into the ComfyUI window.
+  const win = window.open(frameViewUrl(frame), "_blank", "noopener");
+  if (!win) flash(node, "Popup blocked");
+}
+
 function setupNode(node) {
   const root = buildPauseWidget(node, {
     onGate: (gate) => { setGate(node, gate); renderPause(node); },
     onContinue: () => queueWithMode(node, "continue"),
     onRegenerate: () => queueWithMode(node, "pause"),
+    onCopy: () => copySnapshot(node),
+    onOpen: () => openSnapshot(node),
   });
   const widget = node.addDOMWidget(WIDGET_TYPE, WIDGET_TYPE, root, {
     serialize: false,
@@ -47,7 +95,7 @@ function setupNode(node) {
   // Fresh-node default size. configure() runs AFTER onNodeCreated and restores
   // the saved size for saved workflows, so this only affects fresh drops.
   if (!node.size || node.size[0] < NODE_MIN_W) node.size[0] = 320;
-  if (!node.size || node.size[1] < NODE_MIN_H) node.size[1] = 360;
+  if (!node.size || node.size[1] < NODE_MIN_H) node.size[1] = 400;
 
   // Defer the first render until node.properties is restored (Vue Compat #8).
   queueMicrotask(() => restore(node));
@@ -92,6 +140,7 @@ app.registerExtension({
 
     const _removed = nodeType.prototype.onRemoved;
     nodeType.prototype.onRemoved = function () {
+      clearTimeout(this._pixPauseFlashTimer);
       this._pixPauseEls = null;
       return _removed?.apply(this, arguments);
     };

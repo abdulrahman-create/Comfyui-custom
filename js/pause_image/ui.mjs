@@ -7,7 +7,7 @@
 import { BRAND } from "../shared/utils.mjs";
 import { getState } from "./state.mjs";
 
-const HEADER_H = 96;        // toggle + status + buttons block
+const HEADER_H = 130;       // toggle + status + two button rows
 const PREVIEW_MIN_H = 150;  // minimum preview area
 const DIMS_H = 16;          // the dimensions line under the preview
 export const NODE_MIN_W = 240;
@@ -73,6 +73,7 @@ export function buildPauseWidget(node, callbacks) {
   const status = document.createElement("div");
   status.className = "pix-pi-status";
 
+  // Row 1: the workflow decisions.
   const btns = document.createElement("div");
   btns.className = "pix-pi-btns";
   const btnContinue = document.createElement("button");
@@ -84,9 +85,25 @@ export function buildPauseWidget(node, callbacks) {
   btnRegen.textContent = "⟳ Regenerate";
   btnRegen.title = "Roll a new image at this point (respects your seed)";
   btns.append(btnContinue, btnRegen);
+
+  // Row 2: utilities that act on the previewed image.
+  const btns2 = document.createElement("div");
+  btns2.className = "pix-pi-btns";
+  const btnCopy = document.createElement("button");
+  btnCopy.className = "pix-pi-btn";
+  btnCopy.textContent = "Copy";
+  btnCopy.title = "Copy the previewed image to the clipboard";
+  const btnOpen = document.createElement("button");
+  btnOpen.className = "pix-pi-btn";
+  btnOpen.textContent = "Open";
+  btnOpen.title = "Open the previewed image in a new browser tab";
+  btns2.append(btnCopy, btnOpen);
+
   // stopPropagation so the click doesn't reach the canvas (deselect / drag).
   btnContinue.addEventListener("click", (e) => { e.stopPropagation(); callbacks.onContinue(); });
   btnRegen.addEventListener("click", (e) => { e.stopPropagation(); callbacks.onRegenerate(); });
+  btnCopy.addEventListener("click", (e) => { e.stopPropagation(); callbacks.onCopy(); });
+  btnOpen.addEventListener("click", (e) => { e.stopPropagation(); callbacks.onOpen(); });
 
   const preview = document.createElement("div");
   preview.className = "pix-pi-preview";
@@ -101,9 +118,13 @@ export function buildPauseWidget(node, callbacks) {
   const dims = document.createElement("div");
   dims.className = "pix-pi-dims";
 
-  root.append(toggle, status, btns, preview, dims);
+  root.append(toggle, status, btns, btns2, preview, dims);
 
-  node._pixPauseEls = { segPause, segPass, status, btnContinue, btnRegen, img, empty, dims };
+  node._pixPauseEls = {
+    segPause, segPass, status,
+    btnContinue, btnRegen, btnCopy, btnOpen,
+    img, empty, dims,
+  };
   return root;
 }
 
@@ -117,11 +138,16 @@ export function renderPause(node) {
   els.segPause.classList.toggle("active", paused);
   els.segPass.classList.toggle("active", !paused);
 
-  // The action buttons only make sense in Pause mode.
+  // Continue / Regenerate only make sense in Pause mode; Copy / Open work
+  // whenever there is a captured image to act on (any mode).
   els.btnRegen.disabled = !paused;
   els.btnContinue.disabled = !paused || !s.hasSnapshot;
+  els.btnCopy.disabled = !s.hasSnapshot;
+  els.btnOpen.disabled = !s.hasSnapshot;
 
-  if (node._pixPauseBusy) {
+  if (node._pixPauseFlash) {
+    els.status.textContent = node._pixPauseFlash;
+  } else if (node._pixPauseBusy) {
     els.status.textContent = node._pixPauseBusy;
   } else if (!paused) {
     els.status.textContent = "Passing through: whole workflow runs";
@@ -132,19 +158,25 @@ export function renderPause(node) {
   }
 }
 
+// Build the /view URL for a snapshot frame. Cache-busted because the snapshot
+// filename is deterministic per node (it's overwritten each pause run).
+export function frameViewUrl(frame) {
+  const params = new URLSearchParams({
+    filename: frame.filename,
+    subfolder: frame.subfolder || "",
+    type: frame.type || "temp",
+    t: String(Date.now()),
+  });
+  return `/view?${params.toString()}`;
+}
+
 // Load + show a snapshot frame in the preview. frame = {filename, subfolder, type}.
 // On success enables Continue; on error (temp PNG cleared after a restart) shows
 // an "expired" message and disables Continue.
 export function showFrame(node, frame) {
   const els = node._pixPauseEls;
   if (!els || !frame || !frame.filename) return;
-  const params = new URLSearchParams({
-    filename: frame.filename,
-    subfolder: frame.subfolder || "",
-    type: frame.type || "temp",
-    t: String(Date.now()),  // cache-bust the deterministic snapshot filename
-  });
-  const url = `/view?${params.toString()}`;
+  const url = frameViewUrl(frame);
   const { img, empty, dims } = els;
   img.onload = () => {
     img.style.display = "block";
