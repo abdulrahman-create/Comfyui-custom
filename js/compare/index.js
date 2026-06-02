@@ -13,8 +13,8 @@ const MODE_HINTS = [
   "Shows pixel differences between images",
 ];
 const SHOW_HINTS = [
-  "Showing image 1  ·  Click again to switch",
-  "Showing image 2  ·  Click again to switch",
+  "Showing image 1",
+  "Showing image 2",
 ];
 
 // Layout constants
@@ -68,6 +68,11 @@ function copyRect(W) {
   const last = modeRect(W, 4);
   return { x: last.x, y: ROW2_Y, w: last.w, h: BTN_H };
 }
+// Save (-> output) and Disk (-> file dialog) sit under Up Down (modeRect 2) and
+// Overlay (modeRect 3) on row 2, left of Copy (under Difference). All three only
+// show in Show 1 / Show 2 and act on the CURRENTLY SHOWN image.
+function saveRect(W) { const r = modeRect(W, 2); return { x: r.x, y: ROW2_Y, w: r.w, h: BTN_H }; }
+function diskRect(W) { const r = modeRect(W, 3); return { x: r.x, y: ROW2_Y, w: r.w, h: BTN_H }; }
 // Opacity-slider track geometry, derived PURELY from the body width. The
 // hit-test (cmpDown/cmpMove) computes this on demand instead of reading a value
 // stashed during the last paint — important in Nodes 2.0 where the canvas only
@@ -92,7 +97,8 @@ function cmpCursor(node, lx, ly, W, H) {
   const p = [lx, ly];
   if (inside(p, showRect(W))) return "pointer";
   for (let i = 0; i < 5; i++) if (inside(p, modeRect(W, i))) return "pointer";
-  if (node._cmpShowWhich !== 0 && inside(p, copyRect(W))) return "pointer";
+  if (node._cmpShowWhich !== 0 &&
+      (inside(p, saveRect(W)) || inside(p, diskRect(W)) || inside(p, copyRect(W)))) return "pointer";
   if (node._cmpShowWhich === 0 && node._cmpMode === 3) {
     const g = sliderGeo(W);
     if (lx >= g.trackX - 8 && lx <= g.trackX + g.trackW + 8 &&
@@ -127,6 +133,27 @@ function paintBtn(ctx, r, label, on, hovered) {
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillText(label, r.x + r.w / 2, r.y + r.h / 2);
+}
+
+// Like paintBtn but for the row-2 utility buttons (Save / Disk / Copy), with a
+// 700ms green "Saved" / "Copied" flash after a successful action. Hover lights
+// the border BRAND + brightens the text (Pixaroma node UI convention #13).
+function paintUtilBtn(ctx, r, label, hover, flash) {
+  ctx.save();
+  ctx.fillStyle = flash ? "#3ec371" : (hover ? BRAND : "#2a2c2e");
+  ctx.strokeStyle = flash ? "#3ec371" : (hover ? BRAND : "#444");
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(r.x, r.y, r.w, r.h, 3);
+  else ctx.rect(r.x, r.y, r.w, r.h);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = (flash || hover) ? "#fff" : "#999";
+  ctx.font = "9px 'Segoe UI',sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(label, r.x + r.w / 2, r.y + r.h / 2);
+  ctx.restore();
 }
 
 // Setting ID and option list
@@ -169,25 +196,55 @@ function loadCmpImage(node, meta, idx) {
   img.src = buildCmpUrl(meta);
 }
 
-// Copy the currently-shown image (Show 1 / Show 2) to the OS clipboard
-// as PNG. Mirrors Preview Image Pixaroma Pattern #12: force MIME to
-// "image/png" (some servers return image/x-png and ClipboardItem is
-// strict), fall back to a toast if the Clipboard API is unavailable.
-// The 700ms green-flash feedback runs entirely off node._cmpCopyFlash —
-// the next two redraws (set + clear) trigger via cmpRepaint.
+// Shared toast + 700ms green-flash feedback for the row-2 utility buttons
+// (Copy / Save / Disk). flashBtn keys the flash by button id (node._cmpFlashKey)
+// so paintCompare lights the right one; the set + clear redraws go via cmpRepaint.
+function cmpToast(msg) {
+  const t = app.extensionManager?.toast;
+  if (t?.add) t.add({ severity: "warn", summary: "Compare", detail: msg, life: 2500 });
+  else console.warn("[Pixaroma] Compare:", msg);
+}
+
+// 700ms green flash on the util button identified by `key` ("copy"/"save"/"disk").
+function flashBtn(node, key, text) {
+  node._cmpFlashKey = key;
+  node._cmpFlashText = text;
+  cmpRepaint(node);
+  clearTimeout(node._cmpFlashTimer);
+  node._cmpFlashTimer = setTimeout(() => {
+    node._cmpFlashKey = null;
+    node._cmpFlashText = null;
+    cmpRepaint(node);
+  }, 700);
+}
+
+function blobToDataURL(blob) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result);
+    r.onerror = () => rej(new Error("read"));
+    r.readAsDataURL(blob);
+  });
+}
+
+// Fetch the currently-shown image (Show 1 / Show 2) as a blob, or null.
+async function shownImageBlob(node) {
+  const which = node._cmpShowWhich;
+  const img = which === 1 ? node._cmpImg1 : which === 2 ? node._cmpImg2 : null;
+  if (!img || !img.src) return null;
+  const resp = await fetch(img.src);
+  if (!resp.ok) return null;
+  return await resp.blob();
+}
+
 async function copyShownImage(node) {
   const which = node._cmpShowWhich;
   if (which !== 1 && which !== 2) return;
   const img = which === 1 ? node._cmpImg1 : node._cmpImg2;
   if (!img || !img.src) return;
-  const toast = (msg) => {
-    const t = app.extensionManager?.toast;
-    if (t?.add) t.add({ severity: "warn", summary: "Compare", detail: msg, life: 2500 });
-    else console.warn("[Pixaroma] Compare:", msg);
-  };
   try {
     if (!navigator.clipboard?.write || typeof ClipboardItem === "undefined") {
-      toast("Clipboard not available in this browser");
+      cmpToast("Clipboard not available in this browser");
       return;
     }
     const resp = await fetch(img.src);
@@ -196,16 +253,91 @@ async function copyShownImage(node) {
       ? raw
       : new Blob([await raw.arrayBuffer()], { type: "image/png" });
     await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
-    node._cmpCopyFlash = true;
-    cmpRepaint(node);
-    setTimeout(() => {
-      node._cmpCopyFlash = false;
-      cmpRepaint(node);
-    }, 700);
+    flashBtn(node, "copy", "Copied");
   } catch (err) {
     console.warn("[Pixaroma] Compare copy failed:", err);
-    toast("Could not copy to clipboard");
+    cmpToast("Could not copy to clipboard");
   }
+}
+
+// Save the currently-shown image to ComfyUI's output/ folder (workflow embedded).
+// Reuses the Preview Image server route - no new backend.
+async function saveShownToOutput(node) {
+  const which = node._cmpShowWhich;
+  if (which !== 1 && which !== 2) return;
+  try {
+    const blob = await shownImageBlob(node);
+    if (!blob) { cmpToast("Run the workflow first"); return; }
+    const image_b64 = await blobToDataURL(blob);
+    const { workflow, output } = await app.graphToPrompt();
+    const resp = await fetch("/pixaroma/api/preview/save", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ image_b64, filename_prefix: "Compare", workflow, prompt: output }),
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) { cmpToast(`Save failed: ${data.error || resp.status}`); return; }
+    flashBtn(node, "save", "Saved");
+  } catch (err) {
+    console.warn("[Pixaroma] Compare save failed:", err);
+    cmpToast("Could not save to output");
+  }
+}
+
+// Save the currently-shown image via the OS "Save as" dialog (Downloads fallback).
+async function saveShownToDisk(node) {
+  const which = node._cmpShowWhich;
+  if (which !== 1 && which !== 2) return;
+  let preparedBlob;
+  let suggestedName = "Compare.png";
+  try {
+    const blob = await shownImageBlob(node);
+    if (!blob) { cmpToast("Run the workflow first"); return; }
+    const image_b64 = await blobToDataURL(blob);
+    const { workflow, output } = await app.graphToPrompt();
+    const resp = await fetch("/pixaroma/api/preview/prepare", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ image_b64, filename_prefix: "Compare", workflow, prompt: output }),
+    });
+    if (!resp.ok) {
+      const e = await resp.json().catch(() => ({}));
+      cmpToast(`Save failed: ${e.error || resp.status}`);
+      return;
+    }
+    const data = await resp.json();
+    if (data.suggested_filename) suggestedName = data.suggested_filename;
+    preparedBlob = await (await fetch(data.image_b64)).blob();
+  } catch (err) {
+    console.warn("[Pixaroma] Compare prepare failed:", err);
+    cmpToast("Could not prepare image");
+    return;
+  }
+  if (typeof window.showSaveFilePicker === "function") {
+    try {
+      const handle = await window.showSaveFilePicker({
+        suggestedName,
+        types: [{ description: "PNG image", accept: { "image/png": [".png"] } }],
+      });
+      const w = await handle.createWritable();
+      await w.write(preparedBlob);
+      await w.close();
+      flashBtn(node, "disk", "Saved");
+    } catch (err) {
+      if (err?.name === "AbortError") return; // user cancelled
+      cmpToast("Could not save file");
+    }
+    return;
+  }
+  const url = URL.createObjectURL(preparedBlob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = suggestedName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+  flashBtn(node, "disk", "Saved");
 }
 
 function saveCompareState(node) {
@@ -331,41 +463,21 @@ function paintCompare(ctx, node, W, H, mouse) {
   }
   ctx.restore();
 
-  // ── Copy button (Show 1 / Show 2 only) ──
-  // Sits on row 2 right-aligned. Same height as the row 1 buttons so
-  // the node never changes height when the user toggles Show 1/2. In
-  // comparison modes it stays hidden so the hint text or the opacity
-  // slider keep full width. Mutually exclusive with the slider since
-  // the slider only renders when _cmpShowWhich === 0.
+  // ── Utility buttons (Show 1 / Show 2 only): Save · Disk · Copy ──
+  // Right side of row 2, aligned under Up Down / Overlay / Difference. They act
+  // on the CURRENTLY SHOWN image (Save N -> output, Disk N -> file dialog,
+  // Copy N -> clipboard). Same height as row 1 so the node never changes height
+  // when toggling Show 1/2. Hidden in comparison modes so the hint / slider keep
+  // full width (mutually exclusive with the slider, which only renders when
+  // _cmpShowWhich === 0). The shortened SHOW_HINTS leave room on the left.
   if (node._cmpShowWhich !== 0) {
-    const cr = copyRect(W);
-    // Hover via the passed local mouse pos (legacy = graph_mouse - node.pos;
-    // Nodes 2.0 = last DOM pointer pos). Both are in the same coord space
-    // as the rects we draw, so the hit-test is identical.
-    let hover = false;
-    if (mouse) {
-      hover = mouse.x >= cr.x && mouse.x <= cr.x + cr.w && mouse.y >= cr.y && mouse.y <= cr.y + cr.h;
-    }
-    const flash = !!node._cmpCopyFlash;
-    ctx.save();
-    ctx.fillStyle = flash ? "#3ec371" : (hover ? BRAND : "#2a2c2e");
-    ctx.strokeStyle = flash ? "#3ec371" : (hover ? BRAND : "#444");
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    if (ctx.roundRect) ctx.roundRect(cr.x, cr.y, cr.w, cr.h, 3);
-    else ctx.rect(cr.x, cr.y, cr.w, cr.h);
-    ctx.fill();
-    ctx.stroke();
-    ctx.fillStyle = (flash || hover) ? "#fff" : "#999";
-    ctx.font = "9px 'Segoe UI',sans-serif";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText(
-      flash ? "Copied" : "Copy " + node._cmpShowWhich,
-      cr.x + cr.w / 2,
-      cr.y + cr.h / 2,
-    );
-    ctx.restore();
+    const which = node._cmpShowWhich;
+    const fk = node._cmpFlashKey;
+    const ft = node._cmpFlashText;
+    const sR = saveRect(W), dR = diskRect(W), cR = copyRect(W);
+    paintUtilBtn(ctx, sR, fk === "save" ? ft : `Save ${which}`, hov(sR), fk === "save");
+    paintUtilBtn(ctx, dR, fk === "disk" ? ft : `Disk ${which}`, hov(dR), fk === "disk");
+    paintUtilBtn(ctx, cR, fk === "copy" ? ft : `Copy ${which}`, hov(cR), fk === "copy");
   }
 
   // ── Image area ──
@@ -498,11 +610,12 @@ function paintCompare(ctx, node, W, H, mouse) {
 // its CSS box. Coords (lx, ly) are local to the same surface paintCompare drew.
 function cmpDown(node, lx, ly, W, H) {
   const pos = [lx, ly];
-  // Copy button (only visible in Show 1/2). Checked first; rects don't
-  // overlap so this is just belt-and-braces.
-  if (node._cmpShowWhich !== 0 && inside(pos, copyRect(W))) {
-    copyShownImage(node);
-    return true;
+  // Save / Disk / Copy (only visible in Show 1/2). Checked first; their rects
+  // don't overlap the toggle/mode buttons so this is just belt-and-braces.
+  if (node._cmpShowWhich !== 0) {
+    if (inside(pos, saveRect(W))) { saveShownToOutput(node); return true; }
+    if (inside(pos, diskRect(W))) { saveShownToDisk(node); return true; }
+    if (inside(pos, copyRect(W))) { copyShownImage(node); return true; }
   }
   // Show toggle: toggles between Show 1 and Show 2
   if (inside(pos, showRect(W))) {
@@ -620,23 +733,52 @@ function createCompareDOMWidget(node) {
   widget.computeLayoutSize = () => ({ minHeight: MIN_H, minWidth: 1 });
   applyAdaptiveCanvasOnly(widget);
 
+  // Effective backing-store scale: device pixels per LAYOUT pixel. The Nodes 2.0
+  // node is CSS-transform-scaled by the graph zoom (app.canvas.ds.scale), so a
+  // canvas rendered only at layout resolution gets upscaled = blurry when the
+  // user zooms IN. Render at dpr x zoom so it stays crisp. Never below dpr
+  // (zoomed out = node smaller than layout, dpr is already plenty), and cap the
+  // long side so a deep zoom can't allocate a huge canvas.
+  const BACKING_CAP = 6000;
+  const backingScale = (cssW, cssH) => {
+    const dpr = window.devicePixelRatio || 1;
+    const zoom = Math.max(1, app.canvas?.ds?.scale || 1);
+    let s = dpr * zoom;
+    const longCss = Math.max(cssW, cssH);
+    if (longCss * s > BACKING_CAP) s = BACKING_CAP / longCss;
+    return s;
+  };
   const render = () => {
     const cssW = root.clientWidth;
     const cssH = root.clientHeight;
     if (cssW <= 0 || cssH <= 0) return;
-    const dpr = window.devicePixelRatio || 1;
-    const bw = Math.round(cssW * dpr);
-    const bh = Math.round(cssH * dpr);
+    const s = backingScale(cssW, cssH);
+    const bw = Math.round(cssW * s);
+    const bh = Math.round(cssH * s);
     if (canvas.width !== bw) canvas.width = bw;
     if (canvas.height !== bh) canvas.height = bh;
     const ctx = canvas.getContext("2d");
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.setTransform(s, 0, 0, s, 0, 0);
     ctx.clearRect(0, 0, cssW, cssH);
     node._cmpDomW = cssW;
     node._cmpDomH = cssH;
     paintCompare(ctx, node, cssW, cssH, node._cmpDomMouse || null);
   };
   node._cmpDomRender = render;
+
+  // Repaint when the graph zoom changes so the canvas re-renders at the new
+  // resolution (the ResizeObserver doesn't fire on zoom - clientWidth is
+  // unchanged). Cheap: just compare the scale each frame, repaint only on change.
+  let _lastBackScale = -1;
+  const zoomWatch = () => {
+    const w = root.clientWidth, h = root.clientHeight;
+    if (w > 0 && h > 0) {
+      const s = backingScale(w, h);
+      if (Math.abs(s - _lastBackScale) > 0.005) { _lastBackScale = s; render(); }
+    }
+    node._cmpZoomRaf = requestAnimationFrame(zoomWatch);
+  };
+  node._cmpZoomRaf = requestAnimationFrame(zoomWatch);
 
   const localPos = (e) => {
     const r = root.getBoundingClientRect();
@@ -877,6 +1019,7 @@ app.registerExtension({
     const _origRemoved = nodeType.prototype.onRemoved;
     nodeType.prototype.onRemoved = function () {
       try { this._cmpDomRO?.disconnect(); } catch {}
+      try { cancelAnimationFrame(this._cmpZoomRaf); } catch {}
       this._cmpDomRO = null;
       this._cmpDomRender = null;
       return _origRemoved ? _origRemoved.apply(this, arguments) : undefined;
