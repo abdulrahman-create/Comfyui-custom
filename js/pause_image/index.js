@@ -14,6 +14,13 @@ const WIDGET_TYPE = "pixaroma_pause_ui";
 // "continue" -> prune the upstream (skip it), reload the snapshot downstream.
 // "pause"    -> prune the downstream (stop at the gate), re-snapshot + preview.
 async function queueWithMode(node, mode) {
+  // Only THIS gate should carry a one-shot submit mode at submission time.
+  // Clear any other gate's pending transient so a rapid double-click on two
+  // different gates can't make both "continue" in the same prompt.
+  const allNodes = app.graph?._nodes || app.graph?.nodes || [];
+  for (const n of allNodes) {
+    if (n !== node && n._pixPauseSubmitMode) n._pixPauseSubmitMode = null;
+  }
   node._pixPauseSubmitMode = mode;
   node._pixPauseBusy = mode === "continue" ? "Continuing…" : "Regenerating…";
   renderPause(node);
@@ -187,21 +194,27 @@ function findNode(index, promptId) {
   return null;
 }
 
-// Build origin -> Set(consumerIds) from the prompt. In the prompt, an input
-// value that is a link is the array [originNodeId, originSlot]; everything
-// else is a literal widget value.
+// A ComfyUI prompt input link is EXACTLY [originNodeId, originSlot] - origin a
+// string/number, slot a number. Anything else (a scalar widget value, or a
+// list-valued widget that happens to be an array) is NOT a link. Matching the
+// exact shape avoids phantom edges from array-valued widgets.
+function isLink(v) {
+  return Array.isArray(v) && v.length === 2
+    && (typeof v[0] === "string" || typeof v[0] === "number")
+    && typeof v[1] === "number";
+}
+
+// Build origin -> Set(consumerIds) from the prompt.
 function buildConsumers(output) {
   const consumers = new Map();
   for (const id in output) {
     const inputs = output[id]?.inputs;
     if (!inputs) continue;
     for (const k in inputs) {
-      const v = inputs[k];
-      if (Array.isArray(v) && v.length >= 1) {
-        const origin = String(v[0]);
-        if (!consumers.has(origin)) consumers.set(origin, new Set());
-        consumers.get(origin).add(String(id));
-      }
+      if (!isLink(inputs[k])) continue;
+      const origin = String(inputs[k][0]);
+      if (!consumers.has(origin)) consumers.set(origin, new Set());
+      consumers.get(origin).add(String(id));
     }
   }
   return consumers;
@@ -235,13 +248,11 @@ function addAncestors(output, keep) {
     const inputs = output[cur]?.inputs;
     if (!inputs) continue;
     for (const k in inputs) {
-      const v = inputs[k];
-      if (Array.isArray(v) && v.length >= 1) {
-        const origin = String(v[0]);
-        if (output[origin] && !keep.has(origin)) {
-          keep.add(origin);
-          stack.push(origin);
-        }
+      if (!isLink(inputs[k])) continue;
+      const origin = String(inputs[k][0]);
+      if (output[origin] && !keep.has(origin)) {
+        keep.add(origin);
+        stack.push(origin);
       }
     }
   }
@@ -272,8 +283,8 @@ function applyGateMode(out, id, entry, mode) {
 
     // Capture the gate's own image SOURCE (origin node + slot) before detaching
     // it - needed for the diamond reroute below.
-    const gateSrc = Array.isArray(entry.inputs.image)
-      ? [String(entry.inputs.image[0]), entry.inputs.image[1]]
+    const gateSrc = isLink(entry.inputs.image)
+      ? [String(entry.inputs.image[0]), Number(entry.inputs.image[1])]
       : null;
 
     delete entry.inputs.image;
@@ -296,7 +307,7 @@ function applyGateMode(out, id, entry, mode) {
         if (!dInputs) continue;
         for (const k in dInputs) {
           const v = dInputs[k];
-          if (Array.isArray(v) && String(v[0]) === gateSrc[0] && v[1] === gateSrc[1]) {
+          if (isLink(v) && String(v[0]) === gateSrc[0] && Number(v[1]) === gateSrc[1]) {
             dInputs[k] = [String(id), 0];  // read the gate's snapshot output
           }
         }
@@ -337,11 +348,18 @@ app.graphToPrompt = async function (...args) {
       if (!index) index = buildNodeIndex();
       const node = findNode(index, id);
       // Effective mode: a one-shot button override (Continue/Regenerate) wins,
-      // otherwise the persistent toggle (Pause default, or Pass).
-      let mode = node?._pixPauseSubmitMode;
-      if (mode !== "continue" && mode !== "pause") {
-        const gate = node?.properties?.[STATE_PROP]?.gate;
-        mode = gate === "pass" ? "pass" : "pause";
+      // otherwise the persistent toggle (Pause default, or Pass). If the live
+      // node can't be resolved (rare - a subgraph id edge case), default to the
+      // harmless "pass" (no prune) rather than the destructive "pause" (which
+      // would silently truncate a workflow we couldn't positively identify).
+      const submit = node?._pixPauseSubmitMode;
+      let mode;
+      if (submit === "continue" || submit === "pause") {
+        mode = submit;
+      } else if (node) {
+        mode = node.properties?.[STATE_PROP]?.gate === "pass" ? "pass" : "pause";
+      } else {
+        mode = "pass";
       }
       gates.push({ id, entry, mode });
     }

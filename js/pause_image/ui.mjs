@@ -135,15 +135,16 @@ export function renderPause(node) {
   if (!els) return;
   const s = getState(node);
   const paused = s.gate === "pause";
+  const hasSnap = !!node._pixPauseHasSnapshot;  // runtime-only (Vue Compat #18)
   els.segPause.classList.toggle("active", paused);
   els.segPass.classList.toggle("active", !paused);
 
   // Continue / Regenerate only make sense in Pause mode; Copy / Open work
   // whenever there is a captured image to act on (any mode).
   els.btnRegen.disabled = !paused;
-  els.btnContinue.disabled = !paused || !s.hasSnapshot;
-  els.btnCopy.disabled = !s.hasSnapshot;
-  els.btnOpen.disabled = !s.hasSnapshot;
+  els.btnContinue.disabled = !paused || !hasSnap;
+  els.btnCopy.disabled = !hasSnap;
+  els.btnOpen.disabled = !hasSnap;
 
   if (node._pixPauseFlash) {
     els.status.textContent = node._pixPauseFlash;
@@ -151,7 +152,7 @@ export function renderPause(node) {
     els.status.textContent = node._pixPauseBusy;
   } else if (!paused) {
     els.status.textContent = "Passing through: whole workflow runs";
-  } else if (s.hasSnapshot) {
+  } else if (hasSnap) {
     els.status.textContent = "Paused and ready. Continue to run the rest.";
   } else {
     els.status.textContent = "Paused. Press Run to preview.";
@@ -182,9 +183,9 @@ export function showFrame(node, frame) {
     img.style.display = "block";
     empty.style.display = "none";
     dims.textContent = `${img.naturalWidth} × ${img.naturalHeight}`;
-    const s = getState(node);
-    s.hasSnapshot = true;
-    s.dims = dims.textContent;
+    // Runtime-only flag (NOT node.properties) so this load-time resolution
+    // never rewrites serialized state and dirties the workflow (Vue Compat #18).
+    node._pixPauseHasSnapshot = true;
     renderPause(node);
   };
   img.onerror = () => {
@@ -192,8 +193,7 @@ export function showFrame(node, frame) {
     empty.style.display = "flex";
     empty.textContent = "Preview expired. Press Run to pause again.";
     dims.textContent = "";
-    const s = getState(node);
-    s.hasSnapshot = false;
+    node._pixPauseHasSnapshot = false;
     renderPause(node);
   };
   img.src = url;

@@ -23,7 +23,10 @@ from PIL import Image
 
 def _tensor_to_pil(frame):
     """HxWxC float [0,1] tensor frame -> PIL.Image (RGB)."""
-    arr = (frame.cpu().numpy() * 255.0).clip(0, 255).astype(np.uint8)
+    arr = frame.cpu().numpy()
+    if arr.ndim == 3 and arr.shape[-1] > 3:
+        arr = arr[..., :3]  # drop alpha so pause/continue round-trip as RGB
+    arr = (arr * 255.0).clip(0, 255).astype(np.uint8)
     return Image.fromarray(arr)
 
 
@@ -110,7 +113,19 @@ class PixaromaPauseImage:
                     "Pause Image Pixaroma: the snapshot has expired (ComfyUI's "
                     "temp folder was cleared). Press Run to pause again, then Continue."
                 )
-            out = _pil_to_tensor(Image.open(path))
+            # Defensive: a snapshot can be corrupt/truncated (e.g. ComfyUI was
+            # killed mid-save). Turn any read failure into a clear message rather
+            # than crashing the whole workflow with a raw PIL traceback. The
+            # `with` block also frees the file handle so the next pause run can
+            # overwrite the same path (Windows file lock).
+            try:
+                with Image.open(path) as snap:
+                    out = _pil_to_tensor(snap)
+            except Exception as e:
+                raise RuntimeError(
+                    "Pause Image Pixaroma: the snapshot could not be read (it may "
+                    "be incomplete). Press Run to pause again, then Continue."
+                ) from e
             return {"ui": {"pixaroma_pause_frame": frame}, "result": (out,)}
 
         # Pause or Pass: the image is wired in.
@@ -120,9 +135,17 @@ class PixaromaPauseImage:
             )
 
         # Snapshot the first frame so Continue can replay it. (v1 snapshots
-        # frame 0; batches larger than 1 replay their first frame.)
-        _tensor_to_pil(image[0]).save(path, "PNG")
-        return {"ui": {"pixaroma_pause_frame": frame}, "result": (image,)}
+        # frame 0; batches larger than 1 replay their first frame.) A save
+        # failure (read-only temp, disk full) must not crash the run - the image
+        # still passes through; Continue just won't get a fresh snapshot.
+        saved = False
+        try:
+            _tensor_to_pil(image[0]).save(path, "PNG")
+            saved = True
+        except OSError as e:
+            print(f"[Pause Image Pixaroma] snapshot save failed: {e}")
+        ui = {"pixaroma_pause_frame": frame} if saved else {}
+        return {"ui": ui, "result": (image,)}
 
 
 NODE_CLASS_MAPPINGS = {"PixaromaPauseImage": PixaromaPauseImage}
