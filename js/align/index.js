@@ -374,6 +374,7 @@ function extendGuideRange(axis, value, baseLo, baseHi, candidates, skipFn) {
 function resetDrag() {
   state.dragInfo = null;
   state._prevNodeStates = null;
+  state._vueResizing = false;
   if (state.activeGuides.length) {
     state.activeGuides = [];
     app.canvas?.setDirty?.(true, true);
@@ -447,6 +448,25 @@ function onWindowPointerMove(e) {
   //    selected_nodes (marquee/pan already bailed above). Agent-verified 2026-06-01.
   let draggedNode = null;
   if (vue) {
+    // Resize guard (Nodes 2.0): a resize updates node._size, but a MOVE does
+    // NOT mutate node._pos, and selected_nodes can't tell us whether the user is
+    // moving the selected node or RESIZING a different one. So if ANY node's
+    // size changed since last tick, a resize is in progress - Align doesn't snap
+    // resizes in Vue, and moving a node during one yanks the WRONG node (the
+    // "resize one node and the selected one moves too" + "node jumps when I
+    // resize it" bugs). Detect it once and stay out of the way for the rest of
+    // the gesture; resetDrag clears the flag on release / next non-drag move.
+    if (!state._vueResizing && state._prevNodeStates) {
+      for (const n of (c.graph?._nodes || [])) {
+        const p = state._prevNodeStates.get(n.id);
+        if (p && (p.w !== n.size[0] || p.h !== n.size[1])) { state._vueResizing = true; break; }
+      }
+    }
+    if (state._vueResizing) {
+      state.dragInfo = null;
+      if (state.activeGuides.length) { state.activeGuides = []; c.setDirty?.(true, true); }
+      return;
+    }
     // Use the existing session's node, but VALIDATE it's still the one being
     // dragged: it must still be SELECTED. Otherwise the session is stale - a
     // previous drag whose pointerup we missed (the Vue node's captured pointer
