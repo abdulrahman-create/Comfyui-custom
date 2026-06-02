@@ -20,6 +20,12 @@ import numpy as np
 import torch
 from PIL import Image
 
+# _json_safe strips NaN/Inf so the ui payload stays valid JSON. Our IS_CHANGED
+# returns nan, so the PROMPT we embed for the Save buttons carries is_changed:
+# [NaN]; without sanitizing, the frontend JSON.parse of the executed message
+# would throw and drop the whole payload (Preview Image Pattern #13).
+from ._save_helpers import _json_safe
+
 
 def _tensor_to_pil(frame):
     """HxWxC float [0,1] tensor frame -> PIL.Image (RGB)."""
@@ -81,6 +87,10 @@ class PixaromaPauseImage:
                 # a JSON string like {"mode": "pause" | "continue" | "pass"}.
                 "PauseState": ("STRING", {"default": ""}),
                 "unique_id": "UNIQUE_ID",
+                # Embedded into the snapshot's PNG by the Save buttons so the
+                # saved image can be dragged back into ComfyUI to recreate it.
+                "prompt": "PROMPT",
+                "extra_pnginfo": "EXTRA_PNGINFO",
             },
         }
 
@@ -97,7 +107,8 @@ class PixaromaPauseImage:
         # fresh preview frame, even when the upstream is fully cached.
         return float("nan")
 
-    def run(self, image=None, PauseState="", unique_id=None):
+    def run(self, image=None, PauseState="", unique_id=None,
+            prompt=None, extra_pnginfo=None):
         try:
             state = json.loads(PauseState) if PauseState else {}
         except Exception:
@@ -144,6 +155,13 @@ class PixaromaPauseImage:
             saved = True
         except OSError as e:
             print(f"[Pause Image Pixaroma] snapshot save failed: {e}")
+        if saved:
+            # Tag the EXECUTION-time workflow onto the frame so the Save buttons
+            # can embed the right seed (NaN-sanitized; see the import note).
+            # Only on a fresh capture (pause/pass) - never on continue, where the
+            # prompt is the upstream-pruned one and would not recreate the image.
+            workflow = extra_pnginfo.get("workflow") if isinstance(extra_pnginfo, dict) else None
+            frame[0]["_pixaroma_meta"] = _json_safe({"prompt": prompt, "workflow": workflow})
         ui = {"pixaroma_pause_frame": frame} if saved else {}
         return {"ui": ui, "result": (image,)}
 

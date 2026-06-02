@@ -10,7 +10,7 @@ import { getState } from "./state.mjs";
 const HEADER_H = 130;       // toggle + status + two button rows
 const PREVIEW_MIN_H = 150;  // minimum preview area
 const DIMS_H = 16;          // the dimensions line under the preview
-export const NODE_MIN_W = 240;
+export const NODE_MIN_W = 300;  // room for the 4-button utility row
 // Constant getMinHeight (Vue Compat #18): a fixed number is byte-identical on
 // every save/load, so node.size never jitters and the workflow is never
 // falsely flagged "modified".
@@ -93,16 +93,26 @@ export function buildPauseWidget(node, callbacks) {
   btnCopy.className = "pix-pi-btn";
   btnCopy.textContent = "Copy";
   btnCopy.title = "Copy the previewed image to the clipboard";
+  const btnSaveDisk = document.createElement("button");
+  btnSaveDisk.className = "pix-pi-btn";
+  btnSaveDisk.textContent = "Save Disk";
+  btnSaveDisk.title = "Save the previewed image to a folder on your computer";
+  const btnSaveOut = document.createElement("button");
+  btnSaveOut.className = "pix-pi-btn";
+  btnSaveOut.textContent = "Save Output";
+  btnSaveOut.title = "Save the previewed image to ComfyUI's output folder";
   const btnOpen = document.createElement("button");
   btnOpen.className = "pix-pi-btn";
   btnOpen.textContent = "Open";
   btnOpen.title = "Open the previewed image in a new browser tab";
-  btns2.append(btnCopy, btnOpen);
+  btns2.append(btnCopy, btnSaveDisk, btnSaveOut, btnOpen);
 
   // stopPropagation so the click doesn't reach the canvas (deselect / drag).
   btnContinue.addEventListener("click", (e) => { e.stopPropagation(); callbacks.onContinue(); });
   btnRegen.addEventListener("click", (e) => { e.stopPropagation(); callbacks.onRegenerate(); });
   btnCopy.addEventListener("click", (e) => { e.stopPropagation(); callbacks.onCopy(); });
+  btnSaveDisk.addEventListener("click", (e) => { e.stopPropagation(); callbacks.onSaveDisk(); });
+  btnSaveOut.addEventListener("click", (e) => { e.stopPropagation(); callbacks.onSaveOutput(); });
   btnOpen.addEventListener("click", (e) => { e.stopPropagation(); callbacks.onOpen(); });
 
   const preview = document.createElement("div");
@@ -122,7 +132,7 @@ export function buildPauseWidget(node, callbacks) {
 
   node._pixPauseEls = {
     segPause, segPass, status,
-    btnContinue, btnRegen, btnCopy, btnOpen,
+    btnContinue, btnRegen, btnCopy, btnSaveDisk, btnSaveOut, btnOpen,
     img, empty, dims,
   };
   return root;
@@ -144,6 +154,8 @@ export function renderPause(node) {
   els.btnRegen.disabled = !paused;
   els.btnContinue.disabled = !paused || !hasSnap;
   els.btnCopy.disabled = !hasSnap;
+  els.btnSaveDisk.disabled = !hasSnap;
+  els.btnSaveOut.disabled = !hasSnap;
   els.btnOpen.disabled = !hasSnap;
 
   if (node._pixPauseFlash) {

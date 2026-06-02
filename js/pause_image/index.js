@@ -83,12 +83,118 @@ function openSnapshot(node) {
   if (!win) flash(node, "Popup blocked");
 }
 
+// ── Save (reuses the Preview Image server routes; no new backend) ──
+const SAVE_PREFIX = "PauseImage";
+
+// Fetch the previewed snapshot and return it as a PNG data URL. Throws
+// "expired" if the temp file is gone (e.g. after a ComfyUI restart).
+async function snapshotDataURL(node) {
+  const frame = getState(node).frame;
+  if (!frame?.filename) throw new Error("nosnap");
+  const resp = await fetch(frameViewUrl(frame));
+  if (!resp.ok) throw new Error(resp.status === 404 ? "expired" : "fetch");
+  const blob = await resp.blob();
+  return await new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result);
+    r.onerror = () => rej(new Error("read"));
+    r.readAsDataURL(blob);
+  });
+}
+
+// Prefer the EXECUTION-time workflow captured when the snapshot was made (the
+// exact seed that produced it), so the saved PNG drags back into ComfyUI as the
+// same image. Fall back to the live graph if we have no captured metadata.
+async function resolveSaveMeta(node) {
+  const m = node._pixPauseExecMeta;
+  if (m && m.workflow) return { workflow: m.workflow, prompt: m.prompt };
+  const { workflow, output } = await app.graphToPrompt();
+  return { workflow, prompt: output };
+}
+
+function saveErr(node, err) {
+  if (err?.message === "expired") flash(node, "Snapshot expired - run again");
+  else if (err?.message === "nosnap") flash(node, "Run once to capture an image");
+  else flash(node, "Save failed");
+}
+
+// Save to ComfyUI's output/ folder (with the workflow embedded).
+async function saveToOutput(node) {
+  if (!node._pixPauseHasSnapshot) { flash(node, "Run once to capture an image"); return; }
+  try {
+    const image_b64 = await snapshotDataURL(node);
+    const { workflow, prompt } = await resolveSaveMeta(node);
+    const resp = await fetch("/pixaroma/api/preview/save", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ image_b64, filename_prefix: SAVE_PREFIX, workflow, prompt }),
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) { flash(node, `Save failed: ${data.error || resp.status}`); return; }
+    flash(node, `Saved: ${data.filename}`);
+  } catch (err) { saveErr(node, err); }
+}
+
+// Save to a user-chosen folder via the OS "Save as" dialog (falls back to the
+// browser Downloads folder when showSaveFilePicker isn't available).
+async function saveToDisk(node) {
+  if (!node._pixPauseHasSnapshot) { flash(node, "Run once to capture an image"); return; }
+  let preparedBlob;
+  let suggestedName = `${SAVE_PREFIX}.png`;
+  try {
+    const image_b64 = await snapshotDataURL(node);
+    const { workflow, prompt } = await resolveSaveMeta(node);
+    const resp = await fetch("/pixaroma/api/preview/prepare", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ image_b64, filename_prefix: SAVE_PREFIX, workflow, prompt }),
+    });
+    if (!resp.ok) {
+      const e = await resp.json().catch(() => ({}));
+      flash(node, `Save failed: ${e.error || resp.status}`);
+      return;
+    }
+    const data = await resp.json();
+    if (data.suggested_filename) suggestedName = data.suggested_filename;
+    preparedBlob = await (await fetch(data.image_b64)).blob();
+  } catch (err) { saveErr(node, err); return; }
+
+  if (typeof window.showSaveFilePicker === "function") {
+    try {
+      const handle = await window.showSaveFilePicker({
+        suggestedName,
+        types: [{ description: "PNG image", accept: { "image/png": [".png"] } }],
+      });
+      const w = await handle.createWritable();
+      await w.write(preparedBlob);
+      await w.close();
+      flash(node, `Saved: ${handle.name}`);
+    } catch (err) {
+      if (err?.name === "AbortError") return; // user cancelled, silent
+      flash(node, "Save failed");
+    }
+    return;
+  }
+  // Fallback: <a download> to the browser Downloads folder.
+  const url = URL.createObjectURL(preparedBlob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = suggestedName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+  flash(node, "Saved to Downloads");
+}
+
 function setupNode(node) {
   const root = buildPauseWidget(node, {
     onGate: (gate) => { setGate(node, gate); renderPause(node); },
     onContinue: () => queueWithMode(node, "continue"),
     onRegenerate: () => queueWithMode(node, "pause"),
     onCopy: () => copySnapshot(node),
+    onSaveDisk: () => saveToDisk(node),
+    onSaveOutput: () => saveToOutput(node),
     onOpen: () => openSnapshot(node),
   });
   const widget = node.addDOMWidget(WIDGET_TYPE, WIDGET_TYPE, root, {
@@ -101,7 +207,7 @@ function setupNode(node) {
 
   // Fresh-node default size. configure() runs AFTER onNodeCreated and restores
   // the saved size for saved workflows, so this only affects fresh drops.
-  if (!node.size || node.size[0] < NODE_MIN_W) node.size[0] = 320;
+  if (!node.size || node.size[0] < NODE_MIN_W) node.size[0] = 400;
   if (!node.size || node.size[1] < NODE_MIN_H) node.size[1] = 400;
 
   // Defer the first render until node.properties is restored (Vue Compat #8).
@@ -164,6 +270,11 @@ api.addEventListener("executed", (e) => {
   if (!node && typeof d.node === "string") node = app.graph.getNodeById(parseInt(d.node, 10));
   if (!node || node.comfyClass !== CLASS) return;
   const f = frames[0];
+  // Capture the execution-time workflow for the Save buttons (runtime-only -
+  // never persisted to node.properties, it would bloat the saved workflow).
+  // Only present on a fresh pause/pass capture, so it stays the generation
+  // workflow even after a Continue (whose frame carries no meta).
+  if (f._pixaroma_meta) node._pixPauseExecMeta = f._pixaroma_meta;
   const s = getState(node);
   s.frame = { filename: f.filename, subfolder: f.subfolder || "", type: f.type || "temp" };
   showFrame(node, s.frame);
