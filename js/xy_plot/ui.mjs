@@ -5,6 +5,7 @@
 // rebuild (handlers.rerender), but typing into value fields only updates state
 // + refreshes the counter/preview in place (no rebuild) so input focus is kept.
 
+import { app } from "/scripts/app.js";
 import {
   readState, writeState,
   enumerateTargets, lookupWidgetMeta, currentValuePreview,
@@ -12,6 +13,14 @@ import {
 } from "./core.mjs";
 
 const BRAND = "#f66744";
+
+function xyToast(detail, severity = "info") {
+  const tm = app.extensionManager?.toast;
+  if (tm && typeof tm.add === "function") {
+    try { tm.add({ severity, summary: "XY Plot", detail, life: 4000 }); return; } catch (_e) {}
+  }
+  console.warn("[Pixaroma.XYPlot] " + detail);
+}
 
 let _cssInjected = false;
 export function injectCSS() {
@@ -497,13 +506,22 @@ function buildThemeControl(node, state) {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ session_id: last.sessionId, theme: val }),
           });
-          const data = await resp.json().catch(() => ({}));
-          if (resp.ok && data.filename) {
-            const url = `/view?filename=${encodeURIComponent(data.filename)}&subfolder=&type=temp&t=${Date.now()}`;
-            node._pixXyLastGrid = Object.assign({}, last, { filename: data.filename, url });
-            node._pixXyGrid?.setGrid(url);
+          if (resp.ok) {
+            const data = await resp.json().catch(() => ({}));
+            if (data.filename) {
+              const url = `/view?filename=${encodeURIComponent(data.filename)}&subfolder=&type=temp&t=${Date.now()}`;
+              node._pixXyLastGrid = Object.assign({}, last, { filename: data.filename, url });
+              node._pixXyGrid?.setGrid(url);
+            }
+          } else if (resp.status === 404) {
+            xyToast("This grid's cells were cleared - run the plot again to see the new theme.");
+          } else {
+            // 405 = the restyle route isn't loaded -> ComfyUI needs a restart.
+            xyToast("Theme saved. Restart ComfyUI to preview themes instantly; it applies on your next Run regardless.", "warn");
           }
-        } catch (_e) { /* falls back to applying on next run */ }
+        } catch (_e) {
+          xyToast("Theme saved - it'll apply on your next Run.");
+        }
       }
     });
     seg.appendChild(s);

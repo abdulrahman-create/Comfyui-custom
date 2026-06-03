@@ -10,7 +10,7 @@ import { applyAdaptiveCanvasOnly } from "../shared/index.mjs";
 import { isQueueLoopActive, runQueueLoop } from "../shared/queue_drivers.mjs";
 
 const NODE = "PixaromaXYPlot";
-const DEFAULT_W = 360, DEFAULT_H = 540;
+const DEFAULT_W = 430, DEFAULT_H = 560;   // wide enough that the 3 toggles fit one row
 const MIN_W = 340, MIN_H = 360;
 const CHROME = 40;   // title bar + margin above the DOM body
 
