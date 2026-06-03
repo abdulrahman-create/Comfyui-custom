@@ -34,3 +34,10 @@ export {
   openPixaromaColorPickerPopup,
   PIXAROMA_PALETTE,
 } from "./color_picker.mjs";
+
+export {
+  createHelpButton,
+  openHelpPopup,
+  closeHelpPopup,
+  injectHelpCSS,
+} from "./help.mjs";

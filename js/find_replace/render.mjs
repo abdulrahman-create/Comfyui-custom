@@ -12,6 +12,7 @@ import {
   getPreviewInput,
 } from "./core.mjs";
 import { attachFieldEditor, attachDragHandlers } from "./interaction.mjs";
+import { createHelpButton } from "../shared/index.mjs";
 
 const CSS_ID = "pix-find-replace-css";
 
@@ -308,6 +309,72 @@ const TOGGLE_DEFS = [
   { key: "tidy", label: "✨ Tidy", title: "After the edits, collapse double spaces and fix stray or double commas." },
 ];
 
+// Content for the in-node Help panel (the ? button on the toggles row).
+const FR_HELP = {
+  title: "Find and Replace Pixaroma",
+  tagline:
+    "Sits in a text wire and rewrites the text flowing through it, before it reaches whatever uses the prompt.",
+  sections: [
+    {
+      heading: "What it does",
+      body:
+        "Drop this node between a text source (an LLM node, Show Text, Text Pixaroma, any STRING output) and the node that uses the text. It applies your find/replace rules top to bottom and passes the edited result on. The before/after box on the node previews the last text that ran through.",
+    },
+    {
+      heading: "How to use",
+      bullets: [
+        "Add one rule per edit: type what to find, and what to replace it with.",
+        "Leave the replace side empty to DELETE the found text.",
+        "Toggle a rule OFF to skip it without deleting it.",
+        "Drag the ⋮⋮ handle to reorder. Rules apply top to bottom, each one seeing the previous rule's result.",
+      ],
+    },
+    {
+      heading: "The four toggles",
+      defs: [
+        ["Aa Case", "Match upper/lowercase exactly. Off = ignore case (the default)."],
+        ["Whole word", "Only match whole words, so `art` does not hit `artist`."],
+        [".* Regex", "Treat Find as a search pattern (see below) instead of literal text."],
+        ["✨ Tidy", "After the edits, collapse double spaces and fix stray or doubled commas."],
+      ],
+    },
+    {
+      heading: "Regex — the search-pattern mode",
+      body:
+        "With Regex OFF, Find is literal: `cat` matches the exact letters. With Regex ON, Find becomes a pattern where some characters mean \"any digit\", \"one or more\", \"either/or\", and so on, so you can match things you can't type out literally.",
+    },
+    {
+      heading: "Regex symbols worth knowing",
+      defs: [
+        ["`.`", "any single character"],
+        ["`\\d`", "any digit (0-9)"],
+        ["`\\w`", "any letter, number or underscore"],
+        ["`\\s`", "any space"],
+        ["`+`", "one or more of the thing before it"],
+        ["`*`", "zero or more"],
+        ["`?`", "optional (zero or one)"],
+        ["`a|b`", "match a OR b"],
+        ["`( )`", "a group you can reuse in Replace as `\\1`, `\\2` …"],
+        ["`\\.`", "a real dot (the backslash turns off a symbol's special meaning)"],
+      ],
+    },
+    {
+      heading: "Regex examples",
+      table: {
+        headers: ["Find", "Replace", "What it does"],
+        rows: [
+          ["`\\d+`", "(empty)", "Strips all numbers: `cat, 3 hats` becomes `cat, hats`"],
+          ["`masterpiece|best quality`", "(empty)", "Removes either tag wherever it appears"],
+          ["`\\([^)]*\\)`", "(empty)", "Deletes anything in parentheses"],
+          ["`(\\w+) (\\w+)`", "`\\2 \\1`", "Swaps two words: `hello world` becomes `world hello`"],
+        ],
+      },
+    },
+  ],
+  footer:
+    "Backreferences use `\\1`, `\\2` (Python style), not `$1`. The node always runs the real Python regex, even for advanced patterns the on-node preview can't show perfectly.",
+};
+
 // renderAll: clears root and rebuilds the whole body.
 export function renderAll(node, root, handlers) {
   const state = readState(node);
@@ -325,6 +392,10 @@ export function renderAll(node, root, handlers) {
     if (!muted) pill.addEventListener("click", () => handlers.onToggleGlobal(def.key));
     toggles.appendChild(pill);
   }
+  // Help (?) button - pushed to the far right of the toggles row.
+  const help = createHelpButton(FR_HELP);
+  help.style.marginLeft = "auto";
+  toggles.appendChild(help);
   root.appendChild(toggles);
 
   // -- rule rows --
