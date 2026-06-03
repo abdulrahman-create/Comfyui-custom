@@ -15,7 +15,7 @@ import {
   MODE_LIST,
 } from "./core.mjs";
 import { injectCSS, buildRoot, renderRows, measureContentHeight } from "./render.mjs";
-import { installResizeFloor } from "../shared/index.mjs";
+import { installResizeFloor, isVueNodes } from "../shared/index.mjs";
 import { pixConfirm } from "./interaction.mjs";
 import { isQueueLoopActive, runQueueLoop, feedsOnlyInactiveSwitch } from "../shared/queue_drivers.mjs";
 import { applyAdaptiveCanvasOnly } from "../shared/index.mjs";
@@ -231,20 +231,25 @@ app.registerExtension({
     // param as the new size, others have already written to this.size).
     const origOnResize = nodeType.prototype.onResize;
     nodeType.prototype.onResize = function (size) {
-      if (size[0] < MIN_W) size[0] = MIN_W;
-      if (size[1] < MIN_H) size[1] = MIN_H;
-      if (this.size[0] < MIN_W) this.size[0] = MIN_W;
-      if (this.size[1] < MIN_H) this.size[1] = MIN_H;
+      // LEGACY ONLY - in Nodes 2.0 the rendered size lives in the Vue layout
+      // store, not node.size; clamping node.size here desyncs them and the node
+      // jumps to the clamped size on a workflow switch.
+      if (!isVueNodes()) {
+        if (size[0] < MIN_W) size[0] = MIN_W;
+        if (size[1] < MIN_H) size[1] = MIN_H;
+        if (this.size[0] < MIN_W) this.size[0] = MIN_W;
+        if (this.size[1] < MIN_H) this.size[1] = MIN_H;
+      }
       if (origOnResize) return origOnResize.apply(this, arguments);
     };
 
     // Min-size self-heal so the body controls never overflow the node frame.
-    // (Queue Text / List Prompts pills are DOM now — see render.mjs — so
-    // there's no canvas painting or click hit-testing here anymore.)
+    // LEGACY ONLY (see onResize) - it would desync node.size from the Vue layout.
     const origDraw = nodeType.prototype.onDrawForeground;
     nodeType.prototype.onDrawForeground = function (ctx) {
       if (origDraw) origDraw.call(this, ctx);
       if (this.flags?.collapsed) return;
+      if (isVueNodes()) return;
       if (this.size[0] < MIN_W) this.size[0] = MIN_W;
       if (this.size[1] < MIN_H) this.size[1] = MIN_H;
     };

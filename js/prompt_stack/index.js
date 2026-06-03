@@ -10,7 +10,7 @@ import {
   resetToDefault,
 } from "./core.mjs";
 import { injectCSS, buildRoot, renderRows, measureContentHeight } from "./render.mjs";
-import { applyAdaptiveCanvasOnly, installResizeFloor } from "../shared/index.mjs";
+import { applyAdaptiveCanvasOnly, installResizeFloor, isVueNodes } from "../shared/index.mjs";
 import { pixConfirm } from "./interaction.mjs";
 
 const DEFAULT_W = 400;
@@ -256,21 +256,26 @@ app.registerExtension({
     // (some LiteGraph forks treat the param as the new size).
     const origOnResize = nodeType.prototype.onResize;
     nodeType.prototype.onResize = function (size) {
-      if (size[0] < MIN_W) size[0] = MIN_W;
-      if (size[1] < MIN_H) size[1] = MIN_H;
-      if (this.size[0] < MIN_W) this.size[0] = MIN_W;
-      if (this.size[1] < MIN_H) this.size[1] = MIN_H;
+      // LEGACY ONLY - in Nodes 2.0 the rendered size lives in the Vue layout
+      // store, not node.size; clamping node.size here desyncs them and the node
+      // jumps to the clamped size on a workflow switch. Nodes 2.0 floors via
+      // MIN_NODE_WIDTH + the resize-floor helper.
+      if (!isVueNodes()) {
+        if (size[0] < MIN_W) size[0] = MIN_W;
+        if (size[1] < MIN_H) size[1] = MIN_H;
+        if (this.size[0] < MIN_W) this.size[0] = MIN_W;
+        if (this.size[1] < MIN_H) this.size[1] = MIN_H;
+      }
       if (origOnResize) return origOnResize.apply(this, arguments);
     };
 
-    // Self-heal min size on every paint (Preview Image Pattern #11).
-    // Catches resize paths that bypass onResize per Vue Compat #13 -
-    // some DOM-widget resizes never fire onResize, and Align Pixaroma
-    // can write node.size directly via cursor delta.
+    // Self-heal min size on every paint (Preview Image Pattern #11). LEGACY
+    // ONLY (see onResize) - it would desync node.size from the Vue layout.
     const origDraw = nodeType.prototype.onDrawForeground;
     nodeType.prototype.onDrawForeground = function (ctx) {
       if (origDraw) origDraw.call(this, ctx);
       if (this.flags?.collapsed) return;
+      if (isVueNodes()) return;
       if (this.size[0] < MIN_W) this.size[0] = MIN_W;
       if (this.size[1] < MIN_H) this.size[1] = MIN_H;
     };

@@ -19,7 +19,7 @@ import {
   measureMinHeight,
 } from "./render.mjs";
 import { pixConfirm } from "./interaction.mjs";
-import { applyAdaptiveCanvasOnly, installResizeFloor } from "../shared/index.mjs";
+import { applyAdaptiveCanvasOnly, installResizeFloor, isVueNodes } from "../shared/index.mjs";
 
 const DEFAULT_W = 380;
 const DEFAULT_H = 320;
@@ -210,10 +210,17 @@ app.registerExtension({
 
     const origOnResize = nodeType.prototype.onResize;
     nodeType.prototype.onResize = function (size) {
-      if (size[0] < MIN_W) size[0] = MIN_W;
-      if (size[1] < MIN_H) size[1] = MIN_H;
-      if (this.size[0] < MIN_W) this.size[0] = MIN_W;
-      if (this.size[1] < MIN_H) this.size[1] = MIN_H;
+      // LEGACY ONLY. In Nodes 2.0 the rendered size lives in the Vue layout
+      // store, NOT node.size; clamping node.size here desyncs the two, and on a
+      // workflow switch the node is rebuilt from the (clamped, bigger) node.size
+      // and JUMPS to it. Nodes 2.0 floors width via MIN_NODE_WIDTH + the
+      // resize-floor (height), so the clamp is not needed there.
+      if (!isVueNodes()) {
+        if (size[0] < MIN_W) size[0] = MIN_W;
+        if (size[1] < MIN_H) size[1] = MIN_H;
+        if (this.size[0] < MIN_W) this.size[0] = MIN_W;
+        if (this.size[1] < MIN_H) this.size[1] = MIN_H;
+      }
       if (origOnResize) return origOnResize.apply(this, arguments);
     };
 
@@ -221,6 +228,7 @@ app.registerExtension({
     nodeType.prototype.onDrawForeground = function (ctx) {
       if (origDraw) origDraw.call(this, ctx);
       if (this.flags?.collapsed) return;
+      if (isVueNodes()) return; // legacy-only clamp (see onResize)
       if (this.size[0] < MIN_W) this.size[0] = MIN_W;
       if (this.size[1] < MIN_H) this.size[1] = MIN_H;
     };
