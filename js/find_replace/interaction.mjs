@@ -7,8 +7,22 @@
 import { setFind, setReplace } from "./core.mjs";
 
 function autoGrow(ta) {
+  // Empty field: pin to one line. Do NOT grow for the wrapped PLACEHOLDER -
+  // when the node is narrow the placeholder ("find...") wraps to many lines and
+  // scrollHeight balloons, leaving the field tall (and it wouldn't shrink back
+  // when the node is widened, since autoGrow only runs on input). Only real
+  // typed content grows the field.
+  if (!ta.value) { ta.style.height = "30px"; return; }
   ta.style.height = "auto";
   ta.style.height = Math.max(30, Math.min(ta.scrollHeight, 120)) + "px";
+}
+
+// Re-measure every find/replace field in a root. Called from a width-change
+// ResizeObserver so a field that grew (its content wrapped) at a narrow width
+// shrinks back when the node is widened.
+export function autoGrowAllFields(root) {
+  if (!root) return;
+  root.querySelectorAll(".pix-fr-field").forEach((ta) => autoGrow(ta));
 }
 
 // which = "find" | "replace"

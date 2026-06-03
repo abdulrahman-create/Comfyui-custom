@@ -18,7 +18,7 @@ import {
   refreshResetState,
   measureMinHeight,
 } from "./render.mjs";
-import { pixConfirm } from "./interaction.mjs";
+import { pixConfirm, autoGrowAllFields } from "./interaction.mjs";
 import { applyAdaptiveCanvasOnly, installResizeFloor, isVueNodes } from "../shared/index.mjs";
 
 const DEFAULT_W = 380;
@@ -158,6 +158,19 @@ app.registerExtension({
         // (Nodes 2.0 only) so the buttons/preview can't be squished out of frame.
         node._pixFrFloorOff = installResizeFloor(root, measureMinHeight);
 
+        // Re-measure the find/replace fields when the node WIDTH changes, so a
+        // field whose content wrapped (and grew) at a narrow width shrinks back
+        // when the node is widened. Width-gated to avoid a height feedback loop.
+        try {
+          let lastW = root.clientWidth;
+          const ro = new ResizeObserver(() => {
+            const w = root.clientWidth;
+            if (w !== lastW) { lastW = w; autoGrowAllFields(root); }
+          });
+          ro.observe(root);
+          node._pixFrFieldRO = ro;
+        } catch (_e) {}
+
         // Open at a comfortable default size on FRESH placement only. onConfigure
         // sets _pixFrConfigured for a loaded workflow (it runs before this
         // microtask), so a saved size - even one the user shrank below DEFAULT -
@@ -237,6 +250,8 @@ app.registerExtension({
     nodeType.prototype.onRemoved = function () {
       this._pixFrFloorOff?.();
       this._pixFrFloorOff = null;
+      this._pixFrFieldRO?.disconnect();
+      this._pixFrFieldRO = null;
       this._pixFrRoot = null;
       this._pixFrRerender = null;
       this._pixFrRenderOnly = null;
