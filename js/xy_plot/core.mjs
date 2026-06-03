@@ -261,13 +261,23 @@ export function resolveAxisValues(axis) {
     return rangeToList(raw.start, raw.end, raw.steps, axis.step);
   }
   if (axis.widgetType === "combo") {
-    return Array.isArray(raw.checked) ? raw.checked.slice() : [];
+    const checked = Array.isArray(raw.checked) ? raw.checked.slice() : [];
+    // Drop selections that no longer exist in the widget's current options
+    // (e.g. a sampler/checkpoint removed after a model-list change), so we don't
+    // inject a stale value the target node would reject. Only filter when we
+    // actually know the live options; otherwise keep them all.
+    const opts = axis.options;
+    if (Array.isArray(opts) && opts.length) {
+      const set = new Set(opts);
+      return checked.filter((v) => set.has(v));
+    }
+    return checked;
   }
   if (axis.widgetType === "text") {
     if (axis.mode === "sr") {
       return String(raw.srReplace || "").split("\n").map((s) => s.trim()).filter((s) => s.length);
     }
-    return String(raw.listText || "").split("\n").filter((s) => s.trim().length);
+    return String(raw.listText || "").split("\n").map((s) => s.trim()).filter((s) => s.length);
   }
   return [];
 }

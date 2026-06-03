@@ -150,7 +150,13 @@ function makeHandlers(node, root) {
     rerender: () => renderBody(node, root, handlers),
     growth: () => growNode(node, root),
     reset: async () => {
-      const ok = await pixConfirmSimple("Reset this XY Plot? Both axes and all selections will be cleared.");
+      // Pass onOpen so onRemoved can dismiss this dialog if the node is deleted
+      // while it's open (otherwise its keydown listener would leak).
+      const ok = await pixConfirmSimple(
+        "Reset this XY Plot? Both axes and all selections will be cleared.",
+        (cancel) => { node._pixXyCancelConfirm = cancel; },
+      );
+      node._pixXyCancelConfirm = null;
       if (!ok) return;
       resetState(node);
       try { node._pixXyGrid?.clear(); } catch (_e) {}
@@ -291,6 +297,9 @@ function injectAxis(out, axis, value) {
       // The target's text is wired from another node - find & replace can't run.
       console.warn("[Pixaroma.XYPlot] Find & replace target is a wired input; the text comes from another node so it can't be replaced. Pick a node whose text is typed in directly.");
     } else {
+      if (!find) {
+        console.warn("[Pixaroma.XYPlot] Find & replace has an empty Find field - each cell REPLACES the whole text with the line instead of substituting. Set a Find term, or use Full list mode.");
+      }
       te.inputs[axis.widgetName] = String(value);
     }
     return;

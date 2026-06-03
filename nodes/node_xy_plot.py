@@ -308,8 +308,12 @@ def _assemble_grid(sess):
         if x_name:
             corner_lines.append("→ " + x_name)
         ty = 3
+        # Fit the corner axis names within the actual strip width (row_label_w,
+        # which was already sized to hold them) so they can't overflow into the
+        # first cell on a narrow strip.
+        corner_w = max(40, row_label_w - 6)
         for line in corner_lines:
-            lf = _fit_font(draw, line, max(11, round(font_size * 0.8)), max(row_label_w, 80) - 6)
+            lf = _fit_font(draw, line, max(11, round(font_size * 0.8)), corner_w)
             draw.text((4, ty), line, font=lf, fill=pal["axis"])
             ty += _measure(draw, line, lf)[1] + 2
 
@@ -417,10 +421,12 @@ class PixaromaXYPlot:
             # Slice to the clamped dims so a manually-crafted oversized state can't
             # leave label arrays longer than the grid (kept internally consistent).
             sess["cols"], sess["rows"] = cols, rows
-            if state.get("xLabels"):
-                sess["x_labels"] = list(state["xLabels"])[:cols]
-            if state.get("yLabels"):
-                sess["y_labels"] = list(state["yLabels"])[:rows]
+            # isinstance guards: a manually-crafted state could send a non-list
+            # (e.g. an int) for xLabels/yLabels, and list(int) would raise.
+            if isinstance(state.get("xLabels"), list):
+                sess["x_labels"] = [str(v) for v in state["xLabels"][:cols]]
+            if isinstance(state.get("yLabels"), list):
+                sess["y_labels"] = [str(v) for v in state["yLabels"][:rows]]
             sess["x_name"] = state.get("xName") or sess.get("x_name", "")
             sess["y_name"] = state.get("yName") or sess.get("y_name", "")
             sess["draw_labels"] = bool(state.get("drawLabels", sess.get("draw_labels", True)))
@@ -436,8 +442,17 @@ class PixaromaXYPlot:
             else:
                 print("[Pixaroma] XY Plot: cell (%d,%d) outside %dx%d grid - skipped" % (xi, yi, cols, rows))
 
-            grid_pil = _assemble_grid(sess)
             grid_name = sess["grid_name"]
+            try:
+                grid_pil = _assemble_grid(sess)
+            except Exception as e:
+                # A malformed session (e.g. crafted state) must never crash the
+                # whole workflow run - fall back to passing the cell image through.
+                print("[Pixaroma] XY Plot: grid assembly failed: %s" % e)
+                grid_pil = None
+
+        if grid_pil is None:
+            return {"ui": {}, "result": (image,)}
 
         # Write the grid PNG to temp/ for the preview (I/O outside the lock).
         temp_dir = folder_paths.get_temp_directory()

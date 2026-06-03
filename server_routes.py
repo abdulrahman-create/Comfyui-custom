@@ -1001,7 +1001,9 @@ async def api_xy_plot_save(request):
             from .nodes.node_xy_plot import snapshot_session_cells
             cells, _ = snapshot_session_cells(session_id)   # copied under the node's lock
             if cells:
-                cells_folder = os.path.join(full_folder, f"{name}_cells")
+                # Include the grid's counter in the folder name so saving the
+                # same plot twice doesn't overwrite the first save's cells.
+                cells_folder = os.path.join(full_folder, f"{name}_{counter:05}_cells")
                 # Defense-in-depth: never write the cells subfolder outside output/.
                 if _is_path_under(cells_folder, output_dir) or _is_path_under(os.path.dirname(cells_folder), output_dir):
                     os.makedirs(cells_folder, exist_ok=True)
