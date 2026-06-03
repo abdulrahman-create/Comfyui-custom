@@ -340,17 +340,46 @@ function applySeedLock(out, seedMap) {
   }
 }
 
+// Subgraph-safe node lookup (mirrors text_overlay): app.graph.getNodeById only
+// resolves top-level nodes, so a plain parseInt(tail) misses an XY Plot node
+// placed inside a subgraph (its XYPlotState never gets injected). Walk nested
+// subgraphs and match by id / tail id. (Axis VALUE injection already uses the
+// subgraph-safe findPromptEntry above; this fixes the node's OWN state lookup.)
+function buildPixXyNodeIndex() {
+  const index = new Map();
+  const visit = (graph) => {
+    if (!graph) return;
+    const nodes = graph._nodes || graph.nodes || [];
+    for (const n of nodes) {
+      if (!n) continue;
+      if (n.comfyClass === NODE || n.type === NODE) index.set(String(n.id), n);
+      const inner = n.subgraph || n.graph || n._graph;
+      if (inner && inner !== graph) visit(inner);
+    }
+  };
+  visit(app.graph);
+  return index;
+}
+function findPixXyNode(index, promptId) {
+  const sId = String(promptId);
+  if (index.has(sId)) return index.get(sId);
+  const tail = sId.includes(":") ? sId.slice(sId.lastIndexOf(":") + 1) : null;
+  if (tail && index.has(tail)) return index.get(tail);
+  return null;
+}
+
 const _origGraphToPrompt = app.graphToPrompt;
 app.graphToPrompt = async function (...args) {
   const result = await _origGraphToPrompt.apply(this, args);
   try {
     const out = result?.output;
     if (out && typeof out === "object") {
+      let index = null;
       for (const key of Object.keys(out)) {
         const entry = out[key];
         if (!entry || entry.class_type !== NODE) continue;
-        const nodeId = parseInt(String(key).split(":").pop(), 10);
-        const node = app.graph?.getNodeById?.(nodeId);
+        if (!index) index = buildPixXyNodeIndex();
+        const node = findPixXyNode(index, key);
         const run = node?._pixXyRun;
         if (!node || !run) continue;   // not in a plot loop → leave normal run alone
         const state = readState(node);

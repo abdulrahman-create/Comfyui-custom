@@ -274,17 +274,46 @@ app.registerExtension({
 // matching. Called once per queuePrompt() - the queuePrompt patch below is
 // what changes activeIndex between calls in queue mode so each enqueue sees
 // a different active prompt.
+// Subgraph-safe node lookup: ComfyUI flattens subgraph-contained nodes into the
+// prompt with composite IDs ("5:12") that app.graph.getNodeById (top-level only)
+// can't resolve, so a plain parseInt(tail)+getNodeById silently missed any node
+// inside a subgraph (state never injected). Walk every nested subgraph instead
+// (mirrors js/text_overlay/index.js + js/find_replace/index.js).
+function buildPixPmNodeIndex() {
+  const index = new Map();
+  const visit = (graph) => {
+    if (!graph) return;
+    const nodes = graph._nodes || graph.nodes || [];
+    for (const n of nodes) {
+      if (!n) continue;
+      if (n.comfyClass === "PixaromaPromptMulti" || n.type === "PixaromaPromptMulti") index.set(String(n.id), n);
+      const inner = n.subgraph || n.graph || n._graph;
+      if (inner && inner !== graph) visit(inner);
+    }
+  };
+  visit(app.graph);
+  return index;
+}
+function findPixPmNode(index, promptId) {
+  const sId = String(promptId);
+  if (index.has(sId)) return index.get(sId);
+  const tail = sId.includes(":") ? sId.slice(sId.lastIndexOf(":") + 1) : null;
+  if (tail && index.has(tail)) return index.get(tail);
+  return null;
+}
+
 const _origGraphToPrompt = app.graphToPrompt;
 app.graphToPrompt = async function (...args) {
   const result = await _origGraphToPrompt.apply(this, args);
   try {
     const prompt = result?.output;
     if (prompt && typeof prompt === "object") {
+      let index = null;
       for (const key of Object.keys(prompt)) {
         const entry = prompt[key];
         if (!entry || entry.class_type !== "PixaromaPromptMulti") continue;
-        const nodeId = parseInt(String(key).split(":").pop(), 10);
-        const node = app.graph?.getNodeById?.(nodeId);
+        if (!index) index = buildPixPmNodeIndex();
+        const node = findPixPmNode(index, key);
         if (!node) continue;
         const state = node.properties?.[STATE_PROP];
         if (!state || !Array.isArray(state.rows) || state.rows.length === 0) continue;

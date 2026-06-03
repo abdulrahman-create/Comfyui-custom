@@ -297,6 +297,34 @@ app.registerExtension({
 // app.graphToPrompt hook - injects state + resolved separator into the hidden
 // PromptStackState input at workflow-submit time. Pattern #9 (Vue Frontend
 // Compatibility). Subgraph-safe via tail-id matching.
+// Subgraph-safe node lookup: ComfyUI flattens subgraph-contained nodes into the
+// prompt with composite IDs ("5:12") that app.graph.getNodeById (top-level only)
+// can't resolve, so a plain parseInt(tail)+getNodeById silently missed any node
+// inside a subgraph (state never injected). Walk every nested subgraph instead
+// (mirrors js/text_overlay/index.js + js/find_replace/index.js).
+function buildPixPsNodeIndex() {
+  const index = new Map();
+  const visit = (graph) => {
+    if (!graph) return;
+    const nodes = graph._nodes || graph.nodes || [];
+    for (const n of nodes) {
+      if (!n) continue;
+      if (n.comfyClass === "PixaromaPromptStack" || n.type === "PixaromaPromptStack") index.set(String(n.id), n);
+      const inner = n.subgraph || n.graph || n._graph;
+      if (inner && inner !== graph) visit(inner);
+    }
+  };
+  visit(app.graph);
+  return index;
+}
+function findPixPsNode(index, promptId) {
+  const sId = String(promptId);
+  if (index.has(sId)) return index.get(sId);
+  const tail = sId.includes(":") ? sId.slice(sId.lastIndexOf(":") + 1) : null;
+  if (tail && index.has(tail)) return index.get(tail);
+  return null;
+}
+
 const _origGraphToPrompt = app.graphToPrompt;
 app.graphToPrompt = async function (...args) {
   const result = await _origGraphToPrompt.apply(this, args);
@@ -304,12 +332,12 @@ app.graphToPrompt = async function (...args) {
     const sep = resolveSeparator();
     const prompt = result?.output;
     if (prompt && typeof prompt === "object") {
+      let index = null;
       for (const key of Object.keys(prompt)) {
         const entry = prompt[key];
         if (!entry || entry.class_type !== "PixaromaPromptStack") continue;
-        // Tail-id matching: find the node by id suffix (subgraphs prefix the id with "x:y:")
-        const nodeId = parseInt(String(key).split(":").pop(), 10);
-        const node = app.graph?.getNodeById?.(nodeId);
+        if (!index) index = buildPixPsNodeIndex();
+        const node = findPixPsNode(index, key);
         if (!node) continue;
         const state = node.properties?.promptStackState;
         if (!state || !Array.isArray(state.rows)) continue;
