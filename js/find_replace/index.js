@@ -22,9 +22,17 @@ import { pixConfirm } from "./interaction.mjs";
 import { applyAdaptiveCanvasOnly } from "../shared/index.mjs";
 
 const DEFAULT_W = 380;
-const DEFAULT_H = 300;
+const DEFAULT_H = 320;
 const MIN_W = 340;
 const MIN_H = 200;
+
+// node.size is the WHOLE node (title bar + the text in/out slot row + the DOM
+// widget). measureMinHeight() returns only the WIDGET content height, so we add
+// CHROME (title + one slot row) on top when sizing the node. Legacy ComfyUI
+// self-corrects via the widget's getMinHeight, but Nodes 2.0 honors node.size
+// literally - without the chrome the body overflowed below the frame when rules
+// were added.
+const CHROME = 60;
 
 // Commit a node height through setSize() so it sticks in BOTH renderers
 // (a bare node.size[1] = h can be reverted by Nodes 2.0's reactive layout
@@ -42,15 +50,19 @@ function setNodeHeight(node, h) {
 function ensureMinHeight(node) {
   const root = node._pixFrRoot;
   if (!root) return;
-  const min = measureMinHeight(root);
-  if (node.size[1] < min) setNodeHeight(node, min);
+  // Grow-only: never shrink below the user's current size (preview absorbs
+  // freed space). Always include CHROME so the node frame contains the widget
+  // in Nodes 2.0. setSize fires only when the height actually changes (e.g.
+  // adding a rule), which also forces Nodes 2.0 to re-lay-out and grow.
+  const target = Math.max(node.size[1], measureMinHeight(root) + CHROME);
+  if (target !== node.size[1]) setNodeHeight(node, target);
 }
 
 // Reset the node to a comfortable default height (used on Reset).
 function fitToDefault(node) {
   const root = node._pixFrRoot;
   if (!root) return;
-  setNodeHeight(node, Math.max(measureMinHeight(root), DEFAULT_H));
+  setNodeHeight(node, Math.max(measureMinHeight(root) + CHROME, DEFAULT_H));
 }
 
 function makeHandlers(node, root) {
