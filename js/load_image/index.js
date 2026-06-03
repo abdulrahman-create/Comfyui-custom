@@ -1,7 +1,7 @@
 import { app } from "/scripts/app.js";
 import { hideJsonWidget, BRAND } from "../shared/index.mjs";
 import { isGraphLoading } from "../shared/graph_loading.mjs";
-import { applyAdaptiveCanvasOnly, isVueNodes } from "../shared/nodes2.mjs";
+import { applyAdaptiveCanvasOnly, isVueNodes, canvasBackingScale, installZoomRepaint } from "../shared/nodes2.mjs";
 import {
   injectCSS, buildRoot, hideNativeImageCombo, openImageDropdown,
   renderChips, renderGlobalControls,
@@ -197,14 +197,16 @@ function paintCardsInto(ctx, node, leftPad, midY, pairW) {
 // image fitted below + a dims line) into ONE canvas that fills the flex-grower
 // root - the EXACT shape Preview Image's strip uses (single absolute canvas in a
 // flex:1 root), which is the only DOM-widget layout proven to fill without
-// collapsing. DPR-aware.
+// collapsing. Backing store at dpr x graph-zoom so the preview image stays
+// crisp when the user zooms IN (a plain-dpr canvas gets CSS-stretched by the
+// zoom = blurry/pixelated, the same bug native ComfyUI's <img> dodges).
 function _liSizeCanvas(cv, cssW, cssH) {
-  const dpr = window.devicePixelRatio || 1;
-  const bw = Math.round(cssW * dpr), bh = Math.round(cssH * dpr);
+  const s = canvasBackingScale(cssW, cssH);
+  const bw = Math.round(cssW * s), bh = Math.round(cssH * s);
   if (cv.width !== bw) cv.width = bw;
   if (cv.height !== bh) cv.height = bh;
   const ctx = cv.getContext("2d");
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.setTransform(s, 0, 0, s, 0, 0);
   ctx.clearRect(0, 0, cssW, cssH);
   return ctx;
 }
@@ -534,6 +536,15 @@ function createLoadImagePreviewCanvas(node) {
   const ro = new ResizeObserver(() => renderLoadPreviewCanvas(node));
   ro.observe(imgCv);
   node._pixLiPreviewRO = ro;
+
+  // The ResizeObserver doesn't fire on graph zoom (clientWidth is unchanged), so
+  // re-render when the zoom (= backing scale) changes to keep the image crisp.
+  installZoomRepaint(
+    node,
+    () => [imgCv.clientWidth || 0, imgCv.clientHeight || 0],
+    () => renderLoadPreviewCanvas(node),
+    "_pixLiZoomRaf",
+  );
 
   requestAnimationFrame(() => updateLoadPreview(node));
 }
@@ -983,6 +994,8 @@ app.registerExtension({
       this._pixLiImgPoll = null;
       try { this._pixLiPreviewRO?.disconnect(); } catch {}
       this._pixLiPreviewRO = null;
+      try { cancelAnimationFrame(this._pixLiZoomRaf); } catch {}
+      this._pixLiZoomRaf = null;
       if (_activeLoadImageNode === this) _activeLoadImageNode = null;
       return _origRemoved?.apply(this, arguments);
     };

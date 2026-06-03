@@ -1,7 +1,7 @@
 import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
 import { BRAND } from "../shared/utils.mjs";
-import { applyAdaptiveCanvasOnly, isVueNodes } from "../shared/nodes2.mjs";
+import { applyAdaptiveCanvasOnly, isVueNodes, canvasBackingScale, installZoomRepaint } from "../shared/nodes2.mjs";
 
 // ---- Nodes 2.0 helpers ----
 // The Vue "WidgetLegacy" bridge repaints a custom widget's canvas only via
@@ -1242,14 +1242,30 @@ function createStripDOMWidget(node) {
   const render = () => {
     const cssW = root.clientWidth;
     const cssH = root.clientHeight;
-    if (cssW <= 0 || cssH <= 0) return;
-    const dpr = window.devicePixelRatio || 1;
-    const bw = Math.round(cssW * dpr);
-    const bh = Math.round(cssH * dpr);
+    if (cssW <= 0 || cssH <= 0) {
+      // Bridge a transient 0-size layout tick (e.g. right after a new run
+      // replaces the frames during a Vue re-layout) with a SINGLE rAF retry so
+      // the new image paints without waiting on the ResizeObserver / image
+      // onload. Guarded to one pending retry so a permanently-hidden node never
+      // spins; longer hides are covered by the ResizeObserver firing when the
+      // element regains a non-zero box. (Fixes the "old preview stays, new image
+      // not updated" symptom.)
+      if (!node._pixStripRetried) {
+        node._pixStripRetried = true;
+        requestAnimationFrame(render);
+      }
+      return;
+    }
+    node._pixStripRetried = false;
+    // Backing store at dpr x graph-zoom so the image stays crisp when zoomed in
+    // (a plain-dpr canvas gets CSS-stretched by the zoom = blurry/pixelated).
+    const s = canvasBackingScale(cssW, cssH);
+    const bw = Math.round(cssW * s);
+    const bh = Math.round(cssH * s);
     if (canvas.width !== bw) canvas.width = bw;
     if (canvas.height !== bh) canvas.height = bh;
     const ctx = canvas.getContext("2d");
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.setTransform(s, 0, 0, s, 0, 0);
     ctx.clearRect(0, 0, cssW, cssH);
     // y=0 origin (the canvas IS the strip area); height = the element's box.
     logic.draw(ctx, node, cssW, 0, cssH);
@@ -1259,6 +1275,10 @@ function createStripDOMWidget(node) {
   const ro = new ResizeObserver(() => render());
   ro.observe(root);
   node._pixStripRO = ro;
+
+  // The ResizeObserver doesn't fire on graph zoom (clientWidth is unchanged), so
+  // re-render when the zoom (= backing scale) changes to keep the image crisp.
+  installZoomRepaint(node, () => [root.clientWidth, root.clientHeight], render, "_pixStripZoomRaf");
 
   // Click: container-local coords share the y=0 origin that render() draws with,
   // so they hit-test directly against node._pixaromaCells.
@@ -1432,9 +1452,12 @@ app.registerExtension({
     const origRemoved = nodeType.prototype.onRemoved;
     nodeType.prototype.onRemoved = function () {
       if (_activePreviewNode === this) _activePreviewNode = null;
-      // Release the DOM-widget strip's ResizeObserver (Nodes 2.0 only).
+      // Release the DOM-widget strip's ResizeObserver + zoom-watch rAF
+      // (Nodes 2.0 only).
       try { this._pixStripRO?.disconnect(); } catch {}
       this._pixStripRO = null;
+      try { cancelAnimationFrame(this._pixStripZoomRaf); } catch {}
+      this._pixStripZoomRaf = null;
       this._pixStripRender = null;
       clearTimeout(this._pixToastTimer);
       return origRemoved ? origRemoved.apply(this, arguments) : undefined;
