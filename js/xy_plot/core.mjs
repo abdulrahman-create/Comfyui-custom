@@ -75,6 +75,14 @@ export function writeState(node, s) {
   node.properties[STATE_PROP] = s;
 }
 
+// Wipe back to fresh defaults (both axes empty, toggles at their defaults).
+export function resetState(node) {
+  const s = defaultState();
+  node.properties = node.properties || {};
+  node.properties[STATE_PROP] = s;
+  return s;
+}
+
 export function restoreFromProperties(node) {
   // Idempotent: readState creates+stores a default when absent.
   readState(node);

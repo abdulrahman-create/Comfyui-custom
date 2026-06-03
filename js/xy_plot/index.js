@@ -1,7 +1,7 @@
 import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
 import {
-  readState, restoreFromProperties,
+  readState, restoreFromProperties, resetState,
   resolveAxisValues, axisReady, computeCounts,
 } from "./core.mjs";
 import { injectCSS, buildRoot, renderBody, measureContentHeight, closePopup } from "./ui.mjs";
@@ -96,20 +96,46 @@ function pixConfirmSimple(message) {
 
 // ── node lifecycle ───────────────────────────────────────────────────────────
 
+// Grow-only: used while editing controls, so a manual resize-bigger sticks.
+function growNode(node, root) {
+  requestAnimationFrame(() => {
+    const desired = measureContentHeight(root) + CHROME;
+    if (desired > node.size[1]) {
+      node.size[1] = desired;
+      node.setSize?.([node.size[0], desired]);
+    }
+    node.setDirtyCanvas(true, true);
+  });
+}
+
+// Fit (grow OR shrink) to content: used when a grid loads / on Reset, so the
+// node tightens back up after a smaller plot. Only ever called from genuine
+// user actions (executed grid load, Reset) - never on workflow load - so it
+// can't trip the dirty-on-load tracker (Vue Compat #18).
+function fitNode(node, root) {
+  requestAnimationFrame(() => {
+    const desired = Math.max(MIN_H, measureContentHeight(root) + CHROME);
+    if (Math.abs(desired - node.size[1]) > 1) {
+      node.size[1] = desired;
+      node.setSize?.([node.size[0], desired]);
+    }
+    node.setDirtyCanvas(true, true);
+  });
+}
+
 function makeHandlers(node, root) {
-  const grow = () => {
-    requestAnimationFrame(() => {
-      const desired = measureContentHeight(root) + CHROME;
-      if (desired > node.size[1]) {
-        node.size[1] = desired;
-        node.setSize?.([node.size[0], desired]);
-      }
-      node.setDirtyCanvas(true, true);
-    });
-  };
   const handlers = {
     rerender: () => renderBody(node, root, handlers),
-    growth: grow,
+    growth: () => growNode(node, root),
+    reset: async () => {
+      const ok = await pixConfirmSimple("Reset this XY Plot? Both axes and all selections will be cleared.");
+      if (!ok) return;
+      resetState(node);
+      try { node._pixXyGrid?.clear(); } catch (_e) {}
+      node._pixXyLastGrid = null;
+      handlers.rerender();
+      fitNode(node, root);
+    },
   };
   return handlers;
 }
@@ -138,10 +164,10 @@ app.registerExtension({
         node._pixXyRoot = root;
         const handlers = makeHandlers(node, root);
         node._pixXyRerender = handlers.rerender;
-        node._pixXyGrow = handlers.growth;   // called from grid.mjs on <img> load
+        node._pixXyFit = () => fitNode(node, root);   // called from grid.mjs on <img> load
         // DOM-only render (no auto-grow) for the load path so the saved size
         // is trusted and the workflow isn't falsely flagged modified (#18).
-        node._pixXyRenderOnly = () => renderBody(node, root, { rerender: handlers.rerender, growth: null });
+        node._pixXyRenderOnly = () => renderBody(node, root, { rerender: handlers.rerender, growth: null, reset: handlers.reset });
 
         const widget = node.addDOMWidget("xyplot", "pixaroma_xy_plot", root, {
           serialize: false,

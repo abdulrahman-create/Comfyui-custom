@@ -128,9 +128,10 @@ export function buildGridPreview(node, mount) {
   const hint = el("div", "pix-xy-gridhint", "The labeled grid appears here after you hit Run.");
   const img = el("img", "pix-xy-gridimg");
   img.style.display = "none";
-  // Once the grid bitmap actually loads, grow the node to fit it + repaint.
+  // Once the grid bitmap actually loads, fit the node to it (grow OR shrink)
+  // so a smaller plot tightens the node back up. Repaint either way.
   img.addEventListener("load", () => {
-    try { node._pixXyGrow?.(); } catch (_e) {}
+    try { node._pixXyFit?.(); } catch (_e) {}
     try { node.setDirtyCanvas?.(true, true); } catch (_e) {}
   });
   box.appendChild(hint);

@@ -75,6 +75,8 @@ textarea.pix-xy-input{resize:vertical;min-height:46px;white-space:pre;}
 .pix-xy-pill.on{background:${BRAND};}
 .pix-xy-pill .pix-xy-knob{position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;background:#fff;transition:.15s;}
 .pix-xy-pill.on .pix-xy-knob{left:16px;}
+.pix-xy-resetbtn{margin-left:auto;display:flex;align-items:center;gap:6px;font-size:11.5px;color:#cfcfcf;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.14);border-radius:5px;padding:5px 11px;cursor:pointer;user-select:none;}
+.pix-xy-resetbtn:hover{border-color:${BRAND};color:#fff;}
 /* grid preview + buttons */
 .pix-xy-gridmount{display:flex;flex-direction:column;gap:8px;}
 .pix-xy-gridbox{border:1px solid rgba(255,255,255,.12);border-radius:6px;background:#161616;min-height:60px;display:flex;align-items:center;justify-content:center;overflow:hidden;}
@@ -492,6 +494,14 @@ export function renderBody(node, root, handlers) {
   opts.appendChild(buildToggle("Lock seed", state.lockSeed !== false, (v) => { const s = readState(node); s.lockSeed = v; writeState(node, s); }));
   opts.appendChild(buildToggle("Draw labels", state.drawLabels !== false, (v) => { const s = readState(node); s.drawLabels = v; writeState(node, s); }));
   opts.appendChild(buildToggle("Save cells", state.saveCells === true, (v) => { const s = readState(node); s.saveCells = v; writeState(node, s); }));
+  if (handlers.reset) {
+    const reset = el("div", "pix-xy-resetbtn");
+    reset.appendChild(el("span", null, "↺"));
+    reset.appendChild(el("span", null, "Reset"));
+    reset.title = "Clear both axes and selections, back to a fresh node.";
+    reset.addEventListener("click", () => handlers.reset());
+    opts.appendChild(reset);
+  }
 
   if (handlers.growth) handlers.growth();
 }
