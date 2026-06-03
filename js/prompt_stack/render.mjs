@@ -141,6 +141,7 @@ const CSS = `
 
 .pix-ps-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
   align-self: flex-start;
   margin-top: 4px;

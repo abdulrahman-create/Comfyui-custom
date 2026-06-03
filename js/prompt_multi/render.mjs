@@ -172,6 +172,7 @@ const CSS = `
    same overlay default, same full BRAND hover. */
 .pix-pm-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
   align-self: flex-start;
   margin-top: 4px;

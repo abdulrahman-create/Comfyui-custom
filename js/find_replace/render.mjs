@@ -161,7 +161,7 @@ const CSS = `
 .pix-fr-delete:disabled { color: #444; cursor: not-allowed; background: transparent; }
 
 /* ---- action row ---- */
-.pix-fr-actions { display: flex; gap: 6px; align-self: flex-start; user-select: none; flex: 0 0 auto; }
+.pix-fr-actions { display: flex; flex-wrap: wrap; gap: 6px; align-self: flex-start; user-select: none; flex: 0 0 auto; }
 .pix-fr-add, .pix-fr-reset {
   box-sizing: border-box;
   min-width: 92px;

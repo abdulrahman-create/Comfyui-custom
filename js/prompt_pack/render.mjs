@@ -85,6 +85,7 @@ export function injectCSS() {
     .pix-pp-ta:focus { border-color: ${BRAND}; }
     .pix-pp-bottombar {
       display: flex;
+      flex-wrap: wrap;
       align-items: center;
       justify-content: space-between;
       flex: 0 0 auto;
@@ -97,6 +98,7 @@ export function injectCSS() {
        orange border) so the click target is unambiguous. */
     .pix-pp-actions {
       display: flex;
+      flex-wrap: wrap;
       gap: 4px;
       flex: 0 0 auto;
       /* Stop text selection bleeding from the textarea into the button
