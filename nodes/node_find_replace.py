@@ -21,7 +21,7 @@ _PREVIEW_CAP = 4000
 
 class PixaromaFindReplace:
     DESCRIPTION = (
-        "Find & Replace Pixaroma - sit this node in the wire between a text "
+        "Find and Replace Pixaroma - sit this node in the wire between a text "
         "source (an LLM node, Show Text, Text Pixaroma, any STRING output) and "
         "whatever uses the text. It intercepts the text, applies your "
         "find/replace rules, and passes the edited result on. It also previews "
@@ -151,4 +151,4 @@ def _tidy(s):
 
 
 NODE_CLASS_MAPPINGS = {"PixaromaFindReplace": PixaromaFindReplace}
-NODE_DISPLAY_NAME_MAPPINGS = {"PixaromaFindReplace": "Find & Replace Pixaroma"}
+NODE_DISPLAY_NAME_MAPPINGS = {"PixaromaFindReplace": "Find and Replace Pixaroma"}
