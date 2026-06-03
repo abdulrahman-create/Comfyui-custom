@@ -145,8 +145,18 @@ app.registerExtension({
 
         node._pixFrRenderOnly();
 
-        if (node.size[0] < DEFAULT_W) node.size[0] = DEFAULT_W;
-        if (node.size[1] < DEFAULT_H) node.size[1] = DEFAULT_H;
+        // Open at a comfortable default size on fresh placement. Route through
+        // setSize so the height actually sticks in Nodes 2.0 (a bare
+        // node.size[1] write is reverted there). configure() runs before this
+        // microtask for loaded workflows, so a saved (>= default) size wins and
+        // setSize is skipped.
+        const w = Math.max(node.size[0], DEFAULT_W);
+        const h = Math.max(node.size[1], DEFAULT_H);
+        if (w !== node.size[0] || h !== node.size[1]) {
+          node.size[0] = w;
+          node.size[1] = h;
+          node.setSize?.([w, h]);
+        }
         node.setDirtyCanvas(true, true);
       });
     };

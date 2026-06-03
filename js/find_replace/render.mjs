@@ -166,8 +166,8 @@ const CSS = `
   padding: 5px 12px;
   transition: background 0.1s, color 0.1s, border-color 0.1s;
 }
-.pix-fr-add { color: #f66744; border-color: rgba(246,103,68,0.5); border-style: dashed; }
-.pix-fr-add:hover { background: #f66744; border-color: #f66744; border-style: solid; color: #fff; }
+.pix-fr-add { color: #f66744; border-color: rgba(246,103,68,0.5); }
+.pix-fr-add:hover { background: #f66744; border-color: #f66744; color: #fff; }
 .pix-fr-reset:hover { background: #f66744; border-color: #f66744; color: #fff; }
 .pix-fr-reset:disabled {
   color: rgba(255,255,255,0.3);
@@ -389,7 +389,7 @@ function buildRuleRow(node, state, rule, handlers) {
   replaceTa.className = "pix-fr-field pix-fr-replace" + ((rule.replace || "") ? "" : " is-delete");
   replaceTa.value = rule.replace || "";
   replaceTa.rows = 1;
-  replaceTa.placeholder = "replace... (empty = delete)";
+  replaceTa.placeholder = "replace…";
   replaceTa.title = "Text to replace it with. Leave empty to delete the found text.";
   rowEl.appendChild(replaceTa);
   attachFieldEditor(node, replaceTa, rule.id, "replace");
