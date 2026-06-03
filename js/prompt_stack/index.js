@@ -227,14 +227,21 @@ app.registerExtension({
 
         node._pixPsRenderOnly();
 
-        if (node.size[0] < DEFAULT_W) node.size[0] = DEFAULT_W;
-        if (node.size[1] < DEFAULT_H) node.size[1] = DEFAULT_H;
+        // Default size on FRESH placement only. onConfigure sets _pixPsConfigured
+        // for a loaded workflow (runs before this microtask), so a saved size -
+        // even one the user shrank below DEFAULT - is kept and doesn't jump back
+        // to default on a workflow switch.
+        if (!node._pixPsConfigured) {
+          if (node.size[0] < DEFAULT_W) node.size[0] = DEFAULT_W;
+          if (node.size[1] < DEFAULT_H) node.size[1] = DEFAULT_H;
+        }
         node.setDirtyCanvas(true, true);
       });
     };
 
     const origConfigure = nodeType.prototype.onConfigure;
     nodeType.prototype.onConfigure = function (info) {
+      this._pixPsConfigured = true;
       const r = origConfigure ? origConfigure.apply(this, arguments) : undefined;
       stripLegacyWireSlots(this);
       restoreFromProperties(this);
