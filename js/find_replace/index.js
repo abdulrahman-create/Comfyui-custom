@@ -211,10 +211,13 @@ app.registerExtension({
         if (data && typeof data.input === "string") {
           setPreviewInput(this, data.input, !!data.truncated);
           if (this._pixFrRefreshPreview) this._pixFrRefreshPreview();
-          requestAnimationFrame(() => {
-            ensureMinHeight(this);
-            this.setDirtyCanvas(true, true);
-          });
+          // Do NOT resize here. A Run never changes the rule count, so the
+          // height floor is unchanged and the preview (a flex area) absorbs any
+          // slack. Resizing on every Run rewrote node.size, which (a) falsely
+          // flagged the workflow "modified" on a plain Run, and (b) could fire a
+          // setSize mid-interaction and desync Align's resize guard. Just
+          // repaint the preview.
+          this.setDirtyCanvas(true, true);
         }
       } catch (err) {
         console.error("Pixaroma.FindReplace: onExecuted failed", err);
@@ -311,8 +314,12 @@ app.graphToPrompt = async function (...args) {
         if (!index) index = buildPixFrNodeIndex();
         const node = findPixFrNode(index, key);
         if (!node) continue;
-        const state = node.properties?.findReplaceState;
-        if (!state || !Array.isArray(state.rules)) continue;
+        // Read through readState (not raw properties) so the injected payload is
+        // normalized identically to what the on-node preview computes - a
+        // malformed/legacy saved state can't make the real run diverge from the
+        // preview (e.g. a row with a missing `enabled` would inject as OFF via
+        // !!r.enabled while the preview treats it as ON).
+        const state = readState(node);
         const payload = JSON.stringify({
           version: 1,
           caseSensitive: !!state.caseSensitive,

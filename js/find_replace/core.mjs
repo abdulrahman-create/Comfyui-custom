@@ -6,9 +6,22 @@
 // index.js packs this (minus the preview) into the hidden FindReplaceState input.
 //
 // The on-node preview is driven by applyRulesJS(), a 1:1 mirror of
-// nodes/node_find_replace.py::_apply_rules. Python is authoritative; literal
-// mode is exact, regex backrefs differ in syntax (\1 Python / $1 JS) and JS
-// converts them best-effort.
+// nodes/node_find_replace.py::_apply_rules. Python is authoritative. Literal
+// mode (with/without whole-word) matches Python's Unicode case folding for the
+// common cases (we build regexes with the /u flag so ignore-case folds non-ASCII
+// like the Kelvin sign K->k and accented A-ring the same way re.IGNORECASE
+// does). A few locale-special folds (e.g. Turkish dotted-I U+0130) still differ:
+// JS /u ignore-case uses Unicode SIMPLE folding which doesn't map them, while
+// Python does - those rare cases preview slightly off but run correctly. Regex mode is BEST-EFFORT for the preview: we
+// translate the common Python-only syntax (\1/$1 backrefs, \g<n>/\g<0>, named
+// groups (?P<n>) and backrefs (?P=n)) and prefer /u with a non-/u fallback, but
+// a few Python regex constructs still differ from JS and the real Python run is
+// the source of truth: the char-class shorthands \w \d \s \b (and \W \D \S \B)
+// are ASCII-only in the JS preview but Unicode-aware in Python, so e.g. \w+ on
+// accented/Greek/CJK text previews NARROWER than it actually runs; a replacement
+// ending in a stray backslash (Python errors, JS keeps it); inline flags at
+// pattern start like (?s)/(?m) (use scoped (?s:...) instead); and \10-style
+// 2-digit refs / \0 in the replacement.
 
 export const STATE_PROP = "findReplaceState";
 export const PREVIEW_PROP = "findReplacePreview";
@@ -179,7 +192,12 @@ function pyTemplateToJs(repl) {
       const m = /^\\g<([^>]+)>/.exec(repl.slice(i));
       if (m) {
         const ref = m[1];
-        out += /^\d+$/.test(ref) ? "$" + ref : "$<" + ref + ">";
+        if (/^\d+$/.test(ref)) {
+          // JS has no $0; the whole match is $&. (Python \g<0> = whole match.)
+          out += ref === "0" ? "$&" : "$" + ref;
+        } else {
+          out += "$<" + ref + ">";
+        }
         i += m[0].length - 1;
         continue;
       }
@@ -200,6 +218,29 @@ function isWordChar(c) {
   return /[\p{L}\p{N}_]/u.test(c || "");
 }
 
+// Best-effort translate of Python-only regex PATTERN syntax to JS so the preview
+// compiles: named group def (?P<n>...) -> (?<n>...), named backref (?P=n) ->
+// \k<n>. Other Python-only constructs still differ (documented in the header).
+function pyPatternToJs(pat) {
+  return pat
+    .replace(/\(\?P</g, "(?<")
+    .replace(/\(\?P=([A-Za-z_]\w*)\)/g, "\\k<$1>");
+}
+
+// Build a RegExp preferring the Unicode flag so ignore-case matching folds
+// non-ASCII (Kelvin sign, accented letters, Turkish dotted-I) the same way
+// Python's re.IGNORECASE does. Falls back to non-/u if the user's pattern only
+// compiles without it (regex mode - escaped literals are always /u-safe). The
+// returned RegExp may still throw on a genuinely invalid pattern; the caller's
+// try/catch turns that into an "invalid regex" warning.
+function makeRegexU(pattern, flags) {
+  try {
+    return new RegExp(pattern, flags + "u");
+  } catch (_e) {
+    return new RegExp(pattern, flags);
+  }
+}
+
 // Returns { output, warnings:[string] }.
 export function applyRulesJS(text, state) {
   const rules = Array.isArray(state.rules) ? state.rules : [];
@@ -218,11 +259,10 @@ export function applyRulesJS(text, state) {
     const repl = rule.replace || "";
     try {
       if (rx) {
-        const re = new RegExp(find, baseFlags);
+        const re = makeRegexU(pyPatternToJs(find), baseFlags);
         out = out.replace(re, pyTemplateToJs(repl));
       } else {
         let pat = escapeRegex(find);
-        let flags = baseFlags;
         if (ww) {
           // Mirror Python's \bTERM\b: the assertion on each side depends on
           // whether the edge char is itself a word char, so it matches Python
@@ -230,9 +270,11 @@ export function applyRulesJS(text, state) {
           const lead = isWordChar(find[0]) ? `(?<![${_WORD}])` : `(?<=[${_WORD}])`;
           const tail = isWordChar(find[find.length - 1]) ? `(?![${_WORD}])` : `(?=[${_WORD}])`;
           pat = lead + pat + tail;
-          flags += "u";
         }
-        const re = new RegExp(pat, flags);
+        // Escaped literals are always /u-safe, so always use /u here for
+        // Python-matching Unicode case folding (fixes the non-whole-word literal
+        // case that previously matched ASCII-only when ignoring case).
+        const re = new RegExp(pat, baseFlags + "u");
         // Literal replacement: insert repl verbatim (only $ is special in JS;
         // backslash is literal, matching Python's backslash-doubled safe_repl).
         out = out.replace(re, repl.replace(/\$/g, "$$$$"));
@@ -258,8 +300,15 @@ export function diffTokens(aStr, bStr) {
   const b = tokenize(bStr);
   const n = a.length;
   const m = b.length;
-  // Guard against pathological sizes (preview input is capped, but be safe).
-  if (n * m > 4_000_000) {
+  // Guard against pathological token counts. The preview sample is capped at
+  // 4000 chars, but a sample of many short space-separated tokens can still
+  // tokenize into thousands of tokens, and the DP below is O(n*m) in BOTH time
+  // and memory - so it is recomputed on every keystroke (coalesced per frame).
+  // At the old 4M ceiling a worst-case ~2000x2000 diff allocated ~16 MB and ran
+  // 4M iterations PER FRAME, briefly freezing the browser while editing rules
+  // against a long prompt. 1M keeps normal prose/tag prompts on the real
+  // word-diff while degrading only very large samples to a whole-string diff.
+  if (n * m > 1_000_000) {
     return [{ t: "del", s: aStr }, { t: "ins", s: bStr }];
   }
   const dp = [];
