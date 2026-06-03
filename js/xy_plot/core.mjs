@@ -36,6 +36,25 @@ export function defaultState() {
   };
 }
 
+// Backfill missing fields on an axis IN PLACE and return the SAME object.
+// Critical: we must NOT replace the axis object on each read - editor event
+// handlers capture state.x / state.y by reference, so swapping in a fresh copy
+// on the next read makes a later save() write a stale snapshot that clobbers
+// the other axis (symptom: editing X wipes Y's values, so the node thinks
+// there's nothing to plot and Run does a normal single run instead).
+function backfillAxis(axis) {
+  if (!axis || typeof axis !== "object") return emptyAxis();
+  const def = emptyAxis();
+  for (const k in def) if (!(k in axis)) axis[k] = def[k];
+  if (!axis.raw || typeof axis.raw !== "object") {
+    axis.raw = def.raw;
+  } else {
+    const dr = def.raw;
+    for (const k in dr) if (!(k in axis.raw)) axis.raw[k] = dr[k];
+  }
+  return axis;
+}
+
 export function readState(node) {
   let s = node?.properties?.[STATE_PROP];
   if (!s || typeof s !== "object" || s.version !== STATE_VERSION) {
@@ -44,12 +63,10 @@ export function readState(node) {
       node.properties = node.properties || {};
       node.properties[STATE_PROP] = s;
     }
+    return s;
   }
-  // Backfill any missing axis sub-fields (forward-compat).
-  for (const key of ["x", "y"]) {
-    s[key] = Object.assign(emptyAxis(), s[key] || {});
-    s[key].raw = Object.assign(emptyAxis().raw, s[key].raw || {});
-  }
+  s.x = backfillAxis(s.x);
+  s.y = backfillAxis(s.y);
   return s;
 }
 

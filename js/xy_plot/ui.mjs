@@ -18,7 +18,7 @@ export function injectCSS() {
   if (_cssInjected) return;
   _cssInjected = true;
   const css = `
-.pix-xy-root{display:flex;flex-direction:column;gap:9px;padding:8px 9px 9px;font-family:'Segoe UI',system-ui,sans-serif;color:#e0e0e0;box-sizing:border-box;}
+.pix-xy-root{display:flex;flex-direction:column;gap:9px;padding:8px 9px 16px;font-family:'Segoe UI',system-ui,sans-serif;color:#e0e0e0;box-sizing:border-box;}
 .pix-xy-axis{border:1px solid rgba(255,255,255,.14);border-radius:7px;padding:9px 10px 10px;background:rgba(0,0,0,.18);}
 .pix-xy-axis-head{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:600;margin-bottom:8px;}
 .pix-xy-badge{background:${BRAND};color:#fff;border-radius:4px;width:18px;height:18px;display:grid;place-items:center;font-size:11px;font-weight:700;flex:0 0 auto;}
@@ -185,11 +185,21 @@ function openPicker(node, axisKey, anchorEl, rerender) {
   const axis = state[axisKey];
   const targets = enumerateTargets(node);
   const popup = el("div", "pix-xy-popup");
+
+  const rows = [];   // { sec, items: [{ el, hay }] }
+  let filter = null;
   if (!targets.length) {
     popup.appendChild(el("div", "pix-xy-empty", "No other nodes with adjustable settings found. Add a node (e.g. KSampler) and wire your workflow first."));
   } else {
+    filter = isolate(el("input", "pix-xy-input"));
+    filter.type = "text";
+    filter.placeholder = "Filter settings…";
+    filter.style.cssText += "position:sticky;top:0;margin-bottom:6px;";
+    popup.appendChild(filter);
     for (const t of targets) {
-      popup.appendChild(el("div", "pix-xy-pop-section", t.title));
+      const sec = el("div", "pix-xy-pop-section", t.title);
+      popup.appendChild(sec);
+      const items = [];
       for (const w of t.widgets) {
         const item = el("div", "pix-xy-pop-item");
         if (axis.nodeId === t.nodeId && axis.widgetName === w.name) item.classList.add("sel");
@@ -200,8 +210,23 @@ function openPicker(node, axisKey, anchorEl, rerender) {
           closePopup();
         });
         popup.appendChild(item);
+        items.push({ el: item, hay: (t.title + " " + w.name).toLowerCase() });
       }
+      rows.push({ sec, items });
     }
+    const applyFilter = (q) => {
+      const ql = (q || "").toLowerCase();
+      for (const r of rows) {
+        let any = false;
+        for (const it of r.items) {
+          const show = !ql || it.hay.includes(ql);
+          it.el.style.display = show ? "" : "none";
+          if (show) any = true;
+        }
+        r.sec.style.display = any ? "" : "none";
+      }
+    };
+    filter.addEventListener("input", () => applyFilter(filter.value));
   }
   document.body.appendChild(popup);
   // position under the anchor, clamped to viewport
@@ -219,6 +244,7 @@ function openPicker(node, axisKey, anchorEl, rerender) {
     document.addEventListener("pointerdown", onDown, true);
     document.addEventListener("wheel", onWheel, true);
     document.addEventListener("keydown", onKey, true);
+    try { filter?.focus(); } catch (_e) {}
   }, 0);
   popup._cleanup = () => {
     document.removeEventListener("mousedown", onDown, true);
@@ -332,28 +358,42 @@ function renderValueArea(node, axisKey, mount, refreshCounter, rerender) {
     const options = (meta && meta.options && meta.options.length) ? meta.options : (axis.options || []);
     axis.options = options;
     const checkedSet = new Set(axis.raw.checked || []);
-    const list = el("div", "pix-xy-check");
     const countEl = el("div", "pix-xy-count");
     const updateCount = () => { countEl.textContent = `${checkedSet.size} selected`; };
-    if (!options.length) {
-      list.appendChild(el("div", "pix-xy-empty", "This dropdown has no options to list."));
-    }
-    for (const opt of options) {
-      const item = el("div", "pix-xy-item");
-      const box = el("div", "pix-xy-box");
-      if (checkedSet.has(opt)) { box.classList.add("ck"); box.textContent = "✓"; }
-      item.appendChild(box);
-      item.appendChild(el("span", null, opt));
-      item.addEventListener("click", () => {
-        if (checkedSet.has(opt)) { checkedSet.delete(opt); box.classList.remove("ck"); box.textContent = ""; }
-        else { checkedSet.add(opt); box.classList.add("ck"); box.textContent = "✓"; }
-        // preserve displayed order
-        axis.raw.checked = options.filter((o) => checkedSet.has(o));
-        save(); updateCount(); refreshCounter();
-      });
-      list.appendChild(item);
-    }
+
+    // Filter box - sampler / scheduler / checkpoint lists can be long.
+    const filter = isolate(el("input", "pix-xy-input"));
+    filter.type = "text";
+    filter.placeholder = "Filter…";
+    filter.style.marginBottom = "6px";
+    const list = el("div", "pix-xy-check");
+
+    const buildList = (q) => {
+      list.innerHTML = "";
+      const ql = (q || "").toLowerCase();
+      const shown = options.filter((o) => !ql || o.toLowerCase().includes(ql));
+      if (!shown.length) {
+        list.appendChild(el("div", "pix-xy-empty", options.length ? "No matches." : "This dropdown has no options to list."));
+      }
+      for (const opt of shown) {
+        const item = el("div", "pix-xy-item");
+        const box = el("div", "pix-xy-box");
+        if (checkedSet.has(opt)) { box.classList.add("ck"); box.textContent = "✓"; }
+        item.appendChild(box);
+        item.appendChild(el("span", null, opt));
+        item.addEventListener("click", () => {
+          if (checkedSet.has(opt)) { checkedSet.delete(opt); box.classList.remove("ck"); box.textContent = ""; }
+          else { checkedSet.add(opt); box.classList.add("ck"); box.textContent = "✓"; }
+          axis.raw.checked = options.filter((o) => checkedSet.has(o)); // preserve displayed order
+          save(); updateCount(); refreshCounter();
+        });
+        list.appendChild(item);
+      }
+    };
+    filter.addEventListener("input", () => buildList(filter.value));
+    if (options.length > 6) mount.appendChild(filter);
     mount.appendChild(list);
+    buildList("");
     updateCount();
     mount.appendChild(countEl);
 
