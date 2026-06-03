@@ -100,7 +100,12 @@ export function injectCSS() {
       display: flex;
       flex-wrap: wrap;
       gap: 4px;
-      flex: 0 0 auto;
+      /* 0 1 auto + min-width:0 so this button group can SHRINK below its
+         content width when the node is narrow - that's what forces the buttons
+         to wrap instead of the last one (Clear) spilling out the right edge.
+         flex:0 0 auto sized it to content (no wrap). */
+      flex: 0 1 auto;
+      min-width: 0;
       /* Stop text selection bleeding from the textarea into the button
          labels when the user drag-selects to the edge of the field. */
       user-select: none;
