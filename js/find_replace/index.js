@@ -19,7 +19,8 @@ import {
   measureMinHeight,
 } from "./render.mjs";
 import { pixConfirm } from "./interaction.mjs";
-import { applyAdaptiveCanvasOnly } from "../shared/index.mjs";
+import { applyAdaptiveCanvasOnly, isVueNodes } from "../shared/index.mjs";
+import { isGraphLoading } from "../shared/graph_loading.mjs";
 
 const DEFAULT_W = 380;
 const DEFAULT_H = 320;
@@ -63,6 +64,33 @@ function fitToDefault(node) {
   const root = node._pixFrRoot;
   if (!root) return;
   setNodeHeight(node, Math.max(measureMinHeight(root) + CHROME, DEFAULT_H));
+}
+
+// Nodes 2.0 does NOT honor computeLayoutSize.minHeight as a hard floor: when the
+// user drags the node smaller the grid cell (items-stretch) just shrinks to the
+// node body height and the content overflows below the frame (verified: cell H
+// 173 while computeLayoutSize.minHeight was 264). So watch the widget root and,
+// whenever it gets shorter than the content needs, grow the node back up - a
+// reactive min-height clamp. ResizeObserver is the reliable resize signal in
+// Nodes 2.0 (Vue Compat #13). Legacy enforces the floor via getMinHeight, so
+// this only acts in Nodes 2.0. Gated on !isGraphLoading() so it never resizes
+// (and dirties) a workflow during load.
+function installMinHeightGuard(node, root) {
+  try {
+    const ro = new ResizeObserver(() => {
+      if (!root.isConnected || !isVueNodes() || isGraphLoading()) return;
+      const need = measureMinHeight(root);
+      const have = root.clientHeight;
+      if (have > 0 && have < need - 1) {
+        setNodeHeight(node, node.size[1] + (need - have));
+        node.setDirtyCanvas(true, true);
+      }
+    });
+    ro.observe(root);
+    return ro;
+  } catch (_e) {
+    return null;
+  }
 }
 
 function makeHandlers(node, root) {
@@ -166,6 +194,8 @@ app.registerExtension({
           node.size[1] = h;
           node.setSize?.([w, h]);
         }
+
+        node._pixFrRO = installMinHeightGuard(node, root);
         node.setDirtyCanvas(true, true);
       });
     };
@@ -218,6 +248,8 @@ app.registerExtension({
 
     const origRemoved = nodeType.prototype.onRemoved;
     nodeType.prototype.onRemoved = function () {
+      this._pixFrRO?.disconnect();
+      this._pixFrRO = null;
       this._pixFrRoot = null;
       this._pixFrRerender = null;
       this._pixFrRenderOnly = null;
