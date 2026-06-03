@@ -6,6 +6,75 @@
 // See the "ComfyUI Nodes 2.0 Migration" section in CLAUDE.md for the
 // full background and the survive/break matrix.
 
+import { app } from "/scripts/app.js";
+
+/**
+ * Effective backing-store scale (device pixels per LAYOUT pixel) for a DOM
+ * `<canvas>` widget in Nodes 2.0.
+ *
+ * The Nodes 2.0 node is CSS-transform-scaled by the graph zoom
+ * (`app.canvas.ds.scale`). A `<canvas>` has a FIXED backing store, so if it's
+ * sized only at layout resolution (`clientWidth * devicePixelRatio`) the
+ * browser CSS-stretches that backing store up when the user zooms IN → the
+ * image goes blurry/pixelated. (Native ComfyUI dodges this by using a
+ * resolution-independent `<img>`.) Sizing the backing store at `dpr * zoom`
+ * keeps the canvas crisp at any zoom.
+ *
+ * Never below `dpr` (zoomed OUT the node is smaller than layout, so dpr is
+ * already plenty), and the long side is capped so a deep zoom can't allocate a
+ * giant canvas. This mirrors the proven Compare implementation; it is the
+ * single source of truth for every Pixaroma DOM-canvas widget.
+ *
+ * @param {number} cssW - canvas CSS width  (root.clientWidth)
+ * @param {number} cssH - canvas CSS height (root.clientHeight)
+ * @returns {number} device-pixels-per-layout-pixel scale to render at
+ */
+const CANVAS_BACKING_CAP = 6000;
+export function canvasBackingScale(cssW, cssH) {
+  const dpr = window.devicePixelRatio || 1;
+  const zoom = Math.max(1, app.canvas?.ds?.scale || 1);
+  let s = dpr * zoom;
+  const longCss = Math.max(cssW || 0, cssH || 0);
+  if (longCss > 0 && longCss * s > CANVAS_BACKING_CAP) s = CANVAS_BACKING_CAP / longCss;
+  return s;
+}
+
+/**
+ * Install a per-frame requestAnimationFrame loop that calls `render()` whenever
+ * the effective backing scale (graph zoom) changes.
+ *
+ * A `ResizeObserver` does NOT fire on graph zoom (the element's `clientWidth`
+ * in layout px is unchanged - only the CSS transform scale changes), so without
+ * this watcher a DOM canvas keeps its old resolution and stays blurry until the
+ * next layout-size change. The loop is cheap: it only reads the size + diffs the
+ * scale each frame and repaints on an actual change.
+ *
+ * Stores the rAF id on `node[rafKey]` so an `onRemoved` handler can
+ * `cancelAnimationFrame(node[rafKey])`. Also returns a stop() function.
+ *
+ * @param {object} node - the LiteGraph node (rAF id is parked on it)
+ * @param {() => [number, number]} getSize - returns the canvas [cssW, cssH]
+ * @param {() => void} render - repaint callback (re-sizes + redraws the canvas)
+ * @param {string} rafKey - property name to store the rAF id under on `node`
+ * @returns {() => void} stop - cancels the loop
+ */
+export function installZoomRepaint(node, getSize, render, rafKey) {
+  let lastScale = -1;
+  const tick = () => {
+    const [w, h] = getSize() || [0, 0];
+    if (w > 0 && h > 0) {
+      const s = canvasBackingScale(w, h);
+      if (Math.abs(s - lastScale) > 0.005) { lastScale = s; render(); }
+    }
+    node[rafKey] = requestAnimationFrame(tick);
+  };
+  node[rafKey] = requestAnimationFrame(tick);
+  return () => {
+    try { cancelAnimationFrame(node[rafKey]); } catch (_e) { /* ignore */ }
+    node[rafKey] = null;
+  };
+}
+
 /**
  * True when ComfyUI's Nodes 2.0 (Vue) renderer is active.
  * Driven by the `Comfy.VueNodes.Enabled` setting → `LiteGraph.vueNodesMode`.

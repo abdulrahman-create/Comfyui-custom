@@ -1,7 +1,7 @@
 import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
 import { hideJsonWidget, BRAND } from "../shared/index.mjs";
-import { isVueNodes, applyAdaptiveCanvasOnly } from "../shared/nodes2.mjs";
+import { isVueNodes, applyAdaptiveCanvasOnly, canvasBackingScale } from "../shared/nodes2.mjs";
 import { buildModePanel, previewResize, injectResizePanelCSS } from "../shared/resize_panel.mjs";
 import {
   injectCSS, buildModeChips, buildFooter, buildResampleAndUpscale,
@@ -731,16 +731,20 @@ function setupVueCards(node) {
     const sig = info.mode === "msg"
       ? `m:${info.text}`
       : `d:${info.inW}x${info.inH}>${info.outW}x${info.outH}`;
-    const sizeSig = `${cssW}x${cssH}`;
+    // Backing store at dpr x graph-zoom so the cards stay crisp when zoomed in.
+    // The ResizeObserver doesn't fire on zoom, so fold the scale into the
+    // size-sig - the existing 250ms poll then re-renders on a zoom change (a
+    // ~250ms lag is fine for these static text/arrow cards; no extra rAF loop).
+    const s = canvasBackingScale(cssW, cssH);
+    const sizeSig = `${cssW}x${cssH}@${s.toFixed(2)}`;
     if (!force && sig === node._pixIrLastSig && sizeSig === node._pixIrLastSize) return;
     node._pixIrLastSig = sig;
     node._pixIrLastSize = sizeSig;
-    const dpr = window.devicePixelRatio || 1;
-    const W = Math.round(cssW * dpr), H = Math.round(cssH * dpr);
+    const W = Math.round(cssW * s), H = Math.round(cssH * s);
     if (canvas.width !== W) canvas.width = W;
     if (canvas.height !== H) canvas.height = H;
     const ctx = canvas.getContext("2d");
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.setTransform(s, 0, 0, s, 0, 0);
     ctx.clearRect(0, 0, cssW, cssH);
     paintReadout(ctx, node, cssW, cssH / 2, info);
   };
