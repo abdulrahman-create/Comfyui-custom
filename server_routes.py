@@ -1016,6 +1016,33 @@ async def api_xy_plot_save(request):
     })
 
 
+@PromptServer.instance.routes.post("/pixaroma/api/xy_plot/restyle")
+async def api_xy_plot_restyle(request):
+    """Re-render the current XY Plot grid with a new color theme, without
+    re-running the workflow (the cells are cached server-side). Used for the
+    instant Grid theme switch.
+
+    Request JSON: { session_id: str, theme: "dark"|"light"|"mono" }
+    Response JSON: { status, filename } or { error } (404 if session expired).
+    """
+    try:
+        data = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid JSON"}, status=400)
+    session_id = data.get("session_id")
+    theme = data.get("theme") or "dark"
+    if not session_id:
+        return web.json_response({"error": "no session"}, status=400)
+    try:
+        from .nodes.node_xy_plot import restyle_session
+        name = restyle_session(session_id, theme)
+    except Exception as e:
+        return web.json_response({"error": f"restyle failed: {e}"}, status=500)
+    if not name:
+        return web.json_response({"error": "session expired - run the plot again"}, status=404)
+    return web.json_response({"status": "success", "filename": name})
+
+
 def _is_path_under(child: str, *parents: str) -> bool:
     """Return True iff `child` is inside ANY of the given parent directories.
 

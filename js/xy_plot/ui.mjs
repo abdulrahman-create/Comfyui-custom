@@ -72,6 +72,11 @@ textarea.pix-xy-input{resize:vertical;min-height:46px;white-space:pre;}
 .pix-xy-counter{text-align:center;font-size:13px;font-weight:600;color:#fff;background:${BRAND};border-radius:6px;padding:7px;}
 .pix-xy-counter.muted{background:rgba(255,255,255,.06);color:#9a9a9a;font-weight:500;}
 .pix-xy-opts{display:flex;gap:7px;flex-wrap:wrap;}
+.pix-xy-opts2{display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap;}
+.pix-xy-themewrap{display:flex;align-items:center;gap:7px;}
+.pix-xy-themelbl{font-size:11.5px;color:#9a9a9a;}
+.pix-xy-themeseg{margin-bottom:0;}
+.pix-xy-themeseg span{padding:4px 10px;}
 .pix-xy-toggle{display:flex;align-items:center;gap:7px;font-size:11.5px;color:#cfcfcf;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.14);border-radius:5px;padding:5px 9px;cursor:pointer;user-select:none;}
 .pix-xy-toggle:hover{border-color:${BRAND};}
 .pix-xy-pill{width:30px;height:16px;flex:0 0 auto;border-radius:8px;background:#444;position:relative;transition:.15s;}
@@ -120,6 +125,7 @@ export function buildRoot() {
     <div class="pix-xy-axis" data-axis="y"></div>
     <div class="pix-xy-counter-wrap"></div>
     <div class="pix-xy-opts"></div>
+    <div class="pix-xy-opts2"></div>
     <div class="pix-xy-gridmount"></div>`;
   return root;
 }
@@ -461,6 +467,51 @@ function buildToggle(label, on, onToggle) {
   return t;
 }
 
+const THEMES = [["dark", "Dark"], ["light", "Light"], ["mono", "Mono"]];
+
+// Grid color-theme picker. Switching re-skins the CURRENT grid instantly (the
+// cells are cached server-side) via /pixaroma/api/xy_plot/restyle; if no grid
+// exists yet it just stores the choice for the next run.
+function buildThemeControl(node, state) {
+  const wrap = el("div", "pix-xy-themewrap");
+  wrap.appendChild(el("span", "pix-xy-themelbl", "Grid"));
+  const seg = el("div", "pix-xy-seg pix-xy-themeseg");
+  const cur = state.theme || "dark";
+  for (const [val, label] of THEMES) {
+    const s = el("span", null, label);
+    if (cur === val) s.classList.add("on");
+    s.title = `Grid background + label style: ${label}`;
+    s.addEventListener("click", async () => {
+      const st = readState(node);
+      if (st.theme === val) return;
+      st.theme = val;
+      writeState(node, st);
+      seg.querySelectorAll("span").forEach((x) => x.classList.remove("on"));
+      s.classList.add("on");
+      // Instant re-skin of the grid already on screen.
+      const last = node._pixXyLastGrid;
+      if (last && last.sessionId) {
+        try {
+          const resp = await fetch("/pixaroma/api/xy_plot/restyle", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ session_id: last.sessionId, theme: val }),
+          });
+          const data = await resp.json().catch(() => ({}));
+          if (resp.ok && data.filename) {
+            const url = `/view?filename=${encodeURIComponent(data.filename)}&subfolder=&type=temp&t=${Date.now()}`;
+            node._pixXyLastGrid = Object.assign({}, last, { filename: data.filename, url });
+            node._pixXyGrid?.setGrid(url);
+          }
+        } catch (_e) { /* falls back to applying on next run */ }
+      }
+    });
+    seg.appendChild(s);
+  }
+  wrap.appendChild(seg);
+  return wrap;
+}
+
 // ── top-level render ─────────────────────────────────────────────────────────
 
 // handlers: { rerender(): full rebuild, growth(): re-measure node height }
@@ -510,13 +561,18 @@ export function renderBody(node, root, handlers) {
   opts.appendChild(buildToggle("Lock seed", state.lockSeed !== false, (v) => { const s = readState(node); s.lockSeed = v; writeState(node, s); }));
   opts.appendChild(buildToggle("Draw labels", state.drawLabels !== false, (v) => { const s = readState(node); s.drawLabels = v; writeState(node, s); }));
   opts.appendChild(buildToggle("Save cells", state.saveCells === true, (v) => { const s = readState(node); s.saveCells = v; writeState(node, s); }));
+
+  // Second row: grid theme picker on the left, Reset on the right.
+  const opts2 = root.querySelector(".pix-xy-opts2");
+  opts2.innerHTML = "";
+  opts2.appendChild(buildThemeControl(node, state));
   if (handlers.reset) {
     const reset = el("div", "pix-xy-resetbtn");
     reset.appendChild(el("span", null, "↺"));
     reset.appendChild(el("span", null, "Reset"));
     reset.title = "Clear both axes and selections, back to a fresh node.";
     reset.addEventListener("click", () => handlers.reset());
-    opts.appendChild(reset);
+    opts2.appendChild(reset);
   }
 
   if (handlers.growth) handlers.growth();

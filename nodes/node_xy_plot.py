@@ -44,10 +44,15 @@ _MAX_SESSIONS = 8        # cap stored plots so memory can't grow unbounded
 
 # Grid layout constants (px). Labels + gaps scale with cell size at render time.
 _GRID_LONG_SIDE_CAP = 4096   # scale the whole grid down if it exceeds this
-_CELL_BG = (42, 42, 42)      # #2a2a2a - matches the Pixaroma node body
-_GRID_BG = (20, 20, 20)      # behind the cells / label strips
-_LABEL_FG = (235, 235, 235)
-_AXIS_FG = (246, 103, 68)    # brand orange for the axis names
+
+# Grid color themes. The cells are the user's images (unchanged); these colors
+# style the background, the empty-cell tiles, the value labels, and the orange
+# axis-name lines. "dark" is the Pixaroma default.
+_THEMES = {
+    "dark":  {"grid": (20, 20, 20),    "cell": (42, 42, 42),    "label": (235, 235, 235), "axis": (246, 103, 68)},
+    "light": {"grid": (242, 242, 242), "cell": (255, 255, 255), "label": (28, 28, 28),    "axis": (214, 80, 48)},
+    "mono":  {"grid": (18, 18, 18),    "cell": (40, 40, 40),    "label": (236, 236, 236), "axis": (170, 170, 170)},
+}
 
 _FONT_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets", "fonts")
 _FONT_CACHE = {}
@@ -153,6 +158,25 @@ def get_session(session_id):
     return _SESSIONS.get(session_id)
 
 
+def restyle_session(session_id, theme):
+    """Re-render an existing plot's grid with a new color theme WITHOUT
+    re-running the workflow (the cells are still cached). Returns the grid's
+    temp filename, or None if the session has been evicted. Used by the
+    /pixaroma/api/xy_plot/restyle route for instant theme switching."""
+    sess = _SESSIONS.get(session_id)
+    if not sess:
+        return None
+    sess["theme"] = theme if theme in _THEMES else "dark"
+    grid_pil = _assemble_grid(sess)
+    temp_dir = folder_paths.get_temp_directory()
+    os.makedirs(temp_dir, exist_ok=True)
+    try:
+        grid_pil.save(os.path.join(temp_dir, sess["grid_name"]), "PNG")
+    except Exception:
+        return None
+    return sess["grid_name"]
+
+
 def _assemble_grid(sess):
     """Build the labeled grid PIL.Image from whatever cells `sess` has so far.
     Missing cells render as empty tiles. Pure function of the session state."""
@@ -160,6 +184,7 @@ def _assemble_grid(sess):
     cols = max(1, int(sess["cols"]))
     rows = max(1, int(sess["rows"]))
     draw_labels = bool(sess.get("draw_labels", True))
+    pal = _THEMES.get(sess.get("theme") or "dark", _THEMES["dark"])
 
     # Cell size = the first received cell's size (assume a uniform batch).
     sample = next(iter(cells.values()), None)
@@ -202,7 +227,7 @@ def _assemble_grid(sess):
     grid_w = row_label_w + cols * cell_w + (cols + 1) * gap
     grid_h = col_label_h + rows * cell_h + (rows + 1) * gap
 
-    img = Image.new("RGB", (grid_w, grid_h), _GRID_BG)
+    img = Image.new("RGB", (grid_w, grid_h), pal["grid"])
     draw = ImageDraw.Draw(img)
 
     def cell_xy(ci, ri):
@@ -217,7 +242,7 @@ def _assemble_grid(sess):
             cell = cells.get((ci, ri))
             if cell is not None:
                 if cell.size != (cell_w, cell_h):
-                    tile = Image.new("RGB", (cell_w, cell_h), _CELL_BG)
+                    tile = Image.new("RGB", (cell_w, cell_h), pal["cell"])
                     fitted = cell.copy()
                     fitted.thumbnail((cell_w, cell_h), Image.LANCZOS)
                     tile.paste(fitted, ((cell_w - fitted.width) // 2,
@@ -226,7 +251,7 @@ def _assemble_grid(sess):
                 else:
                     img.paste(cell, (x, y))
             else:
-                draw.rectangle([x, y, x + cell_w - 1, y + cell_h - 1], fill=_CELL_BG)
+                draw.rectangle([x, y, x + cell_w - 1, y + cell_h - 1], fill=pal["cell"])
 
     if draw_labels:
         # Column labels (X values) centered above each column - shrink to fit
@@ -238,7 +263,7 @@ def _assemble_grid(sess):
             lf = _fit_font(draw, lab, font_size, cell_w - 6)
             cx, _ = cell_xy(ci, 0)
             tw, th = _measure(draw, lab, lf)
-            draw.text((cx + (cell_w - tw) / 2, (col_label_h - th) / 2), lab, font=lf, fill=_LABEL_FG)
+            draw.text((cx + (cell_w - tw) / 2, (col_label_h - th) / 2), lab, font=lf, fill=pal["label"])
         # Row labels (Y values) centered in the left strip - shrink to fit the
         # (wide) strip, never truncate, so the full name is always readable.
         for ri in range(rows):
@@ -248,7 +273,7 @@ def _assemble_grid(sess):
             lf = _fit_font(draw, lab, font_size, row_label_w - 2 * pad)
             _, cy = cell_xy(0, ri)
             tw, th = _measure(draw, lab, lf)
-            draw.text((max(2, (row_label_w - tw) / 2), cy + (cell_h - th) / 2), lab, font=lf, fill=_LABEL_FG)
+            draw.text((max(2, (row_label_w - tw) / 2), cy + (cell_h - th) / 2), lab, font=lf, fill=pal["label"])
         # Axis names in the top-left corner: "↓ y_name" over "→ x_name".
         corner_lines = []
         if y_name:
@@ -258,7 +283,7 @@ def _assemble_grid(sess):
         ty = 3
         for line in corner_lines:
             lf = _fit_font(draw, line, max(11, round(font_size * 0.8)), max(row_label_w, 80) - 6)
-            draw.text((4, ty), line, font=lf, fill=_AXIS_FG)
+            draw.text((4, ty), line, font=lf, fill=pal["axis"])
             ty += _measure(draw, line, lf)[1] + 2
 
     # Cap the long side so a big grid can't explode memory / the preview.
@@ -347,6 +372,7 @@ class PixaromaXYPlot:
                 "x_name": state.get("xName") or "",
                 "y_name": state.get("yName") or "",
                 "draw_labels": bool(state.get("drawLabels", True)),
+                "theme": state.get("theme") or "dark",
                 "grid_name": grid_name,
                 "prefix": state.get("prefix") or filename_prefix,
             }
@@ -362,6 +388,7 @@ class PixaromaXYPlot:
         sess["x_name"] = state.get("xName") or sess.get("x_name", "")
         sess["y_name"] = state.get("yName") or sess.get("y_name", "")
         sess["draw_labels"] = bool(state.get("drawLabels", sess.get("draw_labels", True)))
+        sess["theme"] = state.get("theme") or sess.get("theme", "dark")
 
         # Store this cell (first frame of the batch).
         try:

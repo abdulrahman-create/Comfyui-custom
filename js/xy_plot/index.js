@@ -288,6 +288,7 @@ app.graphToPrompt = async function (...args) {
           xName: run.xName, yName: run.yName,
           drawLabels: state.drawLabels !== false,
           saveCells: state.saveCells === true,
+          theme: state.theme || "dark",
           prefix: prefixOf(node),
         };
         entry.inputs = entry.inputs || {};

@@ -33,6 +33,7 @@ export function defaultState() {
     lockSeed: true,
     drawLabels: true,
     saveCells: false,
+    theme: "dark",          // grid color theme: "dark" | "light" | "mono"
   };
 }
 
