@@ -4,7 +4,7 @@ import {
   readState, restoreFromProperties, resetState,
   resolveAxisValues, axisReady, computeCounts,
 } from "./core.mjs";
-import { injectCSS, buildRoot, renderBody, measureContentHeight, closePopup } from "./ui.mjs";
+import { injectCSS, buildRoot, renderBody, measureContentHeight, closePopupIfOwner } from "./ui.mjs";
 import { buildGridPreview } from "./grid.mjs";
 import { applyAdaptiveCanvasOnly } from "../shared/index.mjs";
 import { isQueueLoopActive, runQueueLoop, feedsOnlyInactiveSwitch } from "../shared/queue_drivers.mjs";
@@ -237,7 +237,7 @@ app.registerExtension({
 
     const origRemoved = nodeType.prototype.onRemoved;
     nodeType.prototype.onRemoved = function () {
-      try { closePopup(); } catch (_e) {}
+      try { closePopupIfOwner(this); } catch (_e) {}   // only close OUR popup, not another node's
       try { this._pixXyCancelConfirm?.(); } catch (_e) {}
       this._pixXyRoot = null;
       this._pixXyRerender = null;
@@ -248,6 +248,8 @@ app.registerExtension({
       this._pixXyFit = null;
       this._pixXyLastGrid = null;
       this._pixXyGridDims = null;
+      this._pixXyExecPrompt = null;
+      this._pixXyExecWorkflow = null;
       if (origRemoved) return origRemoved.apply(this, arguments);
     };
   },
@@ -300,13 +302,15 @@ function injectAxis(out, axis, value) {
 
 // Pin every seed/noise_seed to the value captured for THAT node (keeps each
 // sampler's seed constant across cells without forcing them all equal).
+// Match by EXACT prompt key (= the node id for a top-level node, which is how
+// captureSeedMap keys them). A tail-id match would collide across subgraph
+// scopes ("12:5" and a top-level "5" both ending in 5) and pin the wrong seed.
 function applySeedLock(out, seedMap) {
   if (!seedMap) return;
   for (const k of Object.keys(out)) {
     const e = out[k];
     if (!e || !e.inputs) continue;
-    const tail = String(k).split(":").pop();
-    const v = (seedMap[tail] != null) ? seedMap[tail] : seedMap[k];
+    const v = seedMap[k];
     if (v == null) continue;
     for (const sname of ["seed", "noise_seed"]) {
       if (sname in e.inputs && typeof e.inputs[sname] !== "object") {
@@ -468,11 +472,19 @@ api.addEventListener("executed", ({ detail }) => {
     const f = frames[0];
     const url = buildViewUrl(f);
     node._pixXyLastGrid = { sessionId: f._xy?.sessionId || null, filename: f.filename, url };
-    node._pixXyGrid?.setGrid(url);
-    if (node._pixXyRoot && node._pixXyRerender) {
-      // re-measure so the node grows to fit the grid
-      requestAnimationFrame(() => node.setDirtyCanvas(true, true));
+    // Capture the EXECUTION-time prompt + workflow so Save Output embeds the
+    // seed that ACTUALLY produced the grid (the live graph's seed has already
+    // been bumped by 'control after generate: randomize' by save-click time).
+    // Runtime-only - never persist to node.properties (Preview Pattern #13).
+    const meta = f._pixaroma_meta;
+    if (meta && typeof meta === "object") {
+      node._pixXyExecPrompt = meta.prompt || null;
+      node._pixXyExecWorkflow = meta.workflow || null;
     }
+    node._pixXyGrid?.setGrid(url);
+    // The node's actual resize-to-fit happens in the grid <img> onload handler
+    // (grid.mjs -> _pixXyFit); here we just request a repaint.
+    requestAnimationFrame(() => { try { node.setDirtyCanvas?.(true, true); } catch (_e) {} });
   } catch (e) {
     console.error("Pixaroma.XYPlot: executed handler failed", e);
   }

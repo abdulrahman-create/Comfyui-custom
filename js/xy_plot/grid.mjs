@@ -101,12 +101,19 @@ async function doSaveOutput(node) {
   const last = node._pixXyLastGrid;
   if (!last || !last.filename) { toast("XY Plot", "No grid to save yet.", "warn"); return; }
   const state = readState(node);
-  let prompt = null, workflow = null;
-  try {
-    const gp = await app.graphToPrompt();
-    prompt = gp?.output || null;
-    workflow = gp?.workflow || null;
-  } catch (_e) {}
+  // Prefer the EXECUTION-time prompt/workflow captured when the grid ran, so
+  // the embedded metadata reproduces the grid's actual (locked) seed. Fall back
+  // to the live graph only if no run happened this session (Preview Pattern #13).
+  let prompt = node._pixXyExecPrompt || null;
+  let workflow = node._pixXyExecWorkflow || null;
+  if (!workflow && !prompt) {
+    try {
+      const gp = await app.graphToPrompt();
+      prompt = gp?.output || null;
+      workflow = gp?.workflow || null;
+    } catch (_e) {}
+  }
+  const wantCells = state.saveCells === true;
   try {
     const resp = await fetch("/pixaroma/api/xy_plot/save", {
       method: "POST",
@@ -115,7 +122,7 @@ async function doSaveOutput(node) {
         grid_filename: last.filename,
         session_id: last.sessionId || null,
         filename_prefix: prefixOf(node),
-        save_cells: state.saveCells === true,
+        save_cells: wantCells,
         prompt, workflow,
       }),
     });
@@ -123,6 +130,10 @@ async function doSaveOutput(node) {
     if (!resp.ok || data.error) { toast("XY Plot", data.error || "Save to output failed.", "error"); return; }
     const extra = data.saved_cells ? ` (+${data.saved_cells} cells)` : "";
     toast("XY Plot", `Saved to output/${data.subfolder ? data.subfolder + "/" : ""}${data.filename}${extra}`);
+    // If cells were requested but none were written (session expired), say so.
+    if (wantCells && !data.saved_cells) {
+      toast("XY Plot", "Grid saved, but cells couldn't be saved (session expired) - re-run the plot to save cells.", "warn");
+    }
   } catch (_e) {
     toast("XY Plot", "Save to output failed.", "error");
   }

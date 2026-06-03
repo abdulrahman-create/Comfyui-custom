@@ -998,14 +998,14 @@ async def api_xy_plot_save(request):
     valid_sid = isinstance(session_id, str) and bool(_SAFE_ID_RE.match(session_id)) and len(session_id) <= _MAX_ID_LEN
     if save_cells and valid_sid:
         try:
-            from .nodes.node_xy_plot import get_session
-            sess = get_session(session_id)
-            if sess and isinstance(sess.get("cells"), dict):
+            from .nodes.node_xy_plot import snapshot_session_cells
+            cells, _ = snapshot_session_cells(session_id)   # copied under the node's lock
+            if cells:
                 cells_folder = os.path.join(full_folder, f"{name}_cells")
                 # Defense-in-depth: never write the cells subfolder outside output/.
                 if _is_path_under(cells_folder, output_dir) or _is_path_under(os.path.dirname(cells_folder), output_dir):
                     os.makedirs(cells_folder, exist_ok=True)
-                    for (xi, yi), cell in list(sess["cells"].items()):
+                    for (xi, yi), cell in cells:
                         cell_name = f"{name}_x{xi}_y{yi}.png"
                         try:
                             cell.convert("RGB").save(os.path.join(cells_folder, cell_name), "PNG")

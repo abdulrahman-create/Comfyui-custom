@@ -145,19 +145,6 @@ def _measure(draw, text, font):
             return (len(text) * 7, 12)
 
 
-def _truncate(draw, text, font, max_w):
-    """Truncate `text` with an ellipsis so it fits in `max_w` px."""
-    if not text:
-        return ""
-    if _measure(draw, text, font)[0] <= max_w:
-        return text
-    ell = "…"
-    out = text
-    while out and _measure(draw, out + ell, font)[0] > max_w:
-        out = out[:-1]
-    return (out + ell) if out else ell
-
-
 def _evict_sessions():
     while len(_SESSION_ORDER) > _MAX_SESSIONS:
         old = _SESSION_ORDER.pop(0)
@@ -182,7 +169,18 @@ def _touch_session(session_id):
 
 def get_session(session_id):
     """Used by the save routes (server_routes.py)."""
-    return _SESSIONS.get(session_id)
+    with _LOCK:
+        return _SESSIONS.get(session_id)
+
+
+def snapshot_session_cells(session_id):
+    """Return a list of ((xi, yi), PIL.Image) for a session, copied under the
+    lock so the save route can iterate without racing execute()'s writes."""
+    with _LOCK:
+        sess = _SESSIONS.get(session_id)
+        if not sess or not isinstance(sess.get("cells"), dict):
+            return ([], "")
+        return (list(sess["cells"].items()), str(sess.get("grid_name") or ""))
 
 
 def restyle_session(session_id, theme):
@@ -416,11 +414,13 @@ class PixaromaXYPlot:
             _touch_session(session_id)
 
             # Keep label arrays / dims fresh (JS sends the full arrays every cell).
+            # Slice to the clamped dims so a manually-crafted oversized state can't
+            # leave label arrays longer than the grid (kept internally consistent).
             sess["cols"], sess["rows"] = cols, rows
             if state.get("xLabels"):
-                sess["x_labels"] = state["xLabels"]
+                sess["x_labels"] = list(state["xLabels"])[:cols]
             if state.get("yLabels"):
-                sess["y_labels"] = state["yLabels"]
+                sess["y_labels"] = list(state["yLabels"])[:rows]
             sess["x_name"] = state.get("xName") or sess.get("x_name", "")
             sess["y_name"] = state.get("yName") or sess.get("y_name", "")
             sess["draw_labels"] = bool(state.get("drawLabels", sess.get("draw_labels", True)))
@@ -447,12 +447,17 @@ class PixaromaXYPlot:
         except Exception as e:
             print("[Pixaroma] XY Plot: failed to write grid PNG: %s" % e)
 
+        # Hand the EXECUTION-time prompt + workflow to the frontend (embedded as
+        # an extra field on the frame, NOT a separate ui key - Preview Pattern
+        # #16) so Save Output bakes in the seed that actually produced the grid.
+        workflow = extra_pnginfo.get("workflow") if isinstance(extra_pnginfo, dict) else None
         frame = {
             "filename": grid_name,
             "subfolder": "",
             "type": "temp",
             "_xy": _json_safe({"sessionId": str(session_id), "xi": xi, "yi": yi,
                                "cols": cols, "rows": rows}),
+            "_pixaroma_meta": _json_safe({"prompt": prompt, "workflow": workflow}),
         }
         return {
             "ui": {"pixaroma_xy_grid": [frame]},

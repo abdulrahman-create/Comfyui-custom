@@ -22,10 +22,9 @@ function xyToast(detail, severity = "info") {
   console.warn("[Pixaroma.XYPlot] " + detail);
 }
 
-let _cssInjected = false;
 export function injectCSS() {
-  if (_cssInjected) return;
-  _cssInjected = true;
+  // DOM-id guard (survives a module hot-reload without duplicating the style).
+  if (document.getElementById("pix-xy-css")) return;
   const css = `
 .pix-xy-root{display:flex;flex-direction:column;gap:9px;padding:8px 9px 16px;font-family:'Segoe UI',system-ui,sans-serif;color:#e0e0e0;box-sizing:border-box;}
 .pix-xy-axis{border:1px solid rgba(255,255,255,.14);border-radius:7px;padding:9px 10px 10px;background:rgba(0,0,0,.18);}
@@ -179,6 +178,12 @@ function closePopup() {
   if (_openPopup) { try { _openPopup._cleanup(); } catch (_e) {} _openPopup.remove(); _openPopup = null; }
 }
 
+// Close the picker popup ONLY if it belongs to `node` - so deleting node A
+// doesn't tear down node B's open picker (the popup is a module singleton).
+export function closePopupIfOwner(node) {
+  if (_openPopup && node && _openPopup._pixOwnerId === node.id) closePopup();
+}
+
 function flatChoices(node) {
   const out = [];
   for (const t of enumerateTargets(node)) {
@@ -289,6 +294,7 @@ function openPicker(node, axisKey, anchorEl, rerender) {
     document.removeEventListener("wheel", onWheel, true);
     document.removeEventListener("keydown", onKey, true);
   };
+  popup._pixOwnerId = node?.id;   // so closePopupIfOwner only closes this node's popup
   _openPopup = popup;
 }
 
@@ -506,12 +512,16 @@ function buildThemeControl(node, state) {
       // Instant re-skin of the grid already on screen.
       const last = node._pixXyLastGrid;
       if (last && last.sessionId) {
+        // Token guards rapid theme spam: a stale fetch that resolves late must
+        // not overwrite node._pixXyLastGrid (which Save/Copy/Open act on).
+        const rtok = (node._pixXyRestyleReq = (node._pixXyRestyleReq || 0) + 1);
         try {
           const resp = await fetch("/pixaroma/api/xy_plot/restyle", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ session_id: last.sessionId, theme: val }),
           });
+          if (rtok !== node._pixXyRestyleReq) return;   // superseded by a newer theme click
           if (resp.ok) {
             const data = await resp.json().catch(() => ({}));
             if (data.filename) {
