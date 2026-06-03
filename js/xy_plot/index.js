@@ -304,8 +304,12 @@ function injectAxis(out, axis, value) {
     }
     return;
   }
-  // Don't clobber a wired input (link arrays are objects).
-  if (typeof cur === "object" && cur !== null) return;
+  // Number / combo / text(full-list): inject the swept value, OVERRIDING a
+  // wired input if there is one. A converted-to-input widget (e.g. Empty Latent
+  // Image's `width` wired from Resolution Pixaroma) appears in the prompt as a
+  // link array `[nodeId, slot]`; the user explicitly chose to vary this input,
+  // so replace the link with each cell's literal value (otherwise the plot
+  // would silently do nothing and every cell would look identical).
   te.inputs[axis.widgetName] = value;
 }
 
