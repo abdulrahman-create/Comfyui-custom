@@ -26,9 +26,12 @@ const CSS = `
   color: #ddd;
   /* Fill the DOM-widget area so the preview can grow with the node
      (Show Text fill pattern). The toggles/rows/actions keep natural
-     height (flex:0 0 auto); only the preview flexes to fill the rest. */
+     height (flex:0 0 auto); only the preview flexes to fill the rest.
+     min-height is set in JS to the content height (applyRootMinHeight):
+     the Nodes 2.0 resize floor is a live measurement of the COLLAPSED
+     node, so without a real min-height the root collapses below its
+     content and the user can drag the node small enough to overflow. */
   height: 100%;
-  min-height: 0;
 }
 
 /* ---- global toggle pills ---- */

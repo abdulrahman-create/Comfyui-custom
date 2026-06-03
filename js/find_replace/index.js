@@ -48,6 +48,20 @@ function setNodeHeight(node, h) {
 // preview always fit. Grows only - the preview flexes to fill any extra
 // height, so freed space (e.g. a textarea shrinking) goes to the preview, not
 // to a dead gap.
+// Pin a hard CSS min-height on the widget root = the content floor. This is the
+// thing the Nodes 2.0 resize honors as a drag floor: it measures the node's
+// COLLAPSED height (temporarily sets --node-height:0) and clamps the drag to it.
+// A flex root with no min-height collapses below its content, so the measured
+// floor is too small and the user can drag the node small enough to overflow.
+// Setting min-height to the real content height makes that measurement = the
+// true floor. Re-applied on every content change. A style change (not node.size)
+// so it never dirties the saved workflow; legacy ignores it (uses getMinHeight).
+function applyRootMinHeight(node) {
+  const root = node._pixFrRoot;
+  if (!root) return;
+  root.style.minHeight = measureMinHeight(root) + "px";
+}
+
 function ensureMinHeight(node) {
   const root = node._pixFrRoot;
   if (!root) return;
@@ -97,6 +111,7 @@ function makeHandlers(node, root) {
   const rerender = () => {
     renderAll(node, root, handlers);
     requestAnimationFrame(() => {
+      applyRootMinHeight(node);
       ensureMinHeight(node);
       node.setDirtyCanvas(true, true);
     });
@@ -165,7 +180,7 @@ app.registerExtension({
         node._pixFrRenderOnly = () => renderAll(node, root, handlers);
         node._pixFrRefreshPreview = () => renderPreview(node, root);
         node._pixFrRefreshReset = () => refreshResetState(node, root);
-        node._pixFrGrow = () => { ensureMinHeight(node); node.setDirtyCanvas(true, true); };
+        node._pixFrGrow = () => { applyRootMinHeight(node); ensureMinHeight(node); node.setDirtyCanvas(true, true); };
 
         const widget = node.addDOMWidget("findreplace", "pixaroma_find_replace", root, {
           serialize: false,
@@ -181,6 +196,7 @@ app.registerExtension({
         widget.computeLayoutSize = () => ({ minHeight: measureMinHeight(root), minWidth: 1 });
 
         node._pixFrRenderOnly();
+        requestAnimationFrame(() => applyRootMinHeight(node));
 
         // Open at a comfortable default size on fresh placement. Route through
         // setSize so the height actually sticks in Nodes 2.0 (a bare
@@ -205,6 +221,8 @@ app.registerExtension({
       const r = origConfigure ? origConfigure.apply(this, arguments) : undefined;
       restoreFromProperties(this);
       if (this._pixFrRenderOnly) this._pixFrRenderOnly();
+      const self = this;
+      if (self._pixFrRoot) requestAnimationFrame(() => applyRootMinHeight(self));
       return r;
     };
 
@@ -220,6 +238,7 @@ app.registerExtension({
           setPreviewInput(this, data.input, !!data.truncated);
           if (this._pixFrRefreshPreview) this._pixFrRefreshPreview();
           requestAnimationFrame(() => {
+            applyRootMinHeight(this);
             ensureMinHeight(this);
             this.setDirtyCanvas(true, true);
           });
