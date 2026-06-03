@@ -166,10 +166,20 @@ export function buildGridPreview(node, mount) {
 
   return {
     setGrid(url) {
-      img.src = url;
-      img.style.display = "block";
-      hint.style.display = "none";
-      setEnabled(true);
+      // Preload the new grid, then swap the VISIBLE img only once it's ready.
+      // This keeps the old grid (same size) on screen during a theme re-skin so
+      // the <img> never collapses -> the node doesn't shrink-then-grow -> no
+      // flicker and the bottom buttons never poke out of the frame.
+      const show = () => {
+        img.src = url;
+        img.style.display = "block";
+        hint.style.display = "none";
+        setEnabled(true);
+      };
+      const pre = new Image();
+      pre.onload = show;
+      pre.onerror = show;   // show anyway; the visible img will surface the error
+      pre.src = url;
     },
     clear() {
       img.removeAttribute("src");
