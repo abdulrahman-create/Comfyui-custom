@@ -1,5 +1,5 @@
 // ╔═══════════════════════════════════════════════════════════════╗
-// ║  Pixaroma Shared — Node Help panel                            ║
+// ║  Pixaroma Shared - Node Help panel                            ║
 // ╚═══════════════════════════════════════════════════════════════╝
 //
 // A reusable "Help" affordance for Pixaroma nodes. ComfyUI's built-in Info tab
@@ -57,7 +57,7 @@ const CSS = `
 }
 .pix-help-card {
   background: #1d1d1d; border: 1px solid #333; border-radius: 8px;
-  width: min(580px, 92vw); max-height: 82vh; display: flex; flex-direction: column;
+  width: min(680px, 92vw); max-height: 82vh; display: flex; flex-direction: column;
   box-shadow: 0 14px 52px rgba(0,0,0,0.6); overflow: hidden; color: #cfcfcf;
   animation: pix-help-in 0.14s ease;
 }
@@ -305,7 +305,7 @@ export function createHelpButton(helpDef, opts = {}) {
   const btn = document.createElement("button");
   btn.className = "pix-help-btn";
   btn.type = "button";
-  btn.title = opts.title || `Help — learn how ${helpDef.title || "this node"} works`;
+  btn.title = opts.title || `Help: learn how ${helpDef.title || "this node"} works`;
   btn.addEventListener("click", (e) => {
     e.stopPropagation();
     e.preventDefault();

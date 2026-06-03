@@ -36,8 +36,10 @@ const CSS = `
      here would collapse to 0 under that measurement and break the floor. */
 }
 
-/* ---- global toggle pills ---- */
-.pix-fr-toggles { display: flex; gap: 6px; flex-wrap: wrap; flex: 0 0 auto; }
+/* ---- top row: toggle pills (wrap among themselves) + the Help ? button
+   pinned at the right so it never drops to its own line when the node narrows. */
+.pix-fr-toprow { display: flex; align-items: flex-start; gap: 6px; flex: 0 0 auto; }
+.pix-fr-toggles { display: flex; gap: 6px; flex-wrap: wrap; flex: 1 1 auto; min-width: 0; }
 .pix-fr-tog {
   font-size: 10.5px;
   padding: 4px 10px;
@@ -339,7 +341,7 @@ const FR_HELP = {
       ],
     },
     {
-      heading: "Regex — the search-pattern mode",
+      heading: "Regex: the search-pattern mode",
       body:
         "With Regex OFF, Find is literal: `cat` matches the exact letters. With Regex ON, Find becomes a pattern where some characters mean \"any digit\", \"one or more\", \"either/or\", and so on, so you can match things you can't type out literally.",
     },
@@ -380,7 +382,9 @@ export function renderAll(node, root, handlers) {
   const state = readState(node);
   root.innerHTML = "";
 
-  // -- toggles --
+  // -- top row: toggles + Help button --
+  const toprow = document.createElement("div");
+  toprow.className = "pix-fr-toprow";
   const toggles = document.createElement("div");
   toggles.className = "pix-fr-toggles";
   for (const def of TOGGLE_DEFS) {
@@ -392,11 +396,14 @@ export function renderAll(node, root, handlers) {
     if (!muted) pill.addEventListener("click", () => handlers.onToggleGlobal(def.key));
     toggles.appendChild(pill);
   }
-  // Help (?) button - pushed to the far right of the toggles row.
+  toprow.appendChild(toggles);
+  // Help (?) button - its own flex item pinned at the right, top-aligned so it
+  // stays next to the first pill row even when the pills wrap on a narrow node.
   const help = createHelpButton(FR_HELP);
-  help.style.marginLeft = "auto";
-  toggles.appendChild(help);
-  root.appendChild(toggles);
+  help.style.alignSelf = "flex-start";
+  help.style.marginTop = "5px";
+  toprow.appendChild(help);
+  root.appendChild(toprow);
 
   // -- rule rows --
   for (const rule of state.rules) {
