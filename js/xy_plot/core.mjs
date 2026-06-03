@@ -146,6 +146,15 @@ export function enumerateTargets(xyNode) {
       widgets,
     });
   }
+  // Sort by title so identically-named nodes (e.g. the two CLIP Text Encode
+  // (Prompt) nodes) sit next to each other instead of scattered in arbitrary
+  // graph order - the user compares their previews side by side and picks the
+  // right one. Stable secondary sort by node id.
+  out.sort((a, b) => {
+    const t = String(a.title).localeCompare(String(b.title));
+    if (t !== 0) return t;
+    return String(a.nodeId).localeCompare(String(b.nodeId), undefined, { numeric: true });
+  });
   return out;
 }
 
