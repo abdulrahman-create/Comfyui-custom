@@ -183,7 +183,7 @@ If you use [ComfyUI Easy Install](https://github.com/Tavris1/ComfyUI-Easy-Instal
 #### **Method C: Manual Installation**
 ```bash
 cd ComfyUI/custom_nodes
-git clone https://github.com/pixaroma/ComfyUI-Pixaroma.git
+git clone https://gitlab.com/pixaroma/comfyui-pixaroma.git
 ```
 
 ### 2. Optional: AI Background Removal
@@ -253,6 +253,9 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 ## 🛠 Changelog
 
 > 💡 **After updating Pixaroma:** hard-refresh your ComfyUI browser tab with **Ctrl+Shift+R** (or **Cmd+Shift+R** on Mac). The browser keeps old node visuals cached, and without a hard refresh you may still see the previous version of a node even though the update installed correctly.
+
+### **June 7, 2026 · v1.3.78**
+- **Project moved to GitLab.** The repository and the in-app and README links (the Help footers and the background-removal help link) now point to the new home at gitlab.com/pixaroma/comfyui-pixaroma. The nodes themselves are unchanged.
 
 ### **June 3, 2026 · v1.3.73–1.3.77**
 - **NEW: a Help button on Find and Replace.** Click the **?** in the top corner of the node to open a clear panel that explains what the node does, how to use it, what each switch means, and a regex cheat-sheet with worked examples - so you can learn it without leaving ComfyUI. (This is the first node to get it; more will follow.)
@@ -452,7 +455,7 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 > [!NOTE]
 > This suite was developed with significant AI assistance. While thoroughly tested, we welcome bug reports and feedback from the community!
 
-💡 **Have an idea for a new node or improvement?** Post it in [Discussions](https://github.com/pixaroma/ComfyUI-Pixaroma/discussions).  
-🐞 **Found a bug or something broken?** Open an [Issue](https://github.com/pixaroma/ComfyUI-Pixaroma/issues).  
+💡 **Have an idea for a new node or improvement?** Share it in our [Discord community](https://discord.gg/gggpkVgBf3).  
+🐞 **Found a bug or something broken?** Open an [Issue](https://gitlab.com/pixaroma/comfyui-pixaroma/-/issues).  
 💬 **[Join our Discord Community](https://discord.gg/gggpkVgBf3)**  
-⚖️ **Licensed under [MIT](https://github.com/pixaroma/ComfyUI-Pixaroma/blob/main/LICENSE)**
+⚖️ **Licensed under [MIT](LICENSE)**
