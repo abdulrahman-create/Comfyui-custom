@@ -1,7 +1,7 @@
 import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
 import {
-  readState, restoreFromProperties, resetState,
+  readState, restoreFromProperties, resetState, resetAxis as resetAxisCore,
   resolveAxisValues, axisReady, computeCounts,
 } from "./core.mjs";
 import { injectCSS, buildRoot, renderBody, measureContentHeight, closePopupIfOwner } from "./ui.mjs";
@@ -156,6 +156,15 @@ function makeHandlers(node, root) {
       handlers.rerender();
       fitNode(node, root);
     },
+    // Clear ONE axis (the per-axis ↺ button); the other axis + toggles + any
+    // shown grid stay. Fit (not just grow) so the node tightens back up after a
+    // tall value area collapses. User action only, so fitNode can't trip the
+    // dirty-on-load tracker (Vue Compat #18).
+    resetAxis: (axisKey) => {
+      resetAxisCore(node, axisKey);
+      handlers.rerender();
+      fitNode(node, root);
+    },
   };
   return handlers;
 }
@@ -187,7 +196,7 @@ app.registerExtension({
         node._pixXyFit = () => fitNode(node, root);   // called from grid.mjs on <img> load
         // DOM-only render (no auto-grow) for the load path so the saved size
         // is trusted and the workflow isn't falsely flagged modified (#18).
-        node._pixXyRenderOnly = () => renderBody(node, root, { rerender: handlers.rerender, growth: null, reset: handlers.reset });
+        node._pixXyRenderOnly = () => renderBody(node, root, { rerender: handlers.rerender, growth: null, reset: handlers.reset, resetAxis: handlers.resetAxis });
 
         const widget = node.addDOMWidget("xyplot", "pixaroma_xy_plot", root, {
           serialize: false,

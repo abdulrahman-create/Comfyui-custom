@@ -84,6 +84,27 @@ export function resetState(node) {
   return s;
 }
 
+// Clear a SINGLE axis back to empty IN PLACE (preserving the object identity that
+// editor handlers captured by reference - same aliasing rule as backfillAxis /
+// selectChoice). The OTHER axis + the toggles/theme are left untouched. Backs the
+// per-axis ↺ reset button.
+export function resetAxis(node, axisKey) {
+  const state = readState(node);
+  const axis = state[axisKey];
+  if (!axis) return state;
+  axis.nodeId = null;
+  axis.widgetName = null;
+  axis.widgetType = null;
+  axis.mode = null;
+  axis.step = 1;
+  axis.options = [];
+  const r = axis.raw || (axis.raw = {});
+  r.start = ""; r.end = ""; r.steps = ""; r.listText = "";
+  r.checked = []; r.srFind = ""; r.srReplace = "";
+  writeState(node, state);
+  return state;
+}
+
 export function restoreFromProperties(node) {
   // Idempotent: readState creates+stores a default when absent.
   readState(node);
@@ -121,8 +142,10 @@ export function classifyWidget(w) {
     if (typeof step !== "number" || step <= 0) {
       step = Number.isInteger(w.value) ? 1 : 0.01;
     }
-    // ComfyUI multiplies the displayed step by 10 internally for some builds;
-    // we only need a precision hint, so the raw step is fine.
+    // ComfyUI stores a FLOAT widget's `step` ×10 (a real 0.1 step is stored as
+    // 1.0), so this is NOT the true increment. That's fine: roundToStep() uses
+    // step only as a LOWER bound on decimals and preserves each value's own
+    // precision, so an inflated/coarse step here can no longer truncate 7.1 -> 7.
     return { name, type: "number", step, min: opts.min, max: opts.max, cur };
   }
   if (t === "combo") {
@@ -194,20 +217,32 @@ export function lookupWidgetMeta(node, axis) {
 // freeze the browser. A comparison grid is only useful for a handful of cells.
 export const MAX_AXIS_VALUES = 100;
 
-// Trim float drift to the step's decimal precision. Handles scientific-notation
-// steps (e.g. 1e-7) which `String(step).split(".")` would mis-read as 0 decimals
-// (collapsing every value to 0).
-export function roundToStep(v, step) {
-  if (!step || step <= 0 || !isFinite(v)) return v;
-  let decimals;
-  const s = String(step);
-  if (s.indexOf("e") >= 0 || s.indexOf("E") >= 0) {
-    // scientific notation: derive decimals from the exponent
-    decimals = Math.max(0, Math.ceil(-Math.log10(Math.abs(step))));
-  } else {
-    decimals = (s.split(".")[1] || "").length;
+// Count a number's decimal places, handling scientific notation (e.g. 1e-7 -> 7,
+// 1.5e-3 -> 4) which a naive String().split(".") mis-reads as 0 decimals.
+function decimalsOf(n) {
+  if (!isFinite(n)) return 0;
+  const s = String(n);
+  const e = s.search(/[eE]/);
+  if (e >= 0) {
+    const mantDec = (s.slice(0, e).split(".")[1] || "").length;
+    const exp = parseInt(s.slice(e + 1), 10) || 0;
+    return Math.max(0, mantDec - exp);
   }
-  return Number(v.toFixed(Math.min(decimals, 8)));
+  return (s.split(".")[1] || "").length;
+}
+
+// Trim float-accumulation drift WITHOUT truncating genuine precision. The `step`
+// is only a LOWER bound on how many decimals to keep: a value the user typed or
+// a range interpolated (e.g. cfg 7.1) keeps its OWN precision even when the
+// widget's step is coarse or ×10-inflated by ComfyUI (a FLOAT's real 0.1 step is
+// stored as 1.0, and rounding to that alone would turn 7.1 -> 7). Capped at 8
+// decimals so accumulation drift (which lives ~15-17 places down) can never
+// survive. Scientific-notation safe via decimalsOf().
+export function roundToStep(v, step) {
+  if (!isFinite(v)) return v;
+  const stepDec = (typeof step === "number" && step > 0) ? decimalsOf(step) : 0;
+  const dec = Math.min(8, Math.max(stepDec, decimalsOf(v)));
+  return Number(v.toFixed(dec));
 }
 
 // Comma list, each item a number or an A1111 range:  a-b (+s)  |  a-b [n]

@@ -31,6 +31,9 @@ export function injectCSS() {
 .pix-xy-axis-head{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:600;margin-bottom:8px;}
 .pix-xy-badge{background:${BRAND};color:#fff;border-radius:4px;width:18px;height:18px;display:grid;place-items:center;font-size:11px;font-weight:700;flex:0 0 auto;}
 .pix-xy-axis-dir{color:#9a9a9a;font-weight:500;font-size:11px;}
+.pix-xy-axis-reset{margin-left:auto;display:flex;align-items:center;gap:5px;font-size:10.5px;font-weight:500;color:#9a9a9a;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.14);border-radius:5px;padding:3px 8px;cursor:pointer;user-select:none;}
+.pix-xy-axis-reset:hover{border-color:${BRAND};color:#fff;}
+.pix-xy-axis-reset .pix-xy-axis-reset-ic{font-size:12px;line-height:1;}
 .pix-xy-row{display:flex;align-items:center;gap:7px;}
 .pix-xy-curhint{font-size:10.5px;color:#8a8a8a;font-style:italic;margin:5px 2px 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 /* custom dropdown (value + ▼ + ◀▶), Pixaroma convention - never native <select> */
@@ -571,6 +574,16 @@ export function renderBody(node, root, handlers) {
     head.appendChild(el("span", "pix-xy-badge", axisKey.toUpperCase()));
     head.appendChild(document.createTextNode(axisKey === "x" ? "across" : "down"));
     head.appendChild(el("span", "pix-xy-axis-dir", axisKey === "x" ? "➡ columns" : "⬇ rows"));
+    // Per-axis reset (clears just this axis; the other axis + toggles stay).
+    // Only shown once a setting is picked - nothing to reset on an empty axis.
+    if (handlers.resetAxis && state[axisKey] && state[axisKey].widgetType) {
+      const axReset = el("div", "pix-xy-axis-reset");
+      axReset.appendChild(el("span", "pix-xy-axis-reset-ic", "↺"));
+      axReset.appendChild(el("span", null, "Reset"));
+      axReset.title = `Reset the ${axisKey.toUpperCase()} axis only - clears its setting and values. The other axis and your toggles stay.`;
+      axReset.addEventListener("click", () => handlers.resetAxis(axisKey));
+      head.appendChild(axReset);
+    }
     card.appendChild(head);
     const pickRow = el("div", "pix-xy-row");
     card.appendChild(pickRow);
