@@ -11,6 +11,13 @@
     <a href="https://discord.gg/gggpkVgBf3"><img src="https://img.shields.io/badge/discord-5865F2?style=flat-square&logo=discord&logoColor=white" alt="Discord"></a>
     <a href="https://www.youtube.com/@pixaroma"><img src="https://img.shields.io/badge/youtube-red?style=flat-square&logo=youtube" alt="YouTube"></a>
   </p>
+  <p align="center">
+    <a href="#-getting-started">📥 Install</a> &nbsp;·&nbsp;
+    <a href="#-creative-suite">🎨 Nodes</a> &nbsp;·&nbsp;
+    <a href="#-learning-resources">📺 Tutorials</a> &nbsp;·&nbsp;
+    <a href="#-changelog">🛠 Changelog</a> &nbsp;·&nbsp;
+    <a href="https://discord.gg/gggpkVgBf3">💬 Discord</a>
+  </p>
 </div>
 
 ---
