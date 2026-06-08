@@ -256,6 +256,7 @@ function selectChoice(node, axisKey, choice, rerender) {
   axis.widgetName = choice.w.name;
   axis.widgetType = choice.w.type;
   axis.step = choice.w.step || 1;
+  axis.precision = (typeof choice.w.precision === "number") ? choice.w.precision : null;
   axis.options = choice.w.type === "combo" ? (choice.w.options || []) : [];
   if (changed) {
     // Reset entry to a sensible default for the new widget type. Mutate the
@@ -433,6 +434,11 @@ function renderValueArea(node, axisKey, mount, refreshCounter, rerender) {
   };
 
   if (axis.widgetType === "number") {
+    // Keep precision synced with the live widget (0 = integer width/height/steps,
+    // 1 = cfg, 2 = denoise) so a reloaded axis rounds correctly even if it was
+    // saved before precision was tracked.
+    const nmeta = lookupWidgetMeta(node, axis);
+    if (nmeta && typeof nmeta.precision === "number") axis.precision = nmeta.precision;
     const seg = el("div", "pix-xy-seg");
     const sRange = el("span", null, "Range"); const sList = el("span", null, "List");
     (axis.mode === "list" ? sList : sRange).classList.add("on");
