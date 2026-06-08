@@ -254,6 +254,11 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 > 💡 **After updating Pixaroma:** hard-refresh your ComfyUI browser tab with **Ctrl+Shift+R** (or **Cmd+Shift+R** on Mac). The browser keeps old node visuals cached, and without a hard refresh you may still see the previous version of a node even though the update installed correctly.
 
+### **June 8, 2026 · v1.3.79**
+- **XY Plot: decimal values stick now.** Typing a value like 7.1 (or 0.05) for a setting such as cfg or denoise now keeps the decimal instead of rounding it off to a whole number. Works for both the comma list and the Start/End/Steps range.
+- **XY Plot: reset each axis on its own.** Each axis now has its own button (Reset X and Reset Y) so you can clear just one without touching the other. The button at the bottom (Reset XY) still clears everything at once.
+- **XY Plot: buttons no longer spill out when the node is narrow.** In the new node interface, making the node smaller now lets the Lock seed / Draw labels / Save cells row wrap to fit inside the node instead of hanging off the edges.
+
 ### **June 7, 2026 · v1.3.78**
 - **Project moved to GitLab.** The repository and the in-app and README links (the Help footers and the background-removal help link) now point to the new home at gitlab.com/pixaroma/comfyui-pixaroma. The nodes themselves are unchanged.
 
