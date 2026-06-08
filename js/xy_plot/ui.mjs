@@ -79,12 +79,12 @@ export function injectCSS() {
   if (document.getElementById("pix-xy-css")) return;
   const css = `
 .pix-xy-root{display:flex;flex-direction:column;gap:9px;padding:8px 9px 16px;font-family:'Segoe UI',system-ui,sans-serif;color:#e0e0e0;box-sizing:border-box;}
-.pix-xy-helprow{display:flex;justify-content:flex-end;align-items:center;}
 .pix-xy-axis{border:1px solid rgba(255,255,255,.14);border-radius:7px;padding:9px 10px 10px;background:rgba(0,0,0,.18);}
 .pix-xy-axis-head{display:flex;align-items:center;flex-wrap:wrap;gap:7px;font-size:12px;font-weight:600;margin-bottom:8px;}
 .pix-xy-badge{background:${BRAND};color:#fff;border-radius:4px;width:18px;height:18px;display:grid;place-items:center;font-size:11px;font-weight:700;flex:0 0 auto;}
 .pix-xy-axis-dir{color:#9a9a9a;font-weight:500;font-size:11px;}
-.pix-xy-axis-reset{margin-left:auto;display:flex;align-items:center;gap:5px;font-size:10.5px;font-weight:500;color:#9a9a9a;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.14);border-radius:5px;padding:3px 8px;cursor:pointer;user-select:none;}
+.pix-xy-head-right{margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end;}
+.pix-xy-axis-reset{display:flex;align-items:center;gap:5px;font-size:10.5px;font-weight:500;color:#9a9a9a;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.14);border-radius:5px;padding:3px 8px;cursor:pointer;user-select:none;}
 .pix-xy-axis-reset:hover{border-color:${BRAND};color:#fff;}
 .pix-xy-axis-reset .pix-xy-axis-reset-ic{font-size:12px;line-height:1;}
 .pix-xy-row{display:flex;align-items:center;gap:7px;}
@@ -185,7 +185,6 @@ export function buildRoot() {
   const root = document.createElement("div");
   root.className = "pix-xy-root";
   root.innerHTML = `
-    <div class="pix-xy-helprow"></div>
     <div class="pix-xy-axis" data-axis="x"></div>
     <div class="pix-xy-axis" data-axis="y"></div>
     <div class="pix-xy-counter-wrap"></div>
@@ -614,11 +613,6 @@ function buildThemeControl(node, state) {
 export function renderBody(node, root, handlers) {
   const state = readState(node);
 
-  // Mount the Help (?) button once. renderBody runs on every rerender but never
-  // clears the help row, so guard against appending duplicate buttons.
-  const helpRow = root.querySelector(".pix-xy-helprow");
-  if (helpRow && !helpRow.children.length) helpRow.appendChild(createHelpButton(XY_HELP));
-
   const refreshCounter = () => {
     const wrap = root.querySelector(".pix-xy-counter-wrap");
     if (!wrap) return;
@@ -638,6 +632,11 @@ export function renderBody(node, root, handlers) {
     head.appendChild(el("span", "pix-xy-badge", axisKey.toUpperCase()));
     head.appendChild(document.createTextNode(axisKey === "x" ? "across" : "down"));
     head.appendChild(el("span", "pix-xy-axis-dir", axisKey === "x" ? "➡ columns" : "⬇ rows"));
+    // Right-aligned header cluster: the node Help (?) lives on the X header
+    // (one per node, kept here so it adds no empty row above the cards), and
+    // each axis shows its own Reset once a setting is picked.
+    const headRight = el("div", "pix-xy-head-right");
+    if (axisKey === "x") headRight.appendChild(createHelpButton(XY_HELP));
     // Per-axis reset (clears just this axis; the other axis + toggles stay).
     // Only shown once a setting is picked - nothing to reset on an empty axis.
     if (handlers.resetAxis && state[axisKey] && state[axisKey].widgetType) {
@@ -646,8 +645,9 @@ export function renderBody(node, root, handlers) {
       axReset.appendChild(el("span", null, "Reset " + axisKey.toUpperCase()));
       axReset.title = `Reset the ${axisKey.toUpperCase()} axis only - clears its setting and values. The other axis and your toggles stay.`;
       axReset.addEventListener("click", () => handlers.resetAxis(axisKey));
-      head.appendChild(axReset);
+      headRight.appendChild(axReset);
     }
+    if (headRight.children.length) head.appendChild(headRight);
     card.appendChild(head);
     const pickRow = el("div", "pix-xy-row");
     card.appendChild(pickRow);
