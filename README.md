@@ -263,7 +263,9 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 > 💡 **After updating Pixaroma:** hard-refresh your ComfyUI browser tab with **Ctrl+Shift+R** (or **Cmd+Shift+R** on Mac). The browser keeps old node visuals cached, and without a hard refresh you may still see the previous version of a node even though the update installed correctly.
 
-### **June 8, 2026 · v1.3.79-1.3.80**
+### **June 8, 2026 · v1.3.79-1.3.81**
+- **XY Plot: whole-number settings stay whole.** Width, height and steps now come out as round numbers - a range from 512 to 1024 gives proper values instead of odd decimals (no more 682.66).
+- **XY Plot: new Snap toggle for sizes.** Each number axis gets a Snap toggle (next to Range/List) that rounds width/height to clean step multiples, so a range gives tidy sizes like 512, 688, 848, 1024. It's on by default; switch it off for exact values.
 - **XY Plot: added a Help button.** Click the **?** at the top of the node (next to Reset X) for a panel that explains what the node does, how to use it, how the value box works, and what every option means - the same kind of in-node help that Find and Replace has.
 - **XY Plot: decimal values stick now.** Typing a value like 7.1 (or 0.05) for a setting such as cfg or denoise now keeps the decimal instead of rounding it off to a whole number. Works for both the comma list and the Start/End/Steps range.
 - **XY Plot: reset each axis on its own.** Each axis now has its own button (Reset X and Reset Y) so you can clear just one without touching the other. The button at the bottom (Reset XY) still clears everything at once.
