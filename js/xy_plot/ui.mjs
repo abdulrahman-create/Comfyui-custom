@@ -257,6 +257,7 @@ function selectChoice(node, axisKey, choice, rerender) {
   axis.widgetType = choice.w.type;
   axis.step = choice.w.step || 1;
   axis.precision = (typeof choice.w.precision === "number") ? choice.w.precision : null;
+  axis.realStep = (typeof choice.w.realStep === "number") ? choice.w.realStep : null;
   axis.options = choice.w.type === "combo" ? (choice.w.options || []) : [];
   if (changed) {
     // Reset entry to a sensible default for the new widget type. Mutate the
@@ -401,16 +402,16 @@ function escapeHtml(s) {
 
 // ── value entry (adaptive) ───────────────────────────────────────────────────
 
-function previewText(axis) {
-  const vals = resolveAxisValues(axis);
+function previewText(axis, snap) {
+  const vals = resolveAxisValues(axis, snap);
   if (!vals.length) return null;
   const shown = vals.slice(0, 8).map((v) => String(v));
   const more = vals.length > 8 ? ` … (+${vals.length - 8})` : "";
   return { count: vals.length, text: shown.join(", ") + more };
 }
 
-function buildPreview(axis) {
-  const p = previewText(axis);
+function buildPreview(axis, snap) {
+  const p = previewText(axis, snap);
   const box = el("div", "pix-xy-preview");
   if (!p) { box.innerHTML = `<span style="color:#777">enter values…</span>`; return box; }
   box.innerHTML = `→ <b>${escapeHtml(p.text)}</b> &nbsp;·&nbsp; ${p.count} value${p.count === 1 ? "" : "s"}`;
@@ -426,9 +427,10 @@ function renderValueArea(node, axisKey, mount, refreshCounter, rerender) {
     return;
   }
   const save = () => writeState(node, state);
+  const snap = state.snapToStep !== false;
   const refreshPreview = () => {
     const old = mount.querySelector(".pix-xy-preview");
-    const fresh = buildPreview(axis);
+    const fresh = buildPreview(axis, snap);
     if (old) old.replaceWith(fresh); else mount.appendChild(fresh);
     refreshCounter();
   };
@@ -439,6 +441,7 @@ function renderValueArea(node, axisKey, mount, refreshCounter, rerender) {
     // saved before precision was tracked.
     const nmeta = lookupWidgetMeta(node, axis);
     if (nmeta && typeof nmeta.precision === "number") axis.precision = nmeta.precision;
+    if (nmeta && typeof nmeta.realStep === "number") axis.realStep = nmeta.realStep;
     const seg = el("div", "pix-xy-seg");
     const sRange = el("span", null, "Range"); const sList = el("span", null, "List");
     (axis.mode === "list" ? sList : sRange).classList.add("on");
@@ -461,7 +464,7 @@ function renderValueArea(node, axisKey, mount, refreshCounter, rerender) {
       rangeRow.appendChild(labeledField("Steps", axis.raw.steps, (v) => { axis.raw.steps = v; save(); refreshPreview(); }));
       mount.appendChild(rangeRow);
     }
-    mount.appendChild(buildPreview(axis));
+    mount.appendChild(buildPreview(axis, snap));
 
   } else if (axis.widgetType === "combo") {
     const meta = lookupWidgetMeta(node, axis);
@@ -535,7 +538,7 @@ function renderValueArea(node, axisKey, mount, refreshCounter, rerender) {
       ta.addEventListener("input", () => { axis.raw.listText = ta.value; save(); refreshPreview(); });
       mount.appendChild(ta);
     }
-    mount.appendChild(buildPreview(axis));
+    mount.appendChild(buildPreview(axis, snap));
   }
 }
 
@@ -678,6 +681,9 @@ export function renderBody(node, root, handlers) {
   opts.appendChild(buildToggle("Lock seed", state.lockSeed !== false, (v) => { const s = readState(node); s.lockSeed = v; writeState(node, s); }));
   opts.appendChild(buildToggle("Draw labels", state.drawLabels !== false, (v) => { const s = readState(node); s.drawLabels = v; writeState(node, s); }));
   opts.appendChild(buildToggle("Save cells", state.saveCells === true, (v) => { const s = readState(node); s.saveCells = v; writeState(node, s); }));
+  const snapToggle = buildToggle("Snap to step", state.snapToStep !== false, (v) => { const s = readState(node); s.snapToStep = v; writeState(node, s); handlers.rerender(); });
+  snapToggle.title = "Round number values (like width/height) to the setting's real step - e.g. width to multiples of 16. Off = exact values.";
+  opts.appendChild(snapToggle);
 
   // Second row: grid theme picker on the left, Reset on the right.
   const opts2 = root.querySelector(".pix-xy-opts2");

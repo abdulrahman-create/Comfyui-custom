@@ -21,6 +21,7 @@ function emptyAxis() {
     mode: null,              // number: "range"|"list"; text: "fulllist"|"sr"
     step: 1,
     precision: null,         // number: decimals the field allows (0=int, 1=cfg, 2=denoise)
+    realStep: null,          // number: the field's true increment (step2), for snap-to-step
     options: [],             // combo: the widget's option list (cached at pick)
     raw: { start: "", end: "", steps: "", listText: "", checked: [], srFind: "", srReplace: "" },
   };
@@ -34,6 +35,7 @@ export function defaultState() {
     lockSeed: true,
     drawLabels: true,
     saveCells: false,
+    snapToStep: true,       // round number values to the field's real step (e.g. width -> /16)
     theme: "dark",          // grid color theme: "dark" | "light" | "mono"
   };
 }
@@ -150,7 +152,9 @@ export function classifyWidget(w) {
     // stay whole; 7.1 keeps its decimal) and only falls back to step/value decimals
     // when precision is missing (old saved axis / non-ComfyUI widget).
     const precision = (typeof opts.precision === "number") ? opts.precision : null;
-    return { name, type: "number", step, precision, min: opts.min, max: opts.max, cur };
+    // step2 is the REAL increment (width 16, cfg 0.1); used by the Snap-to-step toggle.
+    const realStep = (typeof opts.step2 === "number" && opts.step2 > 0) ? opts.step2 : null;
+    return { name, type: "number", step, precision, realStep, min: opts.min, max: opts.max, cur };
   }
   if (t === "combo") {
     let vals = w.options?.values;
@@ -297,15 +301,26 @@ export function rangeToList(start, end, steps, step, precision) {
   return out;
 }
 
+// Snap a number to the nearest multiple of the field's real step (e.g. width to
+// multiples of 16), then clean any float artifact to the field's precision.
+function snapToGrid(v, realStep, precision) {
+  if (!realStep || realStep <= 0 || !isFinite(v)) return v;
+  return roundToStep(Math.round(v / realStep) * realStep, realStep, precision);
+}
+
 // Resolve an axis to its ordered list of cell values (numbers or strings).
+// `snap` (the Snap-to-step toggle) rounds number values to the field's real step.
 // For text "sr" mode the values are the replacement strings; the actual text
 // substitution happens at inject time against the target's current value.
-export function resolveAxisValues(axis) {
+export function resolveAxisValues(axis, snap = false) {
   if (!axis || !axis.widgetType) return [];
   const raw = axis.raw || {};
   if (axis.widgetType === "number") {
-    if (axis.mode === "list") return parseNumberList(raw.listText, axis.step, axis.precision);
-    return rangeToList(raw.start, raw.end, raw.steps, axis.step, axis.precision);
+    let vals = (axis.mode === "list")
+      ? parseNumberList(raw.listText, axis.step, axis.precision)
+      : rangeToList(raw.start, raw.end, raw.steps, axis.step, axis.precision);
+    if (snap && axis.realStep) vals = vals.map((v) => snapToGrid(v, axis.realStep, axis.precision));
+    return vals;
   }
   if (axis.widgetType === "combo") {
     const checked = Array.isArray(raw.checked) ? raw.checked.slice() : [];

@@ -475,8 +475,9 @@ app.queuePrompt = async function (...args) {
   node._pixXyRunning = true;
   try {
     const state = readState(node);
-    const xValues = axisReady(state.x) ? resolveAxisValues(state.x) : [];
-    const yValues = axisReady(state.y) ? resolveAxisValues(state.y) : [];
+    const snap = state.snapToStep !== false;
+    const xValues = axisReady(state.x) ? resolveAxisValues(state.x, snap) : [];
+    const yValues = axisReady(state.y) ? resolveAxisValues(state.y, snap) : [];
     const xs = xValues.length ? xValues : [undefined];
     const ys = yValues.length ? yValues : [undefined];
     const cols = xs.length, rows = ys.length, total = cols * rows;
