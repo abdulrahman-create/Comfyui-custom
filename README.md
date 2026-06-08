@@ -15,6 +15,8 @@
 
 ---
 
+> 💬 **Need help, have an idea, or found a bug?** Hop into the [Pixaroma Discord](https://discord.gg/gggpkVgBf3) and post in the **#pixaroma-nodes** channel.
+
 ## 🎨 Creative Suite
 
 Pixaroma turns ComfyUI into a powerful, easy-to-use design space. It brings professional editing right into your workflow!
