@@ -478,7 +478,18 @@ function injectLoadImageNodes2CSS() {
   if (document.getElementById("pix-li-nodes2-css")) return;
   const s = document.createElement("style");
   s.id = "pix-li-nodes2-css";
-  s.textContent = ".lg-node:has(.pix-li-root) .image-preview{display:none !important;}";
+  s.textContent =
+    // Hide ComfyUI's native input image-preview for this node (we draw our own).
+    ".lg-node:has(.pix-li-root) .image-preview{display:none !important;}" +
+    // CRITICAL (issue #1 Nodes 2.0 fill): the Vue node ALSO renders a native
+    // image-preview CONTAINER (a `flex:1` box) right after the widget grid on
+    // image_upload nodes. It is a SECOND `flex:1` child of the node content, so
+    // it SPLITS the free vertical height with our widget area (also `flex:1`),
+    // leaving a large empty gap below our preview when the node is dragged tall.
+    // Collapse that container so our widget area is the SOLE grower and fills the
+    // node, like native Load Image. It is the only `flex:1` div immediately after
+    // the widget grid; we render our own preview, so hiding it loses nothing.
+    ".lg-node:has(.pix-li-root) .lg-node-widgets + div.flex-1{display:none !important;}";
   document.head.appendChild(s);
 }
 
