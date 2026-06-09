@@ -265,6 +265,10 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 > 💡 **After updating Pixaroma:** hard-refresh your ComfyUI browser tab with **Ctrl+Shift+R** (or **Cmd+Shift+R** on Mac). The browser keeps old node visuals cached, and without a hard refresh you may still see the previous version of a node even though the update installed correctly.
 
+### **June 9, 2026 · v1.3.82**
+- **Finished the GitLab move.** The bundled sample workflow's buttons now point to GitLab too - they were the last spot still linking to the old GitHub home. The nodes themselves are unchanged.
+- **Quicker fix for "a node looks broken after updating".** The README now flags up front that this is almost always a browser cache, with the 30-second hard-refresh fix, so it is faster to sort out.
+
 ### **June 8, 2026 · v1.3.79-1.3.81**
 - **XY Plot: whole-number settings stay whole.** Width, height and steps now come out as round numbers - a range from 512 to 1024 gives proper values instead of odd decimals (no more 682.66).
 - **XY Plot: new Snap toggle for sizes.** Each number axis gets a Snap toggle (next to Range/List) that rounds width/height to clean step multiples, so a range gives tidy sizes like 512, 688, 848, 1024. It's on by default; switch it off for exact values.
