@@ -195,6 +195,8 @@ cd ComfyUI/custom_nodes
 git clone https://gitlab.com/pixaroma/comfyui-pixaroma.git
 ```
 
+> **⚠️ Node looks blank or broken right after updating?** This is almost always your browser cache, not a bug. Hard-refresh with **Ctrl + Shift + R** (Windows / Linux) or **Cmd + Shift + R** (Mac). If a node is still broken after that, see [Read this first](https://gitlab.com/pixaroma/comfyui-pixaroma/-/issues/2).
+
 ### 2. Optional: AI Background Removal
 AI Remove Background is used in three places in Pixaroma: the **Remove Background Pixaroma** node, the **Image Composer** editor's AI Background Removal button, and the **Paint Pixaroma** editor's AI Background Removal button.
 
