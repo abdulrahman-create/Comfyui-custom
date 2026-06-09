@@ -230,13 +230,16 @@ function renderLoadPreviewCanvas(node) {
   }
 
   // --- Image canvas (bottom) ---
+  // Height is controlled by flex (the canvas is `flex:1` inside the controls
+  // panel), so we READ the resolved clientHeight rather than setting it - the
+  // ResizeObserver re-renders when the node is dragged, so the image fills
+  // whatever height the canvas is given (contained / letterboxed).
   const imgCv = node._pixLiImageCanvas;
-  if (imgCv && imgCv.clientWidth > 0) {
+  if (imgCv && imgCv.clientWidth > 0 && imgCv.clientHeight > 0) {
     const cssW = imgCv.clientWidth;
+    const cssH = imgCv.clientHeight;
     const DIMS_H = 18;
-    const imgAreaH = liPreviewImgH(node);
-    const cssH = imgAreaH + DIMS_H;
-    if (imgCv.style.height !== cssH + "px") imgCv.style.height = cssH + "px";
+    const imgAreaH = Math.max(20, cssH - DIMS_H);
     const ctx = _liSizeCanvas(imgCv, cssW, cssH);
     const im = _liCurrentImage(node);
     if (im) {
@@ -374,8 +377,8 @@ function renderUI(node) {
 const LI_LEGACY_PREVIEW_MIN = 120;     // below this there is no real preview area yet -> use the default
 const LI_LEGACY_PREVIEW_DEFAULT = 260; // comfortable preview area for a fresh / too-short node
 function fitPreview(node) {
-  // Legacy only: in Nodes 2.0 the preview is a fixed-height canvas child of the
-  // controls panel (liPreviewImgH), so node sizing is driven by the panel there.
+  // Legacy only: in Nodes 2.0 the preview is a flex-grower canvas child of the
+  // controls panel (it fills the node body), so sizing is handled by the panel there.
   if (isVueNodes()) return;
   if (isGraphLoading()) return;
   requestAnimationFrame(() => {
@@ -481,19 +484,16 @@ function injectLoadImageNodes2CSS() {
 
 // Cards strip height for the Nodes 2.0 preview.
 const LI_CARDS_H = 124;
-// Nodes 2.0 preview-area height. STABLE / FIXED (issue #1): the node must NOT
-// change size when you load a different-shaped image, so the preview box stays a
-// constant height and the image is contained (fit + letterboxed) inside it at
-// its own aspect, exactly like native Load Image. This was previously
-// aspect-based (cw * aspect, capped at 240), which ballooned the node for tall
-// portraits. renderLoadPreviewCanvas already draws contain-fit, so only this
-// height needed to stop varying. A constant is also dirty-proof on reload (same
-// value every paint, Vue Compat #18). Tune for a bigger / smaller preview.
-const LI_PREVIEW_FIXED_H = 240;
-
-function liPreviewImgH(_node) {
-  return LI_PREVIEW_FIXED_H;
-}
+// Nodes 2.0 preview-canvas FLOOR (issue #1). The preview canvas is a flex
+// grower inside the controls panel (the node's sole grower widget), so it fills
+// any extra node height: drag the node taller and the preview grows instead of
+// leaving an empty gap, exactly like native Load Image; at the smallest node
+// size it sits at this floor. It never grows the node on its OWN (loading a
+// different-shaped image keeps the node put), and the image is contained (fit +
+// letterboxed) inside whatever height the canvas ends up at. Value = image area
+// (~240) + the dims label row (18). A constant floor is dirty-proof on reload
+// (Vue Compat #18). Tune for a bigger / smaller minimum preview.
+const LI_PREVIEW_FILL_MIN = 258;
 
 
 // Nodes 2.0 preview: a second DOM widget's host collapses to 0 on this node (the
@@ -514,10 +514,13 @@ function createLoadImagePreviewCanvas(node) {
   root.insertBefore(cardsCv, root.firstChild);
   node._pixLiCardsCanvas = cardsCv;
 
-  // Image canvas — at the BOTTOM (fills, like Legacy's bottom preview).
+  // Image canvas — at the BOTTOM. flex:1 so it FILLS the controls panel's free
+  // vertical space (the panel is the node's grower widget): dragging the node
+  // taller grows the preview instead of leaving an empty gap, like native Load
+  // Image. min-height is the floor.
   const imgCv = document.createElement("canvas");
   imgCv.className = "pix-li-preview-canvas";
-  imgCv.style.cssText = "display:block;width:100%;box-sizing:border-box;";
+  imgCv.style.cssText = `display:block;width:100%;box-sizing:border-box;flex:1 1 0;min-height:${LI_PREVIEW_FILL_MIN}px;`;
   root.appendChild(imgCv);
   node._pixLiImageCanvas = imgCv;
 
@@ -572,6 +575,11 @@ function setupLoadImageNode(node) {
       const style = window.getComputedStyle(child);
       if (style.position === "absolute" || style.position === "fixed") continue;
       if (style.display === "none") continue;
+      // The Nodes 2.0 image preview canvas is a flex grower (fills extra node
+      // height when the node is dragged taller). Count only its MINIMUM in this
+      // floor, not its grown size - otherwise the grown canvas would re-inflate
+      // the node's min height and it could never shrink back.
+      if (child === node._pixLiImageCanvas) { totalH += LI_PREVIEW_FILL_MIN; visible += 1; continue; }
       totalH += child.offsetHeight;
       visible += 1;
     }
@@ -617,7 +625,14 @@ function setupLoadImageNode(node) {
   // getMinHeight/getMaxHeight and the native bottom preview fills.) The renderer
   // is fixed per page load, so this branch runs once per node instance.
   if (isVueNodes()) {
-    widget.computeLayoutSize = undefined; // min-content row (CSS grid), not a flex grower
+    // Make the controls panel the node's GROWER (auto row). Its min is the
+    // content floor (controls + the preview floor); any extra node height (user
+    // drags the node taller) is absorbed here, and the image canvas inside
+    // (flex:1) fills that slack so the preview grows instead of leaving an empty
+    // gap, like native Load Image. minWidth:1 so the saved node width round-trips
+    // (Compare gotcha 2). It is the node's only visible widget, so it is safely
+    // the sole grower.
+    widget.computeLayoutSize = () => ({ minHeight: measureContentHeight(), minWidth: 1 });
     createLoadImagePreviewCanvas(node);
     injectLoadImageNodes2CSS();
   }
