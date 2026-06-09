@@ -265,7 +265,8 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 > 💡 **After updating Pixaroma:** hard-refresh your ComfyUI browser tab with **Ctrl+Shift+R** (or **Cmd+Shift+R** on Mac). The browser keeps old node visuals cached, and without a hard refresh you may still see the previous version of a node even though the update installed correctly.
 
-### **June 9, 2026 · v1.3.82**
+### **June 9, 2026 · v1.3.82-1.3.83**
+- **Load Image Pixaroma keeps a steady size.** Loading images of different shapes (square, tall, wide) no longer makes the node resize itself and shove your other nodes around - it stays put and fits the image inside, like the standard Load Image. In the new node interface the preview now fills the node properly instead of leaving an empty gap below it.
 - **Finished the GitLab move.** The bundled sample workflow's buttons now point to GitLab too - they were the last spot still linking to the old GitHub home. The nodes themselves are unchanged.
 - **Quicker fix for "a node looks broken after updating".** The README now flags up front that this is almost always a browser cache, with the 30-second hard-refresh fix, so it is faster to sort out.
 
