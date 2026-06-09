@@ -362,21 +362,20 @@ function renderUI(node) {
   node.graph?.setDirtyCanvas?.(true, true);
 }
 
-// Auto-fit the node height so the native image preview hugs the controls with
-// a small, consistent gap in every mode (the "Hug the controls" choice). The
-// native preview reserves a FIXED minimum (~220px), so a square/landscape image
-// floats inside it. Instead we size the node so the preview area matches the
-// image's ASPECT (previewTop + width x aspect), so the picture fills the area
-// in every shape — square, portrait, landscape. Deterministic (same image +
-// mode + node width => same height) so a reload recomputes the saved height and
-// never dirties (Vue Compat #18). Layout (measured): slot area above the
-// controls widget = outputs * NODE_SLOT_HEIGHT + 6; controls height =
-// measureContentHeight; preview area = the rest. Deferred to rAF so the
-// freshly-rendered panel has laid out before measuring; gated on
-// !isGraphLoading so it never resizes during a workflow load (Vue Compat #19).
+// Legacy node-height fitting. STABLE preview area (issue #1): the node must NOT
+// resize itself to the loaded image's aspect ratio (that ballooned the node for
+// tall / wide images and overlapped neighbouring nodes). Instead we PRESERVE the
+// current preview area, so loading a different-shaped image leaves the node
+// height where it is - the native bottom preview just contains the new image
+// inside the existing area, exactly like native Load Image. Only a CONTROLS
+// height change (a mode switch) shifts the node, and the user can still drag the
+// node taller to enlarge the preview (the new size is then preserved). Gated on
+// !isGraphLoading so it never resizes during a workflow load (Vue Compat #18/#19).
+const LI_LEGACY_PREVIEW_MIN = 120;     // below this there is no real preview area yet -> use the default
+const LI_LEGACY_PREVIEW_DEFAULT = 260; // comfortable preview area for a fresh / too-short node
 function fitPreview(node) {
-  // Legacy only: resizes node.size to hug the native bottom preview. In Nodes
-  // 2.0 our preview widget flex-fills, so this would fight the Vue layout.
+  // Legacy only: in Nodes 2.0 the preview is a fixed-height canvas child of the
+  // controls panel (liPreviewImgH), so node sizing is driven by the panel there.
   if (isVueNodes()) return;
   if (isGraphLoading()) return;
   requestAnimationFrame(() => {
@@ -384,15 +383,11 @@ function fitPreview(node) {
     const SLOT_H = (typeof LiteGraph !== "undefined" && LiteGraph.NODE_SLOT_HEIGHT) || 20;
     const aboveControls = (node.outputs?.length || 7) * SLOT_H + 6; // slot area above the controls
     const controlsH = node._pixLiMeasureHeight?.() || 280;
-    const img = node.imgs?.[0];
-    let previewH;
-    if (img?.naturalWidth) {
-      const innerW = Math.max(40, (node.size[0] || 360) - 16); // preview spans node width minus side margin
-      previewH = Math.round(innerW * img.naturalHeight / img.naturalWidth) + 22; // + dims label row
-      previewH = Math.max(90, Math.min(previewH, 1400));
-    } else {
-      previewH = 180; // no image yet — modest default
-    }
+    // Keep whatever preview area the node already has (so image swaps don't
+    // resize it, and a manual drag-taller sticks); fall back to a default only
+    // when there is no sensible area yet (fresh / collapsed node).
+    const curPreviewH = (node.size?.[1] || 0) - aboveControls - controlsH;
+    const previewH = curPreviewH >= LI_LEGACY_PREVIEW_MIN ? curPreviewH : LI_LEGACY_PREVIEW_DEFAULT;
     const target = aboveControls + controlsH + previewH;
     if (Math.abs((node.size?.[1] || 0) - target) > 1) {
       node.size[1] = target;
@@ -484,25 +479,20 @@ function injectLoadImageNodes2CSS() {
   document.head.appendChild(s);
 }
 
-// Cards strip height + image-area clamp constants for the Nodes 2.0 preview.
-// LI_PREVIEW_MAX_IMG_H caps the image preview so the node stays COMPACT in Nodes
-// 2.0 (where it auto-grows to content): a square/portrait image is contained
-// within this height rather than ballooning to full-width-aspect. Legacy is
-// untouched (drag-to-resize fill). Tune for a bigger/smaller default preview.
+// Cards strip height for the Nodes 2.0 preview.
 const LI_CARDS_H = 124;
-const LI_PREVIEW_MIN_IMG_H = 80;
-const LI_PREVIEW_MAX_IMG_H = 240;
+// Nodes 2.0 preview-area height. STABLE / FIXED (issue #1): the node must NOT
+// change size when you load a different-shaped image, so the preview box stays a
+// constant height and the image is contained (fit + letterboxed) inside it at
+// its own aspect, exactly like native Load Image. This was previously
+// aspect-based (cw * aspect, capped at 240), which ballooned the node for tall
+// portraits. renderLoadPreviewCanvas already draws contain-fit, so only this
+// height needed to stop varying. A constant is also dirty-proof on reload (same
+// value every paint, Vue Compat #18). Tune for a bigger / smaller preview.
+const LI_PREVIEW_FIXED_H = 240;
 
-// Compute the image-area height for the Nodes 2.0 preview: fit the selected
-// image to the node's content width at its OWN aspect (so the picture fills the
-// width with no letterbox), clamped. Deterministic (same image + node width =>
-// same height) so a reload recomputes the same value and never dirties (Vue
-// Compat #18). Falls back to a square assumption before the image dims arrive.
-function liPreviewImgH(node) {
-  const cw = Math.max(80, (node.size?.[0] || 400) - 24);
-  const im = node.imgs?.[0];
-  const aspect = im?.naturalWidth ? im.naturalHeight / im.naturalWidth : 1;
-  return Math.max(LI_PREVIEW_MIN_IMG_H, Math.min(Math.round(cw * aspect), LI_PREVIEW_MAX_IMG_H));
+function liPreviewImgH(_node) {
+  return LI_PREVIEW_FIXED_H;
 }
 
 
@@ -649,9 +639,8 @@ function setupLoadImageNode(node) {
   // Called by api.mjs updateNativePreview() once a freshly-loaded image has
   // its naturalWidth/naturalHeight available (arrow / dropdown / upload / paste
   // picks all route through here). Refreshes the dims readout AND runs the
-  // pending auto-fit so the preview re-sizes to the NEW image's aspect — this
-  // is the path that was missing the fit, so a portrait picked after a square
-  // stayed squeezed (onImageReady consumes _pixLiFitPending).
+  // pending fit, which now keeps a STABLE preview area instead of resizing to
+  // the loaded image's aspect (issue #1; onImageReady consumes _pixLiFitPending).
   node._pixLiOnImageLoaded = () => onImageReady();
 
   // Refresh info bar once node.imgs[0] is loaded — covers both the
@@ -663,9 +652,9 @@ function setupLoadImageNode(node) {
   // cleanup picks up the same handle.
   // When the image is ready, refresh the readout and — only if a fit was
   // requested by a user action (fresh drop / pick / upload / paste / drop), not
-  // a workflow restore — auto-fit the node so the preview hugs the controls at
-  // the image's aspect. _pixLiFitPending guards against firing on restore (the
-  // saved height is trusted then; Vue Compat #18).
+  // a workflow restore — re-fit the node to a STABLE preview area (it no longer
+  // resizes to the image's aspect, issue #1). _pixLiFitPending guards against
+  // firing on restore (the saved height is trusted then; Vue Compat #18).
   function onImageReady() {
     updateInfoBar(node);
     // Nodes 2.0: refresh our own DOM image preview (native one is hidden/stale).
