@@ -589,8 +589,8 @@ function paintCompare(ctx, node, W, H, mouse) {
     const fk = node._cmpFlashKey;
     const ft = node._cmpFlashText;
     const dR = diskRect(node, W), sR = saveRect(node, W), cR = copyRect(node, W);
-    paintUtilBtn(ctx, dR, fk === "disk" ? ft : `Disk ${which}`, hov(dR), fk === "disk");
-    paintUtilBtn(ctx, sR, fk === "save" ? ft : `Output ${which}`, hov(sR), fk === "save");
+    paintUtilBtn(ctx, dR, fk === "disk" ? ft : `Save D${which}`, hov(dR), fk === "disk");
+    paintUtilBtn(ctx, sR, fk === "save" ? ft : `Save O${which}`, hov(sR), fk === "save");
     paintUtilBtn(ctx, cR, fk === "copy" ? ft : `Copy ${which}`, hov(cR), fk === "copy");
   }
 
