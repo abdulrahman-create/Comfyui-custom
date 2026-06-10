@@ -16,11 +16,11 @@ import { resolveDynamicPrompt } from "./dynamic_prompts.mjs";
 // grows the node only when they need more typing room. Matches the
 // approach used by Show Text Pixaroma. Values verified by sizer overlay.
 // DEFAULT_W is wider than MIN_W so a FRESH node opens wide enough to show the
-// bottom row on ONE line (Copy all / Replace / Clear / Dynamic prompts switch).
+// bottom row on ONE line (Copy all / Replace / Clear / Dynamic prompts / ? help).
 // MIN_W stays 290 so existing saved nodes are NOT force-resized on load (which
 // would false-dirty the workflow, Vue Compat #18); on a node narrower than the
-// row needs, the bottom bar flex-wraps the switch onto a second line instead.
-const DEFAULT_W = 380;
+// row needs, the bottom bar flex-wraps the trailing items onto a second line.
+const DEFAULT_W = 410;
 const DEFAULT_H = 158;
 const MIN_W = 290;
 const MIN_H = 158;
@@ -186,14 +186,12 @@ function injectCSS() {
       border-color: rgba(255, 255, 255, 0.15);
       color: rgba(255, 255, 255, 0.7);
     }
-    /* Help (?) button floats over the top-right corner of the text box so it
-       costs zero layout height (keeps the node compact + avoids resizing
-       existing saved nodes). */
+    /* Help (?) button - last item in the bottom row, just after the Dynamic
+       prompts switch. A small left margin sets it apart from the switch; the
+       base .pix-help-btn (16px mask icon, align-self:center) handles the rest. */
     .pix-text-help {
-      position: absolute;
-      top: 4px;
-      right: 4px;
-      z-index: 5;
+      margin-left: 3px;
+      flex: 0 0 auto;
     }
   `;
   document.head.appendChild(style);
@@ -311,13 +309,6 @@ function buildRoot() {
   ta.spellcheck = false;
   tawrap.appendChild(ta);
 
-  // Help (?) button floats in the top-right corner of the text box (positioned
-  // by .pix-text-help). The popup is a document.body overlay so it works in
-  // both legacy and Nodes 2.0.
-  const helpBtn = createHelpButton(TEXT_HELP, { title: "How Text Pixaroma works" });
-  helpBtn.classList.add("pix-text-help");
-  tawrap.appendChild(helpBtn);
-
   const bottombar = document.createElement("div");
   bottombar.className = "pix-text-bottombar";
 
@@ -352,7 +343,13 @@ function buildRoot() {
   dynLabel.textContent = "Dynamic prompts";
   dynSwitch.append(dynDot, dynLabel);
 
-  bottombar.append(copyBtn, replaceBtn, clearBtn, dynSwitch);
+  // Help (?) button - last item in the bottom row, right after the Dynamic
+  // prompts switch. The popup is a document.body overlay so it works in both
+  // legacy and Nodes 2.0.
+  const helpBtn = createHelpButton(TEXT_HELP, { title: "How Text Pixaroma works" });
+  helpBtn.classList.add("pix-text-help");
+
+  bottombar.append(copyBtn, replaceBtn, clearBtn, dynSwitch, helpBtn);
 
   // Hint shown when the text input is wired (hidden by default).
   const lockHint = document.createElement("div");
