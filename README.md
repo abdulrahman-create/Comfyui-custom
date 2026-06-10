@@ -353,6 +353,12 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 ### **May 21, 2026 · v1.3.51-1.3.52**
 - **NEW: Image Resize Pixaroma.** Resize an image (and its mask) anywhere in your workflow with one compact node. Choose **Off**, **Max megapixels**, **Longest side**, **Scale by**, **Fit inside**, **Crop to fill**, **Match aspect ratio**, or **Pad** - which adds a border for outpainting and marks the new area as the mask to fill. **Crop to fill** lets you pick which part of the image to keep (the top, a corner, the center…) and whether to scale-and-crop or cut a piece at its original size. A live **Input → Output** preview shows the exact result and lights up only when the size actually changes. Wire a **width or height** in (for example from Resolution Pixaroma): connect just one to scale while keeping the shape, or both for an exact size - the node adapts on its own.
 - **Image Resize: wire in a single "longest side" value.** Connect one number and the node scales the longer edge of your image to that size, keeping the shape, so you no longer have to decide between width and height. It also gained a matching **longest side** output. Wired sizes now follow the **Upscaling** toggle, and a value of 0 simply passes the image through untouched.
+
+---
+
+**Home:** ComfyUI-Pixaroma is developed on [GitLab](https://gitlab.com/pixaroma/comfyui-pixaroma). That is the place for the latest code and to report issues. Any copy hosted elsewhere (such as a GitHub mirror) is a backup.
+
+ComfyUI-Pixaroma is an independent, community-made extension. It is not affiliated with, endorsed by, or sponsored by Comfy Org or the ComfyUI project. Product names, logos, and trademarks are the property of their respective owners.
 - **Press Ctrl+Enter to run while typing.** Text, Prompt Pack, Prompt Multi, and Prompt Stack fields no longer swallow the Run shortcut.
 - **Every node now explains itself.** Hover any control for a quick tip, and the side Info panel describes what each input and output does.
 - **Nodes remember their settings on reload.** Switch, Image Resize, and Crop no longer reset their choices when you reopen a workflow or switch tabs.
