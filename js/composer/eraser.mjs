@@ -14,6 +14,21 @@ PixaromaEditor.prototype.eraserIsRestore = function () {
   return (this.eraserSubMode === "restore") !== !!this._eraserAltHeld;
 };
 
+// The Erase | Restore pills are a sub-control of the eraser TOOL: they only
+// make sense once the eraser is enabled. When it's off, dim + disable them so
+// they don't read as "active" (orange) while a canvas click still just moves
+// the layer (select mode). Funnelled through setMode + the panel refresh so
+// the pills always track the real tool state.
+PixaromaEditor.prototype._syncEraserPillsEnabled = function () {
+  if (!this.eraserModePills) return;
+  const on = this.activeMode === "eraser";
+  const el = this.eraserModePills.el;
+  el.style.opacity = on ? "1" : "0.4";
+  // pointer-events:none also blocks hover, so a title here wouldn't show -
+  // the dim state is the cue that the eraser must be enabled first.
+  el.style.pointerEvents = on ? "auto" : "none";
+};
+
 // Repaint the brush ring at its last known position. Keyboard-only changes
 // (X swap / Alt hold-release) have no mousemove to recolor the cursor, so the
 // pill click, X handler, and Alt handlers call this directly.

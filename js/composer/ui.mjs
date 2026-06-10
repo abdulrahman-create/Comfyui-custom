@@ -267,6 +267,9 @@ export class PixaromaUI {
             "warn",
           );
       }
+      // Re-assert pill enabled-state after the panel un-dims (the panel opacity
+      // is independent of the eraser on/off state the pills track).
+      core._syncEraserPillsEnabled?.();
 
       // Crop requires exactly one NON-placeholder layer selected
       {
@@ -1422,6 +1425,8 @@ export class PixaromaUI {
       "Brush paints erased pixels back - X swaps, hold Alt for the opposite";
     core.eraserModePills.el.style.marginBottom = "8px";
     eraserPanel.content.appendChild(core.eraserModePills.el);
+    // Eraser starts OFF, so the pills start dimmed/disabled until Enable [E].
+    core._syncEraserPillsEnabled();
 
     // Brush Size
     const sizeRow = createSliderRow("Size", 1, 200, core.brushSize, null, {

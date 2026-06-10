@@ -162,6 +162,8 @@ export class PixaromaEditor {
         }
       }
     }
+    // Keep the Erase | Restore pills lit only while the eraser tool is on.
+    this._syncEraserPillsEnabled();
     this.verifySelection();
     this.draw();
   }
