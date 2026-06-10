@@ -1,5 +1,5 @@
 import { app } from "/scripts/app.js";
-import { BRAND, applyAdaptiveCanvasOnly, createHelpButton, closeHelpPopup } from "../shared/index.mjs";
+import { BRAND, applyAdaptiveCanvasOnly, createHelpButton, closeHelpPopup, isVueNodes, installResizeFloor } from "../shared/index.mjs";
 import { resolveDynamicPrompt } from "./dynamic_prompts.mjs";
 
 // Text Pixaroma: multi-line text field with a STRING output. The native
@@ -15,17 +15,18 @@ import { resolveDynamicPrompt } from "./dynamic_prompts.mjs";
 // Default = minimum, so fresh-on-canvas drops are compact and the user
 // grows the node only when they need more typing room. Matches the
 // approach used by Show Text Pixaroma. Values verified by sizer overlay.
-// DEFAULT_W == MIN_W == 412: a Text node is never narrower than the width where
-// the whole bottom row (Copy all / Replace / Clear / Dynamic prompts / ? help)
-// fits on ONE line, so the ? can never wrap underneath. 412 was MEASURED
-// in-ComfyUI with the sizer snippet (Nodes 2.0, the tighter renderer): node
-// width 400 wrapped, 410 fit, so 412 gives a small safety margin.
-// Trade-off (deliberate, accepted): an EXISTING node saved narrower than 412
-// auto-widens to 412 on load (the onResize / onDrawForeground clamp), which pops
-// a one-time "save changes?" on old workflows (Vue Compat #18). That is the cost
-// of guaranteeing the ? shows on existing nodes too, not just freshly-added ones
-// (the user explicitly wanted the ? always visible after the switch). The
-// bottom bar keeps flex-wrap as a belt-and-braces for any odd sub-pixel case.
+// DEFAULT_W = 412: a FRESH node opens wide enough for the whole bottom row
+// (Copy all / Replace / Clear / Dynamic prompts / ? help) on ONE line. 412 was
+// MEASURED in-ComfyUI with the sizer snippet (Nodes 2.0, the tighter renderer):
+// node width 400 wrapped the ?, 410 fit, so 412 is a small margin.
+// MIN_W = 412 is the LEGACY resize floor (legacy can't be dragged narrower than
+// where the ? fits). In NODES 2.0 the node.size min-clamp is GATED OFF (see the
+// gated onResize/onDrawForeground below + the CLAUDE.md "Nodes 2.0 manual-resize
+// MINIMUM" rule): clamping node.size there desyncs the Vue layout store (drag
+// smaller -> node.size silently snaps back to 412 -> the node JUMPS bigger on a
+// workflow switch + can false-dirty). So in Nodes 2.0 the user CAN drag the node
+// narrower; the bottom bar flex-wraps the trailing items gracefully and
+// installResizeFloor keeps the row from spilling out the bottom of the frame.
 const DEFAULT_W = 412;
 const DEFAULT_H = 158;
 const MIN_W = 412;
@@ -511,6 +512,27 @@ function updateClearEnabled(root) {
   els.clearBtn.disabled = !(els.ta.value && els.ta.value.length > 0);
 }
 
+// Minimum content height for the Nodes 2.0 resize floor: the textarea at its CSS
+// minimum (.pix-text-tawrap min-height 60) + the bottom bar's CURRENT height
+// (which already accounts for flex-wrap) + the wired-hint when shown + the root
+// gaps + vertical padding. Uses the textarea MIN (not its grown height) so the
+// floor lets the node shrink down to where content just fits, then no further.
+function measureTextFloor(root) {
+  if (!root) return 0;
+  const TAWRAP_MIN = 60; // keep in sync with .pix-text-tawrap min-height
+  const bar = root.querySelector(".pix-text-bottombar");
+  const hint = root.querySelector(".pix-text-lockhint");
+  const cs = getComputedStyle(root);
+  const gap = parseFloat(cs.rowGap || cs.gap) || 0;
+  const padV = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
+  let h = TAWRAP_MIN;
+  let count = 1;
+  if (bar) { h += bar.offsetHeight; count += 1; }
+  if (hint && hint.offsetParent !== null) { h += hint.offsetHeight; count += 1; }
+  if (count > 1) h += gap * (count - 1);
+  return h + padV;
+}
+
 function setupNode(node) {
   injectCSS();
   const nativeWidget = hideNativeTextWidget(node);
@@ -536,6 +558,13 @@ function setupNode(node) {
     serialize: false,
   });
   applyAdaptiveCanvasOnly(_textWidget);
+
+  // Nodes 2.0 height floor: while a resize handle is dragged, pin the widget's
+  // min-height to its content height so the button row can't be dragged out of
+  // the bottom of the frame. The legacy onResize/onDrawForeground size-clamp is
+  // gated OFF in Nodes 2.0 (it desyncs the Vue layout store), so this is what
+  // floors the height there. Uninstalled in onRemoved.
+  node._pixTextFloorOff = installResizeFloor(root, measureTextFloor);
 
   wireEvents(node, root);
 
@@ -595,28 +624,33 @@ app.registerExtension({
       return r;
     };
 
-    // Clamp manual resize so the bottom button row never overflows past
-    // the node frame. Mutate BOTH the parameter AND this.size defensively
-    // (some LiteGraph forks treat the param as the new size).
+    // Clamp manual resize so the bottom button row never overflows past the node
+    // frame. LEGACY ONLY. In Nodes 2.0 the RENDERED size lives in the Vue layout
+    // store, not node.size; clamping node.size here desyncs the two - the user
+    // drags smaller, Vue keeps the smaller render, but node.size snaps back to
+    // MIN, so the node JUMPS bigger on a workflow switch and can false-dirty the
+    // workflow (CLAUDE.md "Nodes 2.0 manual-resize MINIMUM"). Nodes 2.0 instead
+    // floors the height via installResizeFloor and wraps the width via flex-wrap.
     const origOnResize = nodeType.prototype.onResize;
     nodeType.prototype.onResize = function (size) {
-      if (size[0] < MIN_W) size[0] = MIN_W;
-      if (size[1] < MIN_H) size[1] = MIN_H;
-      if (this.size[0] < MIN_W) this.size[0] = MIN_W;
-      if (this.size[1] < MIN_H) this.size[1] = MIN_H;
+      if (!isVueNodes()) {
+        if (size[0] < MIN_W) size[0] = MIN_W;
+        if (size[1] < MIN_H) size[1] = MIN_H;
+        if (this.size[0] < MIN_W) this.size[0] = MIN_W;
+        if (this.size[1] < MIN_H) this.size[1] = MIN_H;
+      }
       if (origOnResize) return origOnResize.apply(this, arguments);
     };
 
-    // Self-heal min size on every paint (Preview Image Pattern #11).
-    // Catches resize paths that bypass onResize - Vue Compat #13 notes
-    // some DOM-widget resizes never fire onResize, and Align Pixaroma
-    // (Align Pattern #6) writes node.size directly via cursor delta.
-    // Without this safety net the buttons can spill past the node frame
-    // after grow-then-shrink.
+    // Self-heal min size on every paint (Preview Image Pattern #11). Catches
+    // resize paths that bypass onResize (Vue Compat #13) + Align's direct
+    // node.size writes (Align Pattern #6). LEGACY ONLY for the same desync
+    // reason as onResize above.
     const origDraw = nodeType.prototype.onDrawForeground;
     nodeType.prototype.onDrawForeground = function (ctx) {
       if (origDraw) origDraw.call(this, ctx);
       if (this.flags?.collapsed) return;
+      if (isVueNodes()) return;
       if (this.size[0] < MIN_W) this.size[0] = MIN_W;
       if (this.size[1] < MIN_H) this.size[1] = MIN_H;
     };
@@ -626,6 +660,9 @@ app.registerExtension({
       // Close any open Help panel so its document-level Esc listener can't
       // leak when the node is deleted while the panel is open.
       closeHelpPopup();
+      // Detach the Nodes 2.0 resize-floor window listeners.
+      this._pixTextFloorOff?.();
+      this._pixTextFloorOff = null;
       this._pixTextRoot = null;
       this._pixTextNative = null;
       if (origRemoved) return origRemoved.apply(this, arguments);

@@ -48,7 +48,10 @@ class PixaromaText:
 
     RETURN_TYPES = ("STRING",)
     RETURN_NAMES = ("text",)
-    OUTPUT_TOOLTIPS = ("The text typed into the field.",)
+    OUTPUT_TOOLTIPS = (
+        "The text from the field, with {a|b} dynamic prompts resolved if the "
+        "Dynamic prompts switch is on (otherwise sent exactly as typed).",
+    )
     FUNCTION = "out"
     CATEGORY = "👑 Pixaroma"
 

@@ -24,8 +24,12 @@ const ESC_CLOSE = String.fromCharCode(0xe001);
 
 export function resolveDynamicPrompt(input) {
   if (typeof input !== "string") return input;
-  // Fast path: nothing a resolver would touch (no brace, no comment marker).
-  if (input.indexOf("{") === -1 && input.indexOf("//") === -1 && input.indexOf("/*") === -1) {
+  // Fast path: nothing a resolver would touch - no brace, no comment marker, and
+  // no backslash (a lone escaped brace like \} with no { still needs unescaping
+  // to a literal }, so any backslash takes the full path; a non-escape backslash
+  // is left untouched by the full path, so this is safe, just slightly slower).
+  if (input.indexOf("{") === -1 && input.indexOf("\\") === -1 &&
+      input.indexOf("//") === -1 && input.indexOf("/*") === -1) {
     return input;
   }
   // 1) Strip block comments, then line comments (matches the documented order).
