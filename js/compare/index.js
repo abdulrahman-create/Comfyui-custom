@@ -147,6 +147,76 @@ function inside(pos, r) {
     pos[0] >= r.x && pos[0] <= r.x + r.w && pos[1] >= r.y && pos[1] <= r.y + r.h
   );
 }
+
+// ── Canvas tooltips (CLAUDE.md convention #8) ────────────────
+// The buttons are painted on a canvas, so they can't use the native `title`
+// attribute. We show a single shared <div> styled to match the Windows native
+// tooltip (same look as the DOM-button tooltips elsewhere in Pixaroma), driven
+// by the move handlers in BOTH renderers (each has clientX/clientY) and hidden
+// on leave. A ~450ms delay + hide-on-new-control mimics the native behaviour.
+const MODE_TIPS = [
+  "Split view. Hover the image to wipe between the two, left to right.",
+  "Split view with the sides swapped. Hover to wipe right to left.",
+  "Split view. Hover the image to wipe top to bottom.",
+  "Overlay the two images. Drag the slider to fade between them.",
+  "Show only the pixels that differ between the two images.",
+];
+function cmpTooltipFor(node, lx, ly, W) {
+  const p = [lx, ly];
+  if (inside(p, showRect(W)))
+    return "Show one image full-size. Click to switch between image 1 and 2.";
+  for (let i = 0; i < 5; i++) if (inside(p, modeRect(W, i))) return MODE_TIPS[i];
+  if (node._cmpShowWhich !== 0) {
+    const n = node._cmpShowWhich;
+    if (inside(p, diskRect(node, W))) return `Save image ${n} to your disk (choose where).`;
+    if (inside(p, saveRect(node, W))) return `Save image ${n} to the ComfyUI output folder.`;
+    if (inside(p, copyRect(node, W))) return `Copy image ${n} to the clipboard.`;
+  }
+  return "";
+}
+let _cmpTipEl = null, _cmpTipTimer = null, _cmpTipText = null, _cmpTipX = 0, _cmpTipY = 0;
+function cmpTipDiv() {
+  if (_cmpTipEl) return _cmpTipEl;
+  const d = document.createElement("div");
+  d.style.cssText =
+    "position:fixed;z-index:99999;pointer-events:none;display:none;white-space:nowrap;" +
+    "max-width:340px;background:#ffffff;color:#000000;border:1px solid #767676;" +
+    "border-radius:0;padding:3px 7px;font:12px 'Segoe UI',sans-serif;" +
+    "box-shadow:0 2px 4px rgba(0,0,0,0.15);";
+  document.body.appendChild(d);
+  _cmpTipEl = d;
+  return d;
+}
+function cmpPositionTip(x, y) {
+  const d = _cmpTipEl;
+  if (!d || d.style.display !== "block") return;
+  let nx = x + 14, ny = y + 18;
+  const r = d.getBoundingClientRect();
+  if (nx + r.width > window.innerWidth - 4) nx = window.innerWidth - r.width - 4;
+  if (ny + r.height > window.innerHeight - 4) ny = y - r.height - 8;
+  d.style.left = `${Math.max(4, nx)}px`;
+  d.style.top = `${Math.max(4, ny)}px`;
+}
+function cmpShowTooltip(text, x, y) {
+  if (!text) { cmpHideTooltip(); return; }
+  _cmpTipX = x; _cmpTipY = y;
+  if (text === _cmpTipText) return; // same control — leave the (pending/shown) tip as-is
+  _cmpTipText = text;
+  clearTimeout(_cmpTipTimer);
+  if (_cmpTipEl) _cmpTipEl.style.display = "none"; // hide the previous control's tip immediately
+  _cmpTipTimer = setTimeout(() => {
+    const d = cmpTipDiv();
+    d.textContent = text;
+    d.style.display = "block";
+    cmpPositionTip(_cmpTipX, _cmpTipY);
+  }, 450);
+}
+function cmpHideTooltip() {
+  clearTimeout(_cmpTipTimer);
+  _cmpTipText = null;
+  if (_cmpTipEl) _cmpTipEl.style.display = "none";
+}
+
 function paintBtn(ctx, r, label, on, hovered) {
   ctx.fillStyle = on ? BRAND : "#2a2c2e";
   // Hover on a non-active bordered control: border -> BRAND + text brightens,
@@ -910,6 +980,7 @@ function createCompareDOMWidget(node) {
   const H = () => node._cmpDomH || root.clientHeight;
 
   root.addEventListener("pointerdown", (e) => {
+    cmpHideTooltip();
     const [lx, ly] = localPos(e);
     if (cmpDown(node, lx, ly, W(), H())) {
       e.stopPropagation();
@@ -925,6 +996,7 @@ function createCompareDOMWidget(node) {
     node._cmpDomMouse = { x: lx, y: ly };
     root.style.cursor = cmpCursor(node, lx, ly, W(), H());
     cmpMove(node, lx, ly, W(), H());
+    cmpShowTooltip(cmpTooltipFor(node, lx, ly, W()), e.clientX, e.clientY);
     render(); // also refreshes the Copy-button hover state
   });
   root.addEventListener("pointerup", (e) => {
@@ -934,6 +1006,7 @@ function createCompareDOMWidget(node) {
   });
   root.addEventListener("pointerleave", () => {
     node._cmpDomMouse = null;
+    cmpHideTooltip();
     cmpLeave(node);
     render();
   });
@@ -1077,6 +1150,7 @@ app.registerExtension({
     const _origDown = nodeType.prototype.onMouseDown;
     nodeType.prototype.onMouseDown = function (e, pos) {
       if (isVueNodes()) return _origDown ? _origDown.call(this, e, pos) : undefined;
+      cmpHideTooltip();
       if (cmpDown(this, pos[0], pos[1], this.size[0], this.size[1])) {
         app.graph.setDirtyCanvas(true, true);
         return true;
@@ -1090,6 +1164,7 @@ app.registerExtension({
       if (cmpMove(this, pos[0], pos[1], this.size[0], this.size[1])) {
         app.graph.setDirtyCanvas(true, true);
       }
+      cmpShowTooltip(cmpTooltipFor(this, pos[0], pos[1], this.size[0]), e?.clientX ?? 0, e?.clientY ?? 0);
       if (_origMove) return _origMove.call(this, e, pos);
     };
 
@@ -1113,6 +1188,7 @@ app.registerExtension({
     const _origLeave = nodeType.prototype.onMouseLeave;
     nodeType.prototype.onMouseLeave = function (e) {
       if (isVueNodes()) return _origLeave ? _origLeave.call(this, e) : undefined;
+      cmpHideTooltip();
       cmpLeave(this);
       app.graph.setDirtyCanvas(true, true);
       if (_origLeave) return _origLeave.call(this, e);
@@ -1134,6 +1210,7 @@ app.registerExtension({
     nodeType.prototype.onRemoved = function () {
       try { this._cmpDomRO?.disconnect(); } catch {}
       try { cancelAnimationFrame(this._cmpZoomRaf); } catch {}
+      cmpHideTooltip();
       this._cmpDomRO = null;
       this._cmpDomRender = null;
       return _origRemoved ? _origRemoved.apply(this, arguments) : undefined;
