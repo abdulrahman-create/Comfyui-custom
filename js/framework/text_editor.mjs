@@ -108,6 +108,30 @@ export function createTextEditorPanel({ mount, onChange, onReset, onAlignCanvas,
     center: "/pixaroma/assets/icons/ui/align-center-h.svg",
     right:  "/pixaroma/assets/icons/ui/align-right.svg",
   };
+  // Text direction: Horizontal | Vertical. Vertical stacks each character
+  // top-to-bottom; line breaks become columns (left to right). Sits above the
+  // align row because it changes what align means (lines<->columns).
+  root.appendChild(caption("Text direction"));
+  const dirRow = el("div", "pix-to-dir-row");
+  root.appendChild(dirRow);
+  ui.dirChips = [["horizontal", "Horizontal"], ["vertical", "Vertical"]].map(([val, label]) => {
+    const b = el("button", "pix-to-dir-chip");
+    b.type = "button";
+    b.dataset.dir = val;
+    b.textContent = label;
+    b.title = val === "vertical"
+      ? "Stack characters top-to-bottom; new lines make columns (left to right)"
+      : "Normal left-to-right horizontal text";
+    b.addEventListener("click", () => {
+      const l = layerNow(); if (!l) return;
+      l.direction = val;
+      ui.dirChips.forEach((c) => c.classList.toggle("active", c.dataset.dir === val));
+      fireChange();
+    });
+    dirRow.appendChild(b);
+    return b;
+  });
+
   root.appendChild(caption("Text align (within block)"));
   const alignRow = el("div", "pix-to-row3");
   root.appendChild(alignRow);
@@ -335,6 +359,7 @@ export function createTextEditorPanel({ mount, onChange, onReset, onAlignCanvas,
       ui.fontDropdownName.style.fontFamily = `"Pix-${fontId}", system-ui`;
       ui.boldBtn.classList.toggle("active", (layer.weight ?? 400) === 700);
       ui.italicBtn.classList.toggle("active", !!layer.italic);
+      if (ui.dirChips) ui.dirChips.forEach((c) => c.classList.toggle("active", c.dataset.dir === (layer.direction ?? "horizontal")));
       ui.alignChips.forEach((c) => c.classList.toggle("active", c.dataset.align === (layer.align ?? "center")));
       ui.sizeInput.setValue(layer.fontSize ?? 96);
       ui.lineInput.setValue(layer.lineHeight ?? 1.2);
@@ -870,6 +895,16 @@ function injectCSS() {
     /* Brief click acknowledgement for the momentary "Position on canvas"
        buttons (they have no persistent active state). */
     .pix-to-chip.is-flashing { background: ${BRAND}; border-color: ${BRAND}; }
+    .pix-to-dir-row { display: flex; gap: 6px; margin: 0 0 8px; }
+    .pix-to-dir-chip {
+      flex: 1; height: 28px; border-radius: 6px; cursor: pointer;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.18);
+      color: rgba(255,255,255,0.75);
+      font: 12px 'Segoe UI', sans-serif;
+    }
+    .pix-to-dir-chip:hover { border-color: ${BRAND}; color: #ddd; }
+    .pix-to-dir-chip.active { background: ${BRAND}; border-color: ${BRAND}; color: #fff; }
     .pix-to-align-chip img {
       width: 14px; height: 14px;
       pointer-events: none;
