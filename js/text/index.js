@@ -15,16 +15,20 @@ import { resolveDynamicPrompt } from "./dynamic_prompts.mjs";
 // Default = minimum, so fresh-on-canvas drops are compact and the user
 // grows the node only when they need more typing room. Matches the
 // approach used by Show Text Pixaroma. Values verified by sizer overlay.
-// DEFAULT_W is wider than MIN_W so a FRESH node opens wide enough to show the
-// bottom row on ONE line (Copy all / Replace / Clear / Dynamic prompts / ? help)
-// in BOTH renderers. 412 was measured in-ComfyUI (Nodes 2.0 - the tighter of the
-// two) as a width where the ? sits on the row with a small safety margin.
-// MIN_W stays 290 so existing saved nodes are NOT force-resized on load (which
-// would false-dirty the workflow, Vue Compat #18); on a node narrower than the
-// row needs, the bottom bar flex-wraps the trailing items onto a second line.
+// DEFAULT_W == MIN_W == 412: a Text node is never narrower than the width where
+// the whole bottom row (Copy all / Replace / Clear / Dynamic prompts / ? help)
+// fits on ONE line, so the ? can never wrap underneath. 412 was MEASURED
+// in-ComfyUI with the sizer snippet (Nodes 2.0, the tighter renderer): node
+// width 400 wrapped, 410 fit, so 412 gives a small safety margin.
+// Trade-off (deliberate, accepted): an EXISTING node saved narrower than 412
+// auto-widens to 412 on load (the onResize / onDrawForeground clamp), which pops
+// a one-time "save changes?" on old workflows (Vue Compat #18). That is the cost
+// of guaranteeing the ? shows on existing nodes too, not just freshly-added ones
+// (the user explicitly wanted the ? always visible after the switch). The
+// bottom bar keeps flex-wrap as a belt-and-braces for any odd sub-pixel case.
 const DEFAULT_W = 412;
 const DEFAULT_H = 158;
-const MIN_W = 290;
+const MIN_W = 412;
 const MIN_H = 158;
 const WIDGET_MIN_H = 120;
 
