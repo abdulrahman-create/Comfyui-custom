@@ -115,7 +115,7 @@ export function createTextEditorPanel({ mount, onChange, onReset, onAlignCanvas,
   const dirRow = el("div", "pix-to-dir-row");
   root.appendChild(dirRow);
   ui.dirChips = [["horizontal", "Horizontal"], ["vertical", "Vertical"]].map(([val, label]) => {
-    const b = el("button", "pix-to-dir-chip");
+    const b = el("button", "pix-to-chip pix-to-dir-chip");
     b.type = "button";
     b.dataset.dir = val;
     b.textContent = label;
@@ -895,16 +895,10 @@ function injectCSS() {
     /* Brief click acknowledgement for the momentary "Position on canvas"
        buttons (they have no persistent active state). */
     .pix-to-chip.is-flashing { background: ${BRAND}; border-color: ${BRAND}; }
-    .pix-to-dir-row { display: flex; gap: 6px; margin: 0 0 8px; }
-    .pix-to-dir-chip {
-      flex: 1; height: 28px; border-radius: 6px; cursor: pointer;
-      background: rgba(255,255,255,0.04);
-      border: 1px solid rgba(255,255,255,0.18);
-      color: rgba(255,255,255,0.75);
-      font: 12px 'Segoe UI', sans-serif;
-    }
-    .pix-to-dir-chip:hover { border-color: ${BRAND}; color: #ddd; }
-    .pix-to-dir-chip.active { background: ${BRAND}; border-color: ${BRAND}; color: #fff; }
+    /* Direction row: 2 chips. Reuse .pix-to-chip (hover/active/height) so the
+       row visually matches the align row directly below it; this class only
+       sets the 2-column grid. */
+    .pix-to-dir-row { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; }
     .pix-to-align-chip img {
       width: 14px; height: 14px;
       pointer-events: none;

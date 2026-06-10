@@ -169,7 +169,8 @@ function setupTextOverlayNode(node) {
   // restored consistently from the saved graph. BASE_H is the panel's content
   // height with the hint hidden; if the panel layout changes (add/remove a
   // row), update BASE_H to match (the only maintenance cost of this approach).
-  const BASE_H = 412;   // content height, text input NOT wired
+  const BASE_H = 464;   // content height, text input NOT wired
+                        // (was 412; +52 for the Text Direction caption + chip row)
   const HINT_H = 18;    // extra height when the text input IS wired (lock hint)
   function panelHeight() {
     const wired = node.inputs?.find((i) => i.name === "text")?.link != null;
