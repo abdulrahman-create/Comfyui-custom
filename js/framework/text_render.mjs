@@ -35,6 +35,13 @@ export async function renderTextToCanvas(state) {
     return empty;
   }
 
+  // Vertical direction: stack characters per column (docs §5b). Font is already
+  // loaded (fontStr); lineHeightPx = round(fontSize*lineHeight) IS the per-char
+  // vertical step, letterSpacing IS the column gap.
+  if (state.direction === "vertical") {
+    return renderVerticalToCanvas(state, fontStr, lineHeightPx, letterSpacing);
+  }
+
   const lines = text.split("\n");
 
   // Measure each line + font metrics on a throwaway context.
@@ -110,6 +117,79 @@ export async function renderTextLayer(ctx, layer) {
   ctx.globalAlpha = layer.opacity ?? 1;
   ctx.drawImage(scratch, 0, 0);
   ctx.restore();
+}
+
+/** Vertical (top-to-bottom, upright) text. Columns = lines, left-to-right.
+ *  charStep = per-character vertical step; colGap = gap between columns.
+ *  Mirror of nodes/_text_render_helpers.py::_render_vertical_layer. */
+function renderVerticalToCanvas(state, fontStr, charStep, colGap) {
+  const text = String(state.text ?? "");
+  const lines = text.split("\n");
+  const align = state.align || "center";
+
+  const meas = document.createElement("canvas").getContext("2d");
+  meas.font = fontStr;
+  const m = meas.measureText("Mg");
+  const ascender = m.actualBoundingBoxAscent || state.fontSize * 0.78;
+  const descender = m.actualBoundingBoxDescent || state.fontSize * 0.22;
+
+  const bgColor = state.bgColor || null;
+  const padX = bgColor ? BG_PAD_X : 0;
+  const padY = bgColor ? BG_PAD_Y : 0;
+
+  // Per-column glyphs + max width
+  const cols = lines.map((line) => {
+    const chars = Array.from(line);
+    let colW = 0;
+    for (const ch of chars) colW = Math.max(colW, meas.measureText(ch).width);
+    return { chars, colW };
+  });
+  const maxChars = Math.max(0, ...cols.map((c) => c.chars.length));
+  const contentH = ascender + descender + Math.max(0, maxChars - 1) * charStep;
+  const totalColW =
+    cols.reduce((s, c) => s + c.colW, 0) + Math.max(0, cols.length - 1) * colGap;
+
+  const bboxW = Math.max(1, Math.ceil(totalColW + 2 * padX));
+  const bboxH = Math.max(1, Math.ceil(contentH + 2 * padY));
+
+  const scratch = document.createElement("canvas");
+  scratch.width = bboxW;
+  scratch.height = bboxH;
+  const sctx = scratch.getContext("2d");
+
+  if (bgColor) {
+    const r = Math.min(BG_RADIUS, bboxW / 2, bboxH / 2);
+    sctx.save();
+    sctx.fillStyle = bgColor;
+    roundRect(sctx, 0, 0, bboxW, bboxH, r);
+    sctx.fill();
+    sctx.restore();
+  }
+
+  sctx.save();
+  sctx.font = fontStr;
+  sctx.textBaseline = "alphabetic";
+  sctx.fillStyle = state.color || "#FFFFFF";
+  let colOriginX = padX;
+  for (const col of cols) {
+    const colContentH =
+      ascender + descender + Math.max(0, col.chars.length - 1) * charStep;
+    const vOffset =
+      align === "center" ? (contentH - colContentH) / 2
+      : align === "right" ? contentH - colContentH
+      : 0;
+    for (let i = 0; i < col.chars.length; i++) {
+      const ch = col.chars[i];
+      const gw = meas.measureText(ch).width;
+      const cx = colOriginX + (col.colW - gw) / 2;
+      const ly = padY + vOffset + ascender + i * charStep;
+      sctx.fillText(ch, cx, ly);
+    }
+    colOriginX += col.colW + colGap;
+  }
+  sctx.restore();
+
+  return scratch;
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────
