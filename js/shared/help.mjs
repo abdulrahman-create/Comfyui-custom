@@ -44,6 +44,19 @@ const CSS_ID = "pix-help-css";
 const QUESTION_ICON = "/pixaroma/assets/icons/note/question.svg";
 const BRAND = "#f66744";
 
+// ── Per-node help registry ───────────────────────────────────
+// Maps a node's comfyClass -> its help definition. A single shared surface (the
+// selection-toolbar Help button, js/help_toolbar) can then show the right help
+// for whichever Pixaroma node is selected, without each node wiring its own
+// in-body ? button. A node opts in with: registerNodeHelp("MyClass", MY_HELP).
+const _nodeHelp = new Map();
+export function registerNodeHelp(comfyClass, helpDef) {
+  if (comfyClass && helpDef) _nodeHelp.set(comfyClass, helpDef);
+}
+export function getNodeHelp(comfyClass) {
+  return comfyClass ? _nodeHelp.get(comfyClass) || null : null;
+}
+
 const CSS = `
 /* ---- the ? button nodes drop into their body ---- */
 .pix-help-btn {

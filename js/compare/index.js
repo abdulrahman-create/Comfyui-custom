@@ -1,6 +1,39 @@
 import { app } from "/scripts/app.js";
-import { BRAND } from "../shared/index.mjs";
+import { BRAND, registerNodeHelp } from "../shared/index.mjs";
 import { applyAdaptiveCanvasOnly, isVueNodes } from "../shared/nodes2.mjs";
+
+// Help shown by the selection-toolbar Help button (js/help_toolbar) when an
+// Image Compare node is selected. Registered at module load.
+const COMPARE_HELP = {
+  title: "Image Compare Pixaroma",
+  tagline: "See the difference between two images at a glance.",
+  sections: [
+    {
+      heading: "Setup",
+      body: "Wire any two IMAGE outputs into `image1` and `image2` (before / after upscaling, original / inpainted, two checkpoints, ...) and run the workflow once. Each image's size is shown on the node with a `1` / `2` badge - the sizes turn orange when the two differ.",
+    },
+    {
+      heading: "View modes",
+      defs: [
+        ["Show 1 / Show 2", "View one image full-size. Click to switch between the two."],
+        ["Left Right / Right Left", "Side-by-side split - hover the image to wipe across. Right Left swaps which side each image is on."],
+        ["Up Down", "Top / bottom split - hover to wipe up and down."],
+        ["Overlay", "Stack both images and drag the slider to fade between them."],
+        ["Difference", "Highlight only the pixels that differ between the two."],
+      ],
+    },
+    {
+      heading: "Save buttons (in Show 1 / Show 2)",
+      defs: [
+        ["Save D", "Save the shown image to disk - opens a dialog so you pick where."],
+        ["Save O", "Save the shown image to the ComfyUI output folder."],
+        ["Copy", "Copy the shown image to the clipboard."],
+      ],
+    },
+  ],
+  footer: "Set the default view mode in Settings -> Pixaroma -> Image Compare.",
+};
+registerNodeHelp("PixaromaCompare", COMPARE_HELP);
 // Buttons: Show 1 | Left Right | Up Down | Overlay | Difference
 // "Show 1" toggles: Show 1 → Show 2 → back to compare (deselects)
 const MODES = ["Left Right", "Right Left", "Up Down", "Overlay", "Difference"];
