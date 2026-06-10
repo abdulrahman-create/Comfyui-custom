@@ -280,7 +280,9 @@ PixaromaEditor.prototype.attachEvents = function () {
     }
     if (e.key === "Alt" && this._eraserAltHeld) {
       this._eraserAltHeld = false;
-      this._refreshEraserPreview();
+      // Only repaint when the eraser is live (Alt can be released after
+      // exiting eraser mode - clearing the flag is all that's needed then).
+      if (this.activeMode === "eraser") this._refreshEraserPreview();
     }
   };
   window.addEventListener("keydown", this._composerKeyDown, { capture: true });
@@ -995,12 +997,16 @@ PixaromaEditor.prototype.attachEvents = function () {
     if (this.activeMode === "eraser") {
       if (this.selectedLayerIds.size === 1) {
         this.setupEraserOnSelection();
-        // Restore with nothing erased is a no-op - tell the user why.
+        // Restore with nothing erased is a no-op - tell the user why. Skip the
+        // hint when savedMaskPath_internal is set: a workflow-restored mask
+        // loads async (prepareLayerMask), so for a moment hasMask is false
+        // even though a mask exists - "nothing erased" would be a lie there.
         const al = this.getActiveLayer();
         if (
           this.eraserIsRestore() &&
           al &&
           !al.hasMask_internal &&
+          !al.savedMaskPath_internal &&
           this._layout
         ) {
           this._layout.setStatus("Nothing erased on this layer yet", "warn");
