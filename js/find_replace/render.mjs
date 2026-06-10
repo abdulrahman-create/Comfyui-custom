@@ -36,8 +36,7 @@ const CSS = `
      here would collapse to 0 under that measurement and break the floor. */
 }
 
-/* ---- top row: toggle pills (wrap among themselves) + the Help ? button
-   pinned at the right so it never drops to its own line when the node narrows. */
+/* ---- top row: the toggle pills (wrap among themselves on a narrow node). */
 .pix-fr-toprow { display: flex; align-items: flex-start; gap: 6px; flex: 0 0 auto; }
 .pix-fr-toggles { display: flex; gap: 6px; flex-wrap: wrap; flex: 1 1 auto; min-width: 0; }
 .pix-fr-tog {

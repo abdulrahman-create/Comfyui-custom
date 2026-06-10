@@ -193,13 +193,6 @@ function injectCSS() {
       border-color: rgba(255, 255, 255, 0.15);
       color: rgba(255, 255, 255, 0.7);
     }
-    /* Help (?) button - last item in the bottom row, just after the Dynamic
-       prompts switch. A small left margin sets it apart from the switch; the
-       base .pix-help-btn (16px mask icon, align-self:center) handles the rest. */
-    .pix-text-help {
-      margin-left: 3px;
-      flex: 0 0 auto;
-    }
   `;
   document.head.appendChild(style);
 }
