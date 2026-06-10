@@ -950,6 +950,14 @@ function createCompareDOMWidget(node) {
     if (longCss * s > BACKING_CAP) s = BACKING_CAP / longCss;
     return s;
   };
+  // In Nodes 2.0 the title + input slots are drawn by Vue ABOVE this canvas, so
+  // the canvas's top padding (the ROW1_Y space the buttons need under the title
+  // bar in the legacy renderer) is just wasted gap below the slots. Shift the
+  // whole drawing up by TOP_TRIM and pass a TOP_TRIM-taller logical height so the
+  // image still fills to the bottom. localPos() + H() add TOP_TRIM back so the
+  // hit-tests + hover stay aligned with what's painted. Legacy is untouched (this
+  // code path only runs in Nodes 2.0).
+  const TOP_TRIM = 8;
   const render = () => {
     const cssW = root.clientWidth;
     const cssH = root.clientHeight;
@@ -962,9 +970,10 @@ function createCompareDOMWidget(node) {
     const ctx = canvas.getContext("2d");
     ctx.setTransform(s, 0, 0, s, 0, 0);
     ctx.clearRect(0, 0, cssW, cssH);
+    ctx.translate(0, -TOP_TRIM);
     node._cmpDomW = cssW;
     node._cmpDomH = cssH;
-    paintCompare(ctx, node, cssW, cssH, node._cmpDomMouse || null);
+    paintCompare(ctx, node, cssW, cssH + TOP_TRIM, node._cmpDomMouse || null);
   };
   node._cmpDomRender = render;
 
@@ -992,10 +1001,12 @@ function createCompareDOMWidget(node) {
     // down (e.g. clicking Overlay selects Difference; the Copy button is missed).
     const sx = r.width ? root.clientWidth / r.width : 1;
     const sy = r.height ? root.clientHeight / r.height : 1;
-    return [(e.clientX - r.left) * sx, (e.clientY - r.top) * sy];
+    // +TOP_TRIM: the drawing is shifted up by TOP_TRIM, so a screen-space y maps
+    // to a logical y that's TOP_TRIM larger.
+    return [(e.clientX - r.left) * sx, (e.clientY - r.top) * sy + TOP_TRIM];
   };
   const W = () => node._cmpDomW || root.clientWidth;
-  const H = () => node._cmpDomH || root.clientHeight;
+  const H = () => (node._cmpDomH || root.clientHeight) + TOP_TRIM;
 
   root.addEventListener("pointerdown", (e) => {
     cmpHideTooltip();
