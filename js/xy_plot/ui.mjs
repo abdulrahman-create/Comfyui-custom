@@ -11,7 +11,7 @@ import {
   enumerateTargets, lookupWidgetMeta, currentValuePreview,
   resolveAxisValues, computeCounts, axisReady,
 } from "./core.mjs";
-import { createHelpButton } from "../shared/index.mjs";
+import { registerNodeHelp } from "../shared/index.mjs";
 
 const BRAND = "#f66744";
 
@@ -65,6 +65,9 @@ const XY_HELP = {
   ],
   footer: "Tip: start small (a few values each way). The node asks you to confirm before running more than 25 squares, since each square is a full workflow run.",
 };
+
+// Help is shown by the selection-toolbar Help button (js/help_toolbar).
+registerNodeHelp("PixaromaXYPlot", XY_HELP);
 
 function xyToast(detail, severity = "info") {
   const tm = app.extensionManager?.toast;
@@ -653,11 +656,9 @@ export function renderBody(node, root, handlers) {
     head.appendChild(el("span", "pix-xy-badge", axisKey.toUpperCase()));
     head.appendChild(document.createTextNode(axisKey === "x" ? "across" : "down"));
     head.appendChild(el("span", "pix-xy-axis-dir", axisKey === "x" ? "➡ columns" : "⬇ rows"));
-    // Right-aligned header cluster: the node Help (?) lives on the X header
-    // (one per node, kept here so it adds no empty row above the cards), and
-    // each axis shows its own Reset once a setting is picked.
+    // Right-aligned header cluster: each axis shows its own Reset once a setting
+    // is picked. (Node help moved to the selection-toolbar Help button.)
     const headRight = el("div", "pix-xy-head-right");
-    if (axisKey === "x") headRight.appendChild(createHelpButton(XY_HELP));
     // Per-axis reset (clears just this axis; the other axis + toggles stay).
     // Only shown once a setting is picked - nothing to reset on an empty axis.
     if (handlers.resetAxis && state[axisKey] && state[axisKey].widgetType) {

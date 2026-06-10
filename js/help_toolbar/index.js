@@ -18,6 +18,7 @@
 
 import { app } from "/scripts/app.js";
 import { openHelpPopup, getNodeHelp } from "../shared/index.mjs";
+import "./help_defs.mjs"; // registers help for most Pixaroma nodes (one place to edit)
 
 const CMD_ID = "Pixaroma.ShowHelp";
 const ICON_CLASS = "pix-help-toolbar-icon";

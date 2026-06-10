@@ -1,5 +1,5 @@
 import { app } from "/scripts/app.js";
-import { BRAND, applyAdaptiveCanvasOnly, createHelpButton, closeHelpPopup, isVueNodes, installResizeFloor } from "../shared/index.mjs";
+import { BRAND, applyAdaptiveCanvasOnly, registerNodeHelp, closeHelpPopup, isVueNodes, installResizeFloor } from "../shared/index.mjs";
 import { resolveDynamicPrompt } from "./dynamic_prompts.mjs";
 
 // Text Pixaroma: multi-line text field with a STRING output. The native
@@ -257,6 +257,9 @@ const TEXT_HELP = {
   ],
 };
 
+// Help is shown by the selection-toolbar Help button (js/help_toolbar).
+registerNodeHelp("PixaromaText", TEXT_HELP);
+
 function toast(severity, msg) {
   const t = app?.extensionManager?.toast;
   if (t?.add) t.add({ severity, summary: "Text Pixaroma", detail: msg, life: 2000 });
@@ -350,13 +353,7 @@ function buildRoot() {
   dynLabel.textContent = "Dynamic prompts";
   dynSwitch.append(dynDot, dynLabel);
 
-  // Help (?) button - last item in the bottom row, right after the Dynamic
-  // prompts switch. The popup is a document.body overlay so it works in both
-  // legacy and Nodes 2.0.
-  const helpBtn = createHelpButton(TEXT_HELP, { title: "How Text Pixaroma works" });
-  helpBtn.classList.add("pix-text-help");
-
-  bottombar.append(copyBtn, replaceBtn, clearBtn, dynSwitch, helpBtn);
+  bottombar.append(copyBtn, replaceBtn, clearBtn, dynSwitch);
 
   // Hint shown when the text input is wired (hidden by default).
   const lockHint = document.createElement("div");
