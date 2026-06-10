@@ -77,7 +77,7 @@ const CSS = `
 }
 .pix-help-card {
   background: #1d1d1d; border: 1px solid #333; border-radius: 8px;
-  width: min(680px, 92vw); max-height: 82vh; display: flex; flex-direction: column;
+  width: min(840px, 94vw); max-height: 82vh; display: flex; flex-direction: column;
   box-shadow: 0 14px 52px rgba(0,0,0,0.6); overflow: hidden; color: #cfcfcf;
   animation: pix-help-in 0.14s ease;
 }

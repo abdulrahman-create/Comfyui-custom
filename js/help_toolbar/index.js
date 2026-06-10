@@ -23,9 +23,11 @@ const CMD_ID = "Pixaroma.ShowHelp";
 const ICON_CLASS = "pix-help-toolbar-icon";
 const CSS_ID = "pix-help-toolbar-css";
 const BRAND = "#f66744";
+const QUESTION_ICON = "/pixaroma/assets/icons/note/question.svg";
 
 // command.icon renders as the class on an <i>, so we draw the orange circle + ?
-// purely in CSS (filled BRAND circle, white "?", matching the XY Plot help icon).
+// purely in CSS: a filled BRAND circle with the SAME question.svg glyph (white)
+// the in-body ? buttons use, so it matches the XY Plot / Find-and-Replace icon.
 function injectIconCSS() {
   if (document.getElementById(CSS_ID)) return;
   const el = document.createElement("style");
@@ -34,11 +36,13 @@ function injectIconCSS() {
     .${ICON_CLASS} {
       display: inline-flex; align-items: center; justify-content: center;
       width: 16px; height: 16px; border-radius: 50%;
-      background: ${BRAND}; color: #fff;
-      font-family: 'Segoe UI', sans-serif; font-weight: 700; font-size: 11px;
-      line-height: 1;
+      background: ${BRAND};
     }
-    .${ICON_CLASS}::before { content: "?"; }
+    .${ICON_CLASS}::before {
+      content: ""; width: 10px; height: 10px; background-color: #fff;
+      -webkit-mask: url("${QUESTION_ICON}") center / contain no-repeat;
+      mask: url("${QUESTION_ICON}") center / contain no-repeat;
+    }
   `;
   document.head.appendChild(el);
 }
