@@ -119,6 +119,57 @@ export async function renderTextLayer(ctx, layer) {
   ctx.restore();
 }
 
+/** Measure the rendered bbox {w, h} of state's text, direction-aware.
+ *  `ctx.font` MUST already be set to the resolved variant's font string by the
+ *  caller (font resolution differs between the node-body and editor callers).
+ *  Mirrors the bbox math of renderTextToCanvas / renderVerticalToCanvas
+ *  (docs §2 + §5b) EXCEPT the synthesized-italic slant widen, which the
+ *  align/hit-test callers never accounted for (approximation predates this
+ *  helper). Used by the Position-on-canvas buttons, auto-center, and the
+ *  editor's align toolbar / drag bbox / Fit W / Fit H. */
+export function measureTextDims(ctx, state) {
+  const fontSize = state.fontSize || 96;
+  const lines = String(state.text ?? "").split("\n");
+  const letterSpacing = state.letterSpacing || 0;
+  const stepPx = Math.round(fontSize * (state.lineHeight ?? 1.2));
+  const m = ctx.measureText("Mg");
+  const ascender = m.actualBoundingBoxAscent || fontSize * 0.78;
+  const descender = m.actualBoundingBoxDescent || fontSize * 0.22;
+  const padX = state.bgColor ? BG_PAD_X : 0;
+  const padY = state.bgColor ? BG_PAD_Y : 0;
+
+  if (state.direction === "vertical") {
+    // Columns advance left-to-right; chars stack by stepPx; letterSpacing is
+    // the column gap (docs §5b - lockstep with renderVerticalToCanvas).
+    let totalColW = 0;
+    let maxChars = 0;
+    const cols = lines.map((line) => Array.from(line));
+    for (const chars of cols) {
+      let colW = 0;
+      for (const ch of chars) colW = Math.max(colW, ctx.measureText(ch).width);
+      totalColW += colW;
+      maxChars = Math.max(maxChars, chars.length);
+    }
+    totalColW += Math.max(0, cols.length - 1) * letterSpacing;
+    return {
+      w: Math.max(1, Math.ceil(totalColW + 2 * padX)),
+      h: Math.max(1, Math.ceil(ascender + descender + Math.max(0, maxChars - 1) * stepPx + 2 * padY)),
+    };
+  }
+
+  const lineWidths = lines.map((ln) => {
+    if (letterSpacing === 0) return ctx.measureText(ln).width;
+    let w = 0;
+    for (const ch of ln) w += ctx.measureText(ch).width;
+    return w + Math.max(0, ln.length - 1) * letterSpacing;
+  });
+  const maxLineW = Math.max(0, ...lineWidths);
+  return {
+    w: Math.max(1, Math.ceil(maxLineW + 2 * padX)),
+    h: Math.max(1, Math.ceil(ascender + descender + Math.max(0, lines.length - 1) * stepPx + 2 * padY)),
+  };
+}
+
 /** Vertical (top-to-bottom, upright) text. Columns = lines, left-to-right.
  *  charStep = per-character vertical step; colGap = gap between columns.
  *  Mirror of nodes/_text_render_helpers.py::_render_vertical_layer. */
