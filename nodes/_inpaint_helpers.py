@@ -329,6 +329,27 @@ def _feather_alpha(alpha, feather):
     return (alpha * ramp).clamp(0.0, 1.0)
 
 
+def _blur_alpha(alpha, blend):
+    """Soften a MASK's OWN edge by `blend` px so the masked paste fades smoothly
+    into the original (mask-aware blend). Distinct from _feather_alpha, which
+    fades the rectangle boundary (whole-crop mode).
+
+    The mask is first grown outward by ~half the blend so the object stays fully
+    covered (opaque), then Gaussian-blurred - the soft falloff lands OUTSIDE the
+    object, blending the new content into the surroundings. This is what makes an
+    inpaint seam disappear; a plain rectangle feather (the old bug) left the
+    mask edge hard no matter how large `blend` was.
+    """
+    k = int(blend)
+    if k <= 0:
+        return alpha
+    a_np = np.clip(alpha.detach().cpu().numpy(), 0.0, 1.0)
+    grow = min(max(1, k // 2), 48)
+    a_bin = _dilate(a_np > 0.5, grow)
+    soft = gaussian_blur_np(a_bin.astype(np.float32), k)
+    return torch.from_numpy(soft.astype(np.float32))
+
+
 def _color_match(patch, ref, region_mask, strength):
     """Shift patch color stats toward `ref` within the masked area. strength:
     'subtle' = match mean, 'strong' = match mean + std. patch/ref [ch,cw,3]."""
@@ -378,7 +399,11 @@ def stitch_back(crop_info, image, mask, blend, blend_mode, color_match):
             a = torch.from_numpy(resize_mask_np(fm, cw, ch, "bilinear"))
         else:
             a = torch.ones((ch, cw), dtype=torch.float32)
-    a = _feather_alpha(a.clamp(0, 1), blend)
+    # whole_crop: fade the rectangle boundary. mask: soften the mask's OWN edge.
+    if blend_mode == "whole_crop":
+        a = _feather_alpha(a.clamp(0, 1), blend)
+    else:
+        a = _blur_alpha(a.clamp(0, 1), blend)
 
     out = base.clone()
     B = int(out.shape[0])
