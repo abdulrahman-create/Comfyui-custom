@@ -101,24 +101,24 @@ class PixaromaUncrop:
         return x[:, 0, ...].contiguous()
 
     def _feather_alpha(self, alpha, feather):
-        """Soften the edges of an alpha map [ch,cw] by ~feather px. A box blur
-        with zero-padding makes the border fall off to 0, which softens both a
-        full-rectangle paste and a provided mask's edges."""
+        """Feather the alpha INWARD: ramp from 0 at the rectangle edge up to the
+        alpha's own value `feather` pixels inward, so a pasted crop fades all the
+        way to nothing at its boundary and blends seamlessly into the original.
+
+        NOTE: a box blur was tried first and was wrong - it bottomed out at ~0.5
+        at the edge (a 50%/50% blend right at the boundary), leaving a visible
+        hard step. A distance-to-edge ramp reaches a true 0 at the edge."""
         k = int(feather)
         if k <= 0:
             return alpha
         ch, cw = int(alpha.shape[-2]), int(alpha.shape[-1])
-        ksize = k * 2 + 1
-        ksize = min(ksize, ch, cw)
-        if ksize % 2 == 0:
-            ksize -= 1
-        if ksize < 3:
-            return alpha
-        pad = ksize // 2
-        a = alpha[None, None, ...]  # [1,1,ch,cw]
-        a = F.avg_pool2d(a, kernel_size=ksize, stride=1, padding=pad, count_include_pad=True)
-        a = a[0, 0, :ch, :cw]
-        return a.clamp(0.0, 1.0)
+        ys = torch.arange(ch, dtype=torch.float32).view(ch, 1)
+        xs = torch.arange(cw, dtype=torch.float32).view(1, cw)
+        dist_y = torch.minimum(ys, (ch - 1) - ys)
+        dist_x = torch.minimum(xs, (cw - 1) - xs)
+        dist = torch.minimum(dist_y, dist_x)            # px to the nearest edge
+        ramp = (dist / float(k)).clamp(0.0, 1.0)        # 0 at edge -> 1 at k px in
+        return (alpha * ramp).clamp(0.0, 1.0)
 
     def _build_alpha(self, mask, cw, ch, feather):
         """Alpha map [ch,cw] in 0..1 for the paste: from the optional mask (else
