@@ -766,8 +766,9 @@ function layoutImgStrip(widgetWidth, widgetY, widgetHeight, frames) {
 // 2D-wrapped grid layout — native PreviewImage's algorithm exactly.
 // Iterate cols from 1..N, pick the count that maximises total image area
 // inside the available rect. Cell dimensions are SCALED IMAGE dimensions
-// (not innerW/cols x innerH/rows), so cells exactly fit the images with
-// NO per-cell letterbox. The grid is then centered inside the widget.
+// (not innerW/cols x innerH/rows), so cells exactly fit a UNIFORM batch with
+// no letterbox; a MIXED-size batch letterboxes the odd frames within their
+// cells (the per-frame fit in the loop). The grid is then centered in the widget.
 // Result: thumbnails always look as big as native's, cells touch directly,
 // any unused space sits at the edges of the grid (not between cells).
 function layoutImgGrid(widgetWidth, widgetY, widgetHeight, frames) {
@@ -818,9 +819,25 @@ function layoutImgGrid(widgetWidth, widgetY, widgetHeight, frames) {
     const c = i % cols;
     const x = startX + c * cellW;
     const y = startY + r * cellH;
-    // Cell == fitted image rect: no per-cell letterbox to center within.
     slots.push({ x, y, w: cellW, h: cellH, idx: i });
-    imgs.push({ x, y, w: cellW, h: cellH });
+    // Fit THIS frame inside its cell, preserving its OWN aspect, centered.
+    // For a uniform batch the image fills the cell exactly (cell == scaled
+    // frame[0] dims == this frame's dims, so no letterbox). For a MIXED-size
+    // batch (e.g. Load Images from Folder) the odd-shaped frames letterbox
+    // instead of stretching. Mirrors layoutImgStrip's per-image fit.
+    const im = frames[i]?.img;
+    let imgRect = { x, y, w: cellW, h: cellH };
+    if (im?.complete && im.naturalWidth > 0 && im.naturalHeight > 0) {
+      const s = Math.min(cellW / im.naturalWidth, cellH / im.naturalHeight, 1);
+      const w = Math.round(im.naturalWidth * s);
+      const h = Math.round(im.naturalHeight * s);
+      imgRect = {
+        x: x + Math.floor((cellW - w) / 2),
+        y: y + Math.floor((cellH - h) / 2),
+        w, h,
+      };
+    }
+    imgs.push(imgRect);
   }
   return { slots, imgs };
 }
