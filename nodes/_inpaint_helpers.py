@@ -285,8 +285,12 @@ def apply_inpaint_crop(image, mask, p):
     B, H, W = int(image.shape[0]), int(image.shape[1]), int(image.shape[2])
 
     raw = mask_to_np(mask, H, W)
-    proc = preprocess_mask(raw, p)            # full-frame grown mask (float 0..1)
+    proc = preprocess_mask(raw, p)            # binary core (fill-holes + grow) for the bbox
     bbox = mask_bbox(proc > 0.5)
+    # Keep the brush's painted soft edge: the filled+grown core is opaque, the
+    # softly-painted rim outside it is preserved (so the soft-edge brush + mask_blur
+    # actually reach the conditioning mask instead of being thresholded away).
+    softm = np.maximum(raw, proc)
     region = compute_region(bbox, W, H, p)
     rx, ry, rw, rh = region["rx"], region["ry"], region["rw"], region["rh"]
     out_w, out_h = region["out_w"], region["out_h"]
@@ -296,12 +300,12 @@ def apply_inpaint_crop(image, mask, p):
     cropped_image = resize_image_tensor(crop, out_w, out_h, p["resample"])
 
     # crop + resize the mask, then soften the edge for conditioning
-    mreg = proc[ry:ry + rh, rx:rx + rw]
+    mreg = softm[ry:ry + rh, rx:rx + rw]
     mout = resize_mask_np(mreg, out_w, out_h, "bilinear")
     mout = gaussian_blur_np(mout, p["mask_blur"])
     out_mask = torch.from_numpy(np.clip(mout, 0, 1)[None, ...].astype(np.float32))
 
-    full_mask = torch.from_numpy(proc[None, ...].astype(np.float32))
+    full_mask = torch.from_numpy(softm[None, ...].astype(np.float32))
     crop_info = {
         "image": image, "mask": full_mask,
         "x": rx, "y": ry, "w": rw, "h": rh,
@@ -330,24 +334,36 @@ def _feather_alpha(alpha, feather):
 
 
 def _blur_alpha(alpha, blend):
-    """Soften a MASK's OWN edge by `blend` px so the masked paste fades smoothly
-    into the original (mask-aware blend). Distinct from _feather_alpha, which
-    fades the rectangle boundary (whole-crop mode).
+    """Soften a MASK's OWN edge by `blend` px (in-place Gaussian) so the masked
+    paste fades smoothly into the surroundings (mask-aware blend). Distinct from
+    _feather_alpha, which fades the rectangle boundary (whole-crop mode).
 
-    The mask is first grown outward by ~half the blend so the object stays fully
-    covered (opaque), then Gaussian-blurred - the soft falloff lands OUTSIDE the
-    object, blending the new content into the surroundings. This is what makes an
-    inpaint seam disappear; a plain rectangle feather (the old bug) left the
-    mask edge hard no matter how large `blend` was.
+    The 0.5 contour stays ON the mask edge - NO outward dilation - so a larger
+    blend gives a wider, MORE GRADUAL transition centred on the seam, not a wider
+    full-strength halo. (The earlier dilate-then-blur pushed the paste outward by
+    ~half the blend, so big blend values made the seam look WORSE - the opposite
+    of what the slider should do. Coverage/grow is the crop node's mask_grow job;
+    the stitch only softens.)
     """
     k = int(blend)
     if k <= 0:
         return alpha
     a_np = np.clip(alpha.detach().cpu().numpy(), 0.0, 1.0)
-    grow = min(max(1, k // 2), 48)
-    a_bin = _dilate(a_np > 0.5, grow)
-    soft = gaussian_blur_np(a_bin.astype(np.float32), k)
-    return torch.from_numpy(soft.astype(np.float32))
+    if _HAS_SCIPY:
+        mb = a_np > 0.5
+        if not mb.any() or mb.all():
+            return torch.from_numpy(a_np.astype(np.float32))
+        # signed distance to the mask edge (+ inside, - outside), in px, then a
+        # smoothstep ramp of total width ~2k centred ON the edge. interior stays
+        # exactly 1, exterior exactly 0; only the seam softens. Predictable: the
+        # feather reaches k px to each side of the edge.
+        signed = (_ndimage.distance_transform_edt(mb)
+                  - _ndimage.distance_transform_edt(~mb))
+        t = np.clip(0.5 + signed / (2.0 * k), 0.0, 1.0)
+        soft = t * t * (3.0 - 2.0 * t)
+        return torch.from_numpy(soft.astype(np.float32))
+    # fallback (no scipy): gaussian tuned so the visible feather ~= k px
+    return torch.from_numpy(gaussian_blur_np(a_np, max(1, int(k / 2.5))).astype(np.float32))
 
 
 def _color_match(patch, ref, region_mask, strength):
