@@ -1267,44 +1267,116 @@ async def api_lif_browse(request):
         return web.json_response({"ok": False, "message": str(e), "dirs": []})
 
 
-# Native OS folder picker (Windows). The ComfyUI server runs on the user's own
-# machine for local installs, so it can pop a real folder dialog and return the
-# chosen path - no image copying, exactly like a desktop app. Uses PowerShell +
-# WinForms so there are NO extra Python deps (the embedded Python lacks tkinter).
-# Other OSes / remote setups return unavailable so the frontend falls back to the
-# in-app browser.
+# Native OS folder picker. The ComfyUI server runs on the user's own machine for
+# local installs, so it can pop a REAL folder dialog and return the chosen path -
+# no image copying, like a desktop app. Cross-platform with NO extra Python deps:
+# Windows = PowerShell + WinForms (the embedded Python lacks tkinter); macOS =
+# osascript; Linux = zenity / kdialog. Each fails fast on a headless/remote host
+# so the frontend falls back to the in-app browser. Never hangs (subprocess
+# timeout); a module lock allows only one dialog at a time.
 import threading as _threading
 
 _LIF_DIALOG_LOCK = _threading.Lock()
 
 
-def _lif_native_folder_dialog(start_path=""):
-    if os.name != "nt":
+def _lif_dialog_available():
+    """True if SOME native folder dialog tool exists for this platform."""
+    import sys
+    import shutil
+    if sys.platform == "win32":
+        return shutil.which("powershell") is not None
+    if sys.platform == "darwin":
+        return shutil.which("osascript") is not None
+    return shutil.which("zenity") is not None or shutil.which("kdialog") is not None
+
+
+def _lif_dialog_windows(start_path):
+    import subprocess
+    # Show an invisible TopMost owner form, then open the folder dialog inside its
+    # Shown event so it inherits the foreground (fixes "opens behind the browser").
+    # Start path goes through an env var to avoid quoting issues.
+    ps = (
+        "Add-Type -AssemblyName System.Windows.Forms;"
+        "$r='';"
+        "$o=New-Object System.Windows.Forms.Form;"
+        "$o.TopMost=$true;$o.ShowInTaskbar=$false;$o.FormBorderStyle='None';"
+        "$o.Width=1;$o.Height=1;$o.Opacity=0;$o.StartPosition='CenterScreen';"
+        "$o.Add_Shown({"
+        "$o.Activate();"
+        "$d=New-Object System.Windows.Forms.FolderBrowserDialog;"
+        "$d.Description='Choose a folder of images';$d.ShowNewFolderButton=$false;"
+        "if($env:LIF_START){try{$d.SelectedPath=$env:LIF_START}catch{}};"
+        "if($d.ShowDialog($o) -eq [System.Windows.Forms.DialogResult]::OK){$script:r=$d.SelectedPath};"
+        "$o.Close()"
+        "});"
+        "[void]$o.ShowDialog();"
+        "[Console]::Out.Write($r)"
+    )
+    env = dict(os.environ)
+    env["LIF_START"] = start_path or ""
+    out = subprocess.run(
+        ["powershell", "-NoProfile", "-STA", "-Command", ps],
+        capture_output=True, text=True, timeout=300, env=env,
+        creationflags=0x08000000,  # CREATE_NO_WINDOW (no console flash)
+    )
+    return (out.stdout or "").strip()
+
+
+def _lif_dialog_macos(start_path):
+    import subprocess
+    script = 'POSIX path of (choose folder with prompt "Choose a folder of images")'
+    if start_path and os.path.isdir(start_path):
+        safe = start_path.replace('"', '\\"')
+        script = (
+            'POSIX path of (choose folder with prompt "Choose a folder of images" '
+            f'default location POSIX file "{safe}")'
+        )
+    try:
+        out = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=300)
+        return (out.stdout or "").strip().rstrip("/") if out.returncode == 0 else ""
+    except (subprocess.TimeoutExpired, FileNotFoundError):
         return ""
+
+
+def _lif_dialog_linux(start_path):
+    import shutil
+    import subprocess
+    start = start_path if (start_path and os.path.isdir(start_path)) else os.path.expanduser("~")
+    if shutil.which("zenity"):
+        try:
+            out = subprocess.run(
+                ["zenity", "--file-selection", "--directory",
+                 "--title=Choose a folder of images", f"--filename={start}/"],
+                capture_output=True, text=True, timeout=300,
+            )
+            return (out.stdout or "").strip() if out.returncode == 0 else ""
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            pass
+    if shutil.which("kdialog"):
+        try:
+            out = subprocess.run(
+                ["kdialog", "--getexistingdirectory", start, "--title", "Choose a folder of images"],
+                capture_output=True, text=True, timeout=300,
+            )
+            return (out.stdout or "").strip() if out.returncode == 0 else ""
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            pass
+    return ""
+
+
+def _lif_native_folder_dialog(start_path=""):
+    """Open the native OS folder picker; return the chosen path or "" (cancel /
+    unavailable). Runs in a thread (caller uses run_in_executor); only one at a
+    time via the module lock."""
     if not _LIF_DIALOG_LOCK.acquire(blocking=False):
         return ""  # a dialog is already open
     try:
-        import subprocess
-        safe_start = (start_path or "").replace("'", "''")
-        set_start = f"$d.SelectedPath = '{safe_start}';" if safe_start else ""
-        ps = (
-            "Add-Type -AssemblyName System.Windows.Forms;"
-            "$d = New-Object System.Windows.Forms.FolderBrowserDialog;"
-            "$d.Description = 'Choose a folder of images';"
-            "$d.ShowNewFolderButton = $false;"
-            + set_start
-            + "$o = New-Object System.Windows.Forms.Form -Property @{TopMost=$true; ShowInTaskbar=$false};"
-            "if ($d.ShowDialog($o) -eq [System.Windows.Forms.DialogResult]::OK) "
-            "{ [Console]::Out.Write($d.SelectedPath) }"
-        )
-        out = subprocess.run(
-            ["powershell", "-NoProfile", "-STA", "-Command", ps],
-            capture_output=True,
-            text=True,
-            timeout=300,
-            creationflags=0x08000000,  # CREATE_NO_WINDOW (no console flash)
-        )
-        return (out.stdout or "").strip()
+        import sys
+        if sys.platform == "win32":
+            return _lif_dialog_windows(start_path)
+        if sys.platform == "darwin":
+            return _lif_dialog_macos(start_path)
+        return _lif_dialog_linux(start_path)
     except Exception as e:
         print(f"[PixaromaLoadImagesFolder] native folder dialog failed: {e}")
         return ""
@@ -1319,8 +1391,8 @@ def _lif_native_folder_dialog(start_path=""):
 async def api_lif_pick_native(request):
     """Pop the native OS folder dialog on the ComfyUI host; return the chosen path.
     {ok:true, path} on pick; {ok:false, cancelled} on cancel; {ok:false,
-    unavailable} when no native dialog is possible (non-Windows)."""
-    if os.name != "nt":
+    unavailable} when no native dialog tool exists (so the UI falls back)."""
+    if not _lif_dialog_available():
         return web.json_response({"ok": False, "unavailable": True})
     start = request.query.get("path", "")
     try:

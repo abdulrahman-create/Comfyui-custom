@@ -59,6 +59,32 @@ function measureContentHeight(root) {
   return Math.max(96, h);
 }
 
+// Refit the node height to its content (after the resize panel expands/collapses).
+// Mirrors Image Resize's refit. Self-gates on isGraphLoading so it can be called
+// freely without dirtying a saved workflow on load (Vue Compat #18). rAF so the
+// freshly added/removed panel has laid out before we measure via computeSize.
+function refit(node) {
+  if (!node._pixLifUI) return;
+  requestAnimationFrame(() => {
+    if (!node._pixLifUI || isGraphLoading()) return;
+    const sz = node.computeSize?.();
+    if (sz && Math.abs(node.size[1] - sz[1]) > 1) {
+      node.size[1] = sz[1];
+      node.setDirtyCanvas?.(true, true);
+    }
+  });
+}
+
+// Normalize a folder path: backslash -> forward slash, trim, drop a trailing
+// slash (but keep a bare drive root as "X:/"). Makes native-dialog returns
+// (backslashes on Windows) compare cleanly against typed/pasted paths.
+function normalizePath(p) {
+  if (!p) return "";
+  let s = String(p).trim().replace(/\\/g, "/").replace(/\/+$/, "");
+  if (/^[A-Za-z]:$/.test(s)) s += "/"; // "D:" -> "D:/"
+  return s;
+}
+
 function stripInputs(node) {
   if (!node?.inputs || node.inputs.length === 0) return;
   for (let i = node.inputs.length - 1; i >= 0; i--) {
@@ -126,9 +152,10 @@ async function refreshListing(node, userAction = false) {
 }
 
 async function setFolder(node, folder) {
+  const normalized = normalizePath(folder);
   const st = readState(node);
-  const changed = (st.folder || "") !== (folder || "");
-  st.folder = folder;
+  const changed = (st.folder || "") !== normalized;
+  st.folder = normalized;
   if (changed) st.selected = []; // new folder → drop stale selection
   writeState(node, st);
   await refreshListing(node, true);
@@ -168,13 +195,17 @@ function renderResize(node) {
       node,
       readState(node),
       writeState,
-      () => node.setDirtyCanvas?.(true, true),
+      () => {
+        node.setDirtyCanvas?.(true, true);
+        refit(node); // some panels (e.g. match-ratio crop/pad) change height
+      },
       "loadImagesFolderState",
       { oneLine: true }
     );
     if (panel) slot.appendChild(panel);
   }
   node.setDirtyCanvas?.(true, true);
+  refit(node); // grow/shrink the node to fit the (possibly changed) panel
 }
 
 // ── per-node setup ───────────────────────────────────────────────────────────
@@ -199,7 +230,8 @@ function setupNode(node) {
   node._pixLifWidget = widget;
   if (isVueNodes()) {
     widget.computeLayoutSize = () => ({
-      minHeight: measureContentHeight(ui.root),
+      // coarse-round so sub-pixel/font jitter can't creep node.size on switch
+      minHeight: Math.round(measureContentHeight(ui.root) / 4) * 4,
       minWidth: 1,
     });
   }
@@ -216,6 +248,15 @@ function setupNode(node) {
   ui.folderInput.addEventListener("change", () =>
     setFolder(node, ui.folderInput.value.trim())
   );
+  // 'change' only fires on blur. A paste (Ctrl+V) should list immediately
+  // without needing to click away first; typing still commits on blur or when
+  // clicking Pick images.
+  ui.folderInput.addEventListener("paste", () => {
+    setTimeout(() => {
+      const v = ui.folderInput.value.trim();
+      if (normalizePath(v) !== (readState(node).folder || "")) setFolder(node, v);
+    }, 0);
+  });
   ui.browseBtn.addEventListener("click", async () => {
     const start = readState(node).folder || "";
     // Try the native OS folder dialog first (real dialog, real path, no copying).
