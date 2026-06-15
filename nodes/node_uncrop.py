@@ -136,18 +136,30 @@ class PixaromaUncrop:
         a = a.to(torch.float32)
         return self._feather_alpha(a.clamp(0.0, 1.0), feather)
 
+    def _passthrough_mask(self, mask, image):
+        """When there's nothing to paste (no crop_info), forward the WIRED mask
+        unchanged so transparency survives. Falls back to a fully-opaque mask
+        sized to the image only when no mask is wired."""
+        if isinstance(mask, torch.Tensor):
+            if mask.dim() == 2:
+                return mask[None, ...].to(torch.float32)
+            if mask.dim() == 3:
+                return mask.to(torch.float32)
+        h = int(image.shape[1]) if isinstance(image, torch.Tensor) and image.dim() == 4 else 1
+        w = int(image.shape[2]) if isinstance(image, torch.Tensor) and image.dim() == 4 else 1
+        return torch.zeros((1, h, w), dtype=torch.float32)
+
     def uncrop(self, image, crop_info=None, mask=None, feather=0):
-        # Defensive: bad crop_info -> pass the edited image straight through so a
-        # mis-wire never crashes the whole workflow.
+        # No crop_info wired -> nothing to paste back, so pass the image AND the
+        # mask straight through (the mask must NOT be blanked, or transparency is
+        # lost - this is the "Load Image -> Uncrop directly" case).
         if not isinstance(crop_info, dict) or not isinstance(crop_info.get("image"), torch.Tensor):
-            print("[PixaromaUncrop] missing/invalid crop_info - passing image through")
-            h = int(image.shape[1]) if image.dim() == 4 else 1
-            w = int(image.shape[2]) if image.dim() == 4 else 1
-            return (image, torch.zeros((1, h, w), dtype=torch.float32), crop_info)
+            print("[PixaromaUncrop] no crop_info wired - passing image + mask through")
+            return (image, self._passthrough_mask(mask, image), crop_info)
 
         base = crop_info["image"]
         if base.dim() != 4:
-            return (image, torch.zeros((1, 1, 1), dtype=torch.float32), crop_info)
+            return (image, self._passthrough_mask(mask, image), crop_info)
 
         H, W = int(base.shape[1]), int(base.shape[2])
         x = int(crop_info.get("x", 0))
