@@ -122,6 +122,7 @@ const HELP = {
           "Adjust the crop rectangle using the panel fields or click `Open Crop Editor` for the fullscreen editor with handles.",
           "Choose a preset ratio (1:1, 16:9, 9:16, and more) or leave it on `Free`.",
           "Run the workflow to output the cropped result.",
+          "To put an edited crop back later, wire the `crop_info` output into Image Uncrop Pixaroma.",
         ],
       },
       {
@@ -131,6 +132,35 @@ const HELP = {
           ["mask", "The cropped mask, cut with the same box as the image. Wire a MASK in (such as Load Image's MASK) to carry transparency through the crop; otherwise it is a fully-opaque mask sized to the crop."],
           ["width", "Width of the cropped area in pixels."],
           ["height", "Height of the cropped area in pixels."],
+          ["crop_info", "Feed this into Image Uncrop Pixaroma to paste an edited version of the crop back onto the original image at the exact same spot."],
+        ],
+      },
+    ],
+  },
+
+  "PixaromaUncrop": {
+    title: "Image Uncrop Pixaroma",
+    tagline: "Paste an edited crop back onto the original image at the exact spot it came from.",
+    sections: [
+      {
+        heading: "What it does",
+        body: "The other half of the crop, fix, then put it back workflow. After you crop a region with Image Crop Pixaroma and edit it (upscale, inpaint, face-fix, color work, anything), this node drops the edited piece back onto the full original image at the exact same place, leaving everything else untouched.\n\nIt knows where to paste from the `crop_info` wire, and it automatically resizes the edited crop to fit the original region (so upscaling the crop first is fine).",
+      },
+      {
+        heading: "How to use",
+        bullets: [
+          "Wire the `crop_info` output of Image Crop Pixaroma into this node's `crop_info`.",
+          "Wire your edited crop into `image`.",
+          "Optionally raise `feather` for a soft, seamless edge where the crop meets the original.",
+          "Optionally wire a `mask` to paste only part of the crop (white = paste, black = keep original).",
+          "Run the workflow to get the recombined full image.",
+        ],
+      },
+      {
+        heading: "Outputs",
+        defs: [
+          ["image", "The original image with the edited crop pasted back in place."],
+          ["mask", "A full-size mask marking where the paste landed (including any feather falloff)."],
         ],
       },
     ],

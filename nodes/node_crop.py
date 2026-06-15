@@ -8,6 +8,13 @@ import folder_paths
 from .node_ref import any_type, FlexibleOptionalInputType
 
 
+# Custom wire type carrying everything Image Uncrop Pixaroma needs to paste an
+# edited crop back onto the original: the full original image plus the crop's
+# top-left (x, y) and size (w, h). Defined as a plain string so the matching
+# constant in node_uncrop.py stays decoupled (no cross-file import chain).
+PIXAROMA_CROP_INFO = "PIXAROMA_CROP_INFO"
+
+
 class _CropOptionalInputs(FlexibleOptionalInputType):
     """FlexibleOptionalInputType that ALSO declares a concrete optional IMAGE
     'image' input.
@@ -71,8 +78,10 @@ class PixaromaCrop:
         "wire).\n\n"
         "Outputs the cropped IMAGE, a matching cropped MASK (wire a MASK in - "
         "such as Load Image's MASK output - to carry transparency through the "
-        "crop with the exact same box), plus the new width and height for "
-        "downstream nodes.\n\n"
+        "crop with the exact same box), the new width and height, and a "
+        "'crop_info' wire. Feed crop_info into Image Uncrop Pixaroma to paste an "
+        "edited version of the crop back onto the original image at the exact "
+        "same spot (crop, fix/upscale, then put it back).\n\n"
         "The 'image' input is optional - wire an upstream IMAGE into it, or load "
         "an image directly via drag-drop, Ctrl+V paste, or the editor's Load "
         "Image button (those override the wire)."
@@ -85,8 +94,8 @@ class PixaromaCrop:
             "optional": _CropOptionalInputs(any_type),
         }
 
-    RETURN_TYPES = ("IMAGE", "MASK", "INT", "INT")
-    RETURN_NAMES = ("image", "mask", "width", "height")
+    RETURN_TYPES = ("IMAGE", "MASK", "INT", "INT", PIXAROMA_CROP_INFO)
+    RETURN_NAMES = ("image", "mask", "width", "height", "crop_info")
     OUTPUT_TOOLTIPS = (
         "The cropped image.",
         "The cropped mask, cut with the exact same box as the image. Comes from "
@@ -95,6 +104,9 @@ class PixaromaCrop:
         "transparency.",
         "Cropped width in pixels.",
         "Cropped height in pixels.",
+        "Crop info for Image Uncrop Pixaroma - carries the original image plus "
+        "where this crop came from, so an edited crop can be pasted back onto "
+        "the original at the exact same spot. Wire it into Image Uncrop Pixaroma.",
     )
     FUNCTION = "load_crop"
     CATEGORY = "👑 Pixaroma"
@@ -160,7 +172,8 @@ class PixaromaCrop:
 
         # No widget AND no upstream → return empty
         if not crop_data and upstream is None and upstream_mask is None:
-            return (empty_image, self._default_mask(1024, 1024), 1024, 1024)
+            return (empty_image, self._default_mask(1024, 1024), 1024, 1024,
+                    self._identity_crop_info(empty_image))
 
         # Parse crop metadata (may be empty if user just wired upstream and never opened editor)
         meta = {}
@@ -192,13 +205,14 @@ class PixaromaCrop:
             try:
                 img_t, out_w, out_h = self._crop_tensor(upstream, meta)
                 mask_t = self._crop_mask(upstream_mask, meta, out_w, out_h)
+                crop_info = self._make_crop_info(upstream, meta)
             except Exception as e:
                 print(f"[PixaromaCrop] upstream crop error: {e}")
-                img_t, mask_t, out_w, out_h = self._load_disk_composite(meta, empty_image, upstream_mask)
+                img_t, mask_t, out_w, out_h, crop_info = self._load_disk_composite(meta, empty_image, upstream_mask)
         else:
-            img_t, mask_t, out_w, out_h = self._load_disk_composite(meta, empty_image, upstream_mask)
+            img_t, mask_t, out_w, out_h, crop_info = self._load_disk_composite(meta, empty_image, upstream_mask)
 
-        result = (img_t, mask_t, out_w, out_h)
+        result = (img_t, mask_t, out_w, out_h, crop_info)
         if ui_payload:
             return {"ui": ui_payload, "result": result}
         return result
@@ -280,6 +294,32 @@ class PixaromaCrop:
         x0, y0, x1, y1 = rect
         return m[:, y0:y1, x0:x1].contiguous()
 
+    def _make_crop_info(self, original, meta):
+        """Bundle what Image Uncrop Pixaroma needs to paste an edited crop back:
+        the FULL original image plus the crop's top-left (x, y) and size (w, h),
+        computed from the saved rect on the original's own dimensions."""
+        if not isinstance(original, torch.Tensor) or original.dim() != 4:
+            return None
+        H, W = int(original.shape[1]), int(original.shape[2])
+        rect = self._rect_from_meta(meta, W, H)
+        if rect is None:
+            x0, y0, cw, ch = 0, 0, W, H
+        else:
+            x0, y0, x1, y1 = rect
+            cw, ch = x1 - x0, y1 - y0
+        return {"image": original, "x": x0, "y": y0, "w": cw, "h": ch,
+                "orig_w": W, "orig_h": H}
+
+    def _identity_crop_info(self, image_t):
+        """Crop info for an already-cropped image (editor composite or the empty
+        fallback) where the full original isn't available: paste-back becomes a
+        whole-image replace at (0, 0)."""
+        if not isinstance(image_t, torch.Tensor) or image_t.dim() != 4:
+            return None
+        H, W = int(image_t.shape[1]), int(image_t.shape[2])
+        return {"image": image_t, "x": 0, "y": 0, "w": W, "h": H,
+                "orig_w": W, "orig_h": H}
+
     def _load_disk_composite(self, meta, empty_image, upstream_mask=None):
         """Load a saved image from input/pixaroma/. Two paths:
 
@@ -309,8 +349,9 @@ class PixaromaCrop:
 
         # Nothing on disk → return a blank doc-sized image + matching mask
         arr = np.ones((doc_h, doc_w, 3), dtype=np.float32)
+        blank = torch.from_numpy(arr)[None,]
         mask_t = self._crop_mask(upstream_mask, meta, doc_w, doc_h)
-        return (torch.from_numpy(arr)[None,], mask_t, doc_w, doc_h)
+        return (blank, mask_t, doc_w, doc_h, self._identity_crop_info(blank))
 
     def _derive_disk_mask(self, pil, meta, upstream_mask, out_w, out_h, already_cropped):
         """Work out the MASK for a disk-loaded image. Priority:
@@ -349,7 +390,8 @@ class PixaromaCrop:
                                   meta=None, upstream_mask=None, already_cropped=True):
         full_path = self._resolve_pixaroma_path(rel_path)
         if not full_path:
-            return (empty_image, self._default_mask(doc_w, doc_h), doc_w, doc_h)
+            return (empty_image, self._default_mask(doc_w, doc_h), doc_w, doc_h,
+                    self._identity_crop_info(empty_image))
         try:
             pil = Image.open(full_path)
             img = pil.convert("RGB")
@@ -360,10 +402,13 @@ class PixaromaCrop:
             # and downstream nodes (EmptyLatentImage, etc.) trust these outputs.
             ow, oh = int(t.shape[2]), int(t.shape[1])
             mask_t = self._derive_disk_mask(pil, meta or {}, upstream_mask, ow, oh, already_cropped)
-            return (t, mask_t, ow, oh)
+            # Composite is already cropped on the JS side, so the full original
+            # isn't available here → identity crop info (paste = whole replace).
+            return (t, mask_t, ow, oh, self._identity_crop_info(t))
         except Exception as e:
             print(f"[PixaromaCrop] Load error: {e}")
-            return (empty_image, self._default_mask(1024, 1024), 1024, 1024)
+            return (empty_image, self._default_mask(1024, 1024), 1024, 1024,
+                    self._identity_crop_info(empty_image))
 
     def _load_src_and_crop(self, src_path, meta, doc_w, doc_h, empty_image, upstream_mask=None):
         """Load the uncropped source image and apply crop_x/y/w/h. Used when
@@ -371,20 +416,23 @@ class PixaromaCrop:
         the composite (or the user is tweaking crop dims via the panel)."""
         full_path = self._resolve_pixaroma_path(src_path)
         if not full_path:
-            return (empty_image, self._default_mask(doc_w, doc_h), doc_w, doc_h)
+            return (empty_image, self._default_mask(doc_w, doc_h), doc_w, doc_h,
+                    self._identity_crop_info(empty_image))
         try:
             pil = Image.open(full_path)
             img = pil.convert("RGB")
             arr = np.array(img).astype(np.float32) / 255.0
-            tensor = torch.from_numpy(arr)[None,]  # [1, H, W, 3]
+            tensor = torch.from_numpy(arr)[None,]  # [1, H, W, 3]  (FULL source)
             img_t, ow, oh = self._crop_tensor(tensor, meta)
             # Source is the FULL uncropped image, so the mask (wired or from the
             # file's own alpha) is cropped with the same rect.
             mask_t = self._derive_disk_mask(pil, meta, upstream_mask, ow, oh, already_cropped=False)
-            return (img_t, mask_t, ow, oh)
+            # FULL source available → real crop info so paste-back lands right.
+            return (img_t, mask_t, ow, oh, self._make_crop_info(tensor, meta))
         except Exception as e:
             print(f"[PixaromaCrop] src load error: {e}")
-            return (empty_image, self._default_mask(doc_w, doc_h), doc_w, doc_h)
+            return (empty_image, self._default_mask(doc_w, doc_h), doc_w, doc_h,
+                    self._identity_crop_info(empty_image))
 
 
 NODE_CLASS_MAPPINGS = {

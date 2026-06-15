@@ -12,6 +12,8 @@ from .nodes.node_compare import NODE_CLASS_MAPPINGS as _MAPS_COMPARE
 from .nodes.node_compare import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_COMPARE
 from .nodes.node_crop import NODE_CLASS_MAPPINGS as _MAPS_CROP
 from .nodes.node_crop import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_CROP
+from .nodes.node_uncrop import NODE_CLASS_MAPPINGS as _MAPS_UNCROP
+from .nodes.node_uncrop import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_UNCROP
 from .nodes.node_label import NODE_CLASS_MAPPINGS as _MAPS_LABEL
 from .nodes.node_label import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_LABEL
 from .nodes.node_load_image import NODE_CLASS_MAPPINGS as _MAPS_LOAD_IMAGE
@@ -91,6 +93,7 @@ NODE_CLASS_MAPPINGS = {
     **_MAPS_RESOLUTION,
     **_MAPS_COMPARE,
     **_MAPS_CROP,
+    **_MAPS_UNCROP,
     **_MAPS_LABEL,
     **_MAPS_LOAD_IMAGE,
     **_MAPS_NOTE,
@@ -127,6 +130,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     **_NAMES_AUDIO_STUDIO,
     **_NAMES_COMPARE,
     **_NAMES_CROP,
+    **_NAMES_UNCROP,
     **_NAMES_LABEL,
     **_NAMES_LOAD_IMAGE,
     **_NAMES_NOTE,
