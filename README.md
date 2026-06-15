@@ -66,12 +66,15 @@ Audio-reactive image-to-video. **No extra models needed**, just an image and an 
 Compare settings side by side without setting anything up. Drop it at the end of your workflow and wire your final image in, just like a preview node. Then pick what changes **across** (columns) and **down** (rows) from a dropdown of the nodes already in your graph - no extra wiring. The value box adapts to your pick: a number gives a Start/End/Steps range, a dropdown (sampler, model, scheduler) gives a checklist, and your prompt gives find-and-replace. Hit Run once and every combination fills a labeled grid right in the node, with **Dark/Light/Mono** grid themes and **Save/Copy/Open** buttons. The seed stays **locked** across the grid so the only thing changing is the thing you're testing.
 
 ### ✂️ Image Crop
-No more guessing crop sizes with numbers! Visually draw your crop box, or set width, height, position and a center/edge alignment right on the node - math expressions like `1024+512` work too. Standard presets (1:1, 16:9, 9:16…) keep social and video aspects locked. Wire **any IMAGE** output into the node (Load Image, VAE Decode, anything) and run the workflow once - the editor and mini-preview will show the live source. Or paste an image straight from the clipboard with **Ctrl+V**.
+No more guessing crop sizes with numbers! Visually draw your crop box, or set width, height, position and a center/edge alignment right on the node - math expressions like `1024+512` work too. Standard presets (1:1, 16:9, 9:16…) keep social and video aspects locked. Wire **any IMAGE** output into the node (Load Image, VAE Decode, anything) and run the workflow once - the editor and mini-preview will show the live source. Or paste an image straight from the clipboard with **Ctrl+V**. It keeps **transparency** too (wire a mask in, get a matching cropped mask out) and hands off a **crop_info** wire to the new **Image Uncrop** node, so you can edit the crop and paste it back later.
 
 📥 [Download example workflow](workflows/Crop%20Pixaroma%20Workflow.json)
 
 ![Image Crop Node](workflows/Crop%20Pixaroma%20Workflow.jpg?v=3)
 ![Image Crop Editor](workflows/Crop%20Pixaroma%20Workflow%20v2.jpg?v=2)
+
+### 🧩 Image Uncrop
+The other half of crop-and-edit: paste an edited or upscaled crop **back** onto the original image at the exact spot it came from. Wire the **crop_info** from Image Crop into it, run your crop through any nodes you like (upscale, recolor, inpaint, remove background), and Image Uncrop drops the result back in place - everything outside the crop stays untouched. A **feather** slider softens the seam for a seamless blend, and transparency carries straight through.
 
 ### 🌓 Image Compare
 The best way to see the difference between two images. Easily compare them side-by-side with a slider, overlap them, or highlight exactly what changed between the two versions.
@@ -268,7 +271,9 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
-### **June 15, 2026 · v1.3.88-1.3.89**
+### **June 15, 2026 · v1.3.88-1.3.90**
+- **NEW: Image Uncrop Pixaroma** - paste an edited or upscaled crop back onto the original image at the exact spot it came from, with a **feather** slider for a seamless blend.
+- **Image Crop now carries transparency** - a new mask input/output plus a `crop_info` wire that feeds Image Uncrop. (Its width and height outputs moved down one spot, so reconnect those once if you used them.)
 - **NEW: Load Images from Folder Pixaroma** - point it at any folder, pick images in a thumbnail gallery, and Run once to process each one (different sizes are fine). Outputs image, mask, size, filename, and index per image.
 - **Preview Image:** mixed-size batches now fit each thumbnail to its own shape instead of stretching.
 - **Housekeeping:** the Manager / registry star count and "last updated" date refresh correctly again.
