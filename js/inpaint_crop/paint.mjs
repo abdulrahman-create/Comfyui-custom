@@ -42,7 +42,7 @@ proto._bindMouse = function (cvs) {
     window.addEventListener("mouseup", winUp);
   });
   cvs.addEventListener("mousemove", (e) => { if (!this._painting) this._drawCursor(this._displayPos(e)); });
-  cvs.addEventListener("mouseleave", () => { if (!this._painting) this.el.curCtx?.clearRect(0, 0, this.el.cursor.width, this.el.cursor.height); });
+  cvs.addEventListener("mouseleave", () => { if (!this._painting) { this.el.curCtx?.clearRect(0, 0, this.el.cursor.width, this.el.cursor.height); this._lastCursorPos = null; } });
   cvs.addEventListener("wheel", (e) => {
     e.preventDefault();
     const d = e.deltaY < 0 ? 4 : -4;
@@ -115,6 +115,7 @@ proto._stampLine = function (x0, y0, x1, y1) {
 proto._drawCursor = function (p) {
   const ctx = this.el.curCtx;
   if (!ctx) return;
+  this._lastCursorPos = p;
   ctx.clearRect(0, 0, this.el.cursor.width, this.el.cursor.height);
   const r = this.brushSize / 2;
   const erase = this._effectiveTool() === "erase";
@@ -222,15 +223,51 @@ proto._bindKeys = function () {
     if (key === "e") { e.preventDefault(); this._setTool("erase"); this._toolGrid?.setActive?.("erase"); return; }
     if (key === "h") { e.preventDefault(); this._toggleMaskVisible(); return; }
     if (key === "x") { this._xHeld = true; return; }
-    if (key === "[") { e.preventDefault(); this.brushSize = Math.max(2, this.brushSize - 4); this.el.sizeSlider?.setValue(this.brushSize); return; }
-    if (key === "]") { e.preventDefault(); this.brushSize = Math.min(300, this.brushSize + 4); this.el.sizeSlider?.setValue(this.brushSize); return; }
+    if (key === "[" || key === "]") {
+      e.preventDefault();
+      const dir = key === "[" ? -1 : 1;
+      // ignore OS auto-repeat (laggy) - drive a smooth ramp ourselves while held
+      if (!e.repeat) { this._adjustBrush(dir * 4); this._startBrushHold(dir); }
+      return;
+    }
   };
-  this._keyUpHandler = (e) => { if (e.key.toLowerCase() === "x") this._xHeld = false; };
+  this._keyUpHandler = (e) => {
+    const k = e.key.toLowerCase();
+    if (k === "x") this._xHeld = false;
+    if (k === "[" || k === "]") this._stopBrushHold();
+  };
   window.addEventListener("keydown", this._keyHandler, { capture: true });
   window.addEventListener("keyup", this._keyUpHandler, { capture: true });
 };
 
+// brush resize: instant on tap, smooth-accelerating while held (no OS-repeat lag)
+proto._adjustBrush = function (delta) {
+  this.brushSize = Math.max(2, Math.min(300, this.brushSize + delta));
+  this.el.sizeSlider?.setValue(this.brushSize);
+  if (this._lastCursorPos) this._drawCursor(this._lastCursorPos);
+};
+
+proto._startBrushHold = function (dir) {
+  this._stopBrushHold();
+  this._holdDir = dir;
+  let rate = 0.5, accum = 0;
+  const tick = () => {
+    if (!this.el.overlay?.isConnected) { this._stopBrushHold(); return; }
+    rate = Math.min(3.4, rate + 0.12);
+    accum += this._holdDir * rate;
+    const step = Math.trunc(accum);
+    if (step !== 0) { accum -= step; this._adjustBrush(step); }
+    this._holdRaf = requestAnimationFrame(tick);
+  };
+  this._holdRaf = requestAnimationFrame(tick);
+};
+
+proto._stopBrushHold = function () {
+  if (this._holdRaf) { cancelAnimationFrame(this._holdRaf); this._holdRaf = null; }
+};
+
 proto._unbindKeys = function () {
+  this._stopBrushHold();
   if (this._keyHandler) window.removeEventListener("keydown", this._keyHandler, { capture: true });
   if (this._keyUpHandler) window.removeEventListener("keyup", this._keyUpHandler, { capture: true });
 };
