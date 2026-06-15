@@ -265,6 +265,9 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 > 💡 **After updating Pixaroma:** hard-refresh your ComfyUI browser tab with **Ctrl+Shift+R** (or **Cmd+Shift+R** on Mac). The browser keeps old node visuals cached, and without a hard refresh you may still see the previous version of a node even though the update installed correctly.
 
+### **June 15, 2026 · v1.3.88**
+- **Housekeeping: the node page shows current info again.** The star count and "last updated" date on the ComfyUI Manager and registry page now refresh correctly instead of showing blank or frozen. The nodes themselves are unchanged.
+
 ### **June 10, 2026 · v1.3.84-1.3.87**
 - **NEW: write text vertically (top to bottom).** Text Overlay, the Image Composer text layers, and Text Watermark now have a Horizontal / Vertical switch. Vertical stacks each character going down and starts a fresh column every time you press Enter - great for Japanese-style writing or tall stylish captions. The alignment and "position on canvas" buttons understand the tall narrow shape, so the text lands in the corner or center you actually clicked.
 - **NEW: a Restore brush for the Image Composer eraser.** The eraser now has an Erase / Restore switch. Flip it to Restore and brush back over an area you erased to bring the original picture back, with the same soft or hard edge. Hold Alt while painting to flip the brush just for a moment, or press X to swap. The brush ring turns orange in Restore mode so you always know which way it works, and the two buttons stay dimmed until you actually turn the eraser on.
