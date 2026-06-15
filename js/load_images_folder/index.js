@@ -27,7 +27,7 @@ import {
 import { buildModePanel, injectResizePanelCSS } from "../shared/resize_panel.mjs";
 
 const MIN_W = 280;
-const DEFAULT_W = 300;
+const DEFAULT_W = 370; // wide enough for the 6 resize quick-pick chips (e.g. MP) on one line
 
 // Resize modes — values match the shared engine (_resize_helpers / buildModePanel).
 const RESIZE_MODES = [
@@ -309,8 +309,12 @@ function setupNode(node) {
   // resize control (reads current state; fresh node = "Off")
   renderResize(node);
 
-  // default width only (configure() restores saved size for loaded nodes)
-  if (!node.size || node.size[0] < MIN_W) node.size[0] = DEFAULT_W;
+  // default width on a FRESH drop only; on workflow load, leave the width for
+  // configure() to restore (so a user-resized node keeps its saved width and we
+  // don't dirty it — Vue Compat #18). LiteGraph's title-driven default is wider
+  // than MIN_W, so this set (not a < MIN_W guard) is what actually applies it.
+  if (!node.size) node.size = [DEFAULT_W, 200];
+  if (!isGraphLoading()) node.size[0] = DEFAULT_W;
 
   // initial populate, deferred so configure()'s state lands first
   queueMicrotask(() => refreshListing(node));
