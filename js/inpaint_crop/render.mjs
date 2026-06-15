@@ -72,7 +72,7 @@ proto._draw = function () {
     if (t.width !== cvs.width || t.height !== cvs.height) { t.width = cvs.width; t.height = cvs.height; }
     const tc = t.getContext("2d");
     tc.clearRect(0, 0, t.width, t.height);
-    tc.drawImage(this._mask, 0, 0, t.width, t.height);
+    tc.drawImage(this._effectiveMaskCanvas(), 0, 0, t.width, t.height);
     tc.globalCompositeOperation = "source-in";
     tc.fillStyle = "#f6303a";
     tc.fillRect(0, 0, t.width, t.height);

@@ -15,6 +15,13 @@ proto._ensureMaskCanvas = function () {
   m.width = this.imgW; m.height = this.imgH;
   this._mask = m;
   this._mctx = m.getContext("2d");
+  // per-stroke buffer: stamps accumulate here, then bake onto the mask with a
+  // blur-on-bake soft edge (so overlapping stamps can't stack into a hard rim).
+  const sc = document.createElement("canvas");
+  sc.width = this.imgW; sc.height = this.imgH;
+  this._stroke = sc;
+  this._sctx = sc.getContext("2d");
+  this._strokeHasContent = false;
   this._undo = []; this._redo = [];
   this.layout?.setUndoState({ canUndo: false, canRedo: false });
 };
@@ -61,6 +68,10 @@ proto._beginStroke = function (e) {
   this._pushUndo();
   this._painting = true;
   this._lastPt = null;
+  // lock the add/erase choice for the whole stroke (X can be released mid-drag)
+  this._strokeTool = this._effectiveTool();
+  this._sctx.clearRect(0, 0, this.imgW, this.imgH);
+  this._strokeHasContent = false;
   this._strokeMove(e);
 };
 
@@ -75,28 +86,58 @@ proto._strokeMove = function (e) {
   this._drawCursor(p);
 };
 
+// soft-edge feather width (source px) baked onto the stroke. 0 = crisp.
+proto._bakeBlurPx = function () {
+  const rSrc = (this.brushSize / 2) / (this._scale || 1);
+  return Math.round(this.softness * rSrc);
+};
+
+// composite the (blurred) stroke buffer onto a target ctx using the locked tool
+proto._compositeStroke = function (ctx) {
+  const blur = this._bakeBlurPx();
+  ctx.save();
+  if (blur > 0) ctx.filter = `blur(${blur}px)`;
+  ctx.globalCompositeOperation = this._strokeTool === "erase" ? "destination-out" : "source-over";
+  ctx.drawImage(this._stroke, 0, 0);
+  ctx.restore();
+};
+
 proto._endStroke = function () {
   this._painting = false;
   this._lastPt = null;
+  if (this._strokeHasContent) {
+    this._compositeStroke(this._mctx);   // bake into the mask
+    this._sctx.clearRect(0, 0, this.imgW, this.imgH);
+    this._strokeHasContent = false;
+  }
   this._recomputeRegion();
   this._draw();
 };
 
-// ── brush stamps (source-space coords on the mask canvas) ──────────────────
+// the mask as it should DISPLAY right now (mask + the live stroke during a drag)
+proto._effectiveMaskCanvas = function () {
+  if (!this._painting || !this._strokeHasContent) return this._mask;
+  if (!this._effMask) this._effMask = document.createElement("canvas");
+  const c = this._effMask;
+  if (c.width !== this.imgW || c.height !== this.imgH) { c.width = this.imgW; c.height = this.imgH; }
+  const ctx = c.getContext("2d");
+  ctx.clearRect(0, 0, this.imgW, this.imgH);
+  ctx.drawImage(this._mask, 0, 0);
+  this._compositeStroke(ctx);
+  return c;
+};
+
+// ── brush stamps: a crisp anti-aliased disc on the STROKE buffer. The soft edge
+//    is the blur-on-bake (_bakeBlurPx), so overlapping stamps never stack hard.
 proto._stampDab = function (sx, sy) {
-  const ctx = this._mctx;
+  const ctx = this._sctx;
   const r = Math.max(0.5, (this.brushSize / 2) / (this._scale || 1));
-  const erase = this._effectiveTool() === "erase";
-  ctx.save();
-  ctx.globalCompositeOperation = erase ? "destination-out" : "source-over";
-  const core = Math.max(0, 1 - this.softness);
-  const g = ctx.createRadialGradient(sx, sy, 0, sx, sy, r);
+  const g = ctx.createRadialGradient(sx, sy, Math.max(0, r - 1.2), sx, sy, r);
   g.addColorStop(0, "rgba(255,255,255,1)");
-  g.addColorStop(Math.min(0.999, core), "rgba(255,255,255,1)");
   g.addColorStop(1, "rgba(255,255,255,0)");
   ctx.fillStyle = g;
   ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2); ctx.fill();
-  ctx.restore();
+  this._strokeHasContent = true;
 };
 
 proto._stampLine = function (x0, y0, x1, y1) {
