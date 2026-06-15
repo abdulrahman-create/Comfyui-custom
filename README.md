@@ -271,9 +271,10 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
-### **June 15, 2026 · v1.3.88-1.3.90**
+### **June 15, 2026 · v1.3.88-1.3.91**
 - **NEW: Image Uncrop Pixaroma** - paste an edited or upscaled crop back onto the original image at the exact spot it came from, with a **feather** slider for a seamless blend.
 - **Image Crop now carries transparency** - a new mask input/output plus a `crop_info` wire that feeds Image Uncrop. (Its width and height outputs moved down one spot, so reconnect those once if you used them.)
+- **Image Uncrop now works with pasted/loaded crops too** - pasting or loading an image straight into Image Crop (no Load Image node) used to make Uncrop return just the cropped piece; now it rebuilds the full picture either way.
 - **NEW: Load Images from Folder Pixaroma** - point it at any folder, pick images in a thumbnail gallery, and Run once to process each one (different sizes are fine). Outputs image, mask, size, filename, and index per image.
 - **Preview Image:** mixed-size batches now fit each thumbnail to its own shape instead of stretching.
 - **Housekeeping:** the Manager / registry star count and "last updated" date refresh correctly again.
