@@ -68,6 +68,8 @@ from .nodes.node_xy_plot import NODE_CLASS_MAPPINGS as _MAPS_XY_PLOT
 from .nodes.node_xy_plot import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_XY_PLOT
 from .nodes.node_find_replace import NODE_CLASS_MAPPINGS as _MAPS_FIND_REPLACE
 from .nodes.node_find_replace import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_FIND_REPLACE
+from .nodes.node_load_images_folder import NODE_CLASS_MAPPINGS as _MAPS_LIF
+from .nodes.node_load_images_folder import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_LIF
 
 # development mode for loading additional refrence nodes
 dev_mode = False
@@ -115,6 +117,7 @@ NODE_CLASS_MAPPINGS = {
     **_MAPS_PAUSE_IMAGE,
     **_MAPS_XY_PLOT,
     **_MAPS_FIND_REPLACE,
+    **_MAPS_LIF,
 }
 
 # combine all node display name mappings
@@ -154,6 +157,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     **_NAMES_PAUSE_IMAGE,
     **_NAMES_XY_PLOT,
     **_NAMES_FIND_REPLACE,
+    **_NAMES_LIF,
 }
 
 # web directory for loading js files

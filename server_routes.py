@@ -1131,3 +1131,84 @@ async def api_prompt_reader_extract(request):
             "message": f"Could not read metadata: {e}",
         })
     return web.json_response(result)
+
+
+# ── Load Images from Folder Pixaroma ─────────────────────────────────────────
+# These routes back the node's gallery + thumbnails. They read the user's OWN
+# chosen folder on the local machine (the whole point of the node), so they are
+# NOT constrained to input/. They are read-only, validate the path is a real
+# directory, only touch image files, and guard the per-file thumbnail against
+# path-traversal out of the chosen folder via _is_path_under.
+_LIF_IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif", ".tiff", ".tif")
+
+
+def _lif_is_image(name: str) -> bool:
+    return name.lower().endswith(_LIF_IMAGE_EXTS)
+
+
+@PromptServer.instance.routes.get("/pixaroma/api/load_images_folder/list")
+async def api_lif_list(request):
+    """List image files in a folder. ?path=<folder>&recursive=0|1
+    Returns {ok, folder, files:[{file, name, size, mtime}]} (file = path
+    relative to the folder, forward-slashed)."""
+    folder = request.query.get("path", "")
+    recursive = request.query.get("recursive", "0") == "1"
+    if not folder or not os.path.isdir(folder):
+        return web.json_response({"ok": False, "message": "Folder not found.", "files": []})
+    real = os.path.realpath(folder)
+    files = []
+    try:
+        if recursive:
+            for root, _dirs, names in os.walk(real):
+                for n in names:
+                    if not _lif_is_image(n):
+                        continue
+                    full = os.path.join(root, n)
+                    try:
+                        st = os.stat(full)
+                    except OSError:
+                        continue
+                    rel = os.path.relpath(full, real).replace("\\", "/")
+                    files.append({"file": rel, "name": n, "size": st.st_size, "mtime": st.st_mtime})
+        else:
+            for n in os.listdir(real):
+                full = os.path.join(real, n)
+                if os.path.isfile(full) and _lif_is_image(n):
+                    try:
+                        st = os.stat(full)
+                    except OSError:
+                        continue
+                    files.append({"file": n, "name": n, "size": st.st_size, "mtime": st.st_mtime})
+    except OSError as e:
+        return web.json_response({"ok": False, "message": f"Could not read folder: {e}", "files": []})
+    return web.json_response({"ok": True, "folder": real, "files": files})
+
+
+@PromptServer.instance.routes.get("/pixaroma/api/load_images_folder/thumb")
+async def api_lif_thumb(request):
+    """Serve a small JPEG thumbnail for one image. ?path=<folder>&file=<rel>"""
+    folder = request.query.get("path", "")
+    rel = request.query.get("file", "")
+    if not folder or not rel or not os.path.isdir(folder):
+        return web.Response(status=404)
+    full = os.path.realpath(os.path.join(folder, rel))
+    if (
+        not _is_path_under(full, folder)
+        or not os.path.isfile(full)
+        or not _lif_is_image(os.path.basename(full))
+    ):
+        return web.Response(status=403)
+    try:
+        from PIL import ImageOps
+        im = Image.open(full)
+        im = ImageOps.exif_transpose(im).convert("RGB")
+        im.thumbnail((192, 192))
+        buf = io.BytesIO()
+        im.save(buf, format="JPEG", quality=80)
+        return web.Response(
+            body=buf.getvalue(),
+            content_type="image/jpeg",
+            headers={"Cache-Control": "no-cache"},
+        )
+    except Exception:
+        return web.Response(status=404)
