@@ -1146,6 +1146,34 @@ def _lif_is_image(name: str) -> bool:
     return name.lower().endswith(_LIF_IMAGE_EXTS)
 
 
+def _lif_list_files(real, recursive):
+    """Walk a folder and return its image files. Blocking (os.walk + os.stat on
+    a big tree can take seconds) - run off the event loop."""
+    files = []
+    if recursive:
+        for root, _dirs, names in os.walk(real):
+            for n in names:
+                if not _lif_is_image(n):
+                    continue
+                full = os.path.join(root, n)
+                try:
+                    st = os.stat(full)
+                except OSError:
+                    continue
+                rel = os.path.relpath(full, real).replace("\\", "/")
+                files.append({"file": rel, "name": n, "size": st.st_size, "mtime": st.st_mtime})
+    else:
+        for n in os.listdir(real):
+            full = os.path.join(real, n)
+            if os.path.isfile(full) and _lif_is_image(n):
+                try:
+                    st = os.stat(full)
+                except OSError:
+                    continue
+                files.append({"file": n, "name": n, "size": st.st_size, "mtime": st.st_mtime})
+    return files
+
+
 @PromptServer.instance.routes.get("/pixaroma/api/load_images_folder/list")
 async def api_lif_list(request):
     """List image files in a folder. ?path=<folder>&recursive=0|1
@@ -1156,30 +1184,11 @@ async def api_lif_list(request):
     if not folder or not os.path.isdir(folder):
         return web.json_response({"ok": False, "message": "Folder not found.", "files": []})
     real = os.path.realpath(folder)
-    files = []
     try:
-        if recursive:
-            for root, _dirs, names in os.walk(real):
-                for n in names:
-                    if not _lif_is_image(n):
-                        continue
-                    full = os.path.join(root, n)
-                    try:
-                        st = os.stat(full)
-                    except OSError:
-                        continue
-                    rel = os.path.relpath(full, real).replace("\\", "/")
-                    files.append({"file": rel, "name": n, "size": st.st_size, "mtime": st.st_mtime})
-        else:
-            for n in os.listdir(real):
-                full = os.path.join(real, n)
-                if os.path.isfile(full) and _lif_is_image(n):
-                    try:
-                        st = os.stat(full)
-                    except OSError:
-                        continue
-                    files.append({"file": n, "name": n, "size": st.st_size, "mtime": st.st_mtime})
-    except OSError as e:
+        import asyncio
+        loop = asyncio.get_running_loop()
+        files = await loop.run_in_executor(None, _lif_list_files, real, recursive)
+    except Exception as e:
         return web.json_response({"ok": False, "message": f"Could not read folder: {e}", "files": []})
     return web.json_response({"ok": True, "folder": real, "files": files})
 

@@ -121,6 +121,10 @@ function renderUI(node) {
 // userAction = the call came from a real user gesture (folder change / subfolder
 // toggle), as opposed to a workflow-load path (onNodeCreated / onConfigure).
 async function refreshListing(node, userAction = false) {
+  // Bump FIRST so even the no-folder early-return invalidates any in-flight
+  // fetch (clear the folder while a listing is loading -> the stale response
+  // must not repopulate the file list).
+  const myReq = (node._pixLifListReq = (node._pixLifListReq || 0) + 1);
   const state = readState(node);
   if (!state.folder) {
     node._pixLifFiles = [];
@@ -128,7 +132,6 @@ async function refreshListing(node, userAction = false) {
     renderUI(node);
     return;
   }
-  const myReq = (node._pixLifListReq = (node._pixLifListReq || 0) + 1);
   const res = await listFolder(state.folder, state.recursive);
   // a newer refresh superseded this one (e.g. paste + blur), or the node was
   // removed while the fetch was in flight - drop this stale response.

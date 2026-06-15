@@ -163,9 +163,12 @@ class PixaromaLoadImagesFolder:
             dtype = torch.float32
 
         real_folder = os.path.realpath(folder)
+        recursive = bool(state.get("recursive", False))
         images, masks, widths, heights, names, indices = [], [], [], [], [], []
         count = 0
         for rel in selected:
+            if not isinstance(rel, str) or not rel:
+                continue  # malformed selection entry (e.g. null/number in state)
             # Keep every selected file INSIDE the chosen folder. `selected` comes
             # from the (frontend-supplied) hidden state, so a crafted "../../x"
             # must not let the loader open files outside the folder.
@@ -188,7 +191,13 @@ class PixaromaLoadImagesFolder:
             masks.append(m)
             widths.append(fw)
             heights.append(fh)
-            names.append(os.path.splitext(os.path.basename(rel))[0])
+            if recursive:
+                # keep names unique across subfolders so a Save node can't
+                # overwrite: "sub/cat.png" -> "sub_cat"
+                name = os.path.splitext(rel)[0].replace("/", "_").replace("\\", "_")
+            else:
+                name = os.path.splitext(os.path.basename(rel))[0]
+            names.append(name)
             count += 1
             indices.append(count)
 
