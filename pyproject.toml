@@ -14,7 +14,7 @@ dependencies = []
 rembg = ["rembg>=2.0.50", "onnxruntime>=1.14.0"]
 
 [project.urls]
-Repository = "https://gitlab.com/pixaroma/comfyui-pixaroma"
+Repository = "https://github.com/pixaroma/ComfyUI-Pixaroma"
 Issues     = "https://gitlab.com/pixaroma/comfyui-pixaroma/-/issues"
 YouTube    = "https://www.youtube.com/@pixaroma"
 
