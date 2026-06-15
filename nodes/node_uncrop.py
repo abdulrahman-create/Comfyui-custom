@@ -61,12 +61,14 @@ class PixaromaUncrop:
             },
         }
 
-    RETURN_TYPES = ("IMAGE", "MASK")
-    RETURN_NAMES = ("image", "mask")
+    RETURN_TYPES = ("IMAGE", "MASK", PIXAROMA_CROP_INFO)
+    RETURN_NAMES = ("image", "mask", "crop_info")
     OUTPUT_TOOLTIPS = (
         "The original image with the edited crop pasted back in place.",
         "A full-size mask marking where the paste landed (white = pasted area, "
         "including any feather falloff).",
+        "The same crop_info passed straight through, so you can forward it to "
+        "another node without re-routing the wire from Image Crop.",
     )
     FUNCTION = "uncrop"
     CATEGORY = "👑 Pixaroma"
@@ -130,11 +132,11 @@ class PixaromaUncrop:
             print("[PixaromaUncrop] missing/invalid crop_info - passing image through")
             h = int(image.shape[1]) if image.dim() == 4 else 1
             w = int(image.shape[2]) if image.dim() == 4 else 1
-            return (image, torch.zeros((1, h, w), dtype=torch.float32))
+            return (image, torch.zeros((1, h, w), dtype=torch.float32), crop_info)
 
         base = crop_info["image"]
         if base.dim() != 4:
-            return (image, torch.zeros((1, 1, 1), dtype=torch.float32))
+            return (image, torch.zeros((1, 1, 1), dtype=torch.float32), crop_info)
 
         H, W = int(base.shape[1]), int(base.shape[2])
         x = int(crop_info.get("x", 0))
@@ -193,7 +195,8 @@ class PixaromaUncrop:
         out_mask = torch.zeros((1, H, W), dtype=torch.float32)
         out_mask[:, y:y + ch, x:x + cw] = alpha.detach().to("cpu", torch.float32)
 
-        return (out.clamp(0.0, 1.0), out_mask)
+        # Pass crop_info straight through so it can be forwarded downstream.
+        return (out.clamp(0.0, 1.0), out_mask, crop_info)
 
 
 NODE_CLASS_MAPPINGS = {

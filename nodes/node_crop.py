@@ -94,19 +94,19 @@ class PixaromaCrop:
             "optional": _CropOptionalInputs(any_type),
         }
 
-    RETURN_TYPES = ("IMAGE", "MASK", "INT", "INT", PIXAROMA_CROP_INFO)
-    RETURN_NAMES = ("image", "mask", "width", "height", "crop_info")
+    RETURN_TYPES = ("IMAGE", "MASK", PIXAROMA_CROP_INFO, "INT", "INT")
+    RETURN_NAMES = ("image", "mask", "crop_info", "width", "height")
     OUTPUT_TOOLTIPS = (
         "The cropped image.",
         "The cropped mask, cut with the exact same box as the image. Comes from "
         "the wired MASK input (or, for a dropped/pasted file, its own "
         "transparency); a fully-opaque mask sized to the crop when there is no "
         "transparency.",
-        "Cropped width in pixels.",
-        "Cropped height in pixels.",
         "Crop info for Image Uncrop Pixaroma - carries the original image plus "
         "where this crop came from, so an edited crop can be pasted back onto "
         "the original at the exact same spot. Wire it into Image Uncrop Pixaroma.",
+        "Cropped width in pixels.",
+        "Cropped height in pixels.",
     )
     FUNCTION = "load_crop"
     CATEGORY = "👑 Pixaroma"
@@ -172,8 +172,8 @@ class PixaromaCrop:
 
         # No widget AND no upstream → return empty
         if not crop_data and upstream is None and upstream_mask is None:
-            return (empty_image, self._default_mask(1024, 1024), 1024, 1024,
-                    self._identity_crop_info(empty_image))
+            return (empty_image, self._default_mask(1024, 1024),
+                    self._identity_crop_info(empty_image), 1024, 1024)
 
         # Parse crop metadata (may be empty if user just wired upstream and never opened editor)
         meta = {}
@@ -212,7 +212,7 @@ class PixaromaCrop:
         else:
             img_t, mask_t, out_w, out_h, crop_info = self._load_disk_composite(meta, empty_image, upstream_mask)
 
-        result = (img_t, mask_t, out_w, out_h, crop_info)
+        result = (img_t, mask_t, crop_info, out_w, out_h)
         if ui_payload:
             return {"ui": ui_payload, "result": result}
         return result

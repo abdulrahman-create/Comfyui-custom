@@ -130,9 +130,9 @@ const HELP = {
         defs: [
           ["image", "The cropped image."],
           ["mask", "The cropped mask, cut with the same box as the image. Wire a MASK in (such as Load Image's MASK) to carry transparency through the crop; otherwise it is a fully-opaque mask sized to the crop."],
+          ["crop_info", "Feed this into Image Uncrop Pixaroma to paste an edited version of the crop back onto the original image at the exact same spot."],
           ["width", "Width of the cropped area in pixels."],
           ["height", "Height of the cropped area in pixels."],
-          ["crop_info", "Feed this into Image Uncrop Pixaroma to paste an edited version of the crop back onto the original image at the exact same spot."],
         ],
       },
     ],
@@ -161,6 +161,7 @@ const HELP = {
         defs: [
           ["image", "The original image with the edited crop pasted back in place."],
           ["mask", "A full-size mask marking where the paste landed (including any feather falloff)."],
+          ["crop_info", "The same crop_info passed straight through, so you can forward it on without re-routing the wire from Image Crop."],
         ],
       },
     ],
