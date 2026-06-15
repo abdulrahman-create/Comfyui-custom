@@ -366,10 +366,12 @@ def _blur_alpha(alpha, blend):
         t = np.clip(signed / float(k) + 1.0, 0.0, 1.0)
         soft = t * t * (3.0 - 2.0 * t)
         return torch.from_numpy(soft.astype(np.float32))
-    # fallback (no scipy): grow the mask by k (keep it fully opaque inside) then
-    # gaussian-blur so the falloff is outward, approximating the EDT feather.
-    grown = _dilate(a_np > 0.5, k).astype(np.float32)
-    return torch.from_numpy(gaussian_blur_np(grown, max(1, int(k / 1.7))).astype(np.float32))
+    # fallback (no scipy): gaussian-blur the binary mask for an outward falloff,
+    # then force the masked interior back to 1.0 so the feather is OUTWARD-only,
+    # matching the scipy path (no inward translucency / ghosting at the edge).
+    mbf = (a_np > 0.5).astype(np.float32)
+    blurred = gaussian_blur_np(mbf, max(1, int(k / 1.7)))
+    return torch.from_numpy(np.where(mbf > 0.5, 1.0, blurred).astype(np.float32))
 
 
 def _color_match(patch, ref, region_mask, strength):
@@ -459,6 +461,11 @@ def stitch_back(crop_info, image, mask, blend, blend_mode, color_match):
     out[:, y:y + ch, x:x + cw, :] = patch[..., :region.shape[-1]] * av + region * (1.0 - av)
 
     original = base
-    if original.shape[0] != out.shape[0] and original.shape[0] == 1:
-        original = original.repeat(out.shape[0], 1, 1, 1)
+    if original.shape[0] != out.shape[0]:
+        if original.shape[0] == 1:
+            original = original.repeat(out.shape[0], 1, 1, 1)
+        else:
+            # the result was trimmed to min(B,C) above - trim original to match,
+            # or the two outputs would have mismatched batch sizes.
+            original = original[:out.shape[0]]
     return out.clamp(0, 1), original.clamp(0, 1)

@@ -118,6 +118,15 @@ proto._endStroke = function () {
   this._draw();
 };
 
+// Drop the in-progress stroke buffer so it is NOT re-baked on the eventual
+// mouseup. Used by undo/redo mid-drag (otherwise the undone stroke would
+// re-composite when the user releases the mouse).
+proto._abandonStroke = function () {
+  if (this._sctx) this._sctx.clearRect(0, 0, this.imgW, this.imgH);
+  this._strokeHasContent = false;
+  this._lastPt = null;
+};
+
 // the mask as it should DISPLAY right now (mask + the live stroke during a drag)
 proto._effectiveMaskCanvas = function () {
   if (!this._painting || !this._strokeHasContent) return this._mask;
@@ -247,6 +256,7 @@ proto._doUndo = function () {
   if (!this._mask || !this._undo.length) return;
   this._redo.push(this._mctx.getImageData(0, 0, this.imgW, this.imgH));
   this._mctx.putImageData(this._undo.pop(), 0, 0);
+  this._abandonStroke();
   this._rescanBBox(); this._recomputeRegion(); this._draw();
   this.layout?.setUndoState({ canUndo: this._undo.length > 0, canRedo: this._redo.length > 0 });
 };
@@ -255,6 +265,7 @@ proto._doRedo = function () {
   if (!this._mask || !this._redo.length) return;
   this._undo.push(this._mctx.getImageData(0, 0, this.imgW, this.imgH));
   this._mctx.putImageData(this._redo.pop(), 0, 0);
+  this._abandonStroke();
   this._rescanBBox(); this._recomputeRegion(); this._draw();
   this.layout?.setUndoState({ canUndo: this._undo.length > 0, canRedo: this._redo.length > 0 });
 };
