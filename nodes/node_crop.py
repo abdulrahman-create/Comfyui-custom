@@ -345,13 +345,21 @@ class PixaromaCrop:
     def _load_disk_composite(self, meta, empty_image, upstream_mask=None):
         """Load a saved image from input/pixaroma/. Two paths:
 
-        1. composite_path: the editor-saved pre-cropped PNG. Returned as-is
-           (the editor already did the crop on the JS side).
-        2. src_path: the uncropped source (e.g. uploaded via Ctrl+V paste).
-           We load it and apply crop_x/y/w/h on the Python side, mirroring
-           _crop_tensor's behavior for upstream tensors. This lets the user
-           change crop dims in the on-node panel and have the workflow output
-           reflect the change without re-opening the editor.
+        1. src_path: the FULL uncropped source (paste / drag-drop / the editor's
+           Load Image button - the editor saves it even when it also saves a
+           composite). We load it and apply crop_x/y/w/h on the Python side
+           (same pixels as the editor's composite) AND build a real crop_info
+           carrying the full original - which Image Uncrop needs to paste an
+           edited crop back onto the whole image. This is PREFERRED.
+        2. composite_path: the editor-saved pre-cropped PNG. Used ONLY when no
+           usable source is on disk. It is already cropped, so its crop_info is
+           an identity (paste-back can't reconstruct the full original from it).
+
+        Why src is preferred: when only the composite is used, crop_info has no
+        full original, so Image Uncrop has nothing to paste the edited crop back
+        onto (it returns just the cropped region). Loading from the full source
+        fixes the "Uncrop doesn't work when I paste/load into Crop directly" case
+        while producing the identical cropped IMAGE output.
 
         All paths also produce a cropped MASK: a wired MASK input wins, else the
         loaded file's own alpha channel is used, else a fully-opaque default.
@@ -362,12 +370,13 @@ class PixaromaCrop:
         composite_path = meta.get("composite_path", "")
         src_path = meta.get("src_path", "")
 
+        # Prefer the FULL source so crop_info carries the original for paste-back.
+        if src_path and self._resolve_pixaroma_path(src_path):
+            return self._load_src_and_crop(src_path, meta, doc_w, doc_h, empty_image, upstream_mask)
+
         if composite_path:
             return self._load_image_from_pixaroma(
                 composite_path, doc_w, doc_h, empty_image, meta, upstream_mask, already_cropped=True)
-
-        if src_path:
-            return self._load_src_and_crop(src_path, meta, doc_w, doc_h, empty_image, upstream_mask)
 
         # Nothing on disk → return a blank doc-sized image + matching mask
         arr = np.ones((doc_h, doc_w, 3), dtype=np.float32)
