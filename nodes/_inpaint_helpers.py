@@ -347,31 +347,43 @@ def _blur_alpha(alpha, blend):
     feather made the masked edge itself semi-transparent, which read as a soft
     ghost/halo of the old content. Coverage/grow is the crop node's mask_grow
     job; this only softens the outer seam.
+
+    Rect-edge guard: after the outward feather, the alpha is faded to 0 within
+    `blend` px of the crop rectangle border (`min(feather, rect_ramp)`), so a
+    feather wider than the surrounding context can't leave a hard nonzero alpha at
+    the rectangle edge (the "high blend = straight line" bug). No-op when the
+    feather already reaches 0 before the border (the normal small-blend case).
     """
     k = int(blend)
     if k <= 0:
         return alpha
     a_np = np.clip(alpha.detach().cpu().numpy(), 0.0, 1.0)
+    mb = a_np > 0.5
+    if not mb.any() or mb.all():
+        return torch.from_numpy(a_np.astype(np.float32))
     if _HAS_SCIPY:
-        mb = a_np > 0.5
-        if not mb.any() or mb.all():
-            return torch.from_numpy(a_np.astype(np.float32))
         # signed distance to the mask edge (+ inside, - outside, in px). Map so
-        # signed >= 0 -> 1.0 (inside + edge fully opaque) and signed in [-k,0]
-        # ramps 1 -> 0 with smoothstep shoulders. distance_transform_edt only
-        # considers in-array pixels, so a mask running off the crop edge stays
-        # opaque there (no false feather along the rectangle border).
+        # signed >= 0 -> 1.0 and signed in [-k,0] ramps 1 -> 0 (smoothstep).
         signed = (_ndimage.distance_transform_edt(mb)
                   - _ndimage.distance_transform_edt(~mb))
         t = np.clip(signed / float(k) + 1.0, 0.0, 1.0)
-        soft = t * t * (3.0 - 2.0 * t)
-        return torch.from_numpy(soft.astype(np.float32))
-    # fallback (no scipy): gaussian-blur the binary mask for an outward falloff,
-    # then force the masked interior back to 1.0 so the feather is OUTWARD-only,
-    # matching the scipy path (no inward translucency / ghosting at the edge).
-    mbf = (a_np > 0.5).astype(np.float32)
-    blurred = gaussian_blur_np(mbf, max(1, int(k / 1.7)))
-    return torch.from_numpy(np.where(mbf > 0.5, 1.0, blurred).astype(np.float32))
+        soft = (t * t * (3.0 - 2.0 * t)).astype(np.float32)
+    else:
+        # fallback (no scipy): gaussian-blur the binary mask for an outward
+        # falloff, then force the interior back to 1.0 (outward-only).
+        mbf = mb.astype(np.float32)
+        blurred = gaussian_blur_np(mbf, max(1, int(k / 1.7)))
+        soft = np.where(mbf > 0.5, 1.0, blurred).astype(np.float32)
+    # rect-edge guard (see docstring): fade the feather to 0 within k px of the
+    # crop border so it can't paint a hard line along the rectangle edge.
+    ch, cw = soft.shape
+    ys = np.minimum(np.arange(ch), (ch - 1) - np.arange(ch)).reshape(ch, 1)
+    xs = np.minimum(np.arange(cw), (cw - 1) - np.arange(cw)).reshape(1, cw)
+    de = np.minimum(ys, xs).astype(np.float32)
+    r = np.clip(de / float(k), 0.0, 1.0)
+    rect = (r * r * (3.0 - 2.0 * r)).astype(np.float32)
+    soft = np.minimum(soft, rect)
+    return torch.from_numpy(np.clip(soft, 0.0, 1.0).astype(np.float32))
 
 
 def _color_match(patch, ref, region_mask, strength):
