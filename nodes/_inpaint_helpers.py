@@ -536,7 +536,18 @@ def stitch_back(crop_info, image, mask, blend, blend_mode, color_match):
     if blend_mode == "whole_crop":
         a = _feather_alpha(a.clamp(0, 1), blend)
     else:
-        a = _blur_alpha(a.clamp(0, 1), blend)
+        ac = a.clamp(0, 1)
+        ab = ac > 0.5
+        if not bool(ab.any()) or bool(ab.all()):
+            # No mask EDGE to soften - an Image Crop crop_info with no per-pixel mask
+            # (all-zeros), an all-ones mask, or a whole-image inpaint with nothing
+            # painted. _blur_alpha would return zeros (paste NOTHING - the inpaint is
+            # lost) or ones (a hard rectangle seam). Fall back to the rectangle feather
+            # over the full crop, so the edited crop IS pasted with a soft seam and the
+            # Softness slider still works for the Image Crop interop.
+            a = _feather_alpha(torch.ones((ch, cw), dtype=torch.float32), blend)
+        else:
+            a = _blur_alpha(ac, blend)
 
     out = base.clone()
     B = int(out.shape[0])
