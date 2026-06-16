@@ -98,7 +98,12 @@ class PixaromaInpaintStitch:
         # too, so a malformed dict doesn't silently paste at (0,0) full-size.
         if (not isinstance(crop_info, dict)
                 or not isinstance(crop_info.get("image"), torch.Tensor)
+                or crop_info["image"].dim() != 4
                 or any(k not in crop_info for k in ("x", "y", "w", "h"))):
+            # malformed / missing crop_info (incl. a non-[B,H,W,C] image) -> pass the
+            # image through as BOTH outputs so the graph still runs. Checking the rank
+            # here keeps a bad image out of stitch_back (which would otherwise throw and
+            # the except below would silently make `original` a copy of the result).
             print("[PixaromaInpaintStitch] no valid crop_info wired - passing image through")
             return (image, image)
 

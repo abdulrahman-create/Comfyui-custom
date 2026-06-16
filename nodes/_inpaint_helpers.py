@@ -424,6 +424,11 @@ def _feather_alpha(alpha, feather):
     if k <= 0:
         return alpha
     ch, cw = int(alpha.shape[-2]), int(alpha.shape[-1])
+    # Cap the feather at ~half the smaller side so the interior stays fully opaque. A
+    # feather wider than that never reaches 1 anywhere, so the WHOLE rectangle paste
+    # goes translucent and ghosts the original through (only bites on a small crop +
+    # big feather, e.g. a large Stitch softness override on a tight crop).
+    k = min(k, max(1, (min(ch, cw) - 1) // 2))
     ys = torch.arange(ch, dtype=torch.float32).view(ch, 1)
     xs = torch.arange(cw, dtype=torch.float32).view(1, cw)
     dist = torch.minimum(torch.minimum(ys, (ch - 1) - ys),
