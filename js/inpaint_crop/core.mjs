@@ -61,6 +61,7 @@ export class InpaintCropEditor {
     this.softness = 0;                     // crisp brush; the seam Softness slider owns blending now
     this.maskOpacity = 0.5;
     this.maskVisible = true;
+    this.previewColor = "#f6303a";   // mask + seam preview tint (display only; Task 7 makes it switchable)
     this._painting = false;
     this._lastPt = null;
 

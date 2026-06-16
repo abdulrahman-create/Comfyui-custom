@@ -68,6 +68,27 @@ proto._fitCanvas = function () {
   this.el.canvas.style.cursor = "none";
 };
 
+// Feathered seam alpha at display resolution: an outward blur of the mask over
+// (blend * scale) px, with the interior forced opaque - the canvas mirror of the
+// Python no-scipy _blur_alpha fallback. Approximate preview (F2), not pixel-exact.
+proto._seamAlphaCanvas = function () {
+  const W = this._dispW, H = this._dispH;
+  if (!this._seamCv) this._seamCv = document.createElement("canvas");
+  const c = this._seamCv;
+  if (c.width !== W || c.height !== H) { c.width = W; c.height = H; }
+  const ctx = c.getContext("2d");
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  const src = this._effectiveMaskCanvas();
+  const blendDisp = Math.max(0, (this.params.blend ?? 16) * (this._scale || 1));
+  if (blendDisp < 0.5) { ctx.drawImage(src, 0, 0, W, H); return c; }
+  ctx.filter = `blur(${(blendDisp / 1.7).toFixed(1)}px)`;
+  ctx.drawImage(src, 0, 0, W, H);          // outward falloff
+  ctx.filter = "none";
+  ctx.drawImage(src, 0, 0, W, H);          // interior -> opaque
+  return c;
+};
+
 proto._draw = function () {
   if (!this.img || !this._dispW) return;  // _fitCanvas sets _dispW before any draw
   const ctx = this.el.ctx, s = this._scale;
@@ -75,25 +96,31 @@ proto._draw = function () {
   ctx.clearRect(0, 0, W, H);
   ctx.drawImage(this.img, 0, 0, W, H);
 
-  // red mask overlay (tint the mask alpha) - tint canvas is DPR-backed so the
-  // overlay stays as crisp as the image on high-DPI screens.
+  // seam preview: tint the FEATHERED seam alpha (Softness) in the chosen color,
+  // clipped to the crop region. Approximate (mirrors the Python no-scipy fallback).
   if (this.maskVisible && this._mask) {
     if (!this._tint) this._tint = document.createElement("canvas");
     const t = this._tint;
-    const dpr = Math.max(1, window.devicePixelRatio || 1);
-    const tw = Math.round(W * dpr), th = Math.round(H * dpr);
-    if (t.width !== tw || t.height !== th) { t.width = tw; t.height = th; }
+    if (t.width !== W || t.height !== H) { t.width = W; t.height = H; }
     const tc = t.getContext("2d");
     tc.setTransform(1, 0, 0, 1, 0, 0);
-    tc.clearRect(0, 0, tw, th);
-    tc.drawImage(this._effectiveMaskCanvas(), 0, 0, tw, th);
+    tc.clearRect(0, 0, W, H);
+    tc.drawImage(this._seamAlphaCanvas(), 0, 0);
     tc.globalCompositeOperation = "source-in";
-    tc.fillStyle = "#f6303a";
-    tc.fillRect(0, 0, tw, th);
+    tc.fillStyle = this.previewColor || "#f6303a";
+    tc.fillRect(0, 0, W, H);
     tc.globalCompositeOperation = "source-over";
+    ctx.save();
+    if (this._region) {                       // clip the seam tint to the crop box
+      const r = this._region;
+      ctx.beginPath();
+      ctx.rect(r.rx * s, r.ry * s, r.rw * s, r.rh * s);
+      ctx.clip();
+    }
     ctx.globalAlpha = this.maskOpacity;
-    ctx.drawImage(t, 0, 0, W, H);  // backing-res tint at logical size = crisp
+    ctx.drawImage(t, 0, 0);
     ctx.globalAlpha = 1;
+    ctx.restore();
   }
 
   // tight painted bbox (white dashed)
