@@ -18,6 +18,12 @@ _SIZE_MODE = {
     "free (multiple only)": "free",
 }
 
+# Seam paste-back mode -> internal key. Mirrored by the editor's Blend mode pill.
+_BLEND_MODE = {
+    "mask": "mask",
+    "whole crop": "whole_crop",
+}
+
 
 class _InpaintOptionalInputs(FlexibleOptionalInputType):
     """Declares concrete optional IMAGE + MASK inputs (so drag-from-output search
@@ -107,6 +113,18 @@ class PixaromaInpaintCrop:
                         "crop back. Previewed live in the mask editor."
                     ),
                 }),
+                "blend_mode": (list(_BLEND_MODE.keys()), {
+                    "default": "mask",
+                    "tooltip": (
+                        "How Inpaint Stitch pastes the result back. 'mask': only the "
+                        "area you painted is replaced - the rest of the crop keeps the "
+                        "original (the normal inpaint, the safe default). 'whole crop': "
+                        "the entire cropped region is replaced with the model's version "
+                        "(use when the model also relit / changed the surroundings, or "
+                        "for an img2img-style pass over the whole crop). Previewed live "
+                        "in the mask editor."
+                    ),
+                }),
                 "invert_mask": ("BOOLEAN", {
                     "default": False,
                     "tooltip": (
@@ -142,7 +160,7 @@ class PixaromaInpaintCrop:
     def IS_CHANGED(cls, **kwargs):
         """Re-run on any knob change, or when the painted-mask file changes."""
         parts = [str(kwargs.get(k)) for k in
-                 ("size_mode", "target", "multiple", "context_px", "mask_grow", "mask_blur", "softness", "invert_mask")]
+                 ("size_mode", "target", "multiple", "context_px", "mask_grow", "mask_blur", "softness", "blend_mode", "invert_mask")]
         state = kwargs.get("InpaintCropWidget")
         try:
             sj = state.get("state_json", "{}") if isinstance(state, dict) else str(state)
@@ -229,7 +247,8 @@ class PixaromaInpaintCrop:
         return merge_params(p)
 
     def run(self, size_mode="keep shape (long side)", target=1024, multiple=8,
-            context_px=24, mask_grow=4, mask_blur=4, softness=16, invert_mask=False, **kwargs):
+            context_px=24, mask_grow=4, mask_blur=4, softness=16, blend_mode="mask",
+            invert_mask=False, **kwargs):
         upstream = kwargs.get("image")
         upstream_mask = kwargs.get("mask")
         state = kwargs.get("InpaintCropWidget")
@@ -279,11 +298,11 @@ class PixaromaInpaintCrop:
             print(f"[PixaromaInpaintCrop] crop error: {e}")
             return self._empty()
 
-        # blend mode (editor-only) also rides crop_info. (color_match is now the
-        # Stitch node's own knob.)
+        # blend mode rides crop_info. It is now a NODE widget (mirrored by the editor's
+        # Blend mode pill), so the node widget is the source of truth - not state_json.
+        # (color_match is the Stitch node's own knob.)
         crop_info["blend"] = sb
-        _bm = str(meta.get("blend_mode", "mask"))
-        crop_info["blend_mode"] = _bm if _bm in ("mask", "whole_crop") else "mask"
+        crop_info["blend_mode"] = _BLEND_MODE.get(blend_mode, "mask")
 
         result = (img_t, mask_t, crop_info, ow, oh)
         if ui_payload:

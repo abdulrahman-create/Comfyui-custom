@@ -18,6 +18,9 @@ const SIZE_MODE_MAP = {
   "free (multiple only)": "free",
 };
 
+// node-widget label <-> internal blend_mode key (the editor pill uses the internal key)
+const BLEND_MODE_MAP = { "mask": "mask", "whole crop": "whole_crop" };
+
 function readParams(node) {
   const g = (n) => node.widgets?.find((w) => w.name === n)?.value;
   return {
@@ -28,22 +31,16 @@ function readParams(node) {
     mask_grow: g("mask_grow") != null ? parseInt(g("mask_grow")) : 4,
     mask_blur: g("mask_blur") != null ? parseInt(g("mask_blur")) : 4,
     blend: g("softness") != null ? parseInt(g("softness")) : 16,
+    // blend_mode is now a node widget too (mirrored by the editor pill).
+    blend_mode: BLEND_MODE_MAP[g("blend_mode")] || "mask",
   };
-}
-
-// blend settings live in the editor state_json (not node widgets); read them so
-// the editor restores them on open.
-function readSeam(jsonStr) {
-  // blend_mode is editor-only state (softness rides the node 'softness' widget,
-  // color_match is the Stitch node's own knob).
-  let meta = {};
-  try { meta = JSON.parse(jsonStr || "{}") || {}; } catch {}
-  return { blend_mode: meta.blend_mode || "mask" };
 }
 
 // friendly-label <- internal size-mode key, for writing the editor's choice back
 const SIZE_MODE_LABEL = Object.fromEntries(
   Object.entries(SIZE_MODE_MAP).map(([k, v]) => [v, k]));
+const BLEND_MODE_LABEL = Object.fromEntries(
+  Object.entries(BLEND_MODE_MAP).map(([k, v]) => [v, k]));
 
 function setNodeWidget(node, name, value) {
   const w = node.widgets?.find((x) => x.name === name);
@@ -61,6 +58,8 @@ function writeBackWidgets(node, extra) {
   if (extra.multiple != null) setNodeWidget(node, "multiple", extra.multiple);
   if (extra.size_mode != null)
     setNodeWidget(node, "size_mode", SIZE_MODE_LABEL[extra.size_mode] || "keep shape (long side)");
+  if (extra.blend_mode != null)
+    setNodeWidget(node, "blend_mode", BLEND_MODE_LABEL[extra.blend_mode] || "mask");
 }
 
 function buildSourceURL(part, bust) {
@@ -69,6 +68,26 @@ function buildSourceURL(part, bust) {
     `&subfolder=${encodeURIComponent(part.subfolder || "")}` +
     `&type=${encodeURIComponent(part.type || "temp")}`;
   return bust ? `${url}&t=${Date.now()}` : url;
+}
+
+// A LoadImage combo value can be "name.png", "sub/name.png", or carry an
+// annotation like "clipspace/clipboard.png [input]" (this is what PASTING into a
+// LoadImage produces - a subfolder + suffix). /view wants filename + subfolder as
+// SEPARATE params and no annotation, so split it; otherwise the editor 404s with
+// "Failed to load the source image" (only on paste, since a plain pick has no
+// subfolder/suffix). Mirrors the image-picker split used elsewhere.
+function parseAnnotatedImageValue(value) {
+  let v = String(value || "");
+  let type = "input";
+  const m = v.match(/\s*\[(input|output|temp)\]\s*$/i);
+  if (m) { type = m[1].toLowerCase(); v = v.slice(0, m.index); }
+  v = v.replace(/\\/g, "/").trim();
+  const i = v.lastIndexOf("/");
+  return {
+    filename: i >= 0 ? v.slice(i + 1) : v,
+    subfolder: i >= 0 ? v.slice(0, i) : "",
+    type,
+  };
 }
 
 function getUpstreamImageURL(node) {
@@ -86,7 +105,7 @@ function getUpstreamImageURL(node) {
     if (src) {
       if (src.comfyClass === "LoadImage" || src.type === "LoadImage") {
         const w = (src.widgets || []).find((x) => x.name === "image");
-        if (w && w.value) return `/view?filename=${encodeURIComponent(w.value)}&type=input&t=${Date.now()}`;
+        if (w && w.value) return buildSourceURL(parseAnnotatedImageValue(w.value), true);
       }
       if (src.imgs && src.imgs.length > 0) {
         const img = src.imgs[link.origin_slot] || src.imgs[0];
@@ -111,6 +130,8 @@ function installPasteHandler() {
     if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
     const node = findActiveNode();
     if (!node) return;
+    // editor open -> let the editor's own paste handler load it into the canvas
+    if (node._pixInpaintEditor?.el?.overlay?.isConnected) return;
     const items = e.clipboardData?.items || [];
     const it = Array.from(items).find((x) => x.type?.startsWith("image/"));
     if (!it) return;
@@ -244,7 +265,7 @@ app.registerExtension({
       editor.onClose = () => { captureBrush(); node._pixInpaintEditor = null; node.setDirtyCanvas(true, true); };
 
       editor.open(stateJson, getUpstreamImageURL(node),
-        { ...readParams(node), ...readSeam(stateJson) }, node._pixInpaintBrush);
+        readParams(node), node._pixInpaintBrush);
     });
 
     // ── mini-preview DOM widget (also carries the hidden state) ──

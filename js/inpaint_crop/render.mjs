@@ -265,6 +265,7 @@ proto._save = async function () {
       size_mode: this.params.size_mode,
       target: this.params.target,
       multiple: this.params.multiple,
+      blend_mode: this.params.blend_mode,   // mirror the editor pill back to the node widget
     };
     const preview = this._buildPreview();
     if (this.onSave) this.onSave(JSON.stringify(state), extra, preview);
