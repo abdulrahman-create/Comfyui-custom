@@ -250,61 +250,63 @@ def compute_region(bbox, W, H, p):
     mode = p["size_mode"]
     mult = p["multiple"]
 
+    # force mode: grow the WANTED region to the target aspect first (the output is
+    # the fixed target size, set below).
+    tw = th = 0
     if mode == "force":
         tw = max(mult, _round_mult(p["target_w"], mult))
         th = max(mult, _round_mult(p["target_h"], mult))
-        # grow the region to the target aspect so nothing is stretched
         target_aspect = tw / float(th)
         if rw / rh < target_aspect:
             rw = rh * target_aspect
         else:
             rh = rw / target_aspect
-        out_w, out_h = tw, th
-    elif mode == "free":
-        out_w = _round_mult(rw, mult)
-        out_h = _round_mult(rh, mult)
-        out_w = min(out_w, _round_mult(p["max_size"], mult))
-        out_h = min(out_h, _round_mult(p["max_size"], mult))
-    else:  # keep shape, long side -> target
-        long_side = max(rw, rh)
-        s = p["target"] / long_side if long_side > 0 else 1.0
-        if not p["allow_upscale"]:
-            s = min(s, 1.0)
-        ow = rw * s
-        oh = rh * s
-        # min_size bump FIRST (scale both up so the short side reaches min_size)...
-        small = min(ow, oh)
-        if small < p["min_size"]:
-            k = p["min_size"] / small
-            ow *= k; oh *= k
-        # ...then the max_size clamp LAST, as the HARD ceiling. For an extreme-aspect
-        # (thin-line) mask the min_size bump can scale the long side far past
-        # max_size; clamping after caps it (the short side may then end up < min_size,
-        # which is acceptable and far better than an out-of-memory tensor).
-        big = max(ow, oh)
-        if big > p["max_size"]:
-            k = p["max_size"] / big
-            ow *= k; oh *= k
-        out_w = _round_mult(ow, mult)
-        out_h = _round_mult(oh, mult)
 
     # place + clamp the SOURCE region inside the image
-    rw_i = min(int(round(rw)), W)
-    rh_i = min(int(round(rh)), H)
-    rw_i = max(1, rw_i)
-    rh_i = max(1, rh_i)
+    rw_i = max(1, min(int(round(rw)), W))
+    rh_i = max(1, min(int(round(rh)), H))
     if mode == "force":
-        # the crop is resized to out_w x out_h, so the SOURCE rect must keep that
-        # aspect or an oblong image gets stretched. The image-bound clamp above can
-        # break it (one axis clipped, the other not) - shrink the over-long axis back
-        # to the target aspect (the largest aspect-correct rect that fits the bounds).
-        aspect = out_w / float(out_h)
+        # keep the source aspect == the target aspect after the image-bound clamp
+        # (which can clip one axis and not the other), so the resize never stretches.
+        aspect = tw / float(th)
         if rw_i > rh_i * aspect:
             rw_i = max(1, int(round(rh_i * aspect)))
         else:
             rh_i = max(1, int(round(rw_i / aspect)))
     rx = _clampi(cx - rw_i / 2.0, 0, W - rw_i)
     ry = _clampi(cy - rh_i / 2.0, 0, H - rh_i)
+
+    # output size is derived from the CLAMPED source rect (rw_i, rh_i), NOT the
+    # un-clamped wanted region - so the crop is resized at its real aspect and is
+    # NEVER stretched when the image edge clipped the region (e.g. a big softness on
+    # a mask near the border: the source clamps to the image, so the output must too,
+    # or the crop/mask comes out squished).
+    if mode == "force":
+        out_w, out_h = tw, th
+    elif mode == "free":
+        out_w = min(_round_mult(rw_i, mult), _round_mult(p["max_size"], mult))
+        out_h = min(_round_mult(rh_i, mult), _round_mult(p["max_size"], mult))
+    else:  # keep shape: scale the CROPPED rect's long side to target, keep aspect
+        long_side = max(rw_i, rh_i)
+        s = p["target"] / long_side if long_side > 0 else 1.0
+        if not p["allow_upscale"]:
+            s = min(s, 1.0)
+        ow = rw_i * s
+        oh = rh_i * s
+        # min_size bump FIRST (scale both up so the short side reaches min_size),
+        # then the max_size clamp LAST as the hard ceiling - so an extreme-aspect
+        # crop can't blow the long side past max_size into an OOM tensor (the short
+        # side may then end up < min_size, which is acceptable).
+        small = min(ow, oh)
+        if small < p["min_size"]:
+            k = p["min_size"] / small
+            ow *= k; oh *= k
+        big = max(ow, oh)
+        if big > p["max_size"]:
+            k = p["max_size"] / big
+            ow *= k; oh *= k
+        out_w = _round_mult(ow, mult)
+        out_h = _round_mult(oh, mult)
 
     out_w = max(mult, int(out_w))
     out_h = max(mult, int(out_h))

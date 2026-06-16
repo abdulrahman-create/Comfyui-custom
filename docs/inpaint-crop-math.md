@@ -7,11 +7,11 @@ Single source of truth for the Inpaint Crop Pixaroma + Inpaint Stitch Pixaroma g
 Mirrored 1:1 by `js/inpaint_crop/geometry.mjs::computeRegion`. From the painted mask's bounding box and the image size:
 
 1. Context expand: `rw = bw + 2*max(context_px, blend) + bw*context_pct/100` (same for height). Using `max(context_px, blend)` rather than just `context_px` gives the seam feather room to reach 0 inside the crop, so a big softness grows the crop instead of leaving a hard seam (Option B; see section 3).
-2. Size mode:
-   - `keep`: scale the long side to `target` (respecting `allow_upscale`). Then apply `min_size` FIRST (bump both sides up so the short side reaches `min_size`), then `max_size` LAST as a hard ceiling. Order matters: for an extreme-aspect (thin-line) mask the `min_size` bump can scale the long side far past `max_size`, so clamping after caps it (the short side may then end up below `min_size` - acceptable, and far better than an out-of-memory tensor). Round each side to `multiple`.
-   - `force`: grow the region to the target's aspect (no stretch), output `target_w x target_h` rounded to `multiple`.
-   - `free`: natural size rounded to `multiple`, capped at `max_size`.
-3. Place + clamp the source rectangle inside the image. In `force` mode, after the image-bound clamp the source rect's aspect is re-imposed to match `out_w/out_h` (shrink the over-long axis to the largest aspect-correct rect that fits) - the independent W/H clamp can otherwise break the aspect on an oblong image, and the resize to `out_w x out_h` would then stretch.
+2. Place + clamp the SOURCE crop rect inside the image (centred on the mask). In `force` mode the wanted region is first grown to the `target_w/target_h` aspect, then AFTER the clamp the source aspect is re-imposed to that aspect (the W/H clamp can clip one axis and not the other - shrink the over-long axis to the largest aspect-correct rect that fits).
+3. Compute the OUTPUT size FROM the clamped source rect (NEVER the un-clamped wanted region), so the crop is resized at its real aspect and is never stretched when the image edge clipped the region (e.g. a big softness on a mask near the border - the source clamps to the image, so the output must too, or the crop/mask comes out squished):
+   - `keep`: scale the cropped rect's long side to `target` (respecting `allow_upscale`); then `min_size` FIRST (bump both sides up so the short side reaches `min_size`), then `max_size` LAST as a hard ceiling (so an extreme-aspect crop can't blow the long side past `max_size` into an OOM tensor; the short side may then end below `min_size` - acceptable). Round each side to `multiple`.
+   - `force`: the fixed `target_w x target_h` (the source was already re-imposed to that aspect in step 2).
+   - `free`: the cropped size rounded to `multiple`, capped at `max_size`.
 
 Only accepted drift: sub-pixel rect placement (Python banker's rounding vs JS round-half-up = +/-1 px on `rx`/`ry`).
 

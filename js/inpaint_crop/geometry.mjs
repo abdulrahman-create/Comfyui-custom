@@ -34,41 +34,48 @@ export function computeRegion(bbox, W, H, params) {
   let rh = bh + 2 * ctx + bh * p.context_pct / 100;
 
   const mult = p.multiple, mode = p.size_mode;
-  let out_w, out_h;
+
+  // force mode: grow the WANTED region to the target aspect first (output is the
+  // fixed target size, set below).
+  let tw = 0, th = 0;
   if (mode === "force") {
-    const tw = Math.max(mult, roundMult(p.target_w, mult));
-    const th = Math.max(mult, roundMult(p.target_h, mult));
+    tw = Math.max(mult, roundMult(p.target_w, mult));
+    th = Math.max(mult, roundMult(p.target_h, mult));
     const ta = tw / th;
     if (rw / rh < ta) rw = rh * ta; else rh = rw / ta;
+  }
+
+  // place + clamp the SOURCE region inside the image
+  let rw_i = Math.max(1, Math.min(Math.round(rw), W));
+  let rh_i = Math.max(1, Math.min(Math.round(rh), H));
+  if (mode === "force") {
+    // keep source aspect == target aspect after the image-bound clamp (mirror).
+    const aspect = tw / th;
+    if (rw_i > rh_i * aspect) rw_i = Math.max(1, Math.round(rh_i * aspect));
+    else rh_i = Math.max(1, Math.round(rw_i / aspect));
+  }
+  const rx = clampi(cx - rw_i / 2, 0, W - rw_i);
+  const ry = clampi(cy - rh_i / 2, 0, H - rh_i);
+
+  // output size from the CLAMPED source rect (rw_i, rh_i), never the un-clamped
+  // region - so the crop is never stretched when the image edge clipped it.
+  let out_w, out_h;
+  if (mode === "force") {
     out_w = tw; out_h = th;
   } else if (mode === "free") {
-    out_w = Math.min(roundMult(rw, mult), roundMult(p.max_size, mult));
-    out_h = Math.min(roundMult(rh, mult), roundMult(p.max_size, mult));
+    out_w = Math.min(roundMult(rw_i, mult), roundMult(p.max_size, mult));
+    out_h = Math.min(roundMult(rh_i, mult), roundMult(p.max_size, mult));
   } else {
-    const long = Math.max(rw, rh);
+    const long = Math.max(rw_i, rh_i);
     let s = long > 0 ? p.target / long : 1;
     if (!p.allow_upscale) s = Math.min(s, 1);
-    let ow = rw * s, oh = rh * s;
-    // min_size bump FIRST, then the max_size clamp LAST as the hard ceiling - so an
-    // extreme-aspect mask can't have its long side scaled past max_size (OOM).
+    let ow = rw_i * s, oh = rh_i * s;
     const small = Math.min(ow, oh);
     if (small < p.min_size) { const k = p.min_size / small; ow *= k; oh *= k; }
     const big = Math.max(ow, oh);
     if (big > p.max_size) { const k = p.max_size / big; ow *= k; oh *= k; }
     out_w = roundMult(ow, mult); out_h = roundMult(oh, mult);
   }
-
-  let rw_i = Math.max(1, Math.min(Math.round(rw), W));
-  let rh_i = Math.max(1, Math.min(Math.round(rh), H));
-  if (mode === "force") {
-    // keep the SOURCE aspect == output aspect after the image-bound clamp, or an
-    // oblong image stretches (mirror of compute_region's force re-impose).
-    const aspect = out_w / out_h;
-    if (rw_i > rh_i * aspect) rw_i = Math.max(1, Math.round(rh_i * aspect));
-    else rh_i = Math.max(1, Math.round(rw_i / aspect));
-  }
-  const rx = clampi(cx - rw_i / 2, 0, W - rw_i);
-  const ry = clampi(cy - rh_i / 2, 0, H - rh_i);
   out_w = Math.max(mult, Math.round(out_w));
   out_h = Math.max(mult, Math.round(out_h));
   return { rx, ry, rw: rw_i, rh: rh_i, out_w, out_h };
