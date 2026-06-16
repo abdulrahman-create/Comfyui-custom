@@ -29,6 +29,38 @@ function readParams(node) {
   };
 }
 
+// blend settings live in the editor state_json (not node widgets); read them so
+// the editor restores them on open.
+function readSeam(jsonStr) {
+  let meta = {};
+  try { meta = JSON.parse(jsonStr || "{}") || {}; } catch {}
+  return {
+    blend: meta.blend != null ? parseInt(meta.blend) : 16,
+    blend_mode: meta.blend_mode || "mask",
+    color_match: meta.color_match || "off",
+  };
+}
+
+// friendly-label <- internal size-mode key, for writing the editor's choice back
+const SIZE_MODE_LABEL = Object.fromEntries(
+  Object.entries(SIZE_MODE_MAP).map(([k, v]) => [v, k]));
+
+function setNodeWidget(node, name, value) {
+  const w = node.widgets?.find((x) => x.name === name);
+  if (w && w.value !== value) { w.value = value; w.callback?.(value); }
+}
+
+// write the editor's mirrored geometry knobs back to the native node widgets
+function writeBackWidgets(node, extra) {
+  if (!extra) return;
+  if (extra.context_px != null) setNodeWidget(node, "context_px", extra.context_px);
+  if (extra.mask_grow != null) setNodeWidget(node, "mask_grow", extra.mask_grow);
+  if (extra.target != null) setNodeWidget(node, "target", extra.target);
+  if (extra.multiple != null) setNodeWidget(node, "multiple", extra.multiple);
+  if (extra.size_mode != null)
+    setNodeWidget(node, "size_mode", SIZE_MODE_LABEL[extra.size_mode] || "keep shape (long side)");
+}
+
 function buildSourceURL(part, bust) {
   if (!part || !part.filename) return null;
   const url = `/view?filename=${encodeURIComponent(part.filename)}` +
@@ -178,10 +210,7 @@ app.registerExtension({
       editor.onSave = (jsonStr, extra, preview) => {
         stateJson = jsonStr;
         if (widget) widget.value = { state_json: jsonStr };
-        if (extra && extra.context_px != null) {
-          const cw = node.widgets?.find((w) => w.name === "context_px");
-          if (cw && cw.value !== extra.context_px) { cw.value = extra.context_px; cw.callback?.(extra.context_px); }
-        }
+        writeBackWidgets(node, extra);
         if (preview) showNodePreview(parts, preview, null, node);
         if (app.graph) { app.graph.setDirtyCanvas(true, true); app.graph.change?.(); }
         captureBrush();
@@ -193,7 +222,8 @@ app.registerExtension({
       };
       editor.onClose = () => { captureBrush(); node._pixInpaintEditor = null; node.setDirtyCanvas(true, true); };
 
-      editor.open(stateJson, getUpstreamImageURL(node), readParams(node), node._pixInpaintBrush);
+      editor.open(stateJson, getUpstreamImageURL(node),
+        { ...readParams(node), ...readSeam(stateJson) }, node._pixInpaintBrush);
     });
 
     // ── mini-preview DOM widget (also carries the hidden state) ──

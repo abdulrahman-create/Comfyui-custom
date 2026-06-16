@@ -192,9 +192,20 @@ proto._save = async function () {
       mask_path: this._maskPath,
       doc_w: this.imgW,
       doc_h: this.imgH,
+      blend: this.params.blend ?? 16,
+      blend_mode: this.params.blend_mode || "mask",
+      color_match: this.params.color_match || "off",
+      mask_grow: this.params.mask_grow ?? 4,
+    };
+    const extra = {
+      context_px: this.params.context_px,
+      mask_grow: this.params.mask_grow,
+      size_mode: this.params.size_mode,
+      target: this.params.target,
+      multiple: this.params.multiple,
     };
     const preview = this._buildPreview();
-    if (this.onSave) this.onSave(JSON.stringify(state), { context_px: this.params.context_px }, preview);
+    if (this.onSave) this.onSave(JSON.stringify(state), extra, preview);
     if (this._diskSavePending) {
       this._diskSavePending = false;
       if (this.onSaveToDisk && preview) this.onSaveToDisk(preview);

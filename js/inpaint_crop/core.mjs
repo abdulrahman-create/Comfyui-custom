@@ -84,10 +84,11 @@ export class InpaintCropEditor {
     this._srcPath = data.src_path || "";
     this._maskPath = data.mask_path || "";
     this.params = { ...(params || {}) };
+    if (this.params.blend == null) this.params.blend = 16;
     this._fromUpstream = !!upstreamUrl;
 
-    // restore brush prefs from a previous open on this node (size / soft edge /
-    // opacity persist across opens; absent -> the constructor defaults above).
+    // restore brush prefs from a previous open on this node (size / opacity
+    // persist across opens; absent -> the constructor defaults above).
     if (prefs && typeof prefs === "object") {
       if (prefs.brushSize != null) this.brushSize = prefs.brushSize;
       if (prefs.maskOpacity != null) this.maskOpacity = prefs.maskOpacity;
@@ -207,6 +208,20 @@ export class InpaintCropEditor {
     resetBrush.style.marginTop = "6px";
     secBrush.content.appendChild(resetBrush);
     sidebar.appendChild(secBrush.el);
+
+    // Seam (the stitch blend; live preview on the canvas)
+    const secSeam = createPanel("Seam — how it blends");
+    this.el.blendSlider = createSliderRow("Softness", 0, 512, this.params.blend ?? 16, () => {
+      this.params.blend = parseInt(this.el.blendSlider.numInput.value) || 0;
+      this._draw();
+    });
+    this.el.growSlider = createSliderRow("Mask grow", 0, 256, this.params.mask_grow ?? 4, () => {
+      this.params.mask_grow = parseInt(this.el.growSlider.numInput.value) || 0;
+      this._recomputeRegion();
+      this._draw();
+    });
+    secSeam.content.append(this.el.blendSlider.el, this.el.growSlider.el);
+    sidebar.appendChild(secSeam.el);
 
     // View
     const secView = createPanel("Mask overlay");
