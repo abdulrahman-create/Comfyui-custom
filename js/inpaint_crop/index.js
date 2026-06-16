@@ -172,9 +172,7 @@ app.registerExtension({
       node._pixInpaintEditor = editor;
       // brush size / soft edge / opacity persist across opens on this node
       const captureBrush = () => {
-        node._pixInpaintBrush = {
-          brushSize: editor.brushSize, softness: editor.softness, maskOpacity: editor.maskOpacity,
-        };
+        node._pixInpaintBrush = { brushSize: editor.brushSize, maskOpacity: editor.maskOpacity };
       };
 
       editor.onSave = (jsonStr, extra, preview) => {

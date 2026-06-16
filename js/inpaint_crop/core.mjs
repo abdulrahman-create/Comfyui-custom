@@ -14,9 +14,8 @@ import { installGraphUndoGuard } from "../shared/graph_undo_guard.mjs";
 
 export { BRAND };
 const UI = "/pixaroma/assets/icons/ui/";
-// Brush defaults (also used by the "Reset to default" button in the Brush panel).
+// Brush default size (used by the "Reset to default" button in the Brush panel).
 const DEFAULT_BRUSH_SIZE = 80;   // px diameter
-const DEFAULT_SOFTNESS = 0.4;    // 0 hard .. 1 soft (slider shows 40)
 
 export const InpaintAPI = {
   async uploadSrc(projectId, dataURL) {
@@ -59,7 +58,7 @@ export class InpaintCropEditor {
     // brush / mask state
     this.tool = "add";           // "add" | "erase"
     this.brushSize = DEFAULT_BRUSH_SIZE;   // display px (diameter); persists per node across opens
-    this.softness = DEFAULT_SOFTNESS;      // 0 hard .. 1 soft (slider shows 40)
+    this.softness = 0;                     // crisp brush; the seam Softness slider owns blending now
     this.maskOpacity = 0.5;
     this.maskVisible = true;
     this._painting = false;
@@ -91,7 +90,6 @@ export class InpaintCropEditor {
     // opacity persist across opens; absent -> the constructor defaults above).
     if (prefs && typeof prefs === "object") {
       if (prefs.brushSize != null) this.brushSize = prefs.brushSize;
-      if (prefs.softness != null) this.softness = prefs.softness;
       if (prefs.maskOpacity != null) this.maskOpacity = prefs.maskOpacity;
     }
 
@@ -202,10 +200,7 @@ export class InpaintCropEditor {
     this.el.sizeSlider = createSliderRow("Size", 2, 300, this.brushSize, () => {
       this.brushSize = parseInt(this.el.sizeSlider.numInput.value) || this.brushSize;
     });
-    this.el.softSlider = createSliderRow("Soft edge", 0, 100, Math.round(this.softness * 100), () => {
-      this.softness = (parseInt(this.el.softSlider.numInput.value) || 0) / 100;
-    });
-    secBrush.content.append(this.el.sizeSlider.el, this.el.softSlider.el);
+    secBrush.content.append(this.el.sizeSlider.el);
     const resetBrush = createButton("Reset to default", {
       variant: "standard", iconSrc: UI + "reset.svg", onClick: () => this._resetBrush(),
     });
@@ -262,9 +257,7 @@ export class InpaintCropEditor {
 
   _resetBrush() {
     this.brushSize = DEFAULT_BRUSH_SIZE;
-    this.softness = DEFAULT_SOFTNESS;
     this.el.sizeSlider?.setValue(this.brushSize);
-    this.el.softSlider?.setValue(Math.round(this.softness * 100));
     if (this._lastCursorPos) this._drawCursor(this._lastCursorPos);
   }
 
