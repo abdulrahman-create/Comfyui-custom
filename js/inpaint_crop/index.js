@@ -210,8 +210,9 @@ app.registerExtension({
     if (node.comfyClass !== "PixaromaInpaintCrop") return;
     node.imgs = null;
     // Fresh-drop default size only; never on the load path (configure restores
-    // the saved size, so writing it during load would dirty the workflow).
-    if (!isGraphLoading()) node.size = [330, 500];
+    // the saved size, so writing it during load would dirty the workflow). Mutate
+    // the array elements (convention #9), don't replace the array.
+    if (!isGraphLoading() && node.size) { node.size[0] = 330; node.size[1] = 500; }
 
     if (!(node.inputs || []).some((i) => i.name === "image")) node.addInput("image", "IMAGE");
     if (!(node.inputs || []).some((i) => i.name === "mask")) node.addInput("mask", "MASK");
@@ -276,7 +277,7 @@ app.registerExtension({
         stateJson = v.state_json || "{}";
         const imgInput = (node.inputs || []).find((i) => i.name === "image");
         if (imgInput && imgInput.link != null) queueMicrotask(refreshSourcePreview);
-        else restoreNodePreview(parts, "{}", node);
+        else restoreNodePreview(parts, stateJson, node);   // rebuild from src_path when present
       },
       getMinHeight: () => 200,
       margin: 5,
@@ -328,7 +329,9 @@ app.registerExtension({
     // ── source URL caching from Python execute + refresh hooks ──
     node._pixInpaintRefresh = () => {
       if (getUpstreamImageURL(node)) refreshSourcePreview();
-      else restoreNodePreview(parts, "{}", node);
+      // pass the real state (not "{}") so restoreNodePreview can rebuild from src_path
+      // - e.g. a source loaded via the editor's Load Image, where the wire is gone.
+      else restoreNodePreview(parts, stateJson, node);
     };
     const onExec = (event) => {
       const detail = event?.detail;
