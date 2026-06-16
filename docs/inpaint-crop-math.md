@@ -17,7 +17,9 @@ Only accepted drift: sub-pixel rect placement (Python banker's rounding vs JS ro
 
 ## 2. Conditioning mask (`apply_inpaint_crop`)
 
-The mask the MODEL sees. `softm` (filled + `mask_grow`-dilated core) is cropped to the region, resized NEAREST, then softened by a Gaussian of radius `mask_blur`. NEAREST avoids a second gradient halo; `mask_blur` is the one intended conditioning softening.
+The mask the MODEL sees. `softm` (the `fill_holes`-cleaned + `mask_grow`-dilated core, max'd with the raw painted mask) is cropped to the region, resized NEAREST, then softened by a Gaussian of radius `mask_blur`. NEAREST avoids a second gradient halo; `mask_blur` is the one intended conditioning softening.
+
+`fill_holes` closes only SMALL enclosed specks/gaps (a hole up to ~0.5% of the image: `max(256, 0.005*H*W)` px) — NEVER a large subject-shaped hole. Otherwise a cut-out / background mask (white around a subject) would have its subject hole filled by scipy's `binary_fill_holes` and the whole mask would collapse to solid (so the crop bbox becomes the whole image and the model repaints everything). The no-scipy fallback (a 9px PIL close) is already naturally limited to small holes.
 
 ## 3. Seam feather (`_blur_alpha`) — the paste-back blend
 

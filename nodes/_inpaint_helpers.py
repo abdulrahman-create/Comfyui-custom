@@ -144,11 +144,27 @@ def _dilate(m_bool, px):
 
 
 def fill_holes(m_bool):
-    """Fill enclosed holes in a boolean mask. scipy when available (true fill);
-    otherwise a PIL morphological close that fills small/medium holes."""
+    """Fill only SMALL enclosed holes (paint specks / gaps), NEVER a large
+    subject-shaped hole. A cut-out / background mask (white around a subject) would
+    otherwise have its subject hole filled by scipy's binary_fill_holes, collapsing
+    the mask to solid - the "mask vanishes after the crop" bug. scipy when available
+    (size-limited true fill); otherwise a PIL morphological close (small kernel,
+    already naturally limited to small holes)."""
     if _HAS_SCIPY:
         try:
-            return _ndimage.binary_fill_holes(m_bool)
+            filled = _ndimage.binary_fill_holes(m_bool)
+            added = filled & ~m_bool          # pixels binary_fill_holes would fill
+            if not added.any():
+                return filled
+            # keep only holes up to a small fraction of the image (specks/gaps); a
+            # subject hole is far bigger and is left UNfilled so the mask survives.
+            H, W = m_bool.shape
+            limit = max(256, int(0.005 * H * W))   # ~0.5% of the image
+            lbl, n = _ndimage.label(added)
+            sizes = np.bincount(lbl.ravel())
+            small = np.where(sizes <= limit)[0]
+            small = small[small != 0]              # drop label 0 (the non-hole area)
+            return m_bool | np.isin(lbl, small)
         except Exception:
             pass
     pim = Image.fromarray((m_bool * 255).astype(np.uint8), "L")
