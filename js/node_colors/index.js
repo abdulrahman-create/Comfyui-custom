@@ -1454,7 +1454,7 @@ app.registerExtension({
         // Both renderers open the swatch-palette popup (the Vue menu can't
         // render the old nested submenu, and the popup is the unified UI).
         options.push(null, {
-          content: `👑 Pixaroma Node Colors${suffix}`,
+          content: `👑 Pixaroma Node Colors (\\)${suffix}`,
           callback: () => openNodeColorsPalette(targets, node),
         });
         options.push({
@@ -1502,7 +1502,7 @@ app.registerExtension({
         const suffix = targets.length > 1 ? ` (${targets.length} groups)` : "";
         options.push(null);
         options.push({
-          content: `👑 Pixaroma Group Colors${suffix}`,
+          content: `👑 Pixaroma Group Colors (\\)${suffix}`,
           callback: () => openGroupColorsPalette(targets, group),
         });
         options.push({
