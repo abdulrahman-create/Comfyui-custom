@@ -177,7 +177,11 @@ proto._recomputeRegion = function () {
   if (!this.img) { this._region = null; this._bbox = null; return; }
   const grow = this.params.mask_grow != null ? this.params.mask_grow : 0;
   const grown = growBBox(this._bbox, grow, this.imgW, this.imgH);
-  this._region = computeRegion(grown, this.imgW, this.imgH, this.params);
+  // force mode is a square of `target` (the node has a single Target knob), so
+  // mirror Python's _params: target_w = target_h = target, or the preview would
+  // wrongly show the default 1024 in force mode.
+  const p = { ...this.params, target_w: this.params.target, target_h: this.params.target };
+  this._region = computeRegion(grown, this.imgW, this.imgH, p);
   this._updateInfo(this._bbox);
 };
 

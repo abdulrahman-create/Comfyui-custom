@@ -81,7 +81,7 @@ class PixaromaInpaintStitch:
         # (defaults cover an Image Crop crop_info that lacks them). color_match is
         # this node's own knob (post-result tweak, no live preview).
         try:
-            blend = max(0, min(512, int(crop_info.get("blend", 16))))
+            blend = max(0, min(150, int(crop_info.get("blend", 16))))
         except (TypeError, ValueError):
             blend = 16
         bm = str(crop_info.get("blend_mode", "mask"))

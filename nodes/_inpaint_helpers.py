@@ -363,11 +363,13 @@ def _blur_alpha(alpha, blend):
     ghost/halo of the old content. Coverage/grow is the crop node's mask_grow
     job; this only softens the outer seam.
 
-    Rect-edge guard: after the outward feather, the alpha is faded to 0 within
-    `blend` px of the crop rectangle border (`min(feather, rect_ramp)`), so a
-    feather wider than the surrounding context can't leave a hard nonzero alpha at
-    the rectangle edge (the "high blend = straight line" bug). No-op when the
-    feather already reaches 0 before the border (the normal small-blend case).
+    Rect-edge guard: after the outward feather, the OUTWARD part is faded to 0
+    within `blend` px of the crop rectangle border (`min(feather, rect_ramp)`), so
+    a feather wider than the surrounding context can't leave a hard nonzero alpha
+    at the rectangle edge (the "high blend = straight line" bug). The MASK CORE
+    stays fully opaque (`max(.., mask)`) - the guard limits only the feather, it
+    must never dim the inpaint where the mask sits near the crop edge (the crop
+    hugs the mask, so otherwise a big blend would ghost the whole masked object).
     """
     k = int(blend)
     if k <= 0:
@@ -398,6 +400,9 @@ def _blur_alpha(alpha, blend):
     r = np.clip(de / float(k), 0.0, 1.0)
     rect = (r * r * (3.0 - 2.0 * r)).astype(np.float32)
     soft = np.minimum(soft, rect)
+    # the rect guard limits only the OUTWARD feather; the mask core stays fully
+    # opaque so the inpaint is never dimmed/ghosted near the crop edge.
+    soft = np.maximum(soft, mb.astype(np.float32))
     return torch.from_numpy(np.clip(soft, 0.0, 1.0).astype(np.float32))
 
 
