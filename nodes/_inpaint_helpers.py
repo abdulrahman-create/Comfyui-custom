@@ -118,13 +118,28 @@ def mask_to_np(mask, h, w):
     return np.clip(m, 0.0, 1.0)
 
 
+def _max1d(a, k):
+    """1D max filter along axis 1, odd window k, edge-padded. Separable building
+    block for a fast box dilation: O(W*H*k) instead of PIL MaxFilter's O(W*H*k^2),
+    which hung for ~50s on a large mask_grow."""
+    r = k // 2
+    ap = np.pad(a, ((0, 0), (r, r)), mode="edge")
+    win = np.lib.stride_tricks.sliding_window_view(ap, k, axis=1)
+    return win.max(axis=2)
+
+
 def _dilate(m_bool, px):
     if px <= 0:
         return m_bool
-    pim = Image.fromarray((m_bool * 255).astype(np.uint8), "L")
     k = 2 * int(px) + 1
-    pim = pim.filter(ImageFilter.MaxFilter(k))
-    return np.asarray(pim, dtype=np.uint8) > 127
+    if _HAS_SCIPY:
+        # separable max filter -> O(W*H), fast even for a huge kernel
+        return _ndimage.maximum_filter(m_bool, size=k) > 0
+    # no-scipy: two separable numpy max passes (rows then cols)
+    a = m_bool.astype(np.uint8)
+    a = _max1d(a, k)
+    a = _max1d(np.ascontiguousarray(a.T), k).T
+    return a > 0
 
 
 def fill_holes(m_bool):
