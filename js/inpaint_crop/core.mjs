@@ -235,6 +235,9 @@ export class InpaintCropEditor {
     const secSeam = createPanel("Seam — how it blends");
     this.el.blendSlider = createSliderRow("Softness", 0, 150, this.params.blend ?? 16, () => {
       this.params.blend = parseInt(this.el.blendSlider.numInput.value) || 0;
+      // softness grows the crop once it exceeds context_px (Option B), so the crop
+      // box + size badge must recompute - not just the seam tint (mirror Mask grow).
+      this._recomputeRegion();
       this._draw();
     });
     this.el.growSlider = createSliderRow("Mask grow", 0, 256, this.params.mask_grow ?? 4, () => {

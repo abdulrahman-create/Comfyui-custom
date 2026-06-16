@@ -89,6 +89,43 @@ proto._seamAlphaCanvas = function () {
   ctx.clearRect(0, 0, W, H);
   const src = this._effectiveMaskCanvas();
   if (!src) return c;
+
+  // WHOLE CROP mode: the stitch feathers the whole crop RECTANGLE (Python
+  // _feather_alpha) - an inward linear ramp from the region edges - NOT the mask
+  // edge. Show that instead of the mask feather so the preview matches the result.
+  if (this.params.blend_mode === "whole_crop" && this._region) {
+    const blendD = Math.max(0, (this.params.blend ?? 16) * (this._scale || 1) * dpr);
+    const CAP = 480;
+    const sc = Math.min(1, CAP / Math.max(W, H));
+    const bw = Math.max(1, Math.round(W * sc)), bh = Math.max(1, Math.round(H * sc));
+    const r = this._region;
+    const rx = r.rx / this.imgW * bw, ry = r.ry / this.imgH * bh;
+    const rw = Math.max(1, r.rw / this.imgW * bw), rh = Math.max(1, r.rh / this.imgH * bh);
+    const kBuf = blendD * (bw / W);
+    const kEff = Math.min(kBuf, Math.max(0.5, Math.min(rw, rh) / 2 - 0.5));  // keep interior opaque
+    const b = this._seamBuf || (this._seamBuf = document.createElement("canvas"));
+    if (b.width !== bw || b.height !== bh) { b.width = bw; b.height = bh; }
+    const bctx = b.getContext("2d");
+    bctx.setTransform(1, 0, 0, 1, 0, 0);
+    const id = bctx.createImageData(bw, bh);
+    const d = id.data;
+    for (let y = 0; y < bh; y++) {
+      for (let x = 0; x < bw; x++) {
+        let a = 0;
+        if (x >= rx && x < rx + rw && y >= ry && y < ry + rh) {
+          const dist = Math.min(x - rx, rx + rw - 1 - x, y - ry, ry + rh - 1 - y);
+          a = kEff <= 0 ? 1 : Math.max(0, Math.min(1, dist / kEff));
+        }
+        const p = (y * bw + x) * 4;
+        d[p] = 255; d[p + 1] = 255; d[p + 2] = 255; d[p + 3] = Math.round(a * 255);
+      }
+    }
+    bctx.putImageData(id, 0, 0);
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(b, 0, 0, bw, bh, 0, 0, W, H);
+    return c;
+  }
+
   const blendDisp = Math.max(0, (this.params.blend ?? 16) * (this._scale || 1) * dpr);
   if (blendDisp < 0.5) { ctx.drawImage(src, 0, 0, W, H); return c; }   // crisp seam
 
