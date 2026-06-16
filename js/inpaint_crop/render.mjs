@@ -72,7 +72,8 @@ proto._fitCanvas = function () {
 // (blend * scale) px, with the interior forced opaque - the canvas mirror of the
 // Python no-scipy _blur_alpha fallback. Approximate preview (F2), not pixel-exact.
 proto._seamAlphaCanvas = function () {
-  const W = this._dispW, H = this._dispH;
+  const dpr = Math.max(1, window.devicePixelRatio || 1);   // DPR-backed for HiDPI crispness
+  const W = Math.round(this._dispW * dpr), H = Math.round(this._dispH * dpr);
   if (!this._seamCv) this._seamCv = document.createElement("canvas");
   const c = this._seamCv;
   if (c.width !== W || c.height !== H) { c.width = W; c.height = H; }
@@ -80,7 +81,7 @@ proto._seamAlphaCanvas = function () {
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, W, H);
   const src = this._effectiveMaskCanvas();
-  const blendDisp = Math.max(0, (this.params.blend ?? 16) * (this._scale || 1));
+  const blendDisp = Math.max(0, (this.params.blend ?? 16) * (this._scale || 1) * dpr);
   if (blendDisp < 0.5) { ctx.drawImage(src, 0, 0, W, H); return c; }
   ctx.filter = `blur(${(blendDisp / 1.7).toFixed(1)}px)`;
   ctx.drawImage(src, 0, 0, W, H);          // outward falloff
@@ -97,18 +98,21 @@ proto._draw = function () {
   ctx.drawImage(this.img, 0, 0, W, H);
 
   // seam preview: tint the FEATHERED seam alpha (Softness) in the chosen color,
-  // clipped to the crop region. Approximate (mirrors the Python no-scipy fallback).
+  // clipped to the crop region. DPR-backed (crisp on HiDPI). Approximate (mirrors
+  // the Python no-scipy fallback).
   if (this.maskVisible && this._mask) {
     if (!this._tint) this._tint = document.createElement("canvas");
     const t = this._tint;
-    if (t.width !== W || t.height !== H) { t.width = W; t.height = H; }
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+    const tw = Math.round(W * dpr), th = Math.round(H * dpr);
+    if (t.width !== tw || t.height !== th) { t.width = tw; t.height = th; }
     const tc = t.getContext("2d");
     tc.setTransform(1, 0, 0, 1, 0, 0);
-    tc.clearRect(0, 0, W, H);
-    tc.drawImage(this._seamAlphaCanvas(), 0, 0);
+    tc.clearRect(0, 0, tw, th);
+    tc.drawImage(this._seamAlphaCanvas(), 0, 0, tw, th);
     tc.globalCompositeOperation = "source-in";
     tc.fillStyle = this.previewColor || "#f6303a";
-    tc.fillRect(0, 0, W, H);
+    tc.fillRect(0, 0, tw, th);
     tc.globalCompositeOperation = "source-over";
     ctx.save();
     if (this._region) {                       // clip the seam tint to the crop box
@@ -118,7 +122,7 @@ proto._draw = function () {
       ctx.clip();
     }
     ctx.globalAlpha = this.maskOpacity;
-    ctx.drawImage(t, 0, 0);
+    ctx.drawImage(t, 0, 0, W, H);             // backing-res tint at logical size = crisp
     ctx.globalAlpha = 1;
     ctx.restore();
   }

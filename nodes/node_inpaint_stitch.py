@@ -70,7 +70,10 @@ class PixaromaInpaintStitch:
 
         # blend settings now live in crop_info (set in the Inpaint Crop editor).
         # Defaults cover an Image Crop crop_info that lacks them.
-        blend = max(0, min(512, int(crop_info.get("blend", 16))))
+        try:
+            blend = max(0, min(512, int(crop_info.get("blend", 16))))
+        except (TypeError, ValueError):
+            blend = 16
         bm = str(crop_info.get("blend_mode", "mask"))
         blend_mode = bm if bm in ("mask", "whole_crop") else "mask"
         cm = str(crop_info.get("color_match", "off"))
