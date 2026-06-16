@@ -14,6 +14,9 @@ import { installGraphUndoGuard } from "../shared/graph_undo_guard.mjs";
 
 export { BRAND };
 const UI = "/pixaroma/assets/icons/ui/";
+// Brush defaults (also used by the "Reset to default" button in the Brush panel).
+const DEFAULT_BRUSH_SIZE = 80;   // px diameter
+const DEFAULT_SOFTNESS = 0.4;    // 0 hard .. 1 soft (slider shows 40)
 
 export const InpaintAPI = {
   async uploadSrc(projectId, dataURL) {
@@ -55,8 +58,8 @@ export class InpaintCropEditor {
 
     // brush / mask state
     this.tool = "add";           // "add" | "erase"
-    this.brushSize = 80;         // display px (diameter) - default; persists per node across opens
-    this.softness = 0.4;         // 0 hard .. 1 soft (slider shows 40)
+    this.brushSize = DEFAULT_BRUSH_SIZE;   // display px (diameter); persists per node across opens
+    this.softness = DEFAULT_SOFTNESS;      // 0 hard .. 1 soft (slider shows 40)
     this.maskOpacity = 0.5;
     this.maskVisible = true;
     this._painting = false;
@@ -203,6 +206,11 @@ export class InpaintCropEditor {
       this.softness = (parseInt(this.el.softSlider.numInput.value) || 0) / 100;
     });
     secBrush.content.append(this.el.sizeSlider.el, this.el.softSlider.el);
+    const resetBrush = createButton("Reset to default", {
+      variant: "standard", iconSrc: UI + "reset.svg", onClick: () => this._resetBrush(),
+    });
+    resetBrush.style.marginTop = "6px";
+    secBrush.content.appendChild(resetBrush);
     sidebar.appendChild(secBrush.el);
 
     // View
@@ -251,6 +259,14 @@ export class InpaintCropEditor {
   }
 
   _setTool(v) { this.tool = v; }
+
+  _resetBrush() {
+    this.brushSize = DEFAULT_BRUSH_SIZE;
+    this.softness = DEFAULT_SOFTNESS;
+    this.el.sizeSlider?.setValue(this.brushSize);
+    this.el.softSlider?.setValue(Math.round(this.softness * 100));
+    if (this._lastCursorPos) this._drawCursor(this._lastCursorPos);
+  }
 
   _toggleMaskVisible() {
     this.maskVisible = !this.maskVisible;
