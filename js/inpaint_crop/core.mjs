@@ -281,12 +281,22 @@ export class InpaintCropEditor {
       { activeValue: this.params.size_mode || "keep" },
     );
     this.el.targetSlider = createSliderRow("Target", 64, 8192, this.params.target ?? 1024, () => {
-      this.params.target = parseInt(this.el.targetSlider.numInput.value) || 1024;
+      const m = this.params.multiple || 8;
+      const raw = parseInt(this.el.targetSlider.numInput.value) || 1024;
+      const snapped = Math.max(m, Math.round(raw / m) * m);   // land on the multiple
+      this.params.target = snapped;
+      if (snapped !== raw) this.el.targetSlider.setValue(snapped);
       this._recomputeRegion(); this._draw();
     });
     this._multipleGrid = createPillGrid(
       [{ label: "8", value: 8 }, { label: "16", value: 16 }, { label: "32", value: 32 }, { label: "64", value: 64 }],
-      4, (v) => { this.params.multiple = v; this._recomputeRegion(); this._draw(); },
+      4, (v) => {
+        this.params.multiple = v;
+        const snapped = Math.max(v, Math.round((this.params.target || 1024) / v) * v);
+        this.params.target = snapped;
+        this.el.targetSlider?.setValue(snapped);   // re-snap target to the new multiple
+        this._recomputeRegion(); this._draw();
+      },
       { activeValue: this.params.multiple || 8 },
     );
     secCrop.content.append(this._sizeModeGrid.el, this.el.targetSlider.el, this._multipleGrid.el);
