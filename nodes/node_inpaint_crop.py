@@ -252,6 +252,14 @@ class PixaromaInpaintCrop:
             print(f"[PixaromaInpaintCrop] crop error: {e}")
             return self._empty()
 
+        # Seam/blend settings are set in the editor and ride crop_info to Stitch.
+        # apply_inpaint_crop stays geometry-only, so inject them here (F1).
+        crop_info["blend"] = max(0, min(512, int(meta.get("blend", 16))))
+        _bm = str(meta.get("blend_mode", "mask"))
+        crop_info["blend_mode"] = _bm if _bm in ("mask", "whole_crop") else "mask"
+        _cm = str(meta.get("color_match", "off"))
+        crop_info["color_match"] = _cm if _cm in ("off", "subtle", "strong") else "off"
+
         result = (img_t, mask_t, crop_info, ow, oh)
         if ui_payload:
             return {"ui": ui_payload, "result": result}
