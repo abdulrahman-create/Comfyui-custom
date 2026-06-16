@@ -142,7 +142,7 @@ class PixaromaInpaintCrop:
     def IS_CHANGED(cls, **kwargs):
         """Re-run on any knob change, or when the painted-mask file changes."""
         parts = [str(kwargs.get(k)) for k in
-                 ("size_mode", "target", "multiple", "context_px", "mask_grow", "mask_blur", "softness")]
+                 ("size_mode", "target", "multiple", "context_px", "mask_grow", "mask_blur", "softness", "invert_mask")]
         state = kwargs.get("InpaintCropWidget")
         try:
             sj = state.get("state_json", "{}") if isinstance(state, dict) else str(state)

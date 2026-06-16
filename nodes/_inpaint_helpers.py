@@ -545,6 +545,7 @@ def stitch_back(crop_info, image, mask, blend, blend_mode, color_match):
     patch = patch.to(out.device, out.dtype)
 
     if color_match and color_match != "off":
+        patch = patch.clone()   # don't mutate the caller's tensor in place (it may be cached upstream)
         # Reference = the UNMASKED context (the surroundings OUTSIDE the mask), NOT
         # the masked area or the whole crop. Matching to anything that includes the
         # masked area drags the inpaint's DELIBERATELY changed colors back toward the
