@@ -46,6 +46,8 @@ This forces the alpha to 0 within `k` px of the border, so the feather always co
 
 `js/inpaint_crop/render.mjs::_seamAlphaCanvas` mirrors the **no-scipy fallback** of section 3 in canvas: blur the mask by `(blend * displayScale)/1.7`, then draw the crisp mask on top (interior opaque). The tint is filled via `source-in` in the chosen preview color and clipped to the crop region (so it can't spill past the box). It is APPROXIMATE versus the exact scipy run-time path — it shows the seam's softness and width truthfully; exact pixels differ. Do not chase pixel-exactness here. The preview color is display-only (never written into the mask, state, or crop_info).
 
-## 5. The blend settings flow
+## 5. The settings flow
 
-`blend`, `blend_mode`, `color_match` are set in the editor, saved into the `InpaintCropWidget` `state_json`, read by `node_inpaint_crop.py::run` and injected into `crop_info` (after `apply_inpaint_crop`, which stays geometry-only). `node_inpaint_stitch.py` reads them from `crop_info` (with defaults `blend=16, mask, off` for an Image Crop `crop_info` that lacks them) — the Stitch node has no blend widgets.
+`softness` (the seam feather = `blend`) is a Crop node INT widget (0-150), mirrored by the editor's Softness slider; `node_inpaint_crop.py::run` injects it into `crop_info["blend"]` (clamped 0-150). `blend_mode` is editor-only `state_json` -> `crop_info["blend_mode"]`. `node_inpaint_stitch.py` reads `blend` + `blend_mode` from `crop_info` (defaults `16` / `mask` for an Image Crop `crop_info` that lacks them).
+
+`color_match` (off/subtle/strong) is the STITCH node's OWN widget, not in `crop_info` (a post-result tweak with no live preview). It shifts the inpainted crop's color stats toward the original over the WHOLE crop region (uniform weighting) — subtle = match mean, strong = match mean + std. It matches the whole region, NOT the mask alpha: mask-weighting matched the new content's stats to the OLD content it replaces, washing the inpaint toward the old colors.
