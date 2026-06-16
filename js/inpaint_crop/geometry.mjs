@@ -13,9 +13,20 @@ export const GEO_DEFAULTS = {
   blend: 16, min_size: 256, max_size: 2048, allow_upscale: true,
 };
 
+// round half to EVEN, matching Python's built-in round() (banker's rounding) that
+// _round_mult uses. Math.round is half-UP, so without this the editor crop-box size
+// could read one `multiple` step off from the real output at exact .5 boundaries
+// (e.g. 1056/64 = 16.5 -> Python 16 -> 1024, half-up 17 -> 1088). Only the exact-.5
+// case differs; every other value rounds identically.
+const roundHalfEven = (x) => {
+  const f = Math.floor(x), d = x - f;
+  if (d < 0.5) return f;
+  if (d > 0.5) return f + 1;
+  return f % 2 === 0 ? f : f + 1;
+};
 const roundMult = (v, m) => {
   m = Math.max(1, Math.round(m));
-  return Math.max(m, Math.round(v / m) * m);
+  return Math.max(m, roundHalfEven(v / m) * m);
 };
 const clampi = (v, lo, hi) => Math.max(lo, Math.min(hi, Math.round(v)));
 
