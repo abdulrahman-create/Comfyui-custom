@@ -213,7 +213,7 @@ const HELP = {
     sections: [
       {
         heading: "What it does",
-        body: "The other half of the inpaint workflow. After Inpaint Crop Pixaroma cropped a region and you ran your model on it, this node resizes the result back and blends it into the original at the exact spot. By default only the painted area changes, so everything else stays pixel-perfect.\n\nThe seam blend and blend mode are set in the Inpaint Crop Pixaroma editor and ride the `crop_info` wire. The one knob here is `color match`, which nudges the inpainted colors toward the original crop to fix any color shift - set it and re-run after seeing the result. It also hands back the untouched `original` so you can compare before and after.",
+        body: "The other half of the inpaint workflow. After Inpaint Crop Pixaroma cropped a region and you ran your model on it, this node resizes the result back and blends it into the original at the exact spot. By default only the painted area changes, so everything else stays pixel-perfect.\n\nThe seam blend and blend mode are set in the Inpaint Crop Pixaroma editor and ride the `crop_info` wire. The one knob here is `color match`, which corrects a color or tone shift the model introduced by matching the unchanged surroundings around your mask. Keep it Off when you deliberately changed colors (it would pull them back); use it when the inpaint should blend into the scene. Set it and re-run after seeing the result. It also hands back the untouched `original` so you can compare before and after.",
       },
       {
         heading: "How to use",

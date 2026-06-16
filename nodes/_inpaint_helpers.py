@@ -476,11 +476,17 @@ def stitch_back(crop_info, image, mask, blend, blend_mode, color_match):
     patch = patch.to(out.device, out.dtype)
 
     if color_match and color_match != "off":
-        # Match over the WHOLE crop region (uniform), not the mask alpha. Weighting
-        # by the mask matched the NEW content's stats to the OLD content it replaces,
-        # washing the inpaint toward the old colors; "the original region" (the
-        # node's promise) is the whole crop.
-        ac = torch.ones_like(a).cpu()
+        # Reference = the UNMASKED context (the surroundings OUTSIDE the mask), NOT
+        # the masked area or the whole crop. Matching to anything that includes the
+        # masked area drags the inpaint's DELIBERATELY changed colors back toward the
+        # original (a red->white dress goes pink). Matching to the context corrects
+        # only the lighting/tone drift the model introduced in the unchanged
+        # surroundings, which is what actually makes the seam vanish.
+        am = np.clip(a.detach().cpu().numpy(), 0.0, 1.0)
+        ctx = (am < 0.5).astype(np.float32)
+        if ctx.sum() < 0.02 * ctx.size:   # mask ~fills the crop -> no context to match
+            ctx = np.ones_like(am, dtype=np.float32)
+        ac = torch.from_numpy(np.ascontiguousarray(ctx))
         for b in range(B):  # match EVERY frame, not just frame 0 (video / batch)
             region_b = out[b, y:y + ch, x:x + cw, :3].detach().cpu()
             p_b = patch[b, :, :, :3].detach().cpu()

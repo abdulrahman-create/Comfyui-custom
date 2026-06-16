@@ -48,9 +48,10 @@ class PixaromaInpaintStitch:
                 "color_match": (["off", "subtle", "strong"], {
                     "default": "off",
                     "tooltip": (
-                        "Nudge the inpainted crop's colors toward the original crop "
-                        "so a color shift the model introduced is corrected. Set it "
-                        "here and re-run after seeing the result (no live preview)."
+                        "Correct a color/tone shift the model introduced, matching "
+                        "the unchanged surroundings around your mask. Keep it Off "
+                        "when you deliberately changed colors (it would pull them "
+                        "back). No live preview - set it and re-run."
                     ),
                 }),
             },
