@@ -1525,5 +1525,34 @@ app.registerExtension({
         return options;
       };
     }
+
+    // ── Keyboard shortcut: press "\" to open the color palette for the current
+    // selection — selected node(s) take priority, else a selected group. Ignored
+    // while typing in a field, with a modifier held, or when a palette is already
+    // open. Only acts (and swallows the key) when something is selected, so a bare
+    // "\" otherwise passes through to ComfyUI.
+    window.addEventListener("keydown", (e) => {
+      if (e.key !== "\\" || e.ctrlKey || e.metaKey || e.altKey) return;
+      const t = e.target;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
+      if (document.querySelector(".pix-nc-pal")) return;   // a palette is already open
+      const c = app.canvas;
+      if (!c) return;
+      const nodes = c.selected_nodes ? Object.values(c.selected_nodes) : [];
+      if (nodes.length) {
+        e.preventDefault(); e.stopPropagation();
+        openNodeColorsPalette(getTargetNodes(nodes[0]), nodes[0]);
+        return;
+      }
+      const items = c.selectedItems;   // a Set mixing nodes + groups (Node Colors pattern)
+      if (items && typeof items.forEach === "function") {
+        let group = null;
+        items.forEach((it) => { if (!group && typeof it?.recomputeInsideNodes === "function") group = it; });
+        if (group) {
+          e.preventDefault(); e.stopPropagation();
+          openGroupColorsPalette(getTargetGroups(group), group);
+        }
+      }
+    }, true);
   },
 });
