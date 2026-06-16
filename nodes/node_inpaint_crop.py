@@ -100,6 +100,13 @@ class PixaromaInpaintCrop:
                     "default": 4, "min": 0, "max": 256, "step": 1,
                     "tooltip": "Soften the output mask edge by this many pixels for a smoother inpaint.",
                 }),
+                "softness": ("INT", {
+                    "default": 16, "min": 0, "max": 150, "step": 1,
+                    "tooltip": (
+                        "How far the seam feathers when Inpaint Stitch pastes the "
+                        "crop back. Previewed live in the mask editor."
+                    ),
+                }),
                 "invert_mask": ("BOOLEAN", {
                     "default": False,
                     "tooltip": (
@@ -107,13 +114,6 @@ class PixaromaInpaintCrop:
                         "(swap subject and background). Works on a wired mask or a "
                         "painted one - a built-in alternative to an Invert Mask node. "
                         "No effect if no mask is connected."
-                    ),
-                }),
-                "softness": ("INT", {
-                    "default": 16, "min": 0, "max": 150, "step": 1,
-                    "tooltip": (
-                        "How far the seam feathers when Inpaint Stitch pastes the "
-                        "crop back. Previewed live in the mask editor."
                     ),
                 }),
             },
