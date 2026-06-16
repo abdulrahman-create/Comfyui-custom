@@ -63,8 +63,13 @@ export function computeRegion(bbox, W, H, params) {
   if (mode === "force") {
     out_w = tw; out_h = th;
   } else if (mode === "free") {
-    out_w = Math.min(roundMult(rw_i, mult), roundMult(p.max_size, mult));
-    out_h = Math.min(roundMult(rh_i, mult), roundMult(p.max_size, mult));
+    // keep the cropped rect's own size; when the long side exceeds max_size scale
+    // BOTH axes by one factor so the aspect is preserved (mirror of compute_region).
+    let ow = rw_i, oh = rh_i;
+    const big = Math.max(ow, oh);
+    if (big > p.max_size) { const k = p.max_size / big; ow *= k; oh *= k; }
+    out_w = roundMult(ow, mult);
+    out_h = roundMult(oh, mult);
   } else {
     const long = Math.max(rw_i, rh_i);
     let s = long > 0 ? p.target / long : 1;

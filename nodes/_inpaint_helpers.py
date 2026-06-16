@@ -286,8 +286,18 @@ def compute_region(bbox, W, H, p):
     if mode == "force":
         out_w, out_h = tw, th
     elif mode == "free":
-        out_w = min(_round_mult(rw_i, mult), _round_mult(p["max_size"], mult))
-        out_h = min(_round_mult(rh_i, mult), _round_mult(p["max_size"], mult))
+        # free = "multiple only": keep the cropped rect's own size, just round to the
+        # multiple. When the LONG side exceeds max_size, scale BOTH axes by one factor
+        # (not each axis independently) so the output keeps the source aspect - an
+        # independent per-axis cap stretched a wide/tall crop. No min_size bump (free
+        # preserves the source size; only the max ceiling applies).
+        ow, oh = float(rw_i), float(rh_i)
+        big = max(ow, oh)
+        if big > p["max_size"]:
+            k = p["max_size"] / big
+            ow *= k; oh *= k
+        out_w = _round_mult(ow, mult)
+        out_h = _round_mult(oh, mult)
     else:  # keep shape: scale the CROPPED rect's long side to target, keep aspect
         long_side = max(rw_i, rh_i)
         s = p["target"] / long_side if long_side > 0 else 1.0
