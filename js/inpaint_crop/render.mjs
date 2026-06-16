@@ -190,7 +190,11 @@ proto._draw = function () {
     tc.fillRect(0, 0, tw, th);
     tc.globalCompositeOperation = "source-over";
     ctx.save();
-    if (this._region) {                       // clip the seam tint to the crop box
+    // Clip the seam tint to the crop box - BUT NOT while actively painting: the crop
+    // box only grows on stroke end, so clipping mid-stroke hides any mask you paint
+    // beyond the current box ("interrupted by the context margin" until you release).
+    // During a stroke show the full mask everywhere; the clipped seam returns on end.
+    if (this._region && !this._painting) {
       const r = this._region;
       ctx.beginPath();
       ctx.rect(r.rx * s, r.ry * s, r.rw * s, r.rh * s);
