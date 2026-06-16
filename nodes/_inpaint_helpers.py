@@ -402,7 +402,9 @@ def apply_inpaint_crop(image, mask, p):
     mout = gaussian_blur_np(mout, p["mask_blur"])
     out_mask = torch.from_numpy(np.clip(mout, 0, 1)[None, ...].astype(np.float32)).to(image.device)
 
-    full_mask = torch.from_numpy(softm[None, ...].astype(np.float32)).to(image.device, image.dtype)
+    # keep the carried mask float32 (NOT image.dtype) so it matches out_mask and a
+    # strict downstream mask op never sees a float16 mask on an fp16 image pipeline.
+    full_mask = torch.from_numpy(softm[None, ...].astype(np.float32)).to(image.device)
     crop_info = {
         "image": image, "mask": full_mask,
         "x": rx, "y": ry, "w": rw, "h": rh,
