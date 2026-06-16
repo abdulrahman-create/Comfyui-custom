@@ -26,19 +26,18 @@ function readParams(node) {
     multiple: parseInt(g("multiple")) || 8,
     context_px: g("context_px") != null ? parseInt(g("context_px")) : 24,
     mask_grow: g("mask_grow") != null ? parseInt(g("mask_grow")) : 4,
+    blend: g("softness") != null ? parseInt(g("softness")) : 16,
   };
 }
 
 // blend settings live in the editor state_json (not node widgets); read them so
 // the editor restores them on open.
 function readSeam(jsonStr) {
+  // blend_mode is editor-only state (softness rides the node 'softness' widget,
+  // color_match is the Stitch node's own knob).
   let meta = {};
   try { meta = JSON.parse(jsonStr || "{}") || {}; } catch {}
-  return {
-    blend: meta.blend != null ? parseInt(meta.blend) : 16,
-    blend_mode: meta.blend_mode || "mask",
-    color_match: meta.color_match || "off",
-  };
+  return { blend_mode: meta.blend_mode || "mask" };
 }
 
 // friendly-label <- internal size-mode key, for writing the editor's choice back
@@ -55,6 +54,7 @@ function writeBackWidgets(node, extra) {
   if (!extra) return;
   if (extra.context_px != null) setNodeWidget(node, "context_px", extra.context_px);
   if (extra.mask_grow != null) setNodeWidget(node, "mask_grow", extra.mask_grow);
+  if (extra.softness != null) setNodeWidget(node, "softness", extra.softness);
   if (extra.target != null) setNodeWidget(node, "target", extra.target);
   if (extra.multiple != null) setNodeWidget(node, "multiple", extra.multiple);
   if (extra.size_mode != null)

@@ -219,7 +219,7 @@ export class InpaintCropEditor {
 
     // Seam (the stitch blend; live preview on the canvas)
     const secSeam = createPanel("Seam — how it blends");
-    this.el.blendSlider = createSliderRow("Softness", 0, 512, this.params.blend ?? 16, () => {
+    this.el.blendSlider = createSliderRow("Softness", 0, 150, this.params.blend ?? 16, () => {
       this.params.blend = parseInt(this.el.blendSlider.numInput.value) || 0;
       this._draw();
     });
@@ -228,21 +228,16 @@ export class InpaintCropEditor {
       this._recomputeRegion();
       this._draw();
     });
+    const bmLabel = document.createElement("div");
+    bmLabel.textContent = "Blend mode";
+    bmLabel.style.cssText = "font-size:11px;color:#aaa;margin:10px 0 5px;";
     this._blendModeGrid = createPillGrid(
       [{ label: "Mask", value: "mask" }, { label: "Whole crop", value: "whole_crop" }],
       2, (v) => { this.params.blend_mode = v; this._draw(); },
       { activeValue: this.params.blend_mode || "mask" },
     );
-    this._colorMatchGrid = createPillGrid(
-      [{ label: "Off", value: "off" }, { label: "Subtle", value: "subtle" }, { label: "Strong", value: "strong" }],
-      3, (v) => { this.params.color_match = v; },
-      { activeValue: this.params.color_match || "off" },
-    );
-    const cmHint = document.createElement("div");
-    cmHint.style.cssText = "font-size:11px;color:#888;margin-top:4px;";
-    cmHint.textContent = "Color match applies on the next run (no live preview).";
     secSeam.content.append(this.el.blendSlider.el, this.el.growSlider.el,
-      this._blendModeGrid.el, this._colorMatchGrid.el, cmHint);
+      bmLabel, this._blendModeGrid.el);
     sidebar.appendChild(secSeam.el);
 
     // View
