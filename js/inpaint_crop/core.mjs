@@ -17,6 +17,11 @@ const UI = "/pixaroma/assets/icons/ui/";
 // Brush default size (used by the "Reset to default" button in the Brush panel).
 const DEFAULT_BRUSH_SIZE = 80;   // px diameter
 
+// Mask/seam preview tint options (display only). Orange recolors the crop box.
+export const INPAINT_PREVIEW_COLORS = {
+  Red: "#f6303a", Green: "#25d366", Blue: "#3a9bff", Yellow: "#ffd21a", Orange: "#ff8c1a",
+};
+
 export const InpaintAPI = {
   async uploadSrc(projectId, dataURL) {
     const { api } = await import("/scripts/api.js");
@@ -42,6 +47,7 @@ export class InpaintCropEditor {
     this.onSaveToDisk = null;    // (previewDataURL)
     this.onClose = null;
     this.onLoadImage = null;     // host disconnects the upstream wire
+    this.onPreviewColor = null;  // host persists the preview tint setting
     this.el = {};
     this.layout = null;
     this.img = null;
@@ -61,7 +67,8 @@ export class InpaintCropEditor {
     this.softness = 0;                     // crisp brush; the seam Softness slider owns blending now
     this.maskOpacity = 0.5;
     this.maskVisible = true;
-    this.previewColor = "#f6303a";   // mask + seam preview tint (display only; Task 7 makes it switchable)
+    this.previewColor = "#f6303a";   // mask + seam preview tint (display only)
+    this._cropBoxColor = null;       // crop-box stroke override (white when orange tint)
     this._painting = false;
     this._lastPt = null;
 
@@ -246,6 +253,23 @@ export class InpaintCropEditor {
       this._draw();
     });
     secView.content.append(this._visBtn, this.el.opacitySlider.el);
+    // preview color swatches (display only; Orange recolors the crop box to white)
+    const swatchRow = document.createElement("div");
+    swatchRow.style.cssText = "display:flex;gap:8px;align-items:center;margin-top:8px;";
+    const swatchLabel = document.createElement("span");
+    swatchLabel.textContent = "Color";
+    swatchLabel.style.cssText = "font-size:11px;color:#aaa;margin-right:2px;";
+    swatchRow.appendChild(swatchLabel);
+    this._colorSwatches = [];
+    for (const [name, hex] of Object.entries(INPAINT_PREVIEW_COLORS)) {
+      const dot = document.createElement("span");
+      dot.title = name;
+      dot.style.cssText = `width:20px;height:20px;border-radius:50%;background:${hex};cursor:pointer;box-sizing:border-box;border:2px solid ${this.previewColor === hex ? "#fff" : "transparent"};`;
+      dot.addEventListener("click", () => this._setPreviewColor(name, hex));
+      this._colorSwatches.push({ dot, hex });
+      swatchRow.appendChild(dot);
+    }
+    secView.content.appendChild(swatchRow);
     sidebar.appendChild(secView.el);
 
     // Context margin (mirrors node context_px, updates the preview live)
@@ -308,6 +332,15 @@ export class InpaintCropEditor {
     this.brushSize = DEFAULT_BRUSH_SIZE;
     this.el.sizeSlider?.setValue(this.brushSize);
     if (this._lastCursorPos) this._drawCursor(this._lastCursorPos);
+  }
+
+  _setPreviewColor(name, hex) {
+    this.previewColor = hex;
+    this._cropBoxColor = (hex === INPAINT_PREVIEW_COLORS.Orange) ? "#ffffff" : null;
+    for (const s of this._colorSwatches || [])
+      s.dot.style.borderColor = (s.hex === hex) ? "#fff" : "transparent";
+    this.onPreviewColor?.(name);
+    this._draw();
   }
 
   _toggleMaskVisible() {

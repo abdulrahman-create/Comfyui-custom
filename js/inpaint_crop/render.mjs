@@ -136,10 +136,11 @@ proto._draw = function () {
   if (this._region) {
     const r = this._region;
     const rx = r.rx * s, ry = r.ry * s, rw = r.rw * s, rh = r.rh * s;
-    ctx.strokeStyle = BRAND; ctx.lineWidth = 2; ctx.setLineDash([7, 5]);
+    const boxColor = this._cropBoxColor || BRAND;   // white when the orange tint is active
+    ctx.strokeStyle = boxColor; ctx.lineWidth = 2; ctx.setLineDash([7, 5]);
     ctx.strokeRect(rx, ry, rw, rh);
     ctx.setLineDash([]);
-    ctx.fillStyle = BRAND;
+    ctx.fillStyle = boxColor;
     for (const [hx, hy] of [[rx, ry], [rx + rw, ry], [rx, ry + rh], [rx + rw, ry + rh]])
       ctx.fillRect(hx - 4, hy - 4, 8, 8);
     const label = `${r.out_w} × ${r.out_h}`;

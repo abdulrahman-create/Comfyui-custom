@@ -4,7 +4,7 @@
 import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
 import { isGraphLoading } from "../shared/graph_loading.mjs";
-import { InpaintCropEditor } from "./core.mjs";
+import { InpaintCropEditor, INPAINT_PREVIEW_COLORS } from "./core.mjs";
 import "./paint.mjs";   // mixin: brush / mask / keys
 import "./render.mjs";  // mixin: canvas render + save
 import {
@@ -151,6 +151,16 @@ function findActiveNode() {
 app.registerExtension({
   name: "Pixaroma.InpaintCrop",
 
+  settings: [{
+    id: "Pixaroma.Inpaint.PreviewColor",
+    name: "Mask preview color",
+    type: "combo",
+    defaultValue: "Red",
+    options: ["Red", "Green", "Blue", "Yellow", "Orange"],
+    tooltip: "Tint color for the mask + seam preview in the Inpaint editor (display only).",
+    category: ["👑 Pixaroma", "Inpaint"],
+  }],
+
   async beforeRegisterNodeDef(nodeType, nodeData) {
     if (nodeData.name !== "PixaromaInpaintCrop") return;
     const origExec = nodeType.prototype.onExecuted;
@@ -202,9 +212,18 @@ app.registerExtension({
       refreshSourcePreview();   // sync the node thumbnail to the current upstream image
       const editor = new InpaintCropEditor();
       node._pixInpaintEditor = editor;
-      // brush size / soft edge / opacity persist across opens on this node
+      // brush size / opacity persist across opens on this node
       const captureBrush = () => {
         node._pixInpaintBrush = { brushSize: editor.brushSize, maskOpacity: editor.maskOpacity };
+      };
+
+      // preview tint (display only) - seed from the setting, persist on change
+      const colName = app.ui.settings?.getSettingValue?.("Pixaroma.Inpaint.PreviewColor") || "Red";
+      const colHex = INPAINT_PREVIEW_COLORS[colName] || INPAINT_PREVIEW_COLORS.Red;
+      editor.previewColor = colHex;
+      editor._cropBoxColor = (colHex === INPAINT_PREVIEW_COLORS.Orange) ? "#ffffff" : null;
+      editor.onPreviewColor = (name) => {
+        try { app.ui.settings?.setSettingValueAsync?.("Pixaroma.Inpaint.PreviewColor", name); } catch {}
       };
 
       editor.onSave = (jsonStr, extra, preview) => {
