@@ -97,6 +97,13 @@ class PixaromaInpaintCrop:
                     "default": 4, "min": 0, "max": 256, "step": 1,
                     "tooltip": "Soften the output mask edge by this many pixels for a smoother inpaint.",
                 }),
+                "softness": ("INT", {
+                    "default": 16, "min": 0, "max": 150, "step": 1,
+                    "tooltip": (
+                        "How far the seam feathers when Inpaint Stitch pastes the "
+                        "crop back. Previewed live in the mask editor."
+                    ),
+                }),
             },
             "optional": _InpaintOptionalInputs(any_type),
         }
@@ -123,7 +130,7 @@ class PixaromaInpaintCrop:
     def IS_CHANGED(cls, **kwargs):
         """Re-run on any knob change, or when the painted-mask file changes."""
         parts = [str(kwargs.get(k)) for k in
-                 ("size_mode", "target", "multiple", "context_px", "mask_grow", "mask_blur")]
+                 ("size_mode", "target", "multiple", "context_px", "mask_grow", "mask_blur", "softness")]
         state = kwargs.get("InpaintCropWidget")
         try:
             sj = state.get("state_json", "{}") if isinstance(state, dict) else str(state)
@@ -210,7 +217,7 @@ class PixaromaInpaintCrop:
         return merge_params(p)
 
     def run(self, size_mode="keep shape (long side)", target=1024, multiple=8,
-            context_px=24, mask_grow=4, mask_blur=4, **kwargs):
+            context_px=24, mask_grow=4, mask_blur=4, softness=16, **kwargs):
         upstream = kwargs.get("image")
         upstream_mask = kwargs.get("mask")
         state = kwargs.get("InpaintCropWidget")
@@ -252,16 +259,13 @@ class PixaromaInpaintCrop:
             print(f"[PixaromaInpaintCrop] crop error: {e}")
             return self._empty()
 
-        # Seam/blend settings are set in the editor and ride crop_info to Stitch.
-        # apply_inpaint_crop stays geometry-only, so inject them here (F1).
-        try:
-            crop_info["blend"] = max(0, min(512, int(meta.get("blend", 16))))
-        except (TypeError, ValueError):
-            crop_info["blend"] = 16
+        # Seam softness (the node 'softness' knob, mirrored by the editor) + blend
+        # mode (editor-only) ride crop_info to Inpaint Stitch. apply_inpaint_crop
+        # stays geometry-only, so inject here. (color_match is now the Stitch node's
+        # own knob.)
+        crop_info["blend"] = max(0, min(150, int(softness)))
         _bm = str(meta.get("blend_mode", "mask"))
         crop_info["blend_mode"] = _bm if _bm in ("mask", "whole_crop") else "mask"
-        _cm = str(meta.get("color_match", "off"))
-        crop_info["color_match"] = _cm if _cm in ("off", "subtle", "strong") else "off"
 
         result = (img_t, mask_t, crop_info, ow, oh)
         if ui_payload:

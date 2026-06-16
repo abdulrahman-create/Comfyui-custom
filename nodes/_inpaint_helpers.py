@@ -461,7 +461,11 @@ def stitch_back(crop_info, image, mask, blend, blend_mode, color_match):
     patch = patch.to(out.device, out.dtype)
 
     if color_match and color_match != "off":
-        ac = a.cpu()
+        # Match over the WHOLE crop region (uniform), not the mask alpha. Weighting
+        # by the mask matched the NEW content's stats to the OLD content it replaces,
+        # washing the inpaint toward the old colors; "the original region" (the
+        # node's promise) is the whole crop.
+        ac = torch.ones_like(a).cpu()
         for b in range(B):  # match EVERY frame, not just frame 0 (video / batch)
             region_b = out[b, y:y + ch, x:x + cw, :3].detach().cpu()
             p_b = patch[b, :, :, :3].detach().cpu()

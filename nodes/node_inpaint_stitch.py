@@ -45,6 +45,14 @@ class PixaromaInpaintStitch:
                         "If left unwired, the image passes straight through."
                     ),
                 }),
+                "color_match": (["off", "subtle", "strong"], {
+                    "default": "off",
+                    "tooltip": (
+                        "Nudge the inpainted crop's colors toward the original crop "
+                        "so a color shift the model introduced is corrected. Set it "
+                        "here and re-run after seeing the result (no live preview)."
+                    ),
+                }),
             },
         }
 
@@ -58,7 +66,7 @@ class PixaromaInpaintStitch:
     FUNCTION = "run"
     CATEGORY = "👑 Pixaroma"
 
-    def run(self, image, crop_info=None, mask=None):
+    def run(self, image, crop_info=None, mask=None, color_match="off"):
         # No valid crop_info -> nothing to paste back; pass the image through as
         # both outputs so downstream wiring still works. Require the geometry keys
         # too, so a malformed dict doesn't silently paste at (0,0) full-size.
@@ -68,15 +76,16 @@ class PixaromaInpaintStitch:
             print("[PixaromaInpaintStitch] no valid crop_info wired - passing image through")
             return (image, image)
 
-        # blend settings now live in crop_info (set in the Inpaint Crop editor).
-        # Defaults cover an Image Crop crop_info that lacks them.
+        # Seam blend + mode are set in the Inpaint Crop editor and ride crop_info
+        # (defaults cover an Image Crop crop_info that lacks them). color_match is
+        # this node's own knob (post-result tweak, no live preview).
         try:
             blend = max(0, min(512, int(crop_info.get("blend", 16))))
         except (TypeError, ValueError):
             blend = 16
         bm = str(crop_info.get("blend_mode", "mask"))
         blend_mode = bm if bm in ("mask", "whole_crop") else "mask"
-        cm = str(crop_info.get("color_match", "off"))
+        cm = str(color_match)
         color_match = cm if cm in ("off", "subtle", "strong") else "off"
 
         try:
