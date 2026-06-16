@@ -497,6 +497,37 @@ def _color_match(patch, ref, region_mask, strength):
     return out.reshape(patch.shape).clamp(0.0, 1.0)
 
 
+def resolve_seam(crop_info, softness, blend_mode):
+    """Resolve the effective seam feather (px) + blend mode for the stitch, letting
+    the Inpaint Stitch node OVERRIDE what rode in on crop_info from the Crop node -
+    so the blend can be tuned at stitch time WITHOUT re-running the sampler.
+
+    softness: int; < 0 (the -1 "inherit" default) keeps crop_info['blend'].
+    blend_mode: 'from crop' / '' = keep crop_info['blend_mode']; else 'mask' or
+    'whole crop' (spaces -> underscores). Returns (blend:int 0..150, mode:str).
+    """
+    if not isinstance(crop_info, dict):
+        crop_info = {}
+    try:
+        s = int(softness)
+    except (TypeError, ValueError):
+        s = -1
+    if s < 0:
+        try:
+            s = int(crop_info.get("blend", 16))
+        except (TypeError, ValueError):
+            s = 16
+    blend = max(0, min(150, s))
+
+    bm = str(blend_mode if blend_mode is not None else "from crop").strip().lower()
+    if bm in ("", "from crop", "inherit"):
+        bm = str(crop_info.get("blend_mode", "mask"))
+    bm = bm.replace(" ", "_")
+    if bm not in ("mask", "whole_crop"):
+        bm = "mask"
+    return blend, bm
+
+
 def stitch_back(crop_info, image, mask, blend, blend_mode, color_match):
     """Paste the inpainted `image` back onto crop_info['image'] at the recorded
     region, blended seamlessly. Returns (result[B,H,W,3], original[B,H,W,3])."""
