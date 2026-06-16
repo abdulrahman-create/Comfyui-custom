@@ -209,7 +209,7 @@ export class InpaintCropEditor {
     // Mask tools
     const secTools = createPanel("Mask");
     this._toolGrid = createPillGrid(
-      [{ label: "Brush", value: "add" }, { label: "Erase", value: "erase" }],
+      [{ label: "Brush (B)", value: "add" }, { label: "Erase (E)", value: "erase" }],
       2, (v) => this._setTool(v), { activeValue: "add" },
     );
     secTools.content.appendChild(this._toolGrid.el);
@@ -228,7 +228,10 @@ export class InpaintCropEditor {
     this.el.sizeSlider = createSliderRow("Size", 2, 300, this.brushSize, () => {
       this.brushSize = parseInt(this.el.sizeSlider.numInput.value) || this.brushSize;
     });
-    secBrush.content.append(this.el.sizeSlider.el);
+    const sizeHint = document.createElement("div");
+    sizeHint.textContent = "[ smaller  ·  ] bigger  ·  scroll wheel";
+    sizeHint.style.cssText = "font-size:10px;color:#888;margin-top:5px;";
+    secBrush.content.append(this.el.sizeSlider.el, sizeHint);
     sidebar.appendChild(secBrush.el);
 
     // Seam (the stitch blend; live preview on the canvas)

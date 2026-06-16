@@ -85,8 +85,8 @@ proto._strokeMove = function (e) {
   if (this._lastPt) this._stampLine(this._lastPt.x, this._lastPt.y, sx, sy);
   else this._stampDab(sx, sy);
   this._lastPt = { x: sx, y: sy };
-  this._draw();
-  this._drawCursor(p);
+  this._requestRedraw();   // coalesced (one redraw per frame) - was a sync _draw() per move = the lag
+  this._drawCursor(p);     // cursor stays immediate (cheap, separate canvas)
 };
 
 // soft-edge feather width (source px) baked onto the stroke. 0 = crisp.
@@ -106,6 +106,7 @@ proto._compositeStroke = function (ctx) {
 };
 
 proto._endStroke = function () {
+  if (this._drawRaf) { cancelAnimationFrame(this._drawRaf); this._drawRaf = null; }
   this._painting = false;
   this._lastPt = null;
   if (this._strokeHasContent) {
@@ -387,6 +388,7 @@ proto._unbindDropPaste = function () {
 
 proto._unbindKeys = function () {
   this._stopBrushHold();
+  if (this._drawRaf) { cancelAnimationFrame(this._drawRaf); this._drawRaf = null; }
   this._detachStroke?.();   // detach any live stroke window-listeners (close mid-drag)
   this._unbindDropPaste();
   if (this._keyHandler) window.removeEventListener("keydown", this._keyHandler, { capture: true });

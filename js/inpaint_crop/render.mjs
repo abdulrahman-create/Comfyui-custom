@@ -154,6 +154,13 @@ proto._seamAlphaCanvas = function () {
   return c;
 };
 
+// Coalesce high-frequency redraws (brush strokes) to one per animation frame, so
+// fast mouse-moves on a big image don't pile up synchronous full redraws (the lag).
+proto._requestRedraw = function () {
+  if (this._drawRaf) return;
+  this._drawRaf = requestAnimationFrame(() => { this._drawRaf = null; this._draw(); });
+};
+
 proto._draw = function () {
   if (!this.img || !this._dispW) return;  // _fitCanvas sets _dispW before any draw
   const ctx = this.el.ctx, s = this._scale;
@@ -173,7 +180,11 @@ proto._draw = function () {
     const tc = t.getContext("2d");
     tc.setTransform(1, 0, 0, 1, 0, 0);
     tc.clearRect(0, 0, tw, th);
-    tc.drawImage(this._seamAlphaCanvas(), 0, 0, tw, th);
+    // While a stroke is active, skip the distance-transform seam preview (a
+    // getImageData readback + per-pixel pass = the big-image lag) and tint the mask
+    // directly; the feathered seam preview is computed on stroke end. Big speedup.
+    const alphaSrc = this._painting ? this._effectiveMaskCanvas() : this._seamAlphaCanvas();
+    tc.drawImage(alphaSrc, 0, 0, tw, th);
     tc.globalCompositeOperation = "source-in";
     tc.fillStyle = this.previewColor || "#f6303a";
     tc.fillRect(0, 0, tw, th);
