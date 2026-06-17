@@ -143,8 +143,11 @@ const HIDDEN_INPUT_NAME = "SeedState"; // matches Python INPUT_TYPES key
 const DEFAULT_STATE = {
   seed: 0,
   mode: "random", // "random" | "fixed"
-  lastSeed: null, // the seed used by the previous run (for "Use last seed")
 };
+// The last-run seed is session-only RUNTIME state on node._pixSeedLastRun
+// (NOT node.properties), so a run never rewrites serialized state and can never
+// dirty a saved workflow (Vue Compat #18). It doesn't survive a reload, which
+// matches the "this session's last run" meaning.
 
 // Roll an exact integer in [0, 2^53) — within JS safe-integer range (so it
 // round-trips precisely) and well inside ComfyUI's 0..2^64-1 seed bounds.
@@ -175,13 +178,13 @@ function writeState(node, state) {
 
 // Fill the "Last run" line for the current state (random: actual last seed;
 // fixed: a plain hint so the line keeps a constant height = no layout gap).
-function refreshLastRunEl(el, state) {
-  if (state.mode === "fixed") {
-    el.textContent = "Fixed — same seed every run";
-  } else if (state.lastSeed != null) {
-    el.textContent = `Last run: ${state.lastSeed}`;
+function refreshLastRunEl(el, mode, lastSeed) {
+  if (mode === "fixed") {
+    el.textContent = "Fixed: same seed every run";
+  } else if (lastSeed != null) {
+    el.textContent = `Last run: ${lastSeed}`;
   } else {
-    el.textContent = "Last run: — (not run yet)";
+    el.textContent = "Last run: not run yet";
   }
 }
 
@@ -192,19 +195,19 @@ function refreshLastRun(node) {
   const root = node._pixSeedRoot;
   if (!root || !root.isConnected) return;
   const state = readState(node);
+  const lastSeed = node._pixSeedLastRun ?? null;
   const lr = root.querySelector(".pix-seed-lastrun");
-  if (lr) refreshLastRunEl(lr, state);
+  if (lr) refreshLastRunEl(lr, state.mode, lastSeed);
   const useLast = root.querySelector(".pix-seed-uselast");
-  if (useLast) useLast.disabled = state.lastSeed == null;
+  if (useLast) useLast.disabled = lastSeed == null;
 }
 
 function copySeed(node, btn) {
   const state = readState(node);
-  // Copy the seed that's meaningful right now: in Random mode that's the
-  // seed that actually ran last (to reproduce the current image); otherwise
-  // the locked value.
-  const val = state.mode === "random" && state.lastSeed != null ? state.lastSeed : state.seed;
-  const text = String(clampSeed(val));
+  // What-you-see-is-what-you-copy: copy exactly the seed shown in the big
+  // field. To grab the actual last-run seed in Random mode, click "Use last
+  // seed" first (it loads that seed into the field), then Copy.
+  const text = String(clampSeed(state.seed));
   const flash = (ok) => {
     btn.classList.toggle("is-flashing", ok);
     btn.textContent = ok ? "Copied" : "No clipboard";
@@ -223,6 +226,7 @@ function copySeed(node, btn) {
 // version did) left the body blank on a fresh drop.
 function buildSeedBody(node, root) {
   const state = readState(node);
+  const lastSeed = node._pixSeedLastRun ?? null; // session-only (see DEFAULT_STATE note)
   root.innerHTML = "";
 
   // ── big editable seed number ──────────────────────────────────
@@ -235,8 +239,10 @@ function buildSeedBody(node, root) {
   num.value = String(state.seed);
   num.title = "The seed value. Type a number to set an exact seed (switches to Fixed).";
   const commitNum = () => {
-    const v = clampSeed(num.value.replace(/[^\d]/g, ""));
+    const cleaned = num.value.replace(/[^\d]/g, "");
     const cur = readState(node);
+    // Empty / non-numeric input keeps the existing seed instead of wiping to 0.
+    const v = cleaned === "" ? cur.seed : clampSeed(cleaned);
     writeState(node, { ...cur, seed: v, mode: "fixed" });
     renderUI(node);
   };
@@ -289,11 +295,12 @@ function buildSeedBody(node, root) {
   useLast.className = "pix-seed-btn pix-seed-uselast";
   useLast.textContent = "Use last seed";
   useLast.title = "Load the seed from the previous run and lock it (Fixed).";
-  useLast.disabled = state.lastSeed == null;
+  useLast.disabled = lastSeed == null;
   useLast.addEventListener("click", () => {
+    const last = node._pixSeedLastRun;
+    if (last == null) return;
     const cur = readState(node);
-    if (cur.lastSeed == null) return;
-    writeState(node, { ...cur, seed: clampSeed(cur.lastSeed), mode: "fixed" });
+    writeState(node, { ...cur, seed: clampSeed(last), mode: "fixed" });
     renderUI(node);
   });
 
@@ -301,7 +308,7 @@ function buildSeedBody(node, root) {
   copyBtn.type = "button";
   copyBtn.className = "pix-seed-btn pix-seed-copy";
   copyBtn.textContent = "Copy";
-  copyBtn.title = "Copy the current seed to the clipboard.";
+  copyBtn.title = "Copy the seed shown above to the clipboard.";
   copyBtn.addEventListener("click", () => copySeed(node, copyBtn));
 
   row.append(useLast, copyBtn);
@@ -310,7 +317,7 @@ function buildSeedBody(node, root) {
   // ── last-run line ─────────────────────────────────────────────
   const lr = document.createElement("div");
   lr.className = "pix-seed-lastrun";
-  refreshLastRunEl(lr, state);
+  refreshLastRunEl(lr, state.mode, lastSeed);
   root.appendChild(lr);
 }
 
@@ -344,7 +351,10 @@ function setupSeedNode(node) {
   hideJsonWidget(node.widgets, HIDDEN_INPUT_NAME);
 
   node.resizable = false;
-  node.size = [NODE_W, NODE_H];
+  // Mutate indices rather than replacing the array (UI convention #9 — plays
+  // nicer with any reactive proxy Vue puts on node.size).
+  if (Array.isArray(node.size)) { node.size[0] = NODE_W; node.size[1] = NODE_H; }
+  else { node.size = [NODE_W, NODE_H]; }
 
   const root = document.createElement("div");
   root.className = "pix-seed-root";
@@ -455,17 +465,11 @@ app.graphToPrompt = async function (...args) {
         let runSeed = 0;
         if (node) {
           const st = readState(node);
-          if (st.mode === "random") {
-            runSeed = rollSeed();
-            writeState(node, { ...st, lastSeed: runSeed });
-            refreshLastRun(node);
-          } else {
-            runSeed = clampSeed(st.seed);
-            if (st.lastSeed !== runSeed) {
-              writeState(node, { ...st, lastSeed: runSeed });
-              refreshLastRun(node);
-            }
-          }
+          runSeed = st.mode === "random" ? rollSeed() : clampSeed(st.seed);
+          // Record the last-run seed on a RUNTIME field only (never
+          // node.properties) so a run can't dirty a saved workflow (Vue Compat #18).
+          node._pixSeedLastRun = runSeed;
+          refreshLastRun(node);
         }
         entry.inputs = entry.inputs || {};
         entry.inputs[HIDDEN_INPUT_NAME] = JSON.stringify({ runSeed });
