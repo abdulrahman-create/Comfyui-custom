@@ -18,6 +18,46 @@
 import { registerNodeHelp } from "../shared/index.mjs";
 
 const HELP = {
+  "PixaromaSeed": {
+    title: "Seed Pixaroma",
+    tagline: "A seed source with one-click random and fixed control - wire it into any sampler's seed input.",
+    sections: [
+      {
+        heading: "What it does",
+        body: "Holds a seed number and sends it out as `seed`. Drag the output into the seed input of KSampler (or any node that takes a seed). One Seed node can feed several samplers at once so they all stay on the same seed.",
+      },
+      {
+        heading: "Modes",
+        defs: [
+          ["Random", "Rolls a fresh seed every time you Run. The Last run line shows the seed that actually made the latest image."],
+          ["Fixed", "Keeps the same seed every Run, so the result is repeatable."],
+        ],
+      },
+      {
+        heading: "Buttons",
+        defs: [
+          ["New fixed random", "Rolls a brand-new random seed and locks it (switches to Fixed). Use it when a random result is great and you want to keep that exact seed."],
+          ["Use last seed", "Loads the seed from the previous run and locks it. Perfect for making variations off the image you just liked."],
+          ["Copy", "Copies the current seed to your clipboard."],
+        ],
+      },
+      {
+        heading: "Tips",
+        bullets: [
+          "Type a number in the big field to set an exact seed (it switches to Fixed).",
+          "In Fixed mode the same seed runs every time; in Random mode a new one rolls each Run.",
+        ],
+      },
+      {
+        heading: "Outputs",
+        defs: [
+          ["seed", "The chosen seed as a whole number."],
+        ],
+      },
+    ],
+    footer: "Found a seed you love in Random mode? Hit Use last seed (or New fixed random) to lock it, then tweak the rest of your workflow with confidence.",
+  },
+
   "Pixaroma3D": {
     title: "3D Builder Pixaroma",
     tagline: "A full 3D scene editor inside ComfyUI - build, light, and render scenes without leaving your workflow.",
