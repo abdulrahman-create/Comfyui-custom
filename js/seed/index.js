@@ -1,5 +1,5 @@
 import { app } from "/scripts/app.js";
-import { BRAND, hideJsonWidget, applyAdaptiveCanvasOnly } from "../shared/index.mjs";
+import { BRAND, hideJsonWidget, applyAdaptiveCanvasOnly, isVueNodes, measureRootContent } from "../shared/index.mjs";
 
 // ─────────────────────────────────────────────────────────────────────────
 // Seed Pixaroma — a seed source with Random / Fixed modes + buttons.
@@ -138,14 +138,12 @@ injectCSS();
 // Locked node WIDTH; the layout is fixed (no reason to resize), which also
 // sidesteps the Nodes 2.0 resize-floor handling a draggable DOM node needs.
 const NODE_W = 226;
-// The widget body height is the source of truth. getMinHeight==getMaxHeight==
-// WIDGET_H locks the body to exactly its content; the node's TOTAL height is
-// then left to LiteGraph (it adds the title + slot chrome), so we never guess
-// the chrome and never end up with a gap below the content. WIDGET_H is sized
-// to the content: number box (42) + pill (~32) + 3 buttons/rows (~32 each) +
-// last-run line (~18) + 4 gaps (32) + root padding (16).
-const WIDGET_H = 206;
-const NODE_H_HINT = WIDGET_H + 48; // initial node height; LiteGraph relays it out
+// Body height is MEASURED from the actual content (see measureSeedHeight), not a
+// hand-guessed constant — guessing the constant is what caused the gap-then-clip
+// oscillation. This fallback is used ONLY before the body is laid out (a fresh
+// drop / first paint); the real measure takes over the instant children exist.
+const WIDGET_H_FALLBACK = 216;
+const NODE_H_HINT = WIDGET_H_FALLBACK + 48; // starting height (replace-branch only)
 
 const STATE_PROP = "seedState";
 const HIDDEN_INPUT_NAME = "SeedState"; // matches Python INPUT_TYPES key
@@ -185,6 +183,17 @@ function fitSeedFont(num) {
     fs -= 1;
     num.style.fontSize = fs + "px";
   }
+}
+
+// Measure the body's content height (children offsetHeight + gaps + padding) so
+// the node sizes itself with NO hand-guessed constant. Coarse-round to a 4px
+// grid so font/sub-pixel jitter can't creep node.size across save/load
+// (dirty-on-load, Vue Compat #18). Falls back to a placeholder before the body
+// is laid out (children have offsetHeight 0 on a fresh drop).
+function measureSeedHeight(root) {
+  const h = root ? measureRootContent(root) : 0;
+  if (!(h > 20)) return WIDGET_H_FALLBACK;
+  return Math.round(h / 4) * 4;
 }
 
 function readState(node) {
@@ -399,10 +408,12 @@ function setupSeedNode(node) {
   hideJsonWidget(node.widgets, HIDDEN_INPUT_NAME);
 
   node.resizable = false;
-  // Mutate indices rather than replacing the array (UI convention #9). Height is
-  // an initial hint only — getMinHeight==getMaxHeight==WIDGET_H governs the body,
-  // and LiteGraph adds the chrome, so the node fits its content with no gap.
-  if (Array.isArray(node.size)) { node.size[0] = NODE_W; node.size[1] = NODE_H_HINT; }
+  // Lock WIDTH only; do NOT force the height. getMinHeight (measured) is the
+  // floor and there is no getMaxHeight, so LiteGraph sizes the node to exactly
+  // chrome + content — no gap, no clip. Forcing a height is what produced the
+  // gap-then-clip oscillation. (The replace branch needs a starting height; the
+  // post-layout snap below corrects it immediately.)
+  if (Array.isArray(node.size)) { node.size[0] = NODE_W; }
   else { node.size = [NODE_W, NODE_H_HINT]; }
 
   const root = document.createElement("div");
@@ -410,12 +421,18 @@ function setupSeedNode(node) {
   const _widget = node.addDOMWidget("seed_ui", "pixaroma_seed", root, {
     getValue: () => readState(node),
     setValue: () => {},
-    getMinHeight: () => WIDGET_H,
-    getMaxHeight: () => WIDGET_H,
+    // Measured content height, and NO getMaxHeight: a single-widget node has no
+    // slack consumer, so an upper cap can only clip the bottom line (that was
+    // the bug). Without a cap, LiteGraph sizes the body to exactly the content.
+    getMinHeight: () => measureSeedHeight(root),
     margin: 4,
     serialize: false, // state lives on node.properties, not this widget
   });
   applyAdaptiveCanvasOnly(_widget);
+  // Nodes 2.0: a widget WITH computeLayoutSize is the grower row (CLAUDE.md). It's
+  // the sole visible widget, so it's safely the grower; minWidth:1 keeps the
+  // locked width round-tripping (Compare gotcha 2).
+  _widget.computeLayoutSize = () => ({ minHeight: measureSeedHeight(root), minWidth: 1 });
   node._pixSeedRoot = root;
 
   // Deferred initial render — nodeCreated fires BEFORE configure() restores a
@@ -429,6 +446,17 @@ function setupSeedNode(node) {
     // Build into the captured `root` directly — it may not be attached to the
     // page yet on a fresh drop, but the content shows once LiteGraph draws it.
     buildSeedBody(node, root);
+    // Once the body is laid out, snap the node to the measured content height
+    // (LEGACY only — Nodes 2.0 sizes via computeLayoutSize). Coarse-rounded, so
+    // this is idempotent on reload and never dirties a saved workflow. Two
+    // attempts cover whichever frame the body finishes laying out on.
+    const snap = () => {
+      if (!isVueNodes() && typeof node.setSize === "function") {
+        node.setSize([NODE_W, node.computeSize()[1]]);
+      }
+    };
+    requestAnimationFrame(snap);
+    setTimeout(snap, 120);
   });
 }
 
@@ -446,11 +474,12 @@ app.registerExtension({
       return r;
     };
 
-    // Lock the size on every resize attempt (constant value → never dirties a
-    // saved workflow per Vue Compat #18).
+    // Lock WIDTH only, and only in LEGACY — in Nodes 2.0 the rendered size lives
+    // in the Vue layout store, so writing node.size there desyncs it. Height is
+    // governed by the measured getMinHeight / computeLayoutSize.
     const _origResize = nodeType.prototype.onResize;
     nodeType.prototype.onResize = function (size) {
-      this.size[0] = NODE_W; // lock width; height is governed by getMinHeight==getMaxHeight==WIDGET_H
+      if (!isVueNodes()) this.size[0] = NODE_W;
       if (_origResize) return _origResize.call(this, size);
     };
   },
