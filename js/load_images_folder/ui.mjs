@@ -279,16 +279,47 @@ export function openPickGallery(node, anchorEl, ctx) {
     renderGrid();
     commit();
   });
-  gal.querySelector('[data-act="first"]').addEventListener("click", () => {
-    const n = Math.max(0, parseInt(firstInput.value) || 0);
+  // Shared "select the first N images (in current sort order)" applier, used by
+  // BOTH the First button AND typing in the number box, so the field drives the
+  // selection on its own — not just as a silent parameter for the button.
+  function applyFirstN(value) {
+    const total = (node._pixLifFiles || []).length;
+    const n = Math.max(0, Math.min(parseInt(value, 10) || 0, total));
     selSet.clear();
     sortFiles(node._pixLifFiles || [], state.sort, state.sort_dir)
       .slice(0, n)
       .forEach((f) => selSet.add(f.file));
     renderGrid();
     commit();
+  }
+  gal.querySelector('[data-act="first"]').addEventListener("click", () => {
+    firstInput.value = String(Math.max(1, parseInt(firstInput.value, 10) || 1));
+    applyFirstN(firstInput.value);
   });
-  firstInput.addEventListener("keydown", (e) => e.stopImmediatePropagation());
+  // Live-apply as the user types / steps the number so "type a number → it
+  // selects" works without a separate click. Debounced so typing "12" applies
+  // once (12), not 1-then-12. An EMPTY box is left as "no instruction" (the
+  // selection is untouched — use None to deselect). Enter flushes immediately;
+  // blur / spinner commit via the change event.
+  let firstTimer = null;
+  const flushFirst = () => {
+    clearTimeout(firstTimer);
+    firstTimer = null;
+    if (gal._pixClosed) return;
+    if (firstInput.value.trim() === "") return; // empty = no change
+    applyFirstN(firstInput.value);
+  };
+  firstInput.addEventListener("input", () => {
+    clearTimeout(firstTimer);
+    firstTimer = null;
+    if (firstInput.value.trim() === "") return; // don't clobber on clear-to-retype
+    firstTimer = setTimeout(flushFirst, 220);
+  });
+  firstInput.addEventListener("change", flushFirst);
+  firstInput.addEventListener("keydown", (e) => {
+    e.stopImmediatePropagation();
+    if (e.key === "Enter") { e.preventDefault(); flushFirst(); }
+  });
   sortBtn.addEventListener("click", () => {
     openMiniMenu(sortBtn, SORTS, `${state.sort}|${state.sort_dir}`, (val) => {
       const [s, d] = val.split("|");

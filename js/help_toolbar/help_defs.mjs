@@ -569,7 +569,7 @@ const HELP = {
         heading: "How to use",
         bullets: [
           "Set the folder: type or paste a path into the folder box, or click `Browse` to navigate your drives and folders and pick one.",
-          "Click `Pick images` to open the gallery. Use `Select all`, `First` with a number, or click individual thumbnails to choose exactly what you want.",
+          "Click `Pick images` to open the gallery. Use `Select all`, type a number in the `First` box to grab the first few (it selects as you type), or click individual thumbnails to choose exactly what you want.",
           "Wire `image` into your workflow (upscale, restyle, etc.) and `filename` into a Save node so each result keeps its original name.",
           "Hit Run once and leave the batch count at 1. The node processes every selected image by itself.",
         ],
