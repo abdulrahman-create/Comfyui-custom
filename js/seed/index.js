@@ -202,6 +202,15 @@ function refreshLastRun(node) {
   if (useLast) useLast.disabled = lastSeed == null;
 }
 
+// Toggle the Random|Fixed pill's active segment in place (no DOM rebuild), so
+// committing the number field by clicking a pill/button never destroys that
+// control mid-click.
+function syncModeUI(root, mode) {
+  root.querySelectorAll(".pix-seed-seg").forEach((s) => {
+    s.classList.toggle("active", s.dataset.mode === mode);
+  });
+}
+
 function copySeed(node, btn) {
   const state = readState(node);
   // What-you-see-is-what-you-copy: copy exactly the seed shown in the big
@@ -243,8 +252,14 @@ function buildSeedBody(node, root) {
     const cur = readState(node);
     // Empty / non-numeric input keeps the existing seed instead of wiping to 0.
     const v = cleaned === "" ? cur.seed : clampSeed(cleaned);
+    num.value = String(v); // reflect any clamp
+    // No change -> don't flip the mode on a bare focus/blur, and don't rebuild.
+    if (v === cur.seed) return;
     writeState(node, { ...cur, seed: v, mode: "fixed" });
-    renderUI(node);
+    // Surgical UI sync (NOT a full renderUI rebuild) so blurring the field by
+    // clicking a pill/button can't destroy that control mid-click.
+    syncModeUI(root, "fixed");
+    refreshLastRun(node);
   };
   num.addEventListener("keydown", (e) => {
     e.stopPropagation(); // keep ComfyUI canvas shortcuts from firing while typing
@@ -260,6 +275,7 @@ function buildSeedBody(node, root) {
     const seg = document.createElement("div");
     seg.className = "pix-seed-seg" + (state.mode === m ? " active" : "");
     seg.textContent = label;
+    seg.dataset.mode = m;
     seg.title = m === "random"
       ? "Roll a new random seed every run."
       : "Keep the same seed every run (repeatable result).";
@@ -450,6 +466,7 @@ function findSeedNode(index, promptId) {
   return null;
 }
 
+let _seedRunNonce = 0; // monotonic per-call nonce for Random mode (see hook below)
 const _origGraphToPrompt = app.graphToPrompt.bind(app);
 app.graphToPrompt = async function (...args) {
   const result = await _origGraphToPrompt(...args);
@@ -463,16 +480,24 @@ app.graphToPrompt = async function (...args) {
         if (!index) index = buildSeedNodeIndex();
         const node = findSeedNode(index, id);
         let runSeed = 0;
+        let isRandom = false;
         if (node) {
           const st = readState(node);
-          runSeed = st.mode === "random" ? rollSeed() : clampSeed(st.seed);
+          isRandom = st.mode === "random";
+          runSeed = isRandom ? rollSeed() : clampSeed(st.seed);
           // Record the last-run seed on a RUNTIME field only (never
           // node.properties) so a run can't dirty a saved workflow (Vue Compat #18).
           node._pixSeedLastRun = runSeed;
           refreshLastRun(node);
         }
         entry.inputs = entry.inputs || {};
-        entry.inputs[HIDDEN_INPUT_NAME] = JSON.stringify({ runSeed });
+        // Random: add a per-call nonce so the injected string ALWAYS differs and
+        // the node re-runs even on the ~1-in-2^53 chance two rolls collide.
+        // Fixed: NO nonce, so the string is constant and ComfyUI caches it
+        // (repeatable). get_seed ignores the nonce.
+        entry.inputs[HIDDEN_INPUT_NAME] = isRandom
+          ? JSON.stringify({ runSeed, _n: ++_seedRunNonce })
+          : JSON.stringify({ runSeed });
       }
     }
   } catch (e) {
