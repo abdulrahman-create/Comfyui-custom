@@ -305,7 +305,7 @@ export function openPickGallery(node, anchorEl, ctx) {
   // selection is untouched — use None to deselect). Enter flushes immediately;
   // blur / spinner commit via the change event.
   let firstTimer = null;
-  const flushFirst = () => {
+  const flushFirst = (snap) => {
     clearTimeout(firstTimer);
     firstTimer = null;
     if (gal._pixClosed) return;
@@ -314,19 +314,22 @@ export function openPickGallery(node, anchorEl, ctx) {
     const total = (node._pixLifFiles || []).length;
     const typed = Math.max(0, parseInt(raw, 10) || 0);
     const applied = applyFirstN(typed);
-    // snap the box down to the real max when you ask for more than exist
-    if (total > 0 && typed > total) firstInput.value = String(applied);
+    // Snap the box down to the real max when you ask for more than exist, but
+    // ONLY on commit (Enter / blur / spinner) — never on the live debounced
+    // path, or pausing mid-type above the cap would rewrite the box and shift
+    // the next digit you type.
+    if (snap && total > 0 && typed > total) firstInput.value = String(applied);
   };
   firstInput.addEventListener("input", () => {
     clearTimeout(firstTimer);
     firstTimer = null;
     if (firstInput.value.trim() === "") return; // don't clobber on clear-to-retype
-    firstTimer = setTimeout(flushFirst, 220);
+    firstTimer = setTimeout(() => flushFirst(false), 220); // select live, leave the box alone
   });
-  firstInput.addEventListener("change", flushFirst);
+  firstInput.addEventListener("change", () => flushFirst(true)); // blur / spinner caps the box
   firstInput.addEventListener("keydown", (e) => {
     e.stopImmediatePropagation();
-    if (e.key === "Enter") { e.preventDefault(); flushFirst(); }
+    if (e.key === "Enter") { e.preventDefault(); flushFirst(true); }
   });
   sortBtn.addEventListener("click", () => {
     openMiniMenu(sortBtn, SORTS, `${state.sort}|${state.sort_dir}`, (val) => {

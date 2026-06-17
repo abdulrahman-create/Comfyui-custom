@@ -214,6 +214,7 @@ class PixaromaLoadImagesFolder:
     def IS_CHANGED(cls, LoadImagesFolderState: str = ""):
         state = _parse_state(LoadImagesFolderState)
         folder = state.get("folder", "") or ""
+        real_folder = os.path.realpath(folder)
         # Everything except `selected` (options + resize) goes in as a stable blob;
         # selected files contribute their per-file mtime so edits on disk re-run.
         opts = {k: state[k] for k in state if k != "selected"}
@@ -221,7 +222,17 @@ class PixaromaLoadImagesFolder:
         for rel in state.get("selected", []) or []:
             if not isinstance(rel, str) or not rel:
                 continue  # malformed entry - skip (mirrors load())
-            p = os.path.join(folder, rel)
+            # Mirror load()'s guard: never stat a file outside the chosen folder
+            # (selected is frontend-supplied, so a crafted "../../x" must not reach
+            # os.stat). Outside paths hash as a constant instead of a real stat.
+            p = os.path.realpath(os.path.join(folder, rel))
+            try:
+                if os.path.commonpath([p, real_folder]) != real_folder:
+                    parts.append(f"{rel}:outside")
+                    continue
+            except ValueError:
+                parts.append(f"{rel}:outside")  # different drive on Windows
+                continue
             try:
                 parts.append(f"{rel}:{os.stat(p).st_mtime_ns}")
             except OSError:
