@@ -280,8 +280,9 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
-### **June 17, 2026 · v1.3.93**
+### **June 17, 2026 · v1.3.93-1.3.94**
 - **NEW: Seed Pixaroma** - a dedicated seed node you wire into KSampler (or any node with a seed input). Flip between **Random** (a fresh seed every run) and **Fixed** (the same seed for repeatable results), hit **New fixed random** to lock in a lucky roll, **Use last seed** to bring back the previous run's seed, or **Copy** to grab the number. One Seed node can feed several samplers so they all stay in sync. Works in both the classic and the new node interface.
+- **Load Images from Folder - the "First" box now works as you type.** Type a number in the **First** box and it selects that many images right away (before, you had to click the First button for anything to happen). It also caps to how many images are in the folder, so if you ask for more than exist it just selects them all.
 
 ### **June 16, 2026 · v1.3.92**
 - **NEW: Inpaint Crop + Inpaint Stitch Pixaroma** - the easy way to inpaint. Open the editor, paint over the part you want the AI to change, and the node automatically crops a clean, model-friendly piece around it; run it through your model, then Inpaint Stitch pastes the result back at the exact spot, blended so the seam disappears. The editor has **zoom** (scroll wheel) and **pan** (Space-drag) for fine detail, brush / erase / invert, an adjustable brush, and a live preview of how the edit will blend. Set how it blends back (softness, mask grow, mask vs whole-crop) on the node or in the editor; tweak the blend on the Stitch node afterwards without re-generating.
