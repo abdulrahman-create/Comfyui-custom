@@ -139,6 +139,9 @@ A handy way to preview your images right on the node, but better! Works with **s
 ### 📐 Resolution Pixaroma
 A simple, one-click resolution picker. Choose from 9 popular aspect ratios - 1:1, 16:9, 9:16, 2:1, 3:2, 2:3, 4:3, 3:4, and 4:5 (Instagram-portrait friendly) - and instantly get the exact width and height you need, including popular sizes for AI video. Type any Custom Ratio (21:9, 16:10, anything) with auto-computed AI-friendly sizes, or use Custom Resolution to type exact dimensions. Math expressions work in the Width and Height fields too - type `1024+128` or `512*2` and it just works. It perfectly saves all your settings with your workflow!
 
+### 🌱 Seed Pixaroma
+A dedicated seed node you wire into KSampler (or any node with a seed input). Flip between **Random** - a fresh seed every run - and **Fixed** - the same seed for repeatable results - right on the node. **New fixed random** rolls a new seed and locks it (great for keeping a lucky result while you tweak other things), **Use last seed** brings back the seed from the previous run, and **Copy** puts the current seed on your clipboard. Type any number into the big readout to set it exactly, and in Random mode a **Last run** line tells you which seed actually made the latest image. One Seed node can feed several samplers at once so they all stay in sync. Works in both the classic and the new node interface.
+
 ### 📏 WH Pixaroma
 A tiny utility node with two number fields for width and height, and matching width/height outputs. Use it when you want to type a target resolution manually somewhere in your workflow. Math expressions like `1024+64` or `512*2` work directly in the fields. Pairs perfectly with **Switch WH Pixaroma** so you can flip between manual values and the size coming from another node.
 
@@ -276,6 +279,9 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 ---
 
 ## 🛠 Changelog
+
+### **June 17, 2026 · v1.3.93**
+- **NEW: Seed Pixaroma** - a dedicated seed node you wire into KSampler (or any node with a seed input). Flip between **Random** (a fresh seed every run) and **Fixed** (the same seed for repeatable results), hit **New fixed random** to lock in a lucky roll, **Use last seed** to bring back the previous run's seed, or **Copy** to grab the number. One Seed node can feed several samplers so they all stay in sync. Works in both the classic and the new node interface.
 
 ### **June 16, 2026 · v1.3.92**
 - **NEW: Inpaint Crop + Inpaint Stitch Pixaroma** - the easy way to inpaint. Open the editor, paint over the part you want the AI to change, and the node automatically crops a clean, model-friendly piece around it; run it through your model, then Inpaint Stitch pastes the result back at the exact spot, blended so the seam disappears. The editor has **zoom** (scroll wheel) and **pan** (Space-drag) for fine detail, brush / erase / invert, an adjustable brush, and a live preview of how the edit will blend. Set how it blends back (softness, mask grow, mask vs whole-crop) on the node or in the editor; tweak the blend on the Stitch node afterwards without re-generating.
