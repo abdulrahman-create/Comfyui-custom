@@ -40,15 +40,18 @@ function injectCSS() {
     .pix-seed-num {
       width: 100%;
       box-sizing: border-box;
+      height: 42px; /* fixed box so the auto-fit font change can't alter the height */
       background: #171819;
       border: 1px solid #3a3d40;
       border-radius: 6px;
       padding: 9px 8px;
       color: #f2f2f2;
       font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+      /* font-size is the MAX; fitSeedFont() shrinks it inline so a long (up to
+         16-digit) seed fits the narrower Nodes 2.0 body without being cut. */
       font-size: 19px;
       text-align: center;
-      letter-spacing: 0.5px;
+      letter-spacing: 0;
       outline: none;
     }
     .pix-seed-num:focus { border-color: ${BRAND}; }
@@ -117,6 +120,7 @@ function injectCSS() {
     .pix-seed-copy { flex: 0 0 auto; min-width: 64px; }
     .pix-seed-lastrun {
       font-size: 11px;
+      line-height: 1.6; /* room so descenders (y, g) aren't clipped at the node edge */
       color: rgba(255,255,255,0.42);
       text-align: center;
       white-space: nowrap;
@@ -131,11 +135,17 @@ function injectCSS() {
 }
 injectCSS();
 
-// Locked node size — the layout is fixed (no reason to resize), which also
+// Locked node WIDTH; the layout is fixed (no reason to resize), which also
 // sidesteps the Nodes 2.0 resize-floor handling a draggable DOM node needs.
 const NODE_W = 226;
-const NODE_H = 264;
-const WIDGET_H = NODE_H - 54; // chrome ≈ title + 1 output slot + widget margin
+// The widget body height is the source of truth. getMinHeight==getMaxHeight==
+// WIDGET_H locks the body to exactly its content; the node's TOTAL height is
+// then left to LiteGraph (it adds the title + slot chrome), so we never guess
+// the chrome and never end up with a gap below the content. WIDGET_H is sized
+// to the content: number box (42) + pill (~32) + 3 buttons/rows (~32 each) +
+// last-run line (~18) + 4 gaps (32) + root padding (16).
+const WIDGET_H = 206;
+const NODE_H_HINT = WIDGET_H + 48; // initial node height; LiteGraph relays it out
 
 const STATE_PROP = "seedState";
 const HIDDEN_INPUT_NAME = "SeedState"; // matches Python INPUT_TYPES key
@@ -160,6 +170,21 @@ function clampSeed(n) {
   if (!Number.isFinite(n) || n < 0) return 0;
   if (n > Number.MAX_SAFE_INTEGER) return Number.MAX_SAFE_INTEGER;
   return n;
+}
+
+// Shrink the seed number's font until it fits the field (a 16-digit seed
+// overflows the narrower Nodes 2.0 body at the base 19px). Idempotent and
+// cheap; safe to call repeatedly. No-op until the field is laid out.
+function fitSeedFont(num) {
+  if (!num || !num.isConnected) return;
+  const MAX = 19, MIN = 11;
+  num.style.fontSize = MAX + "px";
+  if (!num.clientWidth) return; // not laid out yet — a scheduled retry will catch it
+  let fs = MAX, guard = 0;
+  while (fs > MIN && num.scrollWidth > num.clientWidth + 1 && guard++ < 24) {
+    fs -= 1;
+    num.style.fontSize = fs + "px";
+  }
 }
 
 function readState(node) {
@@ -253,6 +278,7 @@ function buildSeedBody(node, root) {
     // Empty / non-numeric input keeps the existing seed instead of wiping to 0.
     const v = cleaned === "" ? cur.seed : clampSeed(cleaned);
     num.value = String(v); // reflect any clamp
+    fitSeedFont(num); // a newly-typed long seed may need a smaller font to fit
     // No change -> don't flip the mode on a bare focus/blur, and don't rebuild.
     if (v === cur.seed) return;
     writeState(node, { ...cur, seed: v, mode: "fixed" });
@@ -335,6 +361,12 @@ function buildSeedBody(node, root) {
   lr.className = "pix-seed-lastrun";
   refreshLastRunEl(lr, state.mode, lastSeed);
   root.appendChild(lr);
+
+  // Fit the number font now and shortly after — covers the fresh-drop case
+  // where the widget isn't laid out on the first frame (in either renderer).
+  requestAnimationFrame(() => fitSeedFont(num));
+  setTimeout(() => fitSeedFont(num), 60);
+  setTimeout(() => fitSeedFont(num), 220);
 }
 
 // Resolve the live root element (adopting the widget's element if Vue swapped
@@ -367,10 +399,11 @@ function setupSeedNode(node) {
   hideJsonWidget(node.widgets, HIDDEN_INPUT_NAME);
 
   node.resizable = false;
-  // Mutate indices rather than replacing the array (UI convention #9 — plays
-  // nicer with any reactive proxy Vue puts on node.size).
-  if (Array.isArray(node.size)) { node.size[0] = NODE_W; node.size[1] = NODE_H; }
-  else { node.size = [NODE_W, NODE_H]; }
+  // Mutate indices rather than replacing the array (UI convention #9). Height is
+  // an initial hint only — getMinHeight==getMaxHeight==WIDGET_H governs the body,
+  // and LiteGraph adds the chrome, so the node fits its content with no gap.
+  if (Array.isArray(node.size)) { node.size[0] = NODE_W; node.size[1] = NODE_H_HINT; }
+  else { node.size = [NODE_W, NODE_H_HINT]; }
 
   const root = document.createElement("div");
   root.className = "pix-seed-root";
@@ -417,8 +450,7 @@ app.registerExtension({
     // saved workflow per Vue Compat #18).
     const _origResize = nodeType.prototype.onResize;
     nodeType.prototype.onResize = function (size) {
-      this.size[0] = NODE_W;
-      this.size[1] = NODE_H;
+      this.size[0] = NODE_W; // lock width; height is governed by getMinHeight==getMaxHeight==WIDGET_H
       if (_origResize) return _origResize.call(this, size);
     };
   },
