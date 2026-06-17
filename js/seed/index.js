@@ -217,26 +217,12 @@ function copySeed(node, btn) {
   }
 }
 
-function renderUI(node) {
+// Build the node body into `root` (the DOM widget element). Kept separate from
+// renderUI so the INITIAL render can target the captured root element even
+// before LiteGraph has attached it — bailing on isConnected there (the first
+// version did) left the body blank on a fresh drop.
+function buildSeedBody(node, root) {
   const state = readState(node);
-  let root = node._pixSeedRoot;
-  if (!root || !root.isConnected) {
-    // Vue may have detached the original element — re-find via the DOM widget.
-    const w = (node.widgets || []).find((x) => x.name === "seed_ui");
-    if (w?.element?.isConnected) {
-      const found = w.element.querySelector(".pix-seed-root");
-      if (found) { node._pixSeedRoot = found; root = found; }
-      else {
-        root = document.createElement("div");
-        root.className = "pix-seed-root";
-        w.element.appendChild(root);
-        node._pixSeedRoot = root;
-      }
-    } else {
-      return; // nothing to render into yet
-    }
-  }
-
   root.innerHTML = "";
 
   // ── big editable seed number ──────────────────────────────────
@@ -328,6 +314,31 @@ function renderUI(node) {
   root.appendChild(lr);
 }
 
+// Resolve the live root element (adopting the widget's element if Vue swapped
+// it out) and (re)build the body. Does NOT bail merely because the element
+// isn't attached yet — it builds into the cached root so the content is there
+// the moment LiteGraph draws the widget. Used for re-renders (clicks, configure).
+function renderUI(node) {
+  let root = node._pixSeedRoot;
+  if (!root || !root.isConnected) {
+    const w = (node.widgets || []).find((x) => x.name === "seed_ui");
+    const el = w?.element;
+    if (el) {
+      root = el.classList?.contains("pix-seed-root")
+        ? el
+        : (el.querySelector(".pix-seed-root") || (() => {
+            const r = document.createElement("div");
+            r.className = "pix-seed-root";
+            el.appendChild(r);
+            return r;
+          })());
+      node._pixSeedRoot = root;
+    }
+  }
+  if (!root) return;
+  buildSeedBody(node, root);
+}
+
 function setupSeedNode(node) {
   // Defensive: hide any SeedState widget (none exists with the hidden input).
   hideJsonWidget(node.widgets, HIDDEN_INPUT_NAME);
@@ -356,7 +367,9 @@ function setupSeedNode(node) {
     if (!node.properties?.[STATE_PROP]) {
       writeState(node, { ...DEFAULT_STATE, seed: rollSeed() });
     }
-    renderUI(node);
+    // Build into the captured `root` directly — it may not be attached to the
+    // page yet on a fresh drop, but the content shows once LiteGraph draws it.
+    buildSeedBody(node, root);
   });
 }
 
