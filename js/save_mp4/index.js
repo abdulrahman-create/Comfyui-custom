@@ -221,6 +221,15 @@ app.registerExtension({
       scrub.appendChild(handle);
       bar.appendChild(scrub);
 
+      const dlBtn = document.createElement("button");
+      dlBtn.className = "pix-mp4-btn";
+      dlBtn.title = "Download .mp4";
+      const dlIco = document.createElement("span");
+      dlIco.className = "pix-mp4-ico";
+      dlIco.style.setProperty("--ico", `url(${UI_ICON}download.svg)`);
+      dlBtn.appendChild(dlIco);
+      bar.appendChild(dlBtn);
+
       const fsBtn = document.createElement("button");
       fsBtn.className = "pix-mp4-btn";
       fsBtn.title = "Fullscreen";
@@ -252,6 +261,19 @@ app.registerExtension({
         e.stopPropagation();
         if (!video.src) return;
         (video.requestFullscreen || video.webkitRequestFullscreen)?.call(video);
+      });
+      // Download the current clip to the user's computer. The /view URL is
+      // same-origin, so an <a download> forces a save with the real filename
+      // regardless of the server's Content-Disposition (no blob fetch needed).
+      dlBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (!video.src) return;
+        const a = document.createElement("a");
+        a.href = video.src;
+        a.download = node._pixMp4Name || "video.mp4";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
       });
       // Keep the bar in sync with playback.
       ["play", "pause", "ended", "timeupdate", "loadedmetadata", "durationchange"].forEach(
@@ -342,6 +364,8 @@ api.addEventListener("executed", ({ detail }) => {
   const video = getLiveVideo(node);
   if (!video) return;
   const url = buildViewUrl(entries[0]);
+  // Real filename for the Download button (basename, in case of a subfolder).
+  node._pixMp4Name = (entries[0].filename || "video.mp4").split("/").pop();
   video.src = url;
   video.style.display = "block";
   if (node._pixaromaPlaceholder?.isConnected) {
