@@ -191,8 +191,11 @@ app.registerExtension({
       // Order: play | time | scrub (fills) | fullscreen.
       const bar = document.createElement("div");
       bar.className = "pix-mp4-bar is-disabled";
-      // Swallow mousedown so interacting with the bar never starts a node drag.
+      // Swallow mouse/pointer-down so interacting with the bar never starts a
+      // node drag (both events, matching the Prompt Stack pattern — the legacy
+      // canvas drags on mouse, Nodes 2.0 on pointer).
       bar.addEventListener("mousedown", (e) => e.stopPropagation());
+      bar.addEventListener("pointerdown", (e) => e.stopPropagation());
 
       const playBtn = document.createElement("button");
       playBtn.className = "pix-mp4-btn";
