@@ -66,6 +66,8 @@ from .nodes.node_text_overlay import NODE_CLASS_MAPPINGS as _MAPS_TEXT_OVERLAY
 from .nodes.node_text_overlay import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_TEXT_OVERLAY
 from .nodes.node_image_resize import NODE_CLASS_MAPPINGS as _MAPS_IMAGE_RESIZE
 from .nodes.node_image_resize import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_IMAGE_RESIZE
+from .nodes.node_resize_crop import NODE_CLASS_MAPPINGS as _MAPS_RESIZE_CROP
+from .nodes.node_resize_crop import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_RESIZE_CROP
 from .nodes.node_text_watermark import NODE_CLASS_MAPPINGS as _MAPS_TEXT_WATERMARK
 from .nodes.node_text_watermark import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_TEXT_WATERMARK
 from .nodes.node_version_check import NODE_CLASS_MAPPINGS as _MAPS_VERSION_CHECK
@@ -124,6 +126,7 @@ NODE_CLASS_MAPPINGS = {
     **_MAPS_REMOVE_BG,
     **_MAPS_TEXT_OVERLAY,
     **_MAPS_IMAGE_RESIZE,
+    **_MAPS_RESIZE_CROP,
     **_MAPS_TEXT_WATERMARK,
     **_MAPS_VERSION_CHECK,
     **_MAPS_PAUSE_IMAGE,
@@ -168,6 +171,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     **_NAMES_REMOVE_BG,
     **_NAMES_TEXT_OVERLAY,
     **_NAMES_IMAGE_RESIZE,
+    **_NAMES_RESIZE_CROP,
     **_NAMES_TEXT_WATERMARK,
     **_NAMES_VERSION_CHECK,
     **_NAMES_PAUSE_IMAGE,

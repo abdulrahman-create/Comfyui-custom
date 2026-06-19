@@ -681,6 +681,36 @@ const HELP = {
     ],
   },
 
+  "PixaromaResizeCrop": {
+    title: "Resize Crop Pixaroma",
+    tagline: "Force an image to an exact width and height by crop-to-fill - no stretching, no letterboxing.",
+    sections: [
+      {
+        heading: "What it does",
+        body: "Scales the image so it completely fills the target box, then crops the overflow from the center. The result is always exactly the width and height you set. Smaller images are scaled up to fill. Great for forcing image or video frames to a fixed size like 512x896 or 704x1280.",
+      },
+      {
+        heading: "How to use",
+        bullets: [
+          "Wire an image into `image`.",
+          "Type the size into the `width` and `height` fields, or wire a number into them from another node (e.g. Resolution Pixaroma or a Number node).",
+          "The fields default to 1024 x 1024. The up/down arrows step by 8 since AI/video sizes are usually multiples of 8, but you can type any exact value.",
+          "Optionally wire a `mask` - it gets cropped to the same size.",
+        ],
+      },
+      {
+        heading: "Outputs",
+        defs: [
+          ["image", "The cropped image, exactly width x height pixels."],
+          ["mask", "The cropped mask, matching the output size (blank when no mask is wired in)."],
+          ["width", "The output width in pixels."],
+          ["height", "The output height in pixels."],
+        ],
+      },
+    ],
+    footer: "Need to scale without cropping, fit inside a box, or pad instead? Use Image Resize Pixaroma, which has all eight resize modes.",
+  },
+
   "PixaromaRemoveBackground": {
     title: "Remove Background Pixaroma",
     tagline: "Cut out the foreground from an image using a BiRefNet AI model.",
