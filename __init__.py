@@ -46,6 +46,8 @@ from .nodes.node_mute_switch import NODE_CLASS_MAPPINGS as _MAPS_MUTE_SWITCH
 from .nodes.node_mute_switch import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_MUTE_SWITCH
 from .nodes.node_wh import NODE_CLASS_MAPPINGS as _MAPS_WH
 from .nodes.node_wh import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_WH
+from .nodes.node_portrait_landscape import NODE_CLASS_MAPPINGS as _MAPS_PORTRAIT_LANDSCAPE
+from .nodes.node_portrait_landscape import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_PORTRAIT_LANDSCAPE
 from .nodes.node_number import NODE_CLASS_MAPPINGS as _MAPS_NUMBER
 from .nodes.node_number import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_NUMBER
 from .nodes.node_seed import NODE_CLASS_MAPPINGS as _MAPS_SEED
@@ -114,6 +116,7 @@ NODE_CLASS_MAPPINGS = {
     **_MAPS_SWITCH_SOURCE,
     **_MAPS_MUTE_SWITCH,
     **_MAPS_WH,
+    **_MAPS_PORTRAIT_LANDSCAPE,
     **_MAPS_NUMBER,
     **_MAPS_SEED,
     **_MAPS_TEXT,
@@ -155,6 +158,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     **_NAMES_SWITCH_SOURCE,
     **_NAMES_MUTE_SWITCH,
     **_NAMES_WH,
+    **_NAMES_PORTRAIT_LANDSCAPE,
     **_NAMES_NUMBER,
     **_NAMES_SEED,
     **_NAMES_TEXT,

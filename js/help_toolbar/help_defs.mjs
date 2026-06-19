@@ -711,6 +711,34 @@ const HELP = {
     footer: "Need to scale without cropping, fit inside a box, or pad instead? Use Image Resize Pixaroma, which has all eight resize modes.",
   },
 
+  "PixaromaPortraitLandscape": {
+    title: "Portrait Landscape Pixaroma",
+    tagline: "Flip a width and height between portrait (tall) and landscape (wide) with one click.",
+    sections: [
+      {
+        heading: "What it does",
+        body: "Takes two dimensions and outputs them in the orientation you choose. Click Portrait and the smaller number becomes the width (a tall image); click Landscape and the larger number becomes the width (a wide image). One node replaces keeping two WH nodes and a switch just to flip orientation.",
+      },
+      {
+        heading: "How to use",
+        bullets: [
+          "Enter your two sizes in the width and height fields, or wire them in from another node (e.g. WH Pixaroma or Resolution Pixaroma).",
+          "Click Portrait or Landscape - the active one lights up orange.",
+          "Wire the width and height outputs into your Empty Latent (or anywhere a size is needed).",
+          "The order you type the two numbers does not matter: Portrait always gives the tall arrangement, Landscape the wide one.",
+        ],
+      },
+      {
+        heading: "Outputs",
+        defs: [
+          ["width", "The output width. Portrait = the smaller of your two numbers, Landscape = the larger."],
+          ["height", "The output height. Portrait = the larger of your two numbers, Landscape = the smaller."],
+        ],
+      },
+    ],
+    footer: "Need two genuinely different sizes (not just the same numbers swapped)? Use Switch WH Pixaroma instead, which picks between two separate width/height pairs.",
+  },
+
   "PixaromaRemoveBackground": {
     title: "Remove Background Pixaroma",
     tagline: "Cut out the foreground from an image using a BiRefNet AI model.",
