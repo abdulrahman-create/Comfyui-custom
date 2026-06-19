@@ -56,7 +56,7 @@ class PixaromaPromptReader:
             },
         }
 
-    CATEGORY = "👑 Pixaroma"
+    CATEGORY = "👑 Pixaroma/💬 Prompt & Text"
     RETURN_TYPES = ("STRING",)
     RETURN_NAMES = ("text",)
     OUTPUT_TOOLTIPS = ("The prompt recovered from the image's metadata, or an explanatory message if none was found.",)

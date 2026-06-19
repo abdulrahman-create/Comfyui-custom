@@ -144,7 +144,7 @@ class PixaromaImageResize:
             },
         }
 
-    CATEGORY = "👑 Pixaroma"
+    CATEGORY = "👑 Pixaroma/✂️ Resize & Crop"
     RETURN_TYPES = ("IMAGE", "MASK", "INT", "INT", "INT")
     RETURN_NAMES = ("image", "mask", "width", "height", "longest_side")
     OUTPUT_TOOLTIPS = (

@@ -40,7 +40,7 @@ class PixaromaRemoveBackground:
         "Mask where the removed background is white (the foreground mask, inverted).",
     )
     FUNCTION = "execute"
-    CATEGORY = "👑 Pixaroma"
+    CATEGORY = "👑 Pixaroma/🖼️ Image"
     DESCRIPTION = (
         "Remove an image background with a BiRefNet model and return the "
         "cutout (RGBA), the foreground mask, and the inverted mask in one "

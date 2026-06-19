@@ -151,7 +151,7 @@ class PixaromaInpaintCrop:
         "Cropped output height in pixels.",
     )
     FUNCTION = "run"
-    CATEGORY = "👑 Pixaroma"
+    CATEGORY = "👑 Pixaroma/✂️ Resize & Crop"
     OUTPUT_NODE = True
 
     # ─────────────────────────────────────────────────────────────────────────

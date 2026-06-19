@@ -367,7 +367,7 @@ class PixaromaImageComposition:
     RETURN_NAMES = ("image", "width", "height")
     OUTPUT_TOOLTIPS = ("The composited image.", "Image width in pixels.", "Image height in pixels.")
     FUNCTION = "load_composite"
-    CATEGORY = "👑 Pixaroma"
+    CATEGORY = "👑 Pixaroma/🎨 Editors"
     OUTPUT_NODE = True
 
     @classmethod

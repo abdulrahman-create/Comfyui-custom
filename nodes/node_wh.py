@@ -43,7 +43,7 @@ class PixaromaWH:
     RETURN_NAMES = ("width", "height")
     OUTPUT_TOOLTIPS = ("The width you typed.", "The height you typed.")
     FUNCTION = "out"
-    CATEGORY = "👑 Pixaroma"
+    CATEGORY = "👑 Pixaroma/🔢 Values"
 
     def out(self, width, height):
         return (int(width), int(height))

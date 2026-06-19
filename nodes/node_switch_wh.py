@@ -40,7 +40,7 @@ class PixaromaSwitchWH:
     RETURN_NAMES = ("width", "height")
     OUTPUT_TOOLTIPS = ("The width from the active (highlighted) source.", "The height from the active (highlighted) source.")
     FUNCTION = "pick"
-    CATEGORY = "👑 Pixaroma"
+    CATEGORY = "👑 Pixaroma/🔀 Logic & Flow"
 
     def pick(
         self,

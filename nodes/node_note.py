@@ -46,7 +46,7 @@ class PixaromaNote:
     # execution also stops ComfyUI from drawing an "X.Xs" timing badge
     # above the note on every run, which looks weird on a decorative
     # rich-text annotation.
-    CATEGORY = "👑 Pixaroma"
+    CATEGORY = "👑 Pixaroma/📝 Notes & Overlay"
 
     def noop(self, note_json):
         return {}

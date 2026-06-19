@@ -44,7 +44,7 @@ class PixaromaSeed:
         "The chosen seed as a whole number. Wire it into a sampler's seed input.",
     )
     FUNCTION = "get_seed"
-    CATEGORY = "👑 Pixaroma"
+    CATEGORY = "👑 Pixaroma/🔢 Values"
 
     @classmethod
     def IS_CHANGED(cls, SeedState: str):

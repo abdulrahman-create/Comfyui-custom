@@ -51,7 +51,7 @@ class PixaromaPromptFromList:
     RETURN_NAMES = ("text",)
     OUTPUT_TOOLTIPS = ("The prompt picked from the list at the chosen index. Empty if the index is out of range.",)
     FUNCTION = "pick"
-    CATEGORY = "👑 Pixaroma"
+    CATEGORY = "👑 Pixaroma/💬 Prompt & Text"
 
     def pick(self, prompts, index):
         if not isinstance(prompts, list):

@@ -27,7 +27,7 @@ class PixaromaShowText:
     OUTPUT_TOOLTIPS = ("The same text shown in the box, passed through so you can keep chaining it.",)
     FUNCTION = "show"
     OUTPUT_NODE = True
-    CATEGORY = "👑 Pixaroma"
+    CATEGORY = "👑 Pixaroma/💬 Prompt & Text"
 
     def show(self, source):
         try:

@@ -117,7 +117,7 @@ class PixaromaLoadImage:
             },
         }
 
-    CATEGORY = "👑 Pixaroma"
+    CATEGORY = "👑 Pixaroma/🖼️ Image"
     RETURN_TYPES = ("IMAGE", "MASK", "INT", "INT", "STRING", "INT", "INT")
     RETURN_NAMES = (
         "image", "mask", "width", "height",

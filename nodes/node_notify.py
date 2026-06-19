@@ -99,7 +99,7 @@ class NotifyPixaroma:
     RETURN_TYPES = ()
     OUTPUT_NODE = True
     FUNCTION = "notify"
-    CATEGORY = "👑 Pixaroma"
+    CATEGORY = "👑 Pixaroma/🔀 Logic & Flow"
 
     def notify(self, any, enabled, sound, volume, label):
         if not enabled:

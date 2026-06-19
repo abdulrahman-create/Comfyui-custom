@@ -76,7 +76,7 @@ class PixaromaPreview:
     OUTPUT_TOOLTIPS = ("The image(s) passed through unchanged, so you can chain a preview inline without breaking the wire.",)
     FUNCTION = "preview"
     OUTPUT_NODE = True
-    CATEGORY = "👑 Pixaroma"
+    CATEGORY = "👑 Pixaroma/🖼️ Image"
 
     @classmethod
     def IS_CHANGED(cls, **kwargs):

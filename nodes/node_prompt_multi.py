@@ -63,7 +63,7 @@ class PixaromaPromptMulti:
         "The list of all enabled prompts. Use in List mode - wire into Prompt From List Pixaroma nodes.",
     )
     FUNCTION = "build"
-    CATEGORY = "👑 Pixaroma"
+    CATEGORY = "👑 Pixaroma/💬 Prompt & Text"
 
     @classmethod
     def IS_CHANGED(cls, PromptMultiState="{}", **kwargs):

@@ -125,7 +125,7 @@ class PixaromaLoadImagesFolder:
             },
         }
 
-    CATEGORY = "👑 Pixaroma"
+    CATEGORY = "👑 Pixaroma/🖼️ Image"
     RETURN_TYPES = ("IMAGE", "MASK", "INT", "INT", "STRING", "INT", "INT")
     RETURN_NAMES = ("image", "mask", "width", "height", "filename", "index", "total")
     OUTPUT_IS_LIST = (True, True, True, True, True, True, True)

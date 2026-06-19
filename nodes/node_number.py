@@ -47,7 +47,7 @@ class PixaromaNumber:
     RETURN_NAMES = ("int", "float")
     OUTPUT_TOOLTIPS = ("The value as a whole number (rounded to nearest).", "The value as a decimal number, kept as-is.")
     FUNCTION = "out"
-    CATEGORY = "👑 Pixaroma"
+    CATEGORY = "👑 Pixaroma/🔢 Values"
 
     def out(self, value):
         # Defensive: ComfyUI normally guarantees a numeric `value`, but if a

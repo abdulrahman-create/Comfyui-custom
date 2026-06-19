@@ -36,7 +36,7 @@ class PixaromaPromptStack:
     RETURN_NAMES = ("text",)
     OUTPUT_TOOLTIPS = ("All enabled chunks joined into one string using your separator.",)
     FUNCTION = "build"
-    CATEGORY = "👑 Pixaroma"
+    CATEGORY = "👑 Pixaroma/💬 Prompt & Text"
 
     def build(self, PromptStackState="{}"):
         state = self._parse_state(PromptStackState)

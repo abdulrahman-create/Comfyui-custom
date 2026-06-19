@@ -89,7 +89,7 @@ class PixaromaInpaintStitch:
         "with the result into Image Compare Pixaroma for a before / after.",
     )
     FUNCTION = "run"
-    CATEGORY = "👑 Pixaroma"
+    CATEGORY = "👑 Pixaroma/✂️ Resize & Crop"
 
     def run(self, image, crop_info=None, mask=None, softness=-1,
             blend_mode="from crop", color_match="off"):

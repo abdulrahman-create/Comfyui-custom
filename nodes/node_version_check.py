@@ -20,7 +20,7 @@ class PixaromaVersionCheck:
     # OUTPUT_NODE intentionally NOT set: ComfyUI skips this node on Run, so no
     # "X.Xs" timing badge is drawn over what is just an info panel. All the
     # work happens in js/version_check/index.js.
-    CATEGORY = "👑 Pixaroma"
+    CATEGORY = "👑 Pixaroma/🔀 Logic & Flow"
 
     def noop(self):
         return {}

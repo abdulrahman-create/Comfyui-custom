@@ -99,7 +99,7 @@ class PixaromaPauseImage:
     OUTPUT_TOOLTIPS = ("The image continuing downstream - the live input in Pause/Pass mode, or the reloaded snapshot in Continue mode.",)
     FUNCTION = "run"
     OUTPUT_NODE = True
-    CATEGORY = "👑 Pixaroma"
+    CATEGORY = "👑 Pixaroma/🖼️ Image"
 
     @classmethod
     def IS_CHANGED(cls, **kwargs):

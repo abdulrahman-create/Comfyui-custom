@@ -53,7 +53,7 @@ class PixaromaText:
         "Dynamic prompts switch is on (otherwise sent exactly as typed).",
     )
     FUNCTION = "out"
-    CATEGORY = "👑 Pixaroma"
+    CATEGORY = "👑 Pixaroma/💬 Prompt & Text"
 
     def out(self, text):
         return (text,)

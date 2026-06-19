@@ -49,7 +49,7 @@ class PixaromaSwitch:
     RETURN_NAMES = ("output",)
     OUTPUT_TOOLTIPS = ("The input from the active (highlighted) row, passed through unchanged.",)
     FUNCTION = "pick"
-    CATEGORY = "👑 Pixaroma"
+    CATEGORY = "👑 Pixaroma/🔀 Logic & Flow"
 
     def pick(self, SwitchState="1", **kwargs):
         try:

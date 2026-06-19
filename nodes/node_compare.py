@@ -37,7 +37,7 @@ class PixaromaCompare:
     RETURN_TYPES = ()
     FUNCTION = "compare_images"
     OUTPUT_NODE = True
-    CATEGORY = "👑 Pixaroma"
+    CATEGORY = "👑 Pixaroma/🖼️ Image"
 
     def compare_images(self, image1, image2):
         results = []

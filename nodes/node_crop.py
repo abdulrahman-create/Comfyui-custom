@@ -109,7 +109,7 @@ class PixaromaCrop:
         "Cropped height in pixels.",
     )
     FUNCTION = "load_crop"
-    CATEGORY = "👑 Pixaroma"
+    CATEGORY = "👑 Pixaroma/✂️ Resize & Crop"
     OUTPUT_NODE = True
 
     @classmethod

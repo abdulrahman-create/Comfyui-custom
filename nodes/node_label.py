@@ -26,7 +26,7 @@ class PixaromaLabel:
     # execution also stops ComfyUI from drawing an "X.Xs" timing badge
     # above the node every run, which looks weird on what is just a
     # styled text caption.
-    CATEGORY = "👑 Pixaroma"
+    CATEGORY = "👑 Pixaroma/📝 Notes & Overlay"
 
     def noop(self, label_json):
         return {}

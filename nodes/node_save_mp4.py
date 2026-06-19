@@ -130,7 +130,7 @@ class PixaromaSaveMp4:
     RETURN_TYPES = ()
     FUNCTION = "save"
     OUTPUT_NODE = True
-    CATEGORY = "👑 Pixaroma"
+    CATEGORY = "👑 Pixaroma/🖼️ Image"
 
     def save(self, video_frames, fps, filename_prefix, save_mode, trim_to_audio, audio=None):
         if video_frames is None or video_frames.shape[0] == 0:

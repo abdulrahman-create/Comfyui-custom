@@ -31,7 +31,7 @@ _ANCHOR_ROWS = {
 
 
 class PixaromaTextWatermark:
-    CATEGORY = "👑 Pixaroma"
+    CATEGORY = "👑 Pixaroma/📝 Notes & Overlay"
     DESCRIPTION = (
         "Stamps a styled text watermark onto an image or a whole batch. Pick a "
         "9-point anchor (corner, edge or center) plus a margin inset and the "

@@ -61,7 +61,7 @@ class PixaromaFindReplace:
         "The text after all your find/replace rules (and Tidy) are applied.",
     )
     FUNCTION = "apply"
-    CATEGORY = "👑 Pixaroma"
+    CATEGORY = "👑 Pixaroma/💬 Prompt & Text"
     OUTPUT_NODE = True
 
     def apply(self, text, FindReplaceState="{}"):

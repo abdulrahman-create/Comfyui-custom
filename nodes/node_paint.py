@@ -40,7 +40,7 @@ class PixaromaPaint:
     RETURN_NAMES = ("image", "width", "height")
     OUTPUT_TOOLTIPS = ("The painted image.", "Image width in pixels.", "Image height in pixels.")
     FUNCTION = "load_painting"
-    CATEGORY = "👑 Pixaroma"
+    CATEGORY = "👑 Pixaroma/🎨 Editors"
     OUTPUT_NODE = True
 
     @classmethod

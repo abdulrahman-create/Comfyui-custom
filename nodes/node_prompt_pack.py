@@ -41,7 +41,7 @@ class PixaromaPromptPack:
     RETURN_NAMES = ("text",)
     OUTPUT_TOOLTIPS = ("The current prompt for this queue run (one prompt from the block). Wire to CLIP Text Encode.",)
     FUNCTION = "build"
-    CATEGORY = "👑 Pixaroma"
+    CATEGORY = "👑 Pixaroma/💬 Prompt & Text"
 
     @classmethod
     def IS_CHANGED(cls, PromptPackState="{}", **kwargs):

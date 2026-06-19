@@ -82,7 +82,7 @@ class PixaromaUncrop:
         "another node without re-routing the wire from Image Crop.",
     )
     FUNCTION = "uncrop"
-    CATEGORY = "👑 Pixaroma"
+    CATEGORY = "👑 Pixaroma/✂️ Resize & Crop"
 
     # ─────────────────────────────────────────────────────────────────────────
 

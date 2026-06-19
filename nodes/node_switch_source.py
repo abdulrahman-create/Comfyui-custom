@@ -70,7 +70,7 @@ class PixaromaSwitchSource:
         for i in range(1, MAX_ROWS + 1)
     )
     FUNCTION = "pick"
-    CATEGORY = "👑 Pixaroma"
+    CATEGORY = "👑 Pixaroma/🔀 Logic & Flow"
 
     def pick(self, SwitchSourceState=_DEFAULT_STATE, **kwargs):
         active = "A"

@@ -18,7 +18,7 @@ from ._text_render_helpers import render_text_layer, compute_text_bbox
 
 
 class PixaromaTextOverlay:
-    CATEGORY = "👑 Pixaroma"
+    CATEGORY = "👑 Pixaroma/📝 Notes & Overlay"
     DESCRIPTION = (
         "Adds a single styled text overlay on top of an input image. "
         "Tune font, size, weight, italic, alignment, line height, letter "

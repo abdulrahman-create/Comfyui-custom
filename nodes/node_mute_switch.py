@@ -67,7 +67,7 @@ class PixaromaMuteSwitch:
     )
     FUNCTION = "noop"
     OUTPUT_NODE = True
-    CATEGORY = "👑 Pixaroma"
+    CATEGORY = "👑 Pixaroma/🔀 Logic & Flow"
 
     def noop(self, **kwargs):
         # All muting happens in the JS frontend BEFORE this node is reached.

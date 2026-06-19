@@ -14,7 +14,7 @@ class Pixaroma3D:
             "optional": FlexibleOptionalInputType(any_type),
         }
 
-    CATEGORY = "👑 Pixaroma"
+    CATEGORY = "👑 Pixaroma/🎨 Editors"
     RETURN_TYPES = ("IMAGE", "INT", "INT")
     RETURN_NAMES = ("image", "width", "height")
     OUTPUT_TOOLTIPS = ("The rendered 3D scene.", "Image width in pixels.", "Image height in pixels.")

@@ -138,7 +138,7 @@ class PixaromaAudioStudio:
         "Frames per second of the render.",
     )
     FUNCTION = "generate"
-    CATEGORY = "👑 Pixaroma"
+    CATEGORY = "👑 Pixaroma/🎨 Editors"
 
     def generate(self, studio_json="{}", image=None, audio=None):
         try:

@@ -360,7 +360,7 @@ class PixaromaXYPlot:
     OUTPUT_TOOLTIPS = ("The assembled comparison grid. During a plot it's the grid built so far; after the last cell it's complete. Wire it onward (e.g. to upscale or save) if you like.",)
     FUNCTION = "execute"
     OUTPUT_NODE = True
-    CATEGORY = "👑 Pixaroma"
+    CATEGORY = "👑 Pixaroma/🔀 Logic & Flow"
 
     @classmethod
     def IS_CHANGED(cls, **kwargs):
