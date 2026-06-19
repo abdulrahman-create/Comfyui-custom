@@ -130,7 +130,7 @@ function setupNode(node) {
 
   const measureHeight = () => WIDGET_H;
 
-  const _plWidget = node.addDOMWidget("pixaroma_portrait_landscape_ui", "custom", root, {
+  const _plWidget = node.addDOMWidget("pixaroma_portrait_landscape_ui", "pixaroma_portrait_landscape", root, {
     // canvasOnly set adaptively below (CLAUDE.md Nodes 2.0): true in legacy
     // (out of the Parameters tab), false in Nodes 2.0 (renders in Vue body).
     getValue: () => null,
