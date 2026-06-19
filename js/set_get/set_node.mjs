@@ -37,16 +37,19 @@ export function registerPixaromaSetNode() {
       // isVirtualNode → pruned from the prompt; resolved on the frontend only.
       this.isVirtualNode = true;
       this.serialize_widgets = true;
-      // comfyClass lets the Help (?) selection-toolbar button find our help
-      // (convention #16) - virtual nodes have no Python class, so we set it.
+      // comfyClass lets the Help (?) toolbar button find our help (convention
+      // #16). ComfyUI sets it on the def class it generates from node_set_get.py,
+      // but registerCustomNodes replaces that class with this one, so we set it
+      // here too.
       this.comfyClass = SET_TYPE;
 
       this.properties = this.properties || {};
       if (this.properties.previousName == null) this.properties.previousName = "";
 
-      // Brand dark defaults (beforeRegisterNodeDef in js/brand/index.js only
-      // fires for Python-backed nodes, so a virtual node sets them itself).
-      // Guarded so workflow-restore + right-click → Colors still win.
+      // Brand dark defaults. js/brand/index.js applies these via
+      // beforeRegisterNodeDef, but that runs on ComfyUI's generated def class
+      // which we replace with this one, so we set them here too. Guarded so
+      // workflow-restore + right-click Colors still win.
       if (!this.color) this.color = BRAND_TITLE;
       if (!this.bgcolor) this.bgcolor = BRAND_BODY;
 
