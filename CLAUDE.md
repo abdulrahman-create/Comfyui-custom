@@ -1458,14 +1458,14 @@ After major changes, please update this file (@CLUADE.me). Keep this file up-to-
 
 ## Git Workflow
 
-Home is now **GitLab** (`gitlab.com/pixaroma/comfyui-pixaroma`); the GitHub remote is suspended, so "push" means GitLab. The user develops on a working branch (historically `Ioan`, integrated to `main` for releases). Confirm the current branch with `git branch --show-current` rather than assuming.
+Home is **GitLab** (`gitlab.com/pixaroma/comfyui-pixaroma`); `origin` = GitLab is the home and the sole publisher, so "push" means GitLab. **The user works directly on `main` now.** The old `Ioan` working branch was retired (June 2026): the local `Ioan` was deleted and GitLab keeps a frozen `origin/Ioan` purely as a backup. A "Ioan is stale" note in `git status` is just that old remote branch sitting behind `main` - it is harmless and NOT a sync problem (what matters, local `main` == `origin/main`, stays in sync). Confirm the current branch with `git branch --show-current` rather than assuming.
 
 1. **Local commits (default, no confirmation needed):** after any working change, make a small local checkpoint commit. The user relies on these to roll back (`git stash`, `git reset --hard HEAD~1`, `git checkout <sha>`).
 2. **Push (only when the user explicitly asks)** ("push to gitlab", "push it", "release it"). Never push proactively.
 
 **Pattern:** edit → verify it works → `git add -A && git commit -m "scope: description"` (local). Keep commits small and focused. Never amend a pushed commit; amend local-only WIP freely. If work breaks, roll back to the previous checkpoint.
 
-**Release** is an explicit user trigger ("release it" / "publish new version"): bump the `pyproject.toml` version, merge the working branch to `main`, push to GitLab → CI publishes to the Comfy Registry. Add a README changelog entry (one entry per day, plain language).
+**Release** is an explicit user trigger ("release it" / "publish new version"): bump the `pyproject.toml` version (+1 patch), add a README changelog entry (one entry per day, plain language), commit, and push `main` to GitLab → CI publishes to the Comfy Registry. (No more merge-from-Ioan step; releases are entirely on `main`.)
 
 ## Publishing
 The plugin auto-publishes to the ComfyUI Registry via **GitLab CI** (`.gitlab-ci.yml` + the `REGISTRY_ACCESS_TOKEN` CI variable) when a version bump lands on GitLab `main`. (The legacy `.github/workflows/publish.yml` is inactive; GitHub is suspended.) During normal work do NOT modify `pyproject.toml`, `LICENSE`, `.clauderules`, `.gitlab-ci.yml`, or `.github/workflows/publish.yml`. The ONE exception is an explicit release, where bumping the `pyproject.toml` version is exactly how a release is cut.
