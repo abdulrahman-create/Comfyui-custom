@@ -26,10 +26,14 @@ def _resolve_ffmpeg():
     if on_path:
         return on_path
     raise RuntimeError(
-        "[Pixaroma] Save Mp4 — ffmpeg binary not found.\n"
-        "   Install one of:\n"
-        "     pip install imageio-ffmpeg     (recommended, no system install)\n"
-        "     https://ffmpeg.org/download.html  (system-wide)\n"
+        "[Pixaroma] Save Mp4: ffmpeg was not found, and it is needed to make the video.\n"
+        "   Easiest fix is to install imageio-ffmpeg (a bundled ffmpeg, no system setup):\n"
+        "     Portable ComfyUI (Windows) - run this in your ComfyUI folder\n"
+        "       (the one that holds the python_embeded folder):\n"
+        "         python_embeded\\python.exe -m pip install imageio-ffmpeg\n"
+        "     Or in ComfyUI Manager, use its pip install option and enter: imageio-ffmpeg\n"
+        "     Your own Python (venv/conda): pip install imageio-ffmpeg\n"
+        "   Or install ffmpeg system-wide from https://ffmpeg.org/download.html\n"
     )
 
 

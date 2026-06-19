@@ -637,10 +637,15 @@ const HELP = {
       },
       {
         heading: "Requirements",
-        body: "Install imageio-ffmpeg (`pip install imageio-ffmpeg`) for a bundled ffmpeg with no system setup. Width and height must both be even numbers.",
+        body: "Save Mp4 needs a free tool called ffmpeg to turn the frames into a video. Most ComfyUI setups already have it (for example if the Video Helper Suite nodes are installed), so usually there is nothing to install. One rule: the frame width and height must both be even numbers, and the node shows a clear message instead of crashing if they are odd.\n\nOnly if you see an \"ffmpeg not found\" message, add it one of these ways:",
+        bullets: [
+          "Easiest: in ComfyUI Manager, open its pip install option and enter `imageio-ffmpeg`.",
+          "Portable ComfyUI (Windows): open a command window in your ComfyUI folder (the one that holds the `python_embeded` folder) and run `python_embeded\\python.exe -m pip install imageio-ffmpeg`.",
+          "Installed with your own Python (venv or conda): activate that environment and run `pip install imageio-ffmpeg`.",
+        ],
       },
     ],
-    footer: "This is a terminal save node - it has no outputs.",
+    footer: "This is a terminal save node, it has no outputs.",
   },
 
   "PixaromaImageResize": {
