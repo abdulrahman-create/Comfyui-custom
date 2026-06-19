@@ -16,6 +16,7 @@
 
 import { app } from "/scripts/app.js";
 import { applyAdaptiveCanvasOnly } from "../shared/index.mjs";
+import { isGraphLoading } from "../shared/graph_loading.mjs";
 import { SET_TYPE, GET_TYPE, getLink, findSetterByName } from "./scope.mjs";
 
 const SIMPLE_TYPES = new Set(["INT", "FLOAT", "NUMBER", "STRING", "BOOLEAN", "BOOL"]);
@@ -51,11 +52,24 @@ function injectCSS() {
   document.head.appendChild(el);
 }
 
+// Round half to even, matching Python's round() (and Number Pixaroma's int
+// output), so an INT-typed preview reads the same as the real value.
+function bankersRound(v) {
+  if (Math.abs(v - Math.trunc(v)) === 0.5) {
+    const f = Math.floor(v);
+    return f % 2 === 0 ? f : f + 1;
+  }
+  return Math.round(v);
+}
+
 function fmt(v, type) {
   if (v == null) return null;
   if (typeof v === "boolean") return v ? "true" : "false";
   if (typeof v === "number") {
     if (!isFinite(v)) return String(v);
+    // An INT-typed slot emits a whole number even when the source widget holds
+    // a decimal (e.g. Number Pixaroma 5.5 -> its int output is 6), so round.
+    if (String(type).toUpperCase() === "INT") return String(bankersRound(v));
     if (Number.isInteger(v)) return String(v);
     return String(+v.toFixed(4));
   }
@@ -155,6 +169,23 @@ export function ensureValueWidget(node) {
   }
 }
 
+// Legacy only: the node frame is drawn at node.size and does NOT auto-grow when
+// the readout row appears/disappears, so the "= 81" line would spill below the
+// frame. Refit the node to its content on toggle. Vue's node grid grows on its
+// own. Never resize during a load (would dirty the saved workflow, Vue Compat
+// #18).
+function fitNodeForReadout(node) {
+  if (window.LiteGraph?.vueNodesMode) return;
+  try {
+    if (isGraphLoading()) return;
+  } catch {
+    /* ignore */
+  }
+  const want = node.computeSize?.();
+  if (!want) return;
+  node.setSize?.([node.size?.[0] || want[0], want[1]]);
+}
+
 // Recompute + repaint the readout for one node. Cheap; safe to call often.
 export function refreshValue(node) {
   const el = node._pixSgValEl;
@@ -172,6 +203,7 @@ export function refreshValue(node) {
   node._pixSgValShown = show;
   el.dataset.v = show ? val : "";
   el.style.display = show ? "block" : "none";
+  if (show !== prevShown) fitNodeForReadout(node);
   if (show !== prevShown || (show && val !== prevVal)) {
     node.setDirtyCanvas?.(true, true);
   }
