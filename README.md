@@ -102,6 +102,9 @@ Point it at any folder on your computer and batch-process its images through you
 ### ↔️ Image Resize Pixaroma
 Resize any image (and its mask) anywhere in your workflow with one compact node. Pick a mode - **Off**, **Max megapixels**, **Longest side**, **Scale by ×**, **Fit inside**, **Crop to fill**, **Match aspect ratio**, or **Pad** (add a colored border for outpainting / inpainting, where the new area becomes the editable mask region). **Crop to fill** has a 9-point **anchor** (keep the top, a corner, the center…) and a **Fill / Crop** toggle (scale-and-crop, or cut a piece at original pixels). A live **Input → Output** card with tiny aspect-ratio rectangles shows exactly what you'll get, and turns orange only when the size actually changes. Wire a **width / height** in (e.g. from Resolution Pixaroma): connect just one to scale while keeping the aspect ratio, or both for an exact size, and the controls adapt automatically. **Snap to /8/16/32/64**, a **Resample picker** (Auto / Nearest / Bilinear / Bicubic / Lanczos), and an **Allow upscaling** toggle apply on top; number fields take math like `1024+64`. Outputs `IMAGE`, `MASK`, `WIDTH`, `HEIGHT`.
 
+### 🔲 Resize Crop Pixaroma
+A dead-simple crop-to-fill node. Wire in an image, set a **width** and **height** (type them, or wire them in from another node like WH or Resolution Pixaroma), and it scales the image to completely fill that size and crops the overflow from the center - so the output is **always exactly** the size you asked for, with no stretching or black bars. Smaller images scale up to fill. An optional **mask** is cropped along with it. Outputs `IMAGE`, `MASK`, `WIDTH`, `HEIGHT`. Perfect for forcing images or video frames to a fixed size like 512×896 or 704×1280. Works in both the classic and the new node interface.
+
 ### 📝 Note Pixaroma
 A beautiful, simple text editor to document your workflows right on the canvas. Write normally with bold, italics, lists, headings, code blocks (with copy button), and inline icons (CLIP, LORA, GGUF, model versions, and 30+ more). Drop in custom-colored **buttons** (Download / View Page / Read More / plain), **separators** (5 line styles: solid, dashed, dotted, double, thick), **tables**, and **folder hints** for download paths. Each block carries its OWN colour, picked from a clean modal that opens centered on the screen, so two separators (or two grids, or two folder hints) in the same note can have totally different looks. YouTube and Discord pills come pre-colored. There is also a Code view for hand-editing the underlying HTML, plus a drop-in LLM prompt at `assets/note-pixaroma-llm-prompt.txt` if you want ChatGPT, Gemini, or a custom GPT to generate notes for you. It perfectly saves and restores exactly how you styled it.
 
@@ -159,6 +162,9 @@ A universal multi-input switch for any data type. Connect models, images, prompt
 
 ### 🔀 Switch WH Pixaroma
 Switch between two width/height sources with a single click. Wire two width+height pairs into the **A** and **B** inputs (for example a Load Image Pixaroma's WIDTH/HEIGHT and a manual size from WH Pixaroma), then click **A** or **B** on the node body to choose which pair flows through. No rewiring cables. If one side has only one cable connected (the other forgotten), the node uses the complete side instead so the workflow doesn't break. If nothing is wired, you get a clear error message.
+
+### 🔄 Portrait Landscape Pixaroma
+Flip a size between portrait (tall) and landscape (wide) with one click. Enter your two dimensions (or wire them in), then tap **Portrait** or **Landscape** - Portrait makes the smaller number the width (a tall image), Landscape makes the larger number the width (a wide image), so the order you type them never matters. One node replaces keeping two WH nodes and a Switch WH just to flip orientation. Outputs `WIDTH`, `HEIGHT` - wire them straight into an empty latent. Works in both the classic and the new node interface.
 
 ### 🔁 Switch Source Pixaroma
 Flip a whole pipeline (or any set of wires) between two sources with one click. Wire your **A** bank and **B** bank for as many rows as you need (works for any wire type: MODEL, CLIP, VAE, IMAGE, LATENT, STRING...), then toggle **A** or **B** to swap them all at once - no rewiring cables. Two common setups: swap a combined Load Checkpoint against three separate model/CLIP/VAE loaders, or flip a "local" pipeline against an "api" one without ticking ten little switches. Output labels are editable per row, and you can pick whether empty rows leave the output blank or show a clear error.
@@ -279,6 +285,11 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 ---
 
 ## 🛠 Changelog
+
+### **June 19, 2026 · v1.3.95**
+- **NEW: Resize Crop Pixaroma** - a dead-simple crop-to-fill node. Set a width and height (type them or wire them in), and it scales your image to completely fill that size and trims the overflow from the center - so the result is always exactly the size you asked for, with no stretching or black bars. Smaller images scale up to fill, and an optional mask is cropped along with it. Great for forcing images or video frames to a fixed size like 512×896 or 704×1280.
+- **NEW: Portrait Landscape Pixaroma** - flip a size between portrait (tall) and landscape (wide) with one click. Type your two numbers, tap **Portrait** or **Landscape**, and it arranges them into the orientation you picked (the order you type them never matters). One node replaces keeping two WH nodes and a switch just to flip orientation.
+- **Tidier menu** - the Pixaroma nodes are now sorted into folders (Editors, Image, Resize & Crop, Prompt & Text, Notes & Overlay, Values, Logic & Flow) instead of one long list, so they're easier to find. Your existing workflows are unaffected.
 
 ### **June 17, 2026 · v1.3.93-1.3.94**
 - **NEW: Seed Pixaroma** - a dedicated seed node you wire into KSampler (or any node with a seed input). Flip between **Random** (a fresh seed every run) and **Fixed** (the same seed for repeatable results), hit **New fixed random** to lock in a lucky roll, **Use last seed** to bring back the previous run's seed, or **Copy** to grab the number. One Seed node can feed several samplers so they all stay in sync. Works in both the classic and the new node interface.
