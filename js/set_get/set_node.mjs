@@ -19,7 +19,7 @@ import {
   refreshAllGetCombos,
   pasteRenameMap,
 } from "./scope.mjs";
-import { ensureValueWidget, refreshValue } from "./value_preview.mjs";
+import { ensureValueWidget, refreshValue, paintReadout } from "./value_preview.mjs";
 
 const BRAND_TITLE = "#1d1d1d"; // matches js/brand/index.js (auto-applied to Python nodes; we set it here)
 const BRAND_BODY = "#2a2a2a";
@@ -74,6 +74,11 @@ export function registerPixaromaSetNode() {
     refreshTitle() {
       const v = this.widgets?.[0]?.value;
       this.title = v ? `Set: ${v}` : "Set Pixaroma";
+    }
+
+    onDrawForeground(ctx) {
+      super.onDrawForeground?.(ctx);
+      paintReadout(this, ctx);
     }
 
     onConnectionsChange(slotType, slot, isConnect, link_info) {

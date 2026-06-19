@@ -22,7 +22,7 @@ import {
   getVisibleSetNames,
   pasteRenameMap,
 } from "./scope.mjs";
-import { ensureValueWidget, refreshValue } from "./value_preview.mjs";
+import { ensureValueWidget, refreshValue, paintReadout } from "./value_preview.mjs";
 
 const BRAND_TITLE = "#1d1d1d";
 const BRAND_BODY = "#2a2a2a";
@@ -105,6 +105,11 @@ export function registerPixaromaGetNode() {
       };
 
       this.addOutput("*", "*");
+    }
+
+    onDrawForeground(ctx) {
+      super.onDrawForeground?.(ctx);
+      paintReadout(this, ctx);
     }
 
     onConnectionsChange() {

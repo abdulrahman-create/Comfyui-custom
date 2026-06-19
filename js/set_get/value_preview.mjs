@@ -11,8 +11,10 @@
 // etc.) there is no frontend-knowable value, so we show nothing. A light poll
 // keeps it live when the user edits the upstream number.
 //
-// One DOM widget per node (adaptive canvasOnly so it renders in both Classic and
-// Nodes 2.0). It collapses to zero height when there is nothing to show.
+// Rendering is per-renderer so the line sits tight under the name field:
+//   - Classic (LiteGraph): PAINTED in onDrawForeground at the bottom of the
+//     node body (node grows by one row when shown). Gives exact positioning.
+//   - Nodes 2.0 (Vue): a DOM element row (the grid lays it out tightly).
 
 import { app } from "/scripts/app.js";
 import { applyAdaptiveCanvasOnly } from "../shared/index.mjs";
@@ -22,6 +24,10 @@ import { SET_TYPE, GET_TYPE, getLink, findSetterByName } from "./scope.mjs";
 const SIMPLE_TYPES = new Set(["INT", "FLOAT", "NUMBER", "STRING", "BOOLEAN", "BOOL"]);
 const CSS_ID = "pix-setget-css";
 const ROW_H = 18;
+
+function isVue() {
+  return !!window.LiteGraph?.vueNodesMode;
+}
 
 export function isSimpleType(t) {
   return typeof t === "string" && SIMPLE_TYPES.has(t.toUpperCase());
@@ -95,8 +101,15 @@ function readPrimitiveWidget(node, type) {
     if (wantNum && typeof val === "string" && val.trim() !== "" && !isNaN(+val)) return +val;
     if (!wantNum && !wantBool && typeof val === "string") return val;
   }
-  const first = node.widgets[0]?.value;
-  return first != null && typeof first !== "object" ? first : null;
+  // No widget matched the wanted kind. For numeric / boolean slots do NOT fall
+  // back to an unrelated widget: a math node's formula text "a + b" is not its
+  // computed value (7), so showing it would mislead. Only STRING falls back to
+  // the first text widget.
+  if (!wantNum && !wantBool) {
+    const first = node.widgets[0]?.value;
+    return typeof first === "string" ? first : null;
+  }
+  return null;
 }
 
 // Follow virtual reroute-like nodes (Reroute, our own Get) up to a real source.
@@ -142,10 +155,11 @@ export function deriveGetValue(getNode) {
   return setter ? deriveSetValue(setter.node) : null;
 }
 
-// Create the (always-present, height-toggling) readout widget once. Called from
-// onAdded (node is in the graph by then, so addDOMWidget is reliable) and
-// failure-tolerant so a DOM hiccup can never block node creation.
+// Nodes 2.0 only: create the DOM element row once (the Vue grid lays it out
+// tightly under the name). Classic paints instead, so it makes no DOM widget.
+// Failure-tolerant so a DOM hiccup can never block node creation.
 export function ensureValueWidget(node) {
+  if (!isVue()) return null;
   if (node._pixSgValEl) return node._pixSgValEl;
   try {
     injectCSS();
@@ -157,8 +171,6 @@ export function ensureValueWidget(node) {
       getMinHeight: () => (node._pixSgValShown ? ROW_H : 0),
       getMaxHeight: () => (node._pixSgValShown ? ROW_H : 0),
     });
-    // Drives the legacy (canvas) layout; 0 height when hidden so it reserves
-    // nothing on a name-only node.
     w.computeSize = () => [node.size?.[0] || 140, node._pixSgValShown ? ROW_H : 0];
     applyAdaptiveCanvasOnly(w);
     node._pixSgValEl = el;
@@ -169,27 +181,47 @@ export function ensureValueWidget(node) {
   }
 }
 
-// Legacy only: the node frame is drawn at node.size and does NOT auto-grow when
-// the readout row appears/disappears, so the "= 81" line would spill below the
-// frame. Refit the node to its content on toggle. Vue's node grid grows on its
-// own. Never resize during a load (would dirty the saved workflow, Vue Compat
-// #18).
+// Classic only: paint "= value" in the reserved strip at the bottom of the node
+// body, right under the name field. Vue uses the DOM element instead. Called
+// from each node's onDrawForeground.
+export function paintReadout(node, ctx) {
+  if (isVue() || node.flags?.collapsed) return;
+  if (!node._pixSgValShown || !node._pixSgValText || !ctx) return;
+  const w = node.size?.[0] || 0;
+  const h = node.size?.[1] || 0;
+  if (w <= 0 || h <= 0) return;
+  ctx.save();
+  // Clip to the bottom strip so a long value never spills sideways.
+  ctx.beginPath();
+  ctx.rect(0, h - ROW_H, w, ROW_H);
+  ctx.clip();
+  ctx.fillStyle = "rgba(255, 255, 255, 0.55)";
+  ctx.font = "11px monospace";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "alphabetic";
+  ctx.fillText("= " + node._pixSgValText, 12, h - 6);
+  ctx.restore();
+}
+
+// Classic only: the node frame is drawn at node.size and does NOT auto-grow,
+// so reserve one row for the painted readout when it is shown (and release it
+// when hidden). Vue's grid grows on its own. Never resize during a load (would
+// dirty the saved workflow, Vue Compat #18).
 function fitNodeForReadout(node) {
-  if (window.LiteGraph?.vueNodesMode) return;
+  if (isVue()) return;
   try {
     if (isGraphLoading()) return;
   } catch {
     /* ignore */
   }
-  const want = node.computeSize?.();
-  if (!want) return;
-  node.setSize?.([node.size?.[0] || want[0], want[1]]);
+  const base = node.computeSize?.();
+  if (!base) return;
+  const extra = node._pixSgValShown ? ROW_H : 0;
+  node.setSize?.([node.size?.[0] || base[0], base[1] + extra]);
 }
 
-// Recompute + repaint the readout for one node. Cheap; safe to call often.
+// Recompute the readout for one node. Cheap; safe to call often.
 export function refreshValue(node) {
-  const el = node._pixSgValEl;
-  if (!el) return;
   let val = null;
   try {
     val = node.type === SET_TYPE ? deriveSetValue(node) : deriveGetValue(node);
@@ -198,20 +230,24 @@ export function refreshValue(node) {
   }
   const show = val != null && val !== "";
   const prevShown = !!node._pixSgValShown;
-  const prevVal = el.dataset.v ?? "";
-  if (show && val !== prevVal) el.textContent = "= " + val;
+  const prevText = node._pixSgValText || "";
   node._pixSgValShown = show;
-  el.dataset.v = show ? val : "";
-  el.style.display = show ? "block" : "none";
-  if (show !== prevShown) fitNodeForReadout(node);
-  if (show !== prevShown || (show && val !== prevVal)) {
-    node.setDirtyCanvas?.(true, true);
+  node._pixSgValText = show ? val : "";
+
+  // Nodes 2.0: update the DOM element (created only in Vue mode).
+  const el = node._pixSgValEl;
+  if (el) {
+    if (show && val !== prevText) el.textContent = "= " + val;
+    el.style.display = show ? "block" : "none";
   }
+
+  if (show !== prevShown) fitNodeForReadout(node);
+  if (show !== prevShown || val !== prevText) node.setDirtyCanvas?.(true, true);
 }
 
 // Single shared poll: keeps readouts live when the user edits an upstream
-// number. Only touches expanded Set/Get nodes that already have a readout, in
-// the currently-viewed graph, and only repaints on a real change.
+// number. Only touches expanded Set/Get nodes in the currently-viewed graph,
+// and only repaints on a real change.
 let _poll = null;
 export function startValuePoll() {
   if (_poll) return;
@@ -219,7 +255,7 @@ export function startValuePoll() {
     const g = app.canvas?.graph || app.graph;
     if (!g?._nodes) return;
     for (const n of g._nodes) {
-      if ((n.type === SET_TYPE || n.type === GET_TYPE) && !n.flags?.collapsed && n._pixSgValEl) {
+      if ((n.type === SET_TYPE || n.type === GET_TYPE) && !n.flags?.collapsed) {
         refreshValue(n);
       }
     }
