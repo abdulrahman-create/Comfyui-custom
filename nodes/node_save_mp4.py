@@ -261,10 +261,17 @@ class PixaromaSaveMp4:
                 stdout=subprocess.DEVNULL,
             )
         except Exception:
-            # Popen failed (e.g. ffmpeg vanished) - don't leak the temp WAV.
+            # Popen failed (e.g. ffmpeg vanished). Don't leak the temp WAV, and
+            # remove the 0-byte output file we already claimed (O_EXCL) so
+            # output/ has no junk and the counter doesn't drift.
             if temp_audio_path is not None and os.path.exists(temp_audio_path):
                 try:
                     os.remove(temp_audio_path)
+                except OSError:
+                    pass
+            if os.path.exists(out_path):
+                try:
+                    os.remove(out_path)
                 except OSError:
                     pass
             raise
