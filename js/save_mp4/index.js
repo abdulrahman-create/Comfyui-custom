@@ -256,6 +256,13 @@ app.registerExtension({
         if (video.paused) video.play().catch(() => {});
         else video.pause();
       });
+      // Click anywhere on the picture to play / pause too (like a video player).
+      media.addEventListener("click", (e) => {
+        if (!video.src) return;
+        e.stopPropagation();
+        if (video.paused) video.play().catch(() => {});
+        else video.pause();
+      });
       // Fullscreen (native; falls back to the webkit prefix on old Safari).
       fsBtn.addEventListener("click", (e) => {
         e.stopPropagation();
