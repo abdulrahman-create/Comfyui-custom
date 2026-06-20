@@ -762,22 +762,22 @@ async def load_video_upload(request):
     preview can fetch it via /view?type=input. Mirrors the audio_studio upload
     pattern: extension allow-list, size cap, path-traversal-safe target."""
     reader = await request.multipart()
-    file_bytes = None
-    file_filename = None
+    # Find the 'file' part. Validate its name/extension BEFORE reading the body
+    # so the file streams straight to disk with an incremental size cap, instead
+    # of buffering the whole upload (up to 1 GB) in memory first.
+    field = None
     while True:
-        field = await reader.next()
-        if field is None:
+        f = await reader.next()
+        if f is None:
             break
-        if field.name == "file":
-            file_filename = field.filename or ""
-            file_bytes = await field.read(decode=False)
+        if f.name == "file":
+            field = f
+            break
 
-    if not file_bytes or not file_filename:
+    if field is None or not field.filename:
         return web.json_response({"error": "file field is missing."}, status=400)
-    if len(file_bytes) > _LOAD_VIDEO_MAX_BYTES:
-        return web.json_response({"error": "file too large (over 1 GB)."}, status=400)
 
-    base = os.path.basename(file_filename.replace("\\", "/"))
+    base = os.path.basename(field.filename.replace("\\", "/"))
     stem, ext = os.path.splitext(base)
     ext = ext.lower().lstrip(".")
     if ext not in _LOAD_VIDEO_UPLOAD_EXTS:
@@ -799,8 +799,41 @@ async def load_video_upload(request):
         candidate = f"{stem}_{n}.{ext}"
         n += 1
 
-    with open(target, "wb") as fh:
-        fh.write(file_bytes)
+    def _rm_target():
+        try:
+            os.remove(target)
+        except OSError:
+            pass
+
+    # Stream chunks to disk, enforcing the cap as we go; clean up the partial
+    # file on overflow or any write error so input/pixaroma never accumulates
+    # half-written uploads.
+    written = 0
+    too_big = False
+    try:
+        with open(target, "wb") as fh:
+            while True:
+                chunk = await field.read_chunk(262144)  # 256 KB
+                if not chunk:
+                    break
+                written += len(chunk)
+                if written > _LOAD_VIDEO_MAX_BYTES:
+                    too_big = True
+                    break
+                fh.write(chunk)
+    except Exception as e:
+        _rm_target()
+        print(f"[Pixaroma] Load Video — upload write failed: {e}")
+        return web.json_response(
+            {"error": "could not save the uploaded file."}, status=500,
+        )
+
+    if too_big:
+        _rm_target()
+        return web.json_response({"error": "file too large (over 1 GB)."}, status=400)
+    if written == 0:
+        _rm_target()
+        return web.json_response({"error": "the uploaded file was empty."}, status=400)
 
     return web.json_response({
         "name": f"pixaroma/{candidate}",  # combo value, relative to input/

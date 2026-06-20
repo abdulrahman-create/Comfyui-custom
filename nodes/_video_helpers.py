@@ -14,6 +14,7 @@ runs and no backend is available.
 import os
 import shutil
 import subprocess
+import tempfile
 import uuid
 import wave
 
@@ -228,6 +229,10 @@ def _decode_imageio(path, force_fps, skip_first, every_nth, max_frames, custom_w
                 a = np.asarray(fr)
                 if a.ndim == 2:  # grayscale -> RGB
                     a = np.stack([a, a, a], axis=-1)
+                elif a.shape[-1] == 1:  # single channel with axis
+                    a = np.repeat(a, 3, axis=-1)
+                elif a.shape[-1] == 2:  # gray + alpha -> replicate gray
+                    a = np.repeat(a[..., :1], 3, axis=-1)
                 yield a[..., :3]
 
         out, out_fps = _collect(
@@ -280,10 +285,16 @@ def decode(path, *, max_frames=0, force_fps=0.0, skip_first=0,
         )
 
     if not out:
+        if skip_first > 0 or every_nth > 1:
+            raise ValueError(
+                f"[Pixaroma] Load Video — the trim settings removed every frame "
+                f"of {os.path.basename(path)} (skip first = {skip_first}, every "
+                f"Nth = {every_nth}). Lower them and try again."
+            )
         raise ValueError(
             f"[Pixaroma] Load Video — no frames could be read from "
-            f"{os.path.basename(path)}. The file may be corrupt, or the trim "
-            f"settings (skip / every-Nth) skipped every frame."
+            f"{os.path.basename(path)}. The file may be corrupt or in an "
+            f"unsupported format."
         )
 
     frames_np = np.stack(out, axis=0).astype(np.float32) / 255.0
@@ -315,7 +326,7 @@ def extract_audio(path):
         except Exception:
             temp_dir = None
     if not temp_dir:
-        temp_dir = os.path.dirname(path) or "."
+        temp_dir = tempfile.gettempdir() or os.path.dirname(path) or "."
     try:
         os.makedirs(temp_dir, exist_ok=True)
     except OSError:
@@ -341,7 +352,11 @@ def extract_audio(path):
         if n_ch <= 0 or sr <= 0 or not raw:
             return None
         data = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
-        data = data.reshape(-1, n_ch).T  # (channels, samples)
+        # Guard a truncated WAV whose length isn't a clean multiple of channels.
+        usable = (data.shape[0] // n_ch) * n_ch
+        if usable == 0:
+            return None
+        data = data[:usable].reshape(-1, n_ch).T  # (channels, samples)
         waveform = torch.from_numpy(np.ascontiguousarray(data)).unsqueeze(0)  # (1, C, S)
         return {"waveform": waveform, "sample_rate": int(sr)}
     except Exception as e:

@@ -147,11 +147,22 @@ function setPreview(node) {
 // element is in the document, so getLiveVideo() is null and a direct setPreview
 // no-ops. Retry on animation frames until the element exists, then show it.
 function restorePreview(node, tries = 0) {
+  // Only one retry chain at a time — onNodeCreated AND onConfigure both kick
+  // this off for a saved/duplicated node, and two parallel rAF chains would
+  // race (harmless but wasteful). The flag serialises them.
+  if (tries === 0) {
+    if (node._pixLvRestoring) return;
+    node._pixLvRestoring = true;
+  }
   if (getLiveVideo(node)) {
+    node._pixLvRestoring = false;
     setPreview(node);
     return;
   }
-  if (tries >= 60) return; // ~1s; give up rather than loop forever
+  if (tries >= 60) { // ~1s; give up rather than loop forever
+    node._pixLvRestoring = false;
+    return;
+  }
   requestAnimationFrame(() => restorePreview(node, tries + 1));
 }
 
@@ -160,6 +171,9 @@ async function uploadVideo(node) {
   inp.type = "file";
   inp.accept = "video/*";
   inp.style.display = "none";
+  // Clean up the hidden input if the user dismisses the file dialog (otherwise
+  // onchange never fires and the element would linger in the DOM).
+  inp.addEventListener("cancel", () => inp.remove());
   inp.onchange = async () => {
     const file = inp.files?.[0];
     inp.remove();
@@ -389,7 +403,8 @@ app.registerExtension({
       // Refresh the preview whenever the user changes the selected video (drop-
       // down pick, prev/next arrow). Wrap the combo's own callback.
       const vw = this.widgets?.find((x) => x.name === "video");
-      if (vw) {
+      if (vw && !vw._pixLvWrapped) {
+        vw._pixLvWrapped = true;
         const origCb = vw.callback;
         vw.callback = function () {
           const r = origCb?.apply(this, arguments);
