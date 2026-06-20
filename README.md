@@ -127,8 +127,11 @@ Drop a styled text caption straight onto an image. 10 bundled fonts (Inter, Robo
 ### 💧 Text Watermark Pixaroma
 A no-editor sibling of Text Overlay built for stamping a watermark onto an image (or a whole batch). Pick a corner, edge, or center on a 3x3 grid plus a small margin, and the text lands in the same spot on every image regardless of size. Size the text as fixed pixels or as a percentage of the image width (so mixed-size batches stay consistent), with the same font / weight / color / opacity / rotation / background bar controls as Text Overlay. No fullscreen editor - everything's on the node body. Use it when you want a watermark, a date stamp, or a corner caption applied uniformly to many images.
 
+### 🎞️ Load Video Pixaroma
+Bring a video into ComfyUI and turn it into frames. Upload one from your computer or pick from the dropdown, and it **plays right on the node** so you can check it before running (click the picture to play / pause). It hands you the **frames, the audio, and the details** (frame count, fps, width, height, length) all at once, so you rarely need a separate info node. Control how much to load: cap the number of frames for long clips, skip frames off the start, force a steady frame rate, or resize each frame (**crop-to-fill** an exact size with no stretching). Pairs with **Save Mp4** - send the frames and audio straight across to rebuild the video.
+
 ### 🎬 Save Mp4 Pixaroma
-Encode video frames + optional audio straight to MP4. Built-in `<video>` preview right on the node so you can watch the result without leaving ComfyUI. Pairs with AudioReact, but works with any source that produces frames + AUDIO.
+Encode video frames + optional audio straight to MP4. Built-in `<video>` preview right on the node so you can watch the result without leaving ComfyUI (click the picture to play / pause). Pairs with AudioReact and Load Video, but works with any source that produces frames + AUDIO.
 
 ### 💬 Show Text Pixaroma
 See what text or data is flowing through your nodes, with a real read-only text box you can **select and copy** from. **Resize the node freely** in any direction; long text scrolls with a scrollbar instead of forcing the node to grow. New **STRING output** lets you chain it into other nodes (great for inspecting a prompt before passing it on). Saves and restores with your workflow.
@@ -288,6 +291,10 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 ---
 
 ## 🛠 Changelog
+
+### **June 20, 2026 · v1.3.99**
+- **NEW: Load Video Pixaroma** - load a video and turn it into frames. Upload one from your computer or pick from a dropdown, and it plays right on the node so you can check it before running (click the picture to play or pause). You get the frames, the audio, and the details (frame count, fps, width, height, length) all at once, so you rarely need a separate info node. Cap how many frames to load (a safety valve for long clips), skip frames off the start, force a steady frame rate, or resize each frame (crop-to-fill an exact size, no stretching). Pairs with Save Mp4 - wire the frames and audio across to rebuild the video. Works in both the classic and the new node interface.
+- **Save Mp4 improvements.** It now keeps every frame by default (the trim-to-audio option is off unless you turn it on), so a loaded video saves at its full length. Click anywhere on the preview to play or pause, not just the small button. And a video whose audio is a touch shorter than the picture (common with AI-generated clips) now saves cleanly instead of stopping with an error.
 
 ### **June 19, 2026 · v1.3.95-1.3.98**
 - **Save Mp4 preview, much improved.** The video preview no longer jumps to a giant size when you run, so it stops covering your other nodes. It keeps whatever size you set and you can drag it bigger or smaller freely. It now has its own playback bar **under** the video that's always there: play / pause, a draggable timeline, the time, a **Download** button to save the mp4 straight to your computer, and a fullscreen button. The ffmpeg setup note in the help is also clearer for beginners and portable installs.
