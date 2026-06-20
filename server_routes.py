@@ -757,10 +757,10 @@ _LOAD_VIDEO_MAX_BYTES = 1024 * 1024 * 1024  # 1 GB
 
 @PromptServer.instance.routes.post("/pixaroma/api/load_video/upload")
 async def load_video_upload(request):
-    """Save an uploaded video into input/pixaroma/ so the Load Video node can
-    pick it (the combo walks input/ recursively) and the in-node <video>
-    preview can fetch it via /view?type=input. Mirrors the audio_studio upload
-    pattern: extension allow-list, size cap, path-traversal-safe target."""
+    """Save an uploaded video into ComfyUI's input/ root (like native uploads)
+    so the Load Video node lists it by its plain name and any other node can
+    reuse it; the in-node <video> preview fetches it via /view?type=input.
+    Extension allow-list, streamed size cap, path-traversal-safe target."""
     reader = await request.multipart()
     # Find the 'file' part. Validate its name/extension BEFORE reading the body
     # so the file streams straight to disk with an incremental size cap, instead
@@ -786,18 +786,24 @@ async def load_video_upload(request):
         )
     stem = re.sub(r"[^A-Za-z0-9_\- ]", "_", stem).strip().strip(".") or "video"
 
-    # De-dup within input/pixaroma so a re-upload never overwrites a file the
-    # user might still be using elsewhere.
+    # Save into ComfyUI's input/ root (like native uploads) so the file is a
+    # first-class input: it shows by its plain name and any other node that
+    # lists input/ can reuse it. De-dup so a re-upload never overwrites a file
+    # the user might still be using. The sanitized stem has no separators, so
+    # the target can only land directly under input/ (realpath-checked anyway).
+    input_dir = os.path.realpath(folder_paths.get_input_directory())
+    try:
+        os.makedirs(input_dir, exist_ok=True)
+    except OSError:
+        pass
     candidate = f"{stem}.{ext}"
     n = 1
-    while True:
-        target = _safe_path(candidate)
-        if target is None:
-            return web.json_response({"error": "path traversal blocked."}, status=400)
-        if not os.path.exists(target):
-            break
+    while os.path.exists(os.path.join(input_dir, candidate)):
         candidate = f"{stem}_{n}.{ext}"
         n += 1
+    target = os.path.realpath(os.path.join(input_dir, candidate))
+    if not (target == input_dir or target.startswith(input_dir + os.sep)):
+        return web.json_response({"error": "path traversal blocked."}, status=400)
 
     def _rm_target():
         try:
@@ -836,8 +842,8 @@ async def load_video_upload(request):
         return web.json_response({"error": "the uploaded file was empty."}, status=400)
 
     return web.json_response({
-        "name": f"pixaroma/{candidate}",  # combo value, relative to input/
-        "subfolder": "pixaroma",
+        "name": candidate,    # plain filename in input/ root, like native uploads
+        "subfolder": "",
         "filename": candidate,
         "type": "input",
     })

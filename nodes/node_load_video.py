@@ -44,7 +44,8 @@ class PixaromaLoadVideo:
         "Loading controls: Max frames caps how many frames load (a safety valve "
         "for long clips), Force FPS resamples to a steady frame rate, Skip first "
         "frames trims the start, Every Nth frame thins the clip, and Custom "
-        "width/height resize each frame as it loads.\n\n"
+        "width/height resize each frame (set both to crop-to-fill that size "
+        "without stretching).\n\n"
         "Reads with PyAV when available, otherwise imageio; audio is pulled with "
         "ffmpeg. No extra setup is needed on most ComfyUI installs."
     )
@@ -64,9 +65,9 @@ class PixaromaLoadVideo:
                 "select_every_nth": ("INT", {"default": 1, "min": 1, "max": 1000, "step": 1,
                     "tooltip": "Keep every Nth frame and skip the rest. 1 = every frame, 2 = every other frame (half as many). The fps output is adjusted so playback stays at real-time speed."}),
                 "custom_width": ("INT", {"default": 0, "min": 0, "max": 8192, "step": 1,
-                    "tooltip": "Resize every frame to this width as it loads. 0 = keep the original. Set only width OR only height to scale proportionally; set both for an exact size."}),
+                    "tooltip": "Resize frames as they load. 0 = keep the original. Set only width OR only height to scale proportionally. Set BOTH to crop-to-fill that exact size: it scales to fill the box, keeps the picture's proportions, and trims the overflow (like Resize Crop). It never stretches."}),
                 "custom_height": ("INT", {"default": 0, "min": 0, "max": 8192, "step": 1,
-                    "tooltip": "Resize every frame to this height as it loads. 0 = keep the original. Set only width OR only height to scale proportionally; set both for an exact size."}),
+                    "tooltip": "Resize frames as they load. 0 = keep the original. Set only width OR only height to scale proportionally. Set BOTH to crop-to-fill that exact size: it scales to fill the box, keeps the picture's proportions, and trims the overflow (like Resize Crop). It never stretches."}),
             },
         }
 

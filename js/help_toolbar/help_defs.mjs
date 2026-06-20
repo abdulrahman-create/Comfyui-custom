@@ -671,7 +671,7 @@ const HELP = {
           ["Force FPS", "Force a steady frames-per-second by dropping or duplicating frames (a 60fps clip forced to 24). 0 = keep the original rate. AI video models usually expect a fixed rate."],
           ["Skip first frames", "Skip this many frames from the start, like trimming an intro."],
           ["Every Nth frame", "Keep every Nth frame and skip the rest. 2 = every other frame. The fps output is adjusted so playback stays real-time."],
-          ["Custom width / height", "Resize each frame as it loads. 0 = keep original. Set one to scale proportionally, or both for an exact size."],
+          ["Custom width / height", "Resize each frame as it loads. 0 = keep original. Set one to scale proportionally; set both to crop-to-fill that exact size (keeps proportions and trims overflow, like Resize Crop). It never stretches."],
         ],
       },
       {

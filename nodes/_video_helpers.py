@@ -99,23 +99,9 @@ def _interrupt_check():
 
 # ── Frame transforms ─────────────────────────────────────────────────────────
 
-def _resize_rgb(arr, w, h):
-    """Resize one HxWx3 uint8 frame. Both 0 -> unchanged. One 0 -> scale that
-    axis proportionally. Both set -> exact WxH."""
-    src = arr[..., :3]
+def _scale_rgb(src, tw, th):
+    """Plain (stretch) resize of an HxWx3 uint8 array to exactly (tw, th)."""
     H, W = src.shape[0], src.shape[1]
-    w = int(w) if w and w > 0 else 0
-    h = int(h) if h and h > 0 else 0
-    if w == 0 and h == 0:
-        return np.ascontiguousarray(src)
-    if w > 0 and h > 0:
-        tw, th = w, h
-    elif w > 0:
-        tw = w
-        th = max(1, int(round(H * w / float(W))))
-    else:
-        th = h
-        tw = max(1, int(round(W * h / float(H))))
     if (tw, th) == (W, H):
         return np.ascontiguousarray(src)
     src = np.ascontiguousarray(src)
@@ -124,6 +110,41 @@ def _resize_rgb(arr, w, h):
         return cv2.resize(src, (tw, th), interpolation=interp)
     from PIL import Image
     return np.asarray(Image.fromarray(src).resize((tw, th), Image.LANCZOS))
+
+
+def _resize_rgb(arr, w, h):
+    """Resize one HxWx3 uint8 frame:
+      both 0    -> unchanged
+      one 0     -> scale that axis, the other follows (keeps aspect)
+      both set  -> COVER + center-crop to exactly (w, h): scale the frame to
+                   fully cover the target box, then trim the overflow. Keeps the
+                   picture's proportions and never stretches, matching Resize
+                   Crop Pixaroma."""
+    src = arr[..., :3]
+    H, W = src.shape[0], src.shape[1]
+    w = int(w) if w and w > 0 else 0
+    h = int(h) if h and h > 0 else 0
+    if w == 0 and h == 0:
+        return np.ascontiguousarray(src)
+
+    if w > 0 and h > 0:
+        # Cover: scale so the frame fully covers (w, h), then center-crop.
+        scale = max(w / float(W), h / float(H))
+        rw = max(w, int(round(W * scale)))
+        rh = max(h, int(round(H * scale)))
+        resized = _scale_rgb(src, rw, rh)
+        x0 = (rw - w) // 2
+        y0 = (rh - h) // 2
+        return np.ascontiguousarray(resized[y0:y0 + h, x0:x0 + w])
+
+    # Single axis -> proportional scale.
+    if w > 0:
+        tw = w
+        th = max(1, int(round(H * w / float(W))))
+    else:
+        th = h
+        tw = max(1, int(round(W * h / float(H))))
+    return _scale_rgb(src, tw, th)
 
 
 def _resample_iter(raw_iter, native_fps, force_fps):
