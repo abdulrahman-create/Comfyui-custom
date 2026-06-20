@@ -37,10 +37,10 @@ class PixaromaLoadVideo:
         "Load Video Pixaroma - upload or pick a video and decode it to a frame "
         "batch, with a built-in video preview on the node so you can watch the "
         "source without leaving ComfyUI.\n\n"
-        "Outputs: frames (the video as an image batch), audio, frame_count, "
-        "fps, width, height, and duration - so you usually do not need a "
-        "separate video-info node. Pairs with Save Mp4 Pixaroma: wire frames "
-        "and audio straight across.\n\n"
+        "Outputs: video_frames (the video as an image batch), audio, "
+        "frame_count, fps, width, height, and duration - so you usually do not "
+        "need a separate video-info node. Pairs with Save Mp4 Pixaroma: wire "
+        "video_frames and audio straight across.\n\n"
         "Loading controls: Max frames caps how many frames load (a safety valve "
         "for long clips), Force FPS resamples to a steady frame rate, Skip first "
         "frames trims the start, Every Nth frame thins the clip, and Custom "
@@ -72,7 +72,7 @@ class PixaromaLoadVideo:
 
     CATEGORY = "👑 Pixaroma/🖼️ Image"
     RETURN_TYPES = ("IMAGE", "AUDIO", "INT", "FLOAT", "INT", "INT", "FLOAT")
-    RETURN_NAMES = ("frames", "audio", "frame_count", "fps", "width", "height", "duration")
+    RETURN_NAMES = ("video_frames", "audio", "frame_count", "fps", "width", "height", "duration")
     OUTPUT_TOOLTIPS = (
         "The video as a batch of image frames, after any trim and resize.",
         "The video's soundtrack (empty if the file has no audio). Wire into Save Mp4 to keep the sound.",

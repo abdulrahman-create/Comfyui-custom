@@ -142,6 +142,19 @@ function setPreview(node) {
   refreshBar(node);
 }
 
+// Restore the preview once the DOM widget is actually mounted. On a fresh add
+// (and a tab-switch restore) onNodeCreated/onConfigure run BEFORE the <video>
+// element is in the document, so getLiveVideo() is null and a direct setPreview
+// no-ops. Retry on animation frames until the element exists, then show it.
+function restorePreview(node, tries = 0) {
+  if (getLiveVideo(node)) {
+    setPreview(node);
+    return;
+  }
+  if (tries >= 60) return; // ~1s; give up rather than loop forever
+  requestAnimationFrame(() => restorePreview(node, tries + 1));
+}
+
 async function uploadVideo(node) {
   const inp = document.createElement("input");
   inp.type = "file";
@@ -297,6 +310,13 @@ app.registerExtension({
         if (video.paused) video.play().catch(() => {});
         else video.pause();
       });
+      // Click anywhere on the picture to play / pause too (like a video player).
+      media.addEventListener("click", (e) => {
+        if (!video.src) return;
+        e.stopPropagation();
+        if (video.paused) video.play().catch(() => {});
+        else video.pause();
+      });
       fsBtn.addEventListener("click", (e) => {
         e.stopPropagation();
         if (!video.src) return;
@@ -382,7 +402,7 @@ app.registerExtension({
       // configure() for a saved/duplicated node (Vue Compat #8); the initial
       // value of a fresh node is its combo default. onConfigure is the belt-and-
       // braces path for workflow-tab switching.
-      queueMicrotask(() => setPreview(node));
+      queueMicrotask(() => restorePreview(node));
 
       // Fresh-node defaults (width floor + comfortable height). configure()
       // restores a saved node's size right after, so this never dirties a load.
@@ -398,7 +418,7 @@ app.registerExtension({
       const r = onConfigure?.apply(this, arguments);
       const node = this;
       // The DOM widget + restored combo value are in place by the next tick.
-      queueMicrotask(() => setPreview(node));
+      queueMicrotask(() => restorePreview(node));
       return r;
     };
   },

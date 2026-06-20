@@ -660,7 +660,7 @@ const HELP = {
         heading: "How to use",
         bullets: [
           "Click `choose video to upload` to add a file from your computer, or pick one from the dropdown (use the arrows to flip through).",
-          "Wire `frames` into an image or video node. To rebuild a video later, send `frames` and `audio` straight into Save Mp4 Pixaroma.",
+          "Wire `video_frames` into an image or video node. To rebuild a video later, send `video_frames` and `audio` straight into Save Mp4 Pixaroma.",
           "The clip plays in the preview as soon as it is selected, no need to run first.",
         ],
       },
@@ -677,7 +677,7 @@ const HELP = {
       {
         heading: "Outputs",
         defs: [
-          ["frames", "The video as a batch of image frames."],
+          ["video_frames", "The video as a batch of image frames."],
           ["audio", "The soundtrack (empty if the file has none). Wire into Save Mp4 to keep the sound."],
           ["frame_count", "How many frames were loaded."],
           ["fps", "Frames per second of the loaded clip."],
@@ -690,7 +690,7 @@ const HELP = {
         body: "Load Video reads frames with PyAV (or imageio as a fallback) and gets audio with ffmpeg. Most ComfyUI setups already have these, so usually there is nothing to install. If you ever see a 'video reader' message, install PyAV: in ComfyUI Manager use its pip install option and enter `av` (portable Windows: run `python_embeded\\python.exe -m pip install av` in your ComfyUI folder).",
       },
     ],
-    footer: "Pairs with Save Mp4 Pixaroma; frames and audio wire straight across.",
+    footer: "Pairs with Save Mp4 Pixaroma; video_frames and audio wire straight across.",
   },
 
   "PixaromaImageResize": {
