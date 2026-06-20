@@ -163,10 +163,15 @@ def _resample_iter(raw_iter, native_fps, force_fps):
                 break
 
 
-def _collect(raw_iter, native_fps, force_fps, skip_first, every_nth,
-             max_frames, custom_w, custom_h):
-    """Run the raw frame iterator through resample -> skip -> every-Nth -> cap,
-    resizing each KEPT frame. Returns (list_of_uint8_frames, out_fps)."""
+def _collect(raw_iter, native_fps, force_fps, skip_first, max_frames,
+             custom_w, custom_h):
+    """Run the raw frame iterator through resample -> window -> skip, resizing
+    each kept frame. Returns (list_of_uint8_frames, out_fps).
+
+    Window model: max_frames is how many frames to read from the START (the
+    window; 0 = all). skip_first then trims from the FRONT of that window, so the
+    output is source frames [skip_first, max_frames). This bounds the decode to
+    at most max_frames source frames."""
     if force_fps > 0 and native_fps > 0:
         src = _resample_iter(raw_iter, native_fps, force_fps)
         base_fps = force_fps
@@ -176,27 +181,22 @@ def _collect(raw_iter, native_fps, force_fps, skip_first, every_nth,
 
     out = []
     idx = -1
-    kept = 0
     for fr in src:
         _interrupt_check()
         idx += 1
+        if max_frames and idx >= max_frames:
+            break  # window end reached - stop reading
         if idx < skip_first:
-            continue
-        rel = idx - skip_first
-        if every_nth > 1 and (rel % every_nth) != 0:
-            continue
+            continue  # trim the front of the window
         out.append(_resize_rgb(fr, custom_w, custom_h))
-        kept += 1
-        if max_frames and kept >= max_frames:
-            break
 
-    out_fps = base_fps / float(every_nth) if base_fps > 0 else 0.0
+    out_fps = base_fps if base_fps > 0 else 0.0
     return out, out_fps
 
 
 # ── Backends ─────────────────────────────────────────────────────────────────
 
-def _decode_av(path, force_fps, skip_first, every_nth, max_frames, custom_w, custom_h):
+def _decode_av(path, force_fps, skip_first, max_frames, custom_w, custom_h):
     container = av.open(path)
     try:
         vstreams = container.streams.video
@@ -222,7 +222,7 @@ def _decode_av(path, force_fps, skip_first, every_nth, max_frames, custom_w, cus
                 yield frame.to_ndarray(format="rgb24")
 
         out, out_fps = _collect(
-            raw(), native_fps, force_fps, skip_first, every_nth,
+            raw(), native_fps, force_fps, skip_first,
             max_frames, custom_w, custom_h,
         )
     finally:
@@ -235,7 +235,7 @@ def _decode_av(path, force_fps, skip_first, every_nth, max_frames, custom_w, cus
     return out, out_fps, width, height
 
 
-def _decode_imageio(path, force_fps, skip_first, every_nth, max_frames, custom_w, custom_h):
+def _decode_imageio(path, force_fps, skip_first, max_frames, custom_w, custom_h):
     reader = imageio.get_reader(path, "ffmpeg")
     try:
         meta = reader.get_meta_data() or {}
@@ -257,7 +257,7 @@ def _decode_imageio(path, force_fps, skip_first, every_nth, max_frames, custom_w
                 yield a[..., :3]
 
         out, out_fps = _collect(
-            raw(), native_fps, force_fps, skip_first, every_nth,
+            raw(), native_fps, force_fps, skip_first,
             max_frames, custom_w, custom_h,
         )
     finally:
@@ -273,7 +273,7 @@ def _decode_imageio(path, force_fps, skip_first, every_nth, max_frames, custom_w
 # ── Public API ───────────────────────────────────────────────────────────────
 
 def decode(path, *, max_frames=0, force_fps=0.0, skip_first=0,
-           every_nth=1, custom_w=0, custom_h=0) -> dict:
+           custom_w=0, custom_h=0) -> dict:
     """Decode a video file to a frame batch + metadata.
 
     Returns {frames: IMAGE tensor [N,H,W,3] float32, fps, width, height,
@@ -281,7 +281,6 @@ def decode(path, *, max_frames=0, force_fps=0.0, skip_first=0,
     or no frames could be read.
     """
     _need_backend()
-    every_nth = max(1, int(every_nth))
     skip_first = max(0, int(skip_first))
     max_frames = max(0, int(max_frames))
     force_fps = float(force_fps) if force_fps and force_fps > 0 else 0.0
@@ -289,28 +288,28 @@ def decode(path, *, max_frames=0, force_fps=0.0, skip_first=0,
     if _AV_OK:
         try:
             out, out_fps, width, height = _decode_av(
-                path, force_fps, skip_first, every_nth, max_frames, custom_w, custom_h,
+                path, force_fps, skip_first, max_frames, custom_w, custom_h,
             )
         except Exception as e:
             if _IMAGEIO_OK:
                 print(f"[Pixaroma] Load Video — PyAV could not read this file "
                       f"({e}); falling back to imageio.")
                 out, out_fps, width, height = _decode_imageio(
-                    path, force_fps, skip_first, every_nth, max_frames, custom_w, custom_h,
+                    path, force_fps, skip_first, max_frames, custom_w, custom_h,
                 )
             else:
                 raise
     else:
         out, out_fps, width, height = _decode_imageio(
-            path, force_fps, skip_first, every_nth, max_frames, custom_w, custom_h,
+            path, force_fps, skip_first, max_frames, custom_w, custom_h,
         )
 
     if not out:
-        if skip_first > 0 or every_nth > 1:
+        if skip_first > 0:
             raise ValueError(
-                f"[Pixaroma] Load Video — the trim settings removed every frame "
-                f"of {os.path.basename(path)} (skip first = {skip_first}, every "
-                f"Nth = {every_nth}). Lower them and try again."
+                f"[Pixaroma] Load Video — Skip first frames ({skip_first}) "
+                f"removed every loaded frame of {os.path.basename(path)}. Lower "
+                f"it, or raise Max frames, and try again."
             )
         raise ValueError(
             f"[Pixaroma] Load Video — no frames could be read from "

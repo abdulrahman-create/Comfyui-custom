@@ -667,10 +667,9 @@ const HELP = {
       {
         heading: "Loading controls",
         defs: [
-          ["Max frames", "The most frames to load. 0 = all. A safety valve so a long video does not run out of memory; try 120 to load just the first 120 frames."],
+          ["Max frames", "How many frames to load from the start of the video. 0 = all. The safety valve for long clips: it never reads more than this many. Skip first frames then trims the front (Max 100 with Skip 5 gives 95)."],
           ["Force FPS", "Force a steady frames-per-second by dropping or duplicating frames (a 60fps clip forced to 24). 0 = keep the original rate. AI video models usually expect a fixed rate."],
-          ["Skip first frames", "Skip this many frames from the start, like trimming an intro."],
-          ["Every Nth frame", "Keep every Nth frame and skip the rest. 2 = every other frame. The fps output is adjusted so playback stays real-time."],
+          ["Skip first frames", "Skip this many frames from the start, like trimming an intro. Trims the front of the loaded frames."],
           ["Custom width / height", "Resize each frame as it loads. 0 = keep original. Set one to scale proportionally; set both to crop-to-fill that exact size (keeps proportions and trims overflow, like Resize Crop). It never stretches."],
         ],
       },
