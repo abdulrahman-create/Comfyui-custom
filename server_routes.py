@@ -753,6 +753,11 @@ _LOAD_VIDEO_UPLOAD_EXTS = {
     "mpg", "mpeg", "wmv", "flv", "ogv", "ts",
 }
 _LOAD_VIDEO_MAX_BYTES = 1024 * 1024 * 1024  # 1 GB
+_WIN_RESERVED_NAMES = {
+    "CON", "PRN", "AUX", "NUL",
+    *(f"COM{i}" for i in range(1, 10)),
+    *(f"LPT{i}" for i in range(1, 10)),
+}
 
 
 @PromptServer.instance.routes.post("/pixaroma/api/load_video/upload")
@@ -785,12 +790,17 @@ async def load_video_upload(request):
             {"error": f"video extension {ext!r} not allowed."}, status=400,
         )
     stem = re.sub(r"[^A-Za-z0-9_\- ]", "_", stem).strip().strip(".") or "video"
+    # Reserved Windows device names (NUL/CON/COM1/...) resolve to a device, not a
+    # file - suffix them so the upload writes a real file.
+    if stem.upper() in _WIN_RESERVED_NAMES:
+        stem = stem + "_"
 
     # Save into ComfyUI's input/ root (like native uploads) so the file is a
     # first-class input: it shows by its plain name and any other node that
-    # lists input/ can reuse it. De-dup so a re-upload never overwrites a file
-    # the user might still be using. The sanitized stem has no separators, so
-    # the target can only land directly under input/ (realpath-checked anyway).
+    # lists input/ can reuse it. Claim a free filename ATOMICALLY with O_EXCL so
+    # two concurrent uploads of the same name can't pick the same target and
+    # clobber each other. The sanitized stem has no separators, so the target
+    # stays directly under input/ (realpath-checked anyway).
     input_dir = os.path.realpath(folder_paths.get_input_directory())
     try:
         os.makedirs(input_dir, exist_ok=True)
@@ -798,12 +808,22 @@ async def load_video_upload(request):
         pass
     candidate = f"{stem}.{ext}"
     n = 1
-    while os.path.exists(os.path.join(input_dir, candidate)):
-        candidate = f"{stem}_{n}.{ext}"
-        n += 1
-    target = os.path.realpath(os.path.join(input_dir, candidate))
-    if not (target == input_dir or target.startswith(input_dir + os.sep)):
-        return web.json_response({"error": "path traversal blocked."}, status=400)
+    fd = None
+    target = None
+    while True:
+        target = os.path.realpath(os.path.join(input_dir, candidate))
+        if not (target == input_dir or target.startswith(input_dir + os.sep)):
+            return web.json_response({"error": "path traversal blocked."}, status=400)
+        try:
+            fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+            break
+        except FileExistsError:
+            candidate = f"{stem}_{n}.{ext}"
+            n += 1
+            if n > 100000:
+                return web.json_response(
+                    {"error": "could not find a free filename."}, status=500,
+                )
 
     def _rm_target():
         try:
@@ -811,13 +831,13 @@ async def load_video_upload(request):
         except OSError:
             pass
 
-    # Stream chunks to disk, enforcing the cap as we go; clean up the partial
-    # file on overflow or any write error so input/pixaroma never accumulates
+    # Stream chunks to the claimed file, enforcing the cap as we go; clean up the
+    # partial file on overflow or any write error so input/ never accumulates
     # half-written uploads.
     written = 0
     too_big = False
     try:
-        with open(target, "wb") as fh:
+        with os.fdopen(fd, "wb") as fh:
             while True:
                 chunk = await field.read_chunk(262144)  # 256 KB
                 if not chunk:

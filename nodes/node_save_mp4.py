@@ -74,6 +74,9 @@ def _write_wav_pcm16(path, waveform, sample_rate):
     if n_ch == 0:
         raise ValueError("[Pixaroma] Save Mp4 — audio waveform has 0 channels.")
     samples = waveform.detach().cpu().numpy()
+    # np.clip leaves NaN as NaN (NaN * 32767 -> garbage int16); scrub NaN/Inf to
+    # silence / extremes before the cast.
+    samples = np.nan_to_num(samples, nan=0.0, posinf=1.0, neginf=-1.0)
     samples = np.clip(samples, -1.0, 1.0)
     samples = (samples * 32767.0).astype(np.int16)
     interleaved = samples.T.tobytes()
@@ -123,8 +126,8 @@ class PixaromaSaveMp4:
                     "tooltip": "Filename stem. The node appends a 5-digit counter and .mp4 (e.g. Video_00001.mp4)."}),
                 "save_mode": (["save", "preview"], {"default": "save",
                     "tooltip": "save: write to ComfyUI's output/ folder, kept across restarts. preview: write to ComfyUI's temp/ folder, auto-cleared on restart — use while iterating so you don't clutter output/. The in-node video preview works the same in both modes."}),
-                "trim_to_audio": ("BOOLEAN", {"default": True,
-                    "tooltip": "When audio is connected, end the video at the audio's length (uses ffmpeg -shortest). Off = keep all video frames even if longer than audio."}),
+                "trim_to_audio": ("BOOLEAN", {"default": False,
+                    "tooltip": "Off (default): keep every video frame; the audio simply ends where it ends. On: end the video exactly at the audio's length (ffmpeg -shortest), for when the audio is the master (e.g. with Audio React). On can drop the last frame or two when the audio is slightly shorter than the video."}),
             },
             "optional": {
                 "audio": ("AUDIO", {"tooltip": "Optional audio track to mux into the mp4 as AAC 192k. Connect Audio React Pixaroma's audio output here."}),
@@ -180,19 +183,23 @@ class PixaromaSaveMp4:
         # each other. Touch the file inside the lock to claim it.
         with _COUNTER_LOCK:
             counter = _next_mp4_counter(full_folder, fname)
-            out_filename = f"{fname}_{counter:05d}.mp4"
-            out_path = os.path.join(full_folder, out_filename)
-            try:
-                # O_EXCL guarantees atomic create-if-not-exists across processes too
-                fd = os.open(out_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-                os.close(fd)
-            except FileExistsError:
-                # Extremely unlikely: counter scan saw N as the max, but
-                # something else just created N+1 in the same instant.
-                # Bump and retry once.
-                counter += 1
+            while True:
                 out_filename = f"{fname}_{counter:05d}.mp4"
                 out_path = os.path.join(full_folder, out_filename)
+                try:
+                    # O_EXCL atomically claims the name across processes too.
+                    # Re-claim on each bump so a collision can't slip through
+                    # (the scan saw N as max, but another writer just took N+1).
+                    fd = os.open(out_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                    os.close(fd)
+                    break
+                except FileExistsError:
+                    counter += 1
+                    if counter > 99999:
+                        raise RuntimeError(
+                            "[Pixaroma] Save Mp4 — could not find a free output "
+                            "filename."
+                        )
 
         # If audio is supplied, write it to a temp wav alongside so ffmpeg can
         # mux both inputs in a single pass.
@@ -203,7 +210,19 @@ class PixaromaSaveMp4:
                 f"pixaroma_save_mp4_{uuid.uuid4().hex}.wav",
             )
             os.makedirs(os.path.dirname(temp_audio_path), exist_ok=True)
-            _write_wav_pcm16(temp_audio_path, audio["waveform"], audio["sample_rate"])
+            try:
+                _write_wav_pcm16(temp_audio_path, audio["waveform"], audio["sample_rate"])
+            except Exception as e:
+                # Don't leak the partial WAV, and don't fail the whole save just
+                # because audio prep failed - drop the audio and encode video only.
+                print(f"[Pixaroma] Save Mp4 — could not prepare audio ({e}); "
+                      f"encoding without it.")
+                if os.path.exists(temp_audio_path):
+                    try:
+                        os.remove(temp_audio_path)
+                    except OSError:
+                        pass
+                temp_audio_path = None
 
         # Build ffmpeg command. Frames piped on stdin as raw RGB24.
         cmd = [
@@ -234,12 +253,21 @@ class PixaromaSaveMp4:
               f"({W}x{H}, crf={crf}, {pix_fmt}"
               f"{', +audio' if temp_audio_path else ''}) -> {out_filename}")
 
-        proc = subprocess.Popen(
-            cmd,
-            stdin=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            stdout=subprocess.DEVNULL,
-        )
+        try:
+            proc = subprocess.Popen(
+                cmd,
+                stdin=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                stdout=subprocess.DEVNULL,
+            )
+        except Exception:
+            # Popen failed (e.g. ffmpeg vanished) - don't leak the temp WAV.
+            if temp_audio_path is not None and os.path.exists(temp_audio_path):
+                try:
+                    os.remove(temp_audio_path)
+                except OSError:
+                    pass
+            raise
 
         # Drain stderr in a background thread. Otherwise the OS pipe buffer
         # (4 KB on Windows) fills if ffmpeg emits any output and the next
@@ -257,6 +285,7 @@ class PixaromaSaveMp4:
         drain_thread.start()
 
         broke_pipe = False
+        success = False
         try:
             try:
                 for i in range(n_frames):
@@ -286,6 +315,7 @@ class PixaromaSaveMp4:
                     f"[Pixaroma] Save Mp4 — ffmpeg failed (exit {proc.returncode}):\n"
                     f"{stderr}"
                 )
+            success = True  # rc 0 (incl. a -shortest broke_pipe) -> valid output
         finally:
             # On the exception path the explicit close above never ran. Close
             # the pipe so the OS handle isn't leaked (Windows is sensitive to
@@ -303,6 +333,15 @@ class PixaromaSaveMp4:
             if temp_audio_path is not None and os.path.exists(temp_audio_path):
                 try:
                     os.remove(temp_audio_path)
+                except OSError:
+                    pass
+            # If the encode didn't finish cleanly (error / interrupt / non-zero
+            # exit), drop the claimed-but-empty or partial out file so output/
+            # has no 0-byte junk and the counter doesn't drift past it. A
+            # successful -shortest trim (success=True) keeps its valid file.
+            if not success and os.path.exists(out_path):
+                try:
+                    os.remove(out_path)
                 except OSError:
                     pass
 

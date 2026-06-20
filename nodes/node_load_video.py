@@ -76,7 +76,7 @@ class PixaromaLoadVideo:
     RETURN_NAMES = ("video_frames", "audio", "frame_count", "fps", "width", "height", "duration")
     OUTPUT_TOOLTIPS = (
         "The video as a batch of image frames, after any trim and resize.",
-        "The video's soundtrack (empty if the file has no audio). Wire into Save Mp4 to keep the sound.",
+        "The video's soundtrack (no audio is passed on if the file has none). Wire into Save Mp4 to keep the sound.",
         "How many frames were loaded.",
         "Frames per second of the loaded clip (adjusted for Force FPS and Every Nth frame).",
         "Frame width in pixels, after any resize.",

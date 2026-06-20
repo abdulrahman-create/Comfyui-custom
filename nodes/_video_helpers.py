@@ -361,7 +361,15 @@ def extract_audio(path):
         wav_path,
     ]
     try:
-        proc = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+        try:
+            proc = subprocess.run(
+                cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                timeout=180,
+            )
+        except subprocess.TimeoutExpired:
+            print("[Pixaroma] Load Video — audio extraction timed out; "
+                  "continuing without audio.")
+            return None
         if (proc.returncode != 0 or not os.path.exists(wav_path)
                 or os.path.getsize(wav_path) < 64):
             return None
