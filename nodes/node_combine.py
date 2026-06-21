@@ -65,10 +65,10 @@ class PixaromaCombine:
         if s1.shape[1:] != s2.shape[1:]:
             s2 = comfy.utils.common_upscale(s2, s1.shape[3], s1.shape[2], "bilinear", "center")
         out["samples"] = torch.cat((s1, s2), dim=0)
-        out["batch_index"] = (
-            a.get("batch_index", list(range(s1.shape[0])))
-            + b.get("batch_index", list(range(s2.shape[0])))
-        )
+        # Re-number the combined batch sequentially. Concatenating each side's
+        # own 0-based indices would give duplicates like [0, 1, 0, 1], which
+        # confuses nodes that address latents by batch_index.
+        out["batch_index"] = list(range(s1.shape[0] + s2.shape[0]))
         return out
 
     @staticmethod
@@ -143,10 +143,11 @@ class PixaromaCombine:
                 raise ValueError(self._mix_msg(a, b, "two latents"))
             return (self._latent_batch(a, b),)
 
-        # Numbers / text -> gather into a list (bool excluded so it is not
-        # treated as a number).
-        a_sc = isinstance(a, (str, int, float)) and not isinstance(a, bool)
-        b_sc = isinstance(b, (str, int, float)) and not isinstance(b, bool)
+        # Numbers / text / true-false -> gather into a list. bool is a subclass
+        # of int; gather it too, otherwise two booleans fall through to `a + b`
+        # and True + False silently becomes the integer 1.
+        a_sc = isinstance(a, (str, int, float))
+        b_sc = isinstance(b, (str, int, float))
         if a_sc:
             if isinstance(b, tuple):
                 return (b + (a,),)

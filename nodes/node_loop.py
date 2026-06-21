@@ -323,7 +323,15 @@ class PixaromaLoopEngine:
                         if is_link(v):
                             output_nodes[nid] = v
         except Exception:
+            # Non-fatal: the loop still iterates. Only the "re-run an output node
+            # (Preview/Save) inside the loop every round" feature is skipped, so
+            # log it once rather than failing silently.
             output_nodes = {}
+            print(
+                "[Pixaroma Loop] Could not scan for output nodes inside the "
+                "loop; a Preview or Save placed between Loop Start and Loop End "
+                "may only update on the final round."
+            )
 
         graph = GraphBuilder()
         self.explore_output_nodes(dynprompt, upstream, output_nodes, parent_ids)

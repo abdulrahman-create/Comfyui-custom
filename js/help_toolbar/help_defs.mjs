@@ -135,6 +135,7 @@ const HELP = {
           "video frames + video frames -> a longer clip",
           "latent + latent -> a batched latent",
           "number + number -> a list, like 0 then 1 then 2",
+          "text + text -> a list of words",
         ],
       },
       {
