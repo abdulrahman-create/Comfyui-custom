@@ -130,8 +130,9 @@ class PixaromaCombine:
                 return (torch.cat((a, b), 0),)
             raise ValueError(
                 "Combine Pixaroma can't stack these two images: their shapes "
-                "don't match and can't be auto-resized (different channel "
-                "counts, or one is a mask). Make them the same kind first."
+                "are incompatible (different channel counts or sizes, or one is "
+                "a mask) and can't be auto-matched. Make them the same kind and "
+                "size first."
             )
 
         # Latents (dict with "samples") -> batch the same way.
