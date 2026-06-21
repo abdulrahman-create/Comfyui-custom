@@ -129,7 +129,7 @@ const HELP = {
       },
       {
         heading: "Using it in a loop",
-        body: "Combine shines as the 'pile-up' node inside a loop. Wire the running total into `any_1` and the new round's result into `any_2`, then carry the output back through `Loop End`. Each round adds onto the pile. On the very first round one side is empty - Combine just passes the other side through, so it works from round 1 with no special setup.",
+        body: "Combine shines as the 'pile-up' node inside a loop. Wire the running total into `any1` and the new round's result into `any2`, then carry the output back through `Loop End`. Each round adds onto the pile. On the very first round one side is empty - Combine just passes the other side through, so it works from round 1 with no special setup.",
       },
       {
         heading: "Outputs",

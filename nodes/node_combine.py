@@ -1,6 +1,6 @@
 """Combine Pixaroma - join two inputs into one batch.
 
-Takes any two inputs (any_1 + any_2) and merges them into a single output:
+Takes any two inputs (any1 + any2) and merges them into a single output:
 - images / video-frame batches (tensors [B,H,W,C]) are concatenated along the
   batch dimension; mismatched sizes are rescaled to the first input's W/H,
 - latents (dicts with "samples") are batched the same way,
@@ -20,8 +20,8 @@ from ._type_helpers import ANY
 
 class PixaromaCombine:
     DESCRIPTION = (
-        "Join two inputs into one batch. Wire any two things into any_1 and "
-        "any_2 and Combine merges them: images and video frames are stacked "
+        "Join two inputs into one batch. Wire any two things into any1 and "
+        "any2 and Combine merges them: images and video frames are stacked "
         "into one batch, latents are batched, numbers and text are gathered "
         "into a list. If one side is empty it just passes the other side "
         "through, so it is safe to use as the accumulator inside a loop "
@@ -32,8 +32,8 @@ class PixaromaCombine:
     def INPUT_TYPES(cls):
         return {
             "optional": {
-                "any_1": (ANY, {"tooltip": "First input. Images, video frames, latents, numbers, text - anything. Can be empty."}),
-                "any_2": (ANY, {"tooltip": "Second input, joined onto the first. In a loop this is usually the new round's result, with any_1 carrying everything gathered so far."}),
+                "any1": (ANY, {"tooltip": "First input. Images, video frames, latents, numbers, text - anything. Can be empty."}),
+                "any2": (ANY, {"tooltip": "Second input, joined onto the first. In a loop this is usually the new round's result, with any1 carrying everything gathered so far."}),
             },
         }
 
@@ -61,8 +61,8 @@ class PixaromaCombine:
         )
         return out
 
-    def run(self, any_1=None, any_2=None):
-        a, b = any_1, any_2
+    def run(self, any1=None, any2=None):
+        a, b = any1, any2
 
         # Images / video-frame batches (tensors [B, H, W, C])
         if isinstance(a, torch.Tensor) or isinstance(b, torch.Tensor):
