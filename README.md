@@ -133,6 +133,9 @@ Bring a video into ComfyUI and turn it into frames. Upload one from your compute
 ### 🎬 Save Mp4 Pixaroma
 Encode video frames + optional audio straight to MP4. Built-in `<video>` preview right on the node so you can watch the result without leaving ComfyUI (click the picture to play / pause). Pairs with AudioReact and Load Video, but works with any source that produces frames + AUDIO.
 
+### 🔁 Loop Start / Loop End + Combine Pixaroma
+Repeat a section of your workflow a set number of times. Put your nodes **between** Loop Start and Loop End, choose how many rounds, and the whole section runs again and again - perfect for building a long video in chunks or piling up a batch of images. Each round can **carry values forward** (the frames so far, a running counter), and the **Combine** node joins each round's result onto the growing pile (images into one batch, numbers into a list). Things that don't fit together (like an image and some text) stop with a clear, plain message instead of a confusing error. Works in both the classic and the new node interface.
+
 ### 💬 Show Text Pixaroma
 See what text or data is flowing through your nodes, with a real read-only text box you can **select and copy** from. **Resize the node freely** in any direction; long text scrolls with a scrollbar instead of forcing the node to grow. New **STRING output** lets you chain it into other nodes (great for inspecting a prompt before passing it on). Saves and restores with your workflow.
 
@@ -291,6 +294,9 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 ---
 
 ## 🛠 Changelog
+
+### **June 21, 2026 · v1.3.100**
+- **NEW: Loop Start / Loop End + Combine Pixaroma** - repeat a part of your workflow as many times as you like. Put your nodes between Loop Start and Loop End, set the number of rounds, and the section runs over and over - great for making a long video in chunks or stacking up a batch of images. Each round can carry values forward to the next, and the new **Combine** node piles each round's result onto the running total (images into one batch, numbers into a list). If you try to join two things that don't fit (like an image and text), you get a friendly message instead of a cryptic error. Polished over several careful review passes. Works in both the classic and the new node interface.
 
 ### **June 20, 2026 · v1.3.99**
 - **NEW: Load Video Pixaroma** - load a video and turn it into frames. Upload one from your computer or pick from a dropdown, and it plays right on the node so you can check it before running (click the picture to play or pause). You get the frames, the audio, and the details (frame count, fps, width, height, length) all at once, so you rarely need a separate info node. Cap how many frames to load (a safety valve for long clips), skip frames off the start, force a steady frame rate, or resize each frame (crop-to-fill an exact size, no stretching). Pairs with Save Mp4 - wire the frames and audio across to rebuild the video. Works in both the classic and the new node interface.
