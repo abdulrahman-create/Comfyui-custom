@@ -86,6 +86,10 @@ from .nodes.node_set_get import NODE_CLASS_MAPPINGS as _MAPS_SET_GET
 from .nodes.node_set_get import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_SET_GET
 from .nodes.node_load_video import NODE_CLASS_MAPPINGS as _MAPS_LOAD_VIDEO
 from .nodes.node_load_video import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_LOAD_VIDEO
+from .nodes.node_loop import NODE_CLASS_MAPPINGS as _MAPS_LOOP
+from .nodes.node_loop import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_LOOP
+from .nodes.node_combine import NODE_CLASS_MAPPINGS as _MAPS_COMBINE
+from .nodes.node_combine import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_COMBINE
 
 # development mode for loading additional refrence nodes
 dev_mode = False
@@ -142,6 +146,8 @@ NODE_CLASS_MAPPINGS = {
     **_MAPS_LIF,
     **_MAPS_SET_GET,
     **_MAPS_LOAD_VIDEO,
+    **_MAPS_LOOP,
+    **_MAPS_COMBINE,
 }
 
 # combine all node display name mappings
@@ -190,6 +196,8 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     **_NAMES_LIF,
     **_NAMES_SET_GET,
     **_NAMES_LOAD_VIDEO,
+    **_NAMES_LOOP,
+    **_NAMES_COMBINE,
 }
 
 # web directory for loading js files

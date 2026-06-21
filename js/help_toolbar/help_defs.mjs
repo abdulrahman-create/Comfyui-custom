@@ -60,6 +60,87 @@ const HELP = {
     footer: "Found a seed you love in Random mode? Hit Use last seed (or New fixed random) to lock it, then tweak the rest of your workflow with confidence.",
   },
 
+  "PixaromaLoopStart": {
+    title: "Loop Start Pixaroma",
+    tagline: "The opening bracket of a loop - repeat a section of your workflow a set number of times.",
+    sections: [
+      {
+        heading: "What it does",
+        body: "Put your nodes BETWEEN Loop Start and Loop End and that whole section runs again and again. Set `total` to the number of rounds. Use it to build a long video in chunks, grow a batch of images, or run the same step over and over.\n\nIt always comes as a pair with `Loop End` - wire Loop Start's `flow` output into Loop End's `flow` input so the two brackets know they belong together.",
+      },
+      {
+        heading: "Carrying values between rounds",
+        body: "The `value` slots are for things you want to hand from one round to the next - the frames built so far, a running total, the last image, and so on. Whatever a round produces, feed it back into the matching slot on `Loop End`, and `Loop Start` hands it to the next round. Leave the value slots empty if your loop does not need to carry anything.",
+      },
+      {
+        heading: "Outputs",
+        defs: [
+          ["flow", "Wire this into Loop End's flow input to pair the two brackets."],
+          ["index", "Which round you are on, counting from 0 (0, 1, 2 ...). Handy for picking a different frame or value each round."],
+          ["value1...value5", "The carried values for this round. Only use as many as you need."],
+        ],
+      },
+      {
+        heading: "Tips",
+        bullets: [
+          "Pair it with `Combine Pixaroma` inside the loop to pile up each round's result (round 1 + round 2 + ...).",
+          "`total` is how many rounds run. The loop body runs exactly that many times.",
+          "If a value slot is empty it just carries nothing - that is fine.",
+        ],
+      },
+    ],
+    footer: "Loop Start and Loop End always work together: put your work between them, and feed Loop End's values back to carry them forward.",
+  },
+
+  "PixaromaLoopEnd": {
+    title: "Loop End Pixaroma",
+    tagline: "The closing bracket of a loop - sends each round back around, then outputs the final result.",
+    sections: [
+      {
+        heading: "What it does",
+        body: "Marks the end of the repeating section. Wire `flow` from `Loop Start`. Into the `value` slots, feed whatever you want carried to the next round (often a `Combine` node that gathers each round's frames). After the last round finishes, the value slots output the final carried values.",
+      },
+      {
+        heading: "How to use",
+        bullets: [
+          "Wire `flow` from Loop Start's flow output.",
+          "Put your generation nodes between Loop Start and Loop End.",
+          "Feed the result you want to keep building into a `value` slot here - it loops back to Loop Start for the next round.",
+          "Wire the matching output (value1, value2 ...) onward to use the final result after all rounds are done.",
+        ],
+      },
+      {
+        heading: "Outputs",
+        defs: [
+          ["value1...value5", "The final carried values after the last round. Match them to the value slots you fed in."],
+        ],
+      },
+    ],
+    footer: "Think of Loop Start and Loop End as brackets around the part you want to repeat. Everything between them runs each round.",
+  },
+
+  "PixaromaCombine": {
+    title: "Combine Pixaroma",
+    tagline: "Join two inputs into one batch - images, video frames, latents, numbers, or text.",
+    sections: [
+      {
+        heading: "What it does",
+        body: "Takes any two inputs and merges them into one. Images and video frames are stacked into a single bigger batch; latents are batched the same way; numbers and text are gathered into a list. If different-sized images come in, the second is resized to match the first.",
+      },
+      {
+        heading: "Using it in a loop",
+        body: "Combine shines as the 'pile-up' node inside a loop. Wire the running total into `any_1` and the new round's result into `any_2`, then carry the output back through `Loop End`. Each round adds onto the pile. On the very first round one side is empty - Combine just passes the other side through, so it works from round 1 with no special setup.",
+      },
+      {
+        heading: "Outputs",
+        defs: [
+          ["batch", "The two inputs joined together. For images and frames this is one larger batch; for numbers and text it is a list."],
+        ],
+      },
+    ],
+    footer: "Empty input? Combine passes the other side through, so it is safe to use as an accumulator from the very first round.",
+  },
+
   "Pixaroma3D": {
     title: "3D Builder Pixaroma",
     tagline: "A full 3D scene editor inside ComfyUI - build, light, and render scenes without leaving your workflow.",
