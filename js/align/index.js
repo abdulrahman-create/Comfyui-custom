@@ -320,16 +320,21 @@ function nodeRect(n) {
 // INSIDE the top of the box, so there's no title-bar offset like nodes).
 // Read/write defensively across litegraph versions and both renderers: the
 // _pos/_size fields, the pos/size getters, or the _bounding [x,y,w,h] cache.
+// litegraph stores _pos/_size/_bounding as Float32Array (and _pos/_size are
+// often subarray VIEWS of _bounding). Array.isArray() is FALSE for typed
+// arrays, so test array-LIKE (numeric .length) instead — using Array.isArray
+// here made every group read return null and silently disabled group snapping.
+function arrLike(v, n) { return v != null && typeof v.length === "number" && v.length >= n; }
 function groupPos(g) {
-  if (Array.isArray(g?._pos)) return [g._pos[0], g._pos[1]];
-  if (Array.isArray(g?.pos)) return [g.pos[0], g.pos[1]];
-  if (Array.isArray(g?._bounding)) return [g._bounding[0], g._bounding[1]];
+  if (arrLike(g?._pos, 2)) return [g._pos[0], g._pos[1]];
+  if (arrLike(g?.pos, 2)) return [g.pos[0], g.pos[1]];
+  if (arrLike(g?._bounding, 4)) return [g._bounding[0], g._bounding[1]];
   return null;
 }
 function groupSize(g) {
-  if (Array.isArray(g?._size)) return [g._size[0], g._size[1]];
-  if (Array.isArray(g?.size)) return [g.size[0], g.size[1]];
-  if (Array.isArray(g?._bounding)) return [g._bounding[2], g._bounding[3]];
+  if (arrLike(g?._size, 2)) return [g._size[0], g._size[1]];
+  if (arrLike(g?.size, 2)) return [g.size[0], g.size[1]];
+  if (arrLike(g?._bounding, 4)) return [g._bounding[2], g._bounding[3]];
   return null;
 }
 function groupRect(g) {
@@ -342,9 +347,11 @@ function groupRect(g) {
 // the group renders at the new spot in either renderer regardless of which the
 // renderer reads. (Children are moved separately by the caller.)
 function setGroupPos(g, x, y) {
-  try { g.pos = [x, y]; } catch (_e) { /* no setter in this build */ }
-  if (Array.isArray(g._pos)) { g._pos[0] = x; g._pos[1] = y; }
-  if (Array.isArray(g._bounding)) { g._bounding[0] = x; g._bounding[1] = y; }
+  // Mutate in place (works on Float32Array views). _pos is usually a subarray of
+  // _bounding, so writing _pos also updates _bounding, but set both to be safe.
+  if (arrLike(g._pos, 2)) { g._pos[0] = x; g._pos[1] = y; }
+  if (arrLike(g._bounding, 4)) { g._bounding[0] = x; g._bounding[1] = y; }
+  if (!g._pos && arrLike(g.pos, 2)) { g.pos[0] = x; g.pos[1] = y; }
 }
 function graphGroups(c) {
   return c?.graph?._groups || c?.graph?.groups || [];
