@@ -62,7 +62,7 @@ const HUE_FOLDERS = [
     { label: "Blue", title: "#101923", body: "#1d2835" },
     { label: "Indigo", title: "#131023", body: "#211d35" },
     { label: "Purple", title: "#1b1023", body: "#2b1d35" },
-    { label: "Pink", title: "#23101c", body: "#35202f" },
+    // 15 = one clean row in the palette popup (was 16, the 16th wrapped).
   ] },
   { label: "Red", presets: [
     { label: "Deepest", title: "#2f0a0b", body: "#521416" },
