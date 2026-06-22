@@ -317,8 +317,16 @@ def decode(path, *, max_frames=0, force_fps=0.0, skip_first=0,
             f"unsupported format."
         )
 
-    frames_np = np.stack(out, axis=0).astype(np.float32) / 255.0
+    # Build the float32 IMAGE batch with the SMALLEST peak memory: stack to
+    # uint8, release the per-frame list, then convert + scale IN PLACE. The old
+    # `.astype(float32) / 255.0` allocated an EXTRA full-size temporary (a ~3GB
+    # spike for a 120-frame 1080p clip) on top of the result, which on a busy
+    # session can push into swap and make a fast load feel like a hang.
+    frames_np = np.stack(out, axis=0)   # uint8 (N, H, W, 3)
+    out = None                          # free the per-frame arrays before the float alloc
     frame_count = int(frames_np.shape[0])
+    frames_np = frames_np.astype(np.float32)
+    frames_np /= 255.0                  # in place - no second full-size copy
     duration = frame_count / out_fps if out_fps > 0 else 0.0
     tensor = torch.from_numpy(frames_np)
     return {
