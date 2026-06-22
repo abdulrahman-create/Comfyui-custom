@@ -571,6 +571,27 @@ function setupLoadImageNode(node) {
   const root = buildRoot();
   node._pixLiRoot = root;
 
+  // ComfyUI's DOM-widget manager forces the widget root to inline display:block
+  // on rebuild / collapse-expand (verified via a live measurement on the video
+  // nodes: the root's computed display became "block", killing the .pix-li-root
+  // flex column → the 7px row gaps collapsed and the image canvas, a flex:1
+  // grower, dropped to its min height instead of filling). This node's root is
+  // content-measured with children appended at many sites, so it can't take the
+  // video nodes' absolute-inner-layer fix without a risky restructure. Instead,
+  // re-assert display:flex the instant ComfyUI clobbers it to block, while
+  // leaving display:none alone (that is ComfyUI's own collapse-hide). The class
+  // already declares display:flex; this just removes the inline block override.
+  // ComfyUI sets display once on show (not per-frame), so this reverts once and
+  // sticks — no fight, no flicker. Loop-safe: after we set flex the next
+  // mutation reads "flex" and the guard no-ops.
+  const displayGuard = new MutationObserver(() => {
+    if (node.flags?.collapsed) return; // don't fight the collapse-hide
+    const d = root.style.display;
+    if (d && d !== "flex" && d !== "none") root.style.display = "flex";
+  });
+  displayGuard.observe(root, { attributes: true, attributeFilter: ["style"] });
+  node._pixLiDisplayGuard = displayGuard;
+
   // Intrinsic content-height measurement. We DO NOT use root.scrollHeight
   // or root.offsetHeight here: LiteGraph stretches root vertically when the
   // node is taller than minimum, and reading the stretched value creates a
@@ -1011,6 +1032,8 @@ app.registerExtension({
       this._pixLiPreviewRO = null;
       try { cancelAnimationFrame(this._pixLiZoomRaf); } catch {}
       this._pixLiZoomRaf = null;
+      try { this._pixLiDisplayGuard?.disconnect(); } catch {}
+      this._pixLiDisplayGuard = null;
       if (_activeLoadImageNode === this) _activeLoadImageNode = null;
       return _origRemoved?.apply(this, arguments);
     };
