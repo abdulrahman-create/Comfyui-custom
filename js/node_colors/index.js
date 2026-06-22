@@ -236,50 +236,40 @@ const HUE_FOLDERS = [
   ] },
 ];
 
-// Curated swatch sets for the Pick custom modal. The default
-// PIXAROMA_PALETTE has a wide range including bright pastels that read
-// poorly as node chrome (LiteGraph paints title text in dim gray #999,
-// which only contrasts on darker fills). These two palettes constrain
-// the user to colors that actually look good as title / body fills.
-//
-// 3 rows of 12, same shape as the default palette:
-//   Row 1: pure dark neutrals (gray ramp)
-//   Row 2: warm hues (red / brown / amber / olive)
-//   Row 3: cool hues (green / teal / blue / plum)
-//
-// Title palette sits at ~6-22% lightness so dim gray text reads.
-// Body palette is the same hues shifted ~5-8 points lighter so the
-// title-then-body Pixaroma convention is preserved (title slightly
-// darker than body).
+// Swatch sets for the Pick-custom modal - a modern, vibrant palette. Node titles
+// now auto-pick readable white/dark ink (js/node_titles), so the TITLE strip is
+// no longer constrained to dark fills. Brand orange + a dark gray are pinned
+// first in BOTH strips. 3 rows of 12 each so the grid stays clean (no orphan
+// row):
+//   Row 1: brand orange, dark gray, then a neutral ramp
+//   Row 2: warm vivid (red -> lime)
+//   Row 3: cool vivid (green -> pink)
+// TITLE = saturated header colors. BODY = rich DARK surfaces in matching hues
+// (kept dark so node widgets stay readable on top). The strips are picked
+// independently, so any title can pair with any body.
 
 const TITLE_SWATCHES = [
-  // Quick-access, pinned first: brand orange + a dark gray (mirrors the group
-  // grid). The orange is bright, but the adaptive node-title feature keeps its
-  // text readable.
-  "#f66744", "#4a4a4e",
-  // Neutrals
-  "#000000", "#0a0a0a", "#141414", "#1a1a1a", "#1d1d1d", "#242424",
-  "#2a2a2a", "#2f2f2f", "#353535", "#3a3a3a", "#404040", "#4a4a4a",
-  // Warm dark hues
-  "#2a141b", "#3a141a", "#3a1d14", "#2e1f1f", "#2a1f12", "#3a2814",
-  "#2a2614", "#1f2814", "#2a2a14", "#3a3514", "#3a3220", "#3a1d28",
-  // Cool dark hues
-  "#13261c", "#1f3327", "#102b2f", "#0d2a3a", "#1a2332", "#181f3a",
-  "#1f1a3a", "#2a1a2e", "#3a1d3a", "#2e1f2e", "#3a1f2a", "#14143a",
+  // Neutrals: brand orange, dark gray, then a gray ramp
+  "#f66744", "#4a4a4e", "#000000", "#161618", "#222226", "#2e2e33",
+  "#3c3c43", "#4d4d55", "#646470", "#8a8a96", "#5b524b", "#4b4540",
+  // Warm vivid
+  "#ef4444", "#dc2626", "#f97316", "#ea580c", "#f59e0b", "#d97706",
+  "#eab308", "#ca8a04", "#84cc16", "#65a30d", "#b45309", "#9f1239",
+  // Cool vivid
+  "#22c55e", "#16a34a", "#10b981", "#14b8a6", "#06b6d4", "#0ea5e9",
+  "#3b82f6", "#2563eb", "#6366f1", "#8b5cf6", "#a855f7", "#ec4899",
 ];
 
 const BODY_SWATCHES = [
-  // Quick-access, pinned first: brand orange + a dark gray (mirrors the group grid).
-  "#f66744", "#4a4a4e",
-  // Neutrals (slightly lighter than title row)
-  "#141414", "#1a1a1a", "#1d1d1d", "#242424", "#2a2a2a", "#2f2f2f",
-  "#353535", "#3a3a3a", "#404040", "#454545", "#4a4a4a", "#505050",
-  // Warm hues (lighter than title row)
-  "#3d1d28", "#4a1f24", "#4a281d", "#3d2e2e", "#3d2e1a", "#4d3a20",
-  "#3d3520", "#2d3520", "#3d3d1d", "#4a4220", "#4d4230", "#4d281a",
-  // Cool hues (lighter than title row)
-  "#1d3a2d", "#284a3a", "#1a3f44", "#1a3a4d", "#25334a", "#232d55",
-  "#2d2a5c", "#3d2842", "#4d2a4d", "#3d2a3d", "#4d2a3a", "#1f1f4d",
+  // Neutrals: dark gray + a warm dark (pairs with the orange title), then darks
+  "#4a4a4e", "#2e2018", "#000000", "#101012", "#19191c", "#222226",
+  "#2c2c31", "#383840", "#1c1a17", "#222019", "#2a2620", "#1a1a1a",
+  // Warm rich-dark (match the warm title hues)
+  "#4a1f1f", "#3d1818", "#4a2a14", "#3d2010", "#4a3414", "#3d2a10",
+  "#463f14", "#3a3210", "#3a4514", "#2e3a10", "#3a2410", "#3a1420",
+  // Cool rich-dark (match the cool title hues)
+  "#16401f", "#164028", "#164035", "#163d3a", "#163a40", "#16344a",
+  "#1a2e50", "#16204a", "#26204a", "#321d4a", "#3d1d44", "#40182e",
 ];
 
 // ── Group colors. A group has a SINGLE fill color (no title/body split),
