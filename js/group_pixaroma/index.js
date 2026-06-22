@@ -43,7 +43,7 @@ const state = {
   enabled: true,
   interiorStrength: 0.12, // 0..0.4, from the strength setting / 100
   cursor: null,           // { gx, gy } in graph space, tracked from pointermove
-  foldHideWires: false,   // hide crossing wires of a folded group instead of rerouting them
+  foldHideWires: true,    // hide crossing wires of a folded group instead of rerouting them (default ON)
 };
 // Declared up here (NOT next to applyResizeLength below) because ComfyUI can fire
 // the Enabled setting's onChange -> applyResizeLength SYNCHRONOUSLY during
@@ -127,7 +127,7 @@ app.registerExtension({
       id: SETTING_HIDE_WIRES,
       name: "Hide wires of folded groups",
       type: "boolean",
-      defaultValue: false,
+      defaultValue: true,
       category: ["👑 Pixaroma", "Groups (folded wires)"],
       tooltip:
         "When a group is folded, hide the wires that cross its edge instead of rerouting them onto the bar. Cleaner for busy graphs, but downstream nodes look unplugged until you unfold.",
@@ -144,7 +144,8 @@ app.registerExtension({
       state.enabled = en === undefined ? true : !!en;
       const d = Number(s.getSettingValue(SETTING_STRENGTH));
       if (Number.isFinite(d)) state.interiorStrength = Math.max(0, Math.min(40, d)) / 100;
-      state.foldHideWires = !!s.getSettingValue(SETTING_HIDE_WIRES);
+      const hw = s.getSettingValue(SETTING_HIDE_WIRES);
+      state.foldHideWires = hw === undefined ? true : !!hw;
     }
     installDrawOverride();
     installFoldHooks();
