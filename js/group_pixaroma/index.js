@@ -544,7 +544,7 @@ function runAction(key, group) {
 // =============================================================================
 const FOLD_KEY = "pixFold";
 
-function isFolded(g) { return !!(g && g.flags && g.flags[FOLD_KEY]); }
+function isFolded(g) { const f = g && g.flags && g.flags[FOLD_KEY]; return !!(f && Array.isArray(f.nodes)); }
 
 function findNode(graph, idStr) {
   if (!graph) return null;
@@ -608,15 +608,16 @@ function setGroupRect(g, x, y, w, h) {
 }
 
 // Per-frame cache, rebuilt by the computeVisibleNodes wrap (once/frame) and on
-// fold/unfold/drag. { hiddenSet:Set<idStr>, hiddenNodes:[{node,rect,group}],
-// info:Map<group,{count,inC,outC}> }
+// fold/unfold/drag. { hiddenSet:Set<idStr>, hiddenGroups:Set<idStr>,
+// owner:Map<idStr,group>, info:Map<group,{count,inC,outC}> }
 let _foldFrameMaps = null;
+const EMPTY_FOLD_MAPS = { hiddenSet: new Set(), hiddenGroups: new Set(), owner: new Map(), info: new Map() };
 function invalidateFold() { _foldFrameMaps = null; }
 function buildFoldMaps() {
   const graph = app.canvas?.graph;
   const hiddenSet = new Set();
-  const hiddenNodes = [];
   const hiddenGroups = new Set();
+  const owner = new Map(); // nodeId(string) -> the folded group that hides it
   const info = new Map();
   for (const g of graphGroups(app.canvas)) {
     const f = g?.flags?.[FOLD_KEY];
@@ -629,9 +630,8 @@ function buildFoldMaps() {
       const n = findNode(graph, idStr);
       if (!n || !n.pos || !n.size) continue;
       hiddenSet.add(String(n.id));
-      hiddenNodes.push({ node: n, rect: nodeVisualRect(n), group: g });
-      // Crossing-wire counts via PUBLIC node methods (this fork does not expose
-      // link.origin_id - verified - so we never read link fields).
+      owner.set(String(n.id), g);
+      // Crossing-wire counts for the bar's "N links" hint (public node methods).
       try {
         if (Array.isArray(n.inputs) && typeof n.getInputNode === "function") {
           for (let i = 0; i < n.inputs.length; i++) {
@@ -651,38 +651,39 @@ function buildFoldMaps() {
       } catch (_e) {}
     }
   }
-  return { hiddenSet, hiddenNodes, hiddenGroups, info };
+  return { hiddenSet, hiddenGroups, owner, info };
 }
 function foldMaps() { if (!_foldFrameMaps) _foldFrameMaps = buildFoldMaps(); return _foldFrameMaps; }
 function isHiddenGroup(g) { return !!(g && g.id != null && foldMaps().hiddenGroups.has(String(g.id))); }
 
-// Hide a node's DOM widgets (Note / preview / our DOM-widget nodes) while folded;
-// ComfyUI re-shows them when the node re-enters visible_nodes on unfold.
-function hideNodeWidgets(n) {
+// Hide/restore a node's DOM widgets (Note / preview / our DOM-widget nodes) while
+// folded. We track which nodes WE hid and restore them ourselves when they leave
+// the fold - never trust ComfyUI to undo our display:none.
+const _widgetsHiddenIds = new Set();
+function setNodeWidgets(n, hidden) {
   const ws = n?.widgets;
   if (!ws) return;
   for (const w of ws) {
     const el = w?.element;
-    if (el && el.style && el.style.display !== "none") el.style.display = "none";
+    if (el && el.style) el.style.display = hidden ? "none" : "";
+  }
+}
+function syncHiddenWidgets(hiddenSet) {
+  const graph = app.canvas?.graph;
+  for (const id of [..._widgetsHiddenIds]) {
+    if (!hiddenSet.has(id)) {
+      const n = findNode(graph, id);
+      if (n) setNodeWidgets(n, false);
+      _widgetsHiddenIds.delete(id);
+    }
+  }
+  for (const id of hiddenSet) {
+    const n = findNode(graph, id);
+    if (n) setNodeWidgets(n, true); // re-assert every frame so a re-rendered widget stays hidden
+    _widgetsHiddenIds.add(id);
   }
 }
 
-function posXY(p) {
-  if (!p) return null;
-  if (typeof p[0] === "number") return [p[0], p[1]];
-  if (typeof p.x === "number") return [p.x, p.y];
-  return null;
-}
-function hitHidden(fm, p) {
-  const xy = posXY(p);
-  if (!xy) return null;
-  const T = 3;
-  for (const h of fm.hiddenNodes) {
-    const r = h.rect;
-    if (xy[0] >= r.x - T && xy[0] <= r.x + r.w + T && xy[1] >= r.y - T && xy[1] <= r.y + r.h + T) return h;
-  }
-  return null;
-}
 function barOut(g) { const r = groupRect(g); return r ? [r.x + r.w, r.y + r.h / 2] : null; }
 function barIn(g) { const r = groupRect(g); return r ? [r.x, r.y + r.h / 2] : null; }
 
@@ -708,12 +709,16 @@ function computeBarWidth(group) {
 function foldGroup(group) {
   const r = groupRect(group);
   if (!r) return;
-  const members = containedNodesCentered(group);
   const grps = containedGroups(group).filter((g) => g.id != null);
+  // Members = center-inside nodes, UNIONed with the center-inside nodes of any
+  // nested group we hide - so a nested group's frame AND its nodes disappear
+  // together (no orphaned visible nodes under a hidden frame).
+  const memberIds = new Set(containedNodesCentered(group).map((n) => String(n.id)));
+  for (const ig of grps) for (const n of containedNodesCentered(ig)) memberIds.add(String(n.id));
   group.flags = group.flags || {};
   group.flags[FOLD_KEY] = {
     v: 1,
-    nodes: members.map((n) => String(n.id)),
+    nodes: [...memberIds],
     groups: grps.map((g) => String(g.id)),
     box: [r.x, r.y, r.w, r.h],
   };
@@ -722,9 +727,34 @@ function foldGroup(group) {
   app.graph?.setDirtyCanvas?.(true, true);
   try { app.graph?.change?.(); } catch (_e) {}
 }
+// Bounding box of a set of node ids (+ padding), for recovering a lost restore box.
+function boundsOfNodes(ids) {
+  if (!Array.isArray(ids) || !ids.length) return null;
+  const graph = app.canvas?.graph;
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity, found = false;
+  for (const id of ids) {
+    const n = findNode(graph, id);
+    if (!n || !n.pos || !n.size) continue;
+    const nr = nodeVisualRect(n);
+    x0 = Math.min(x0, nr.x); y0 = Math.min(y0, nr.y);
+    x1 = Math.max(x1, nr.x + nr.w); y1 = Math.max(y1, nr.y + nr.h);
+    found = true;
+  }
+  if (!found) return null;
+  const pad = 10, th = TITLE_H();
+  return { x: x0 - pad, y: y0 - pad - th, w: x1 - x0 + pad * 2, h: y1 - y0 + pad * 2 + th };
+}
 function unfoldGroup(group) {
   const f = group.flags?.[FOLD_KEY];
-  if (f && arrLike(f.box, 4)) setGroupRect(group, f.box[0], f.box[1], f.box[2], f.box[3]);
+  if (f && arrLike(f.box, 4) && f.box.every((v) => Number.isFinite(v))) {
+    setGroupRect(group, f.box[0], f.box[1], f.box[2], f.box[3]);
+  } else if (f) {
+    // Restore box lost/corrupt: rebuild it from the member nodes so the group can
+    // never get stuck at bar size with no way back.
+    const b = boundsOfNodes(f.nodes);
+    if (b) setGroupRect(group, b.x, b.y, b.w, b.h);
+    else console.warn("[Pixaroma.Groups] unfold: no valid restore box; left as-is");
+  }
   if (group.flags) delete group.flags[FOLD_KEY];
   invalidateFold();
   app.graph?.setDirtyCanvas?.(true, true);
@@ -741,12 +771,14 @@ function installExecListeners() {
   const repaint = () => app.canvas?.setDirty?.(true, true);
   const clear = () => { _runningNodeId = null; _progress = null; repaint(); };
   api.addEventListener("executing", (e) => {
+    if (!state.enabled) return;
     const d = e?.detail;
     _runningNodeId = d && typeof d === "object" ? d.node : d;
     if (_runningNodeId == null) _progress = null;
     repaint();
   });
   api.addEventListener("progress", (e) => {
+    if (!state.enabled) return;
     const d = e?.detail || {};
     const node = d.node != null ? d.node : _runningNodeId;
     _progress = { value: Number(d.value) || 0, max: Number(d.max) || 0, node };
@@ -869,6 +901,7 @@ function drawFoldedBar(group, gc, ctx, r) {
 //    double-tap to unfold. We fully own the pointer here (the caller already
 //    swallowed the event), so native group drag/rename never fires on the bar.
 let _lastBarDown = { t: 0, g: null, moved: false };
+let _barDragCleanup = null; // tears down the active folded-bar drag's listeners
 function screenToGraph(c, ev) {
   const rect = c.canvas.getBoundingClientRect();
   const scale = c.ds?.scale || 1;
@@ -895,10 +928,13 @@ function onFoldedBarPointerDown(e, group, c, gx, gy) {
     c.setDirty?.(true, true);
     return;
   }
-  _lastBarDown = { t: now, g: group, moved: false };
+  const rec = (_lastBarDown = { t: now, g: group, moved: false });
   const barW = r0.w, barH = r0.h, bx = r0.x, by = r0.y;
   const start = [gx, gy];
   let moved = false;
+  // Tear down any stale prior drag first (e.g. one cut off by pointercancel) so
+  // listeners can't accumulate and an old closure can't keep moving a group.
+  if (_barDragCleanup) { try { _barDragCleanup(); } catch (_e) {} }
   // Drag moves ONLY the bar (a movable handle). The member nodes, any nested
   // groups, and the stored restore box (f.box) are all left untouched - so you
   // can park a folded bar anywhere (even over another group) without disturbing
@@ -909,18 +945,22 @@ function onFoldedBarPointerDown(e, group, c, gx, gy) {
     const p = screenToGraph(c, ev);
     const dx = p[0] - start[0], dy = p[1] - start[1];
     if (!moved && Math.abs(dx) + Math.abs(dy) < 4) return;
-    moved = true; _lastBarDown.moved = true;
+    moved = true; rec.moved = true;
     setGroupRect(group, bx + dx, by + dy, barW, barH);
     invalidateFold();
     c.setDirty?.(true, true);
   };
-  const onUp = () => {
+  const cleanup = () => {
     window.removeEventListener("pointermove", onMove, true);
     window.removeEventListener("pointerup", onUp, true);
-    if (moved) { try { app.graph?.change?.(); } catch (_e) {} }
+    window.removeEventListener("pointercancel", onUp, true);
+    if (_barDragCleanup === cleanup) _barDragCleanup = null;
   };
+  const onUp = () => { cleanup(); if (moved) { try { app.graph?.change?.(); } catch (_e) {} } };
+  _barDragCleanup = cleanup;
   window.addEventListener("pointermove", onMove, true);
   window.addEventListener("pointerup", onUp, true);
+  window.addEventListener("pointercancel", onUp, true);
 }
 
 // =============================================================================
@@ -931,7 +971,7 @@ function onFoldedBarPointerDown(e, group, c, gx, gy) {
 //  - drawConnections iterates graph._nodes (NOT visible_nodes) and calls
 //    this.renderLink(ctx, startPos, endPos, link, ...) per wire, so wrapping
 //    renderLink lets us reroute a wire that touches a hidden node onto the bar
-//    (identified positionally - link fields are not exposed in this fork) or
+//    (the hidden endpoint is identified by the link's origin_id/target_id) or
 //    drop a wire that is internal to one folded group.
 // =============================================================================
 let _foldHooksInstalled = false;
@@ -948,13 +988,30 @@ function installFoldHooks() {
     proto.computeVisibleNodes = function (nodes, out) {
       const res = _origCVN.call(this, nodes, out);
       if (!state.enabled || !Array.isArray(res)) return res;
+      // Cheap probe: when nothing is folded, skip the whole rebuild (zero cost),
+      // and restore any widgets left hidden by a now-unfolded group.
+      let anyFolded = false;
+      for (const g of graphGroups(this)) { if (isFolded(g)) { anyFolded = true; break; } }
+      if (!anyFolded) {
+        _foldFrameMaps = EMPTY_FOLD_MAPS;
+        if (_widgetsHiddenIds.size) syncHiddenWidgets(EMPTY_FOLD_MAPS.hiddenSet);
+        return res;
+      }
       const fm = (_foldFrameMaps = buildFoldMaps());
       if (fm.hiddenSet.size) {
         for (let i = res.length - 1; i >= 0; i--) {
           if (fm.hiddenSet.has(String(res[i].id))) res.splice(i, 1);
         }
-        for (const h of fm.hiddenNodes) hideNodeWidgets(h.node);
+        // Defensive: some forks return a NEW array rather than the passed-in
+        // visible_nodes; splice that too so hidden nodes never paint/hit-test.
+        const vn = this.visible_nodes;
+        if (Array.isArray(vn) && vn !== res) {
+          for (let i = vn.length - 1; i >= 0; i--) {
+            if (fm.hiddenSet.has(String(vn[i].id))) vn.splice(i, 1);
+          }
+        }
       }
+      syncHiddenWidgets(fm.hiddenSet);
       return res;
     };
   } else {
@@ -964,17 +1021,25 @@ function installFoldHooks() {
   if (typeof proto.renderLink === "function") {
     _origRenderLink = proto.renderLink;
     proto.renderLink = function (ctx, a, b, link, skipBorder, flow, color, startDir, endDir, opts) {
-      if (state.enabled) {
-        const fm = _foldFrameMaps || buildFoldMaps();
-        if (fm.hiddenNodes.length) {
-          const ah = hitHidden(fm, a);
-          const bh = hitHidden(fm, b);
-          if (ah && bh && ah.group === bh.group) return; // wire internal to a folded group
-          if (ah || bh) {
-            const na = ah ? barOut(ah.group) : a;
-            const nb = bh ? barIn(bh.group) : b;
+      // Identify a wire's hidden endpoint by the link's REAL node ids (reliable),
+      // NOT by position - positional matching false-matched a visible node's slot
+      // to a nearby hidden node and made wires vanish (the renderer then culled
+      // the wrongly-rerouted wire). The link object exposes origin_id/target_id.
+      if (state.enabled && link && link.origin_id != null) {
+        const fm = _foldFrameMaps || (_foldFrameMaps = buildFoldMaps());
+        if (fm.owner.size) {
+          const oG = fm.owner.get(String(link.origin_id));
+          const tG = fm.owner.get(String(link.target_id));
+          if (oG && tG && oG === tG) return; // wire internal to one folded group
+          if (oG || tG) {
+            const na = oG ? barOut(oG) : a;
+            const nb = tG ? barIn(tG) : b;
             let no = opts;
-            if (opts) { no = Object.assign({}, opts); no.startControl = undefined; no.endControl = undefined; }
+            if (opts) {
+              no = Object.assign({}, opts);
+              if (oG) no.startControl = undefined; // recompute only the moved end's curve
+              if (tG) no.endControl = undefined;
+            }
             return _origRenderLink.call(this, ctx, na || a, nb || b, link, skipBorder, flow, color, startDir, endDir, no);
           }
         }
