@@ -743,7 +743,7 @@ function injectCSS() {
 }
 /* ── Nodes 2.0 swatch-palette popup ── */
 .pix-nc-pal {
-  width: 728px;          /* snug to the 15-swatch grid (684px) — no right-side slack */
+  width: 748px;          /* 684px 15-swatch grid + scrollbar + padding; content blocks are centered */
   max-width: 96vw;
   min-width: 0;
   max-height: 90vh;
@@ -764,12 +764,12 @@ function injectCSS() {
 .pix-nc-pal-close:hover { color: #fff; background: rgba(255,255,255,0.08); }
 .pix-nc-pal-previewwrap { display: flex; justify-content: center; padding: 0 0 14px; }
 .pix-nc-pal-scroll { overflow-y: auto; overflow-x: hidden; padding-right: 4px; }
-.pix-nc-pal-section { margin-bottom: 10px; }
+.pix-nc-pal-section { width: 684px; max-width: 100%; margin: 0 auto 10px; }
 .pix-nc-pal-grouplabel {
   font: 11px system-ui, sans-serif; letter-spacing: 0.06em;
   text-transform: uppercase; color: #888; margin: 0 0 5px;
 }
-.pix-nc-pal-grid { display: flex; flex-wrap: wrap; gap: 6px; }
+.pix-nc-pal-grid { display: grid; grid-template-columns: repeat(15, 40px); gap: 6px; }
 .pix-nc-pal-swatch {
   width: 40px; height: 30px; border-radius: 5px;
   border: 1px solid rgba(255,255,255,0.15);
@@ -797,7 +797,7 @@ function injectCSS() {
 /* 684 = 15*40 + 14*6: match the swatch-grid width so the buttons line up
    under the swatches and never overflow past them. border-box keeps flex:1
    from overshooting once padding/border are added. */
-.pix-nc-pal-tools { display: flex; gap: 8px; margin-bottom: 14px; width: 684px; max-width: 100%; }
+.pix-nc-pal-tools { display: flex; gap: 8px; margin: 0 auto 14px; width: 684px; max-width: 100%; }
 .pix-nc-pal-tools .pix-nc-btn { min-width: 0; flex: 1; padding: 6px 12px; box-sizing: border-box; }
   `;
   document.head.appendChild(s);
@@ -1516,7 +1516,6 @@ function openGroupColorsPalette(targets, group) {
   scroll.appendChild(tools);
 
   const { sec, grid } = palSection("Group colors");
-  grid.style.justifyContent = "center"; // 3 even rows of 15, centered
   for (const c of GROUP_COLORS) {
     const sw = makeSingleSwatch(c.color);
     sw.title = c.label;
