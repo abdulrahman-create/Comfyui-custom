@@ -140,6 +140,10 @@ function setPreview(node) {
   if (node._pixLvPlaceholder?.isConnected) node._pixLvPlaceholder.style.display = "none";
   video.load();
   refreshBar(node);
+  // The fill preview area can be left collapsed (zero height) by a prior fold or
+  // a workflow-tab switch - display was toggled without a re-layout. Kick a
+  // re-fit so the just-selected video actually shows without a manual refresh.
+  requestAnimationFrame(() => { try { window.dispatchEvent(new Event("resize")); } catch (_e) {} });
 }
 
 // Restore the preview once the DOM widget is actually mounted. On a fresh add
