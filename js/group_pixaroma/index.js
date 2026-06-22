@@ -37,11 +37,13 @@ import { BRAND } from "../shared/index.mjs";
 
 const SETTING_ENABLED = "Pixaroma.Groups.Enabled";
 const SETTING_STRENGTH = "Pixaroma.Groups.InteriorStrength";
+const SETTING_HIDE_WIRES = "Pixaroma.Groups.FoldHideWires";
 
 const state = {
   enabled: true,
   interiorStrength: 0.12, // 0..0.4, from the strength setting / 100
   cursor: null,           // { gx, gy } in graph space, tracked from pointermove
+  foldHideWires: false,   // hide crossing wires of a folded group instead of rerouting them
 };
 // Declared up here (NOT next to applyResizeLength below) because ComfyUI can fire
 // the Enabled setting's onChange -> applyResizeLength SYNCHRONOUSLY during
@@ -121,6 +123,19 @@ app.registerExtension({
         app.canvas?.setDirty?.(true, true);
       },
     },
+    {
+      id: SETTING_HIDE_WIRES,
+      name: "Hide wires of folded groups",
+      type: "boolean",
+      defaultValue: false,
+      category: ["👑 Pixaroma", "Groups (folded wires)"],
+      tooltip:
+        "When a group is folded, hide the wires that cross its edge instead of rerouting them onto the bar. Cleaner for busy graphs, but downstream nodes look unplugged until you unfold.",
+      onChange: (v) => {
+        state.foldHideWires = !!v;
+        app.canvas?.setDirty?.(true, true);
+      },
+    },
   ],
   setup() {
     const s = app.ui?.settings;
@@ -129,6 +144,7 @@ app.registerExtension({
       state.enabled = en === undefined ? true : !!en;
       const d = Number(s.getSettingValue(SETTING_STRENGTH));
       if (Number.isFinite(d)) state.interiorStrength = Math.max(0, Math.min(40, d)) / 100;
+      state.foldHideWires = !!s.getSettingValue(SETTING_HIDE_WIRES);
     }
     installDrawOverride();
     installFoldHooks();
@@ -1032,6 +1048,7 @@ function installFoldHooks() {
           const tG = fm.owner.get(String(link.target_id));
           if (oG && tG && oG === tG) return; // wire internal to one folded group
           if (oG || tG) {
+            if (state.foldHideWires) return; // user opted to hide crossing wires entirely
             const na = oG ? barOut(oG) : a;
             const nb = tG ? barIn(tG) : b;
             let no = opts;

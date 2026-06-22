@@ -488,6 +488,7 @@ function pushAlignedGuides(rect, targets, skip) {
 function resetDrag() {
   state.dragInfo = null;
   state.groupDrag = null;
+  state._multiGroupDrag = false;
   state._prevNodeStates = null;
   state._vueResizing = false;
   state._gestureSizes = null;
@@ -593,6 +594,24 @@ function findDraggedGroup(c) {
     if (moved && !resized) return g;
   }
   return null;
+}
+
+// How many groups MOVED (top-left changed, size unchanged) since last tick. >1
+// means a multi-group drag - Align can't rigidly snap the whole set, and snapping
+// one member drifts it into the others, so we stay out and let LiteGraph move
+// them rigidly.
+function countMovedGroups(c) {
+  const prev = state._prevGroupRects;
+  if (!prev) return 0;
+  let n = 0;
+  for (const g of graphGroups(c)) {
+    const r = groupRect(g), p = prev.get(g);
+    if (!r || !p) continue;
+    const moved = Math.abs(r.x - p.x) > 0.01 || Math.abs(r.y - p.y) > 0.01;
+    const resized = Math.abs(r.w - p.w) > 0.01 || Math.abs(r.h - p.h) > 0.01;
+    if (moved && !resized) n++;
+  }
+  return n;
 }
 
 // Nodes that move rigidly with the group. Prefer LiteGraph's own _nodes (it
@@ -733,8 +752,20 @@ function onWindowPointerMove(e) {
   // The button-held + shift + marquee/pan gates above already cleared groupDrag
   // when appropriate; pointerup/cancel clears it via resetDrag.
   const draggedGroup = findDraggedGroup(c) || state.groupDrag?.ref || null;
+  // Latch a multi-group drag (2+ groups moving together). Once latched, Align
+  // stays out of group snapping for the rest of the gesture so the selected
+  // groups move rigidly via LiteGraph instead of creeping into each other.
+  if (countMovedGroups(c) > 1) state._multiGroupDrag = true;
   refreshGroupCache(c);
-  if (draggedGroup) { handleGroupDrag(c, draggedGroup, e); return; }
+  if (draggedGroup) {
+    if (state._multiGroupDrag) {
+      state.groupDrag = null;
+      if (state.activeGuides.length) { state.activeGuides = []; c.setDirty?.(true, true); }
+      return;
+    }
+    handleGroupDrag(c, draggedGroup, e);
+    return;
+  }
 
   // LEGACY-ONLY drag gates. Nodes 2.0 moves nodes WITHOUT setting
   // last_mouse_dragging (undefined) or pointer.dragStarted (stays false) -
