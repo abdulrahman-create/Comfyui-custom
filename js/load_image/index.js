@@ -1,5 +1,5 @@
 import { app } from "/scripts/app.js";
-import { hideJsonWidget, BRAND } from "../shared/index.mjs";
+import { hideJsonWidget, BRAND, installResizeFloor } from "../shared/index.mjs";
 import { isGraphLoading } from "../shared/graph_loading.mjs";
 import { applyAdaptiveCanvasOnly, isVueNodes, canvasBackingScale, installZoomRepaint } from "../shared/nodes2.mjs";
 import {
@@ -668,6 +668,15 @@ function setupLoadImageNode(node) {
   applyAdaptiveCanvasOnly(widget);
   node._pixLiWidget = widget;
 
+  // The controls now live on an absolute inner layer (.pix-li-inner), so the
+  // node's height no longer tracks its content. In Nodes 2.0 the manual-resize
+  // floor is a live "collapse to 0" measurement (NOT computeLayoutSize.minHeight),
+  // which reads the absolute layer as ~0 and would let the user drag the node
+  // BELOW its content → the image spills out the bottom of the frame. Pin a real
+  // floor (= the content height) only while a resize handle is dragged. No-op in
+  // legacy (it has no .lg-node resize handle) and outside a drag.
+  node._pixLiFloorOff = installResizeFloor(root, measureContentHeight);
+
   // Nodes 2.0 preview rebuild: the controls panel becomes a FIXED (min-content)
   // row so it's not a grower, then add the fill preview widget (sole grower) and
   // hide the stale native preview. (Legacy is untouched: the panel keeps its
@@ -1049,6 +1058,8 @@ app.registerExtension({
       this._pixLiPreviewRO = null;
       try { cancelAnimationFrame(this._pixLiZoomRaf); } catch {}
       this._pixLiZoomRaf = null;
+      try { this._pixLiFloorOff?.(); } catch {}
+      this._pixLiFloorOff = null;
       if (_activeLoadImageNode === this) _activeLoadImageNode = null;
       return _origRemoved?.apply(this, arguments);
     };

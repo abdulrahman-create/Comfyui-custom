@@ -27,6 +27,7 @@ export function injectCSS() {
     .pix-li-inner {
       position: absolute;
       inset: 0;
+      overflow: hidden;
       display: flex;
       flex-direction: column;
       gap: 7px;
