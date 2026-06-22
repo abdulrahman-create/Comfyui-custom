@@ -628,6 +628,13 @@ function hitHidden(fm, p) {
 function barOut(g) { const r = groupRect(g); return r ? [r.x + r.w, r.y + r.h / 2] : null; }
 function barIn(g) { const r = groupRect(g); return r ? [r.x, r.y + r.h / 2] : null; }
 
+// The ► expand button on a folded bar - single source of truth for both the
+// paint (drawFoldedBar) and the click hit-test (onFoldedBarPointerDown).
+function foldChevronRect(r) {
+  const s = Math.min(BTN, r.h - 6);
+  return { x: r.x + 4, y: r.y + (r.h - s) / 2, w: s, h: s };
+}
+
 function _measCtx() {
   if (!_measCtx._c) _measCtx._c = document.createElement("canvas").getContext("2d");
   return _measCtx._c;
@@ -683,11 +690,21 @@ function drawFoldedBar(group, gc, ctx, r) {
     ctx.lineWidth = 2; ctx.strokeStyle = BRAND; ctx.stroke();
   }
 
-  // Collapsed chevron (points right = "click to open").
+  // Expand button: a ► chevron the user clicks to reopen, with a hover highlight
+  // (matches the header buttons) so it clearly reads as a button. Double-clicking
+  // anywhere on the bar still works too.
+  const cr = foldChevronRect(r);
+  const cur = state.cursor;
+  const chHover = !!(cur && cur.gx >= cr.x && cur.gx <= cr.x + cr.w && cur.gy >= cr.y && cur.gy <= cr.y + cr.h);
+  if (chHover) {
+    rr(ctx, cr.x, cr.y, cr.w, cr.h, 5);
+    ctx.globalAlpha = 0.16 * ea; ctx.fillStyle = inkWhite ? "#ffffff" : "#000000"; ctx.fill();
+    ctx.globalAlpha = ea;
+  }
   ctx.fillStyle = ink;
-  const chx = x + PAD + 1, chs = 5;
+  const ccx = cr.x + cr.w / 2 - 2, chs = 4;
   ctx.beginPath();
-  ctx.moveTo(chx, cy - chs); ctx.lineTo(chx + chs, cy); ctx.lineTo(chx, cy + chs); ctx.closePath(); ctx.fill();
+  ctx.moveTo(ccx, cy - chs); ctx.lineTo(ccx + chs, cy); ctx.lineTo(ccx, cy + chs); ctx.closePath(); ctx.fill();
 
   // Side dots where the rerouted wires attach (left = incoming, right = outgoing).
   ctx.fillStyle = ink;
@@ -720,7 +737,7 @@ function drawFoldedBar(group, gc, ctx, r) {
   }
   ctx.font = `600 ${TITLE_FONT}px ${GF}`;
   ctx.fillStyle = ink; ctx.textAlign = "left";
-  const titleX = x + PAD + 14;
+  const titleX = cr.x + cr.w + 4;
   const title = ellipsize(ctx, group.title || "Group", rightLimit - titleX - 4);
   ctx.fillText(title, titleX, cy + 0.5);
 }
@@ -736,6 +753,18 @@ function screenToGraph(c, ev) {
   return [(ev.clientX - rect.left) / scale - off[0], (ev.clientY - rect.top) / scale - off[1]];
 }
 function onFoldedBarPointerDown(e, group, c, gx, gy) {
+  const f = group.flags?.[FOLD_KEY];
+  const r0 = groupRect(group);
+  if (!f || !r0) return;
+  // Single-click the ► expand button = reopen (the discoverable path).
+  const cr = foldChevronRect(r0);
+  if (gx >= cr.x && gx <= cr.x + cr.w && gy >= cr.y && gy <= cr.y + cr.h) {
+    _lastBarDown = { t: 0, g: null, moved: false };
+    unfoldGroup(group);
+    c.setDirty?.(true, true);
+    return;
+  }
+  // Double-click anywhere on the bar also reopens.
   const now = typeof performance !== "undefined" ? performance.now() : 0;
   if (_lastBarDown.g === group && !_lastBarDown.moved && now - _lastBarDown.t < 340) {
     _lastBarDown = { t: 0, g: null, moved: false };
@@ -744,9 +773,6 @@ function onFoldedBarPointerDown(e, group, c, gx, gy) {
     return;
   }
   _lastBarDown = { t: now, g: group, moved: false };
-  const f = group.flags?.[FOLD_KEY];
-  const r0 = groupRect(group);
-  if (!f || !r0) return;
   const barW = r0.w, barH = r0.h, bx = r0.x, by = r0.y;
   const members = (Array.isArray(f.nodes) ? f.nodes : [])
     .map((id) => findNode(app.graph, id))
