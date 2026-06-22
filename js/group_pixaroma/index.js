@@ -64,7 +64,11 @@ const ICONS = {
   mute: "/pixaroma/assets/icons/ui/off.svg",
   bypass: "/pixaroma/assets/icons/ui/bypass.svg",
   color: "/pixaroma/assets/icons/ui/fill.svg",
-  collapse: "/pixaroma/assets/icons/ui/collapse.svg",
+  // Collapse toggle is a STATE-DEPENDENT glyph: minus = collapse (group expanded),
+  // plus = expand (group collapsed). Clearer than fold-chevrons, which read like
+  // an X at button size.
+  collapse: "/pixaroma/assets/icons/ui/minus.svg",
+  expand: "/pixaroma/assets/icons/ui/plus.svg",
 };
 
 // =============================================================================
@@ -373,14 +377,20 @@ function paintGroup(group, gc, ctx) {
     const cur = state.cursor;
     for (const b of head.buttons) {
       const bhover = !!(cur && cur.gx >= b.x && cur.gx <= b.x + b.w && cur.gy >= b.y && cur.gy <= b.y + b.h);
-      if (active[b.key] || bhover) {
+      // Collapse shows its state through the icon (- / +), so it gets no "active"
+      // background; mute / bypass keep the active fill so they read as ON.
+      const showActive = b.key !== "collapse" && active[b.key];
+      if (showActive || bhover) {
         rr(ctx, b.x, b.y, b.w, b.h, 5);
-        ctx.globalAlpha = ea * (active[b.key] ? 0.3 : 0.16);
+        ctx.globalAlpha = ea * (showActive ? 0.3 : 0.16);
         ctx.fillStyle = inkWhite ? "#ffffff" : "#000000";
         ctx.fill();
         ctx.globalAlpha = ea;
       }
-      const ic = tintedIcon(ICONS[b.key], ink);
+      const iconUrl = b.key === "collapse"
+        ? (active.collapse ? ICONS.expand : ICONS.collapse)
+        : ICONS[b.key];
+      const ic = tintedIcon(iconUrl, ink);
       if (ic) ctx.drawImage(ic, b.x + (b.w - ICON) / 2, b.y + (b.h - ICON) / 2, ICON, ICON);
     }
   }
