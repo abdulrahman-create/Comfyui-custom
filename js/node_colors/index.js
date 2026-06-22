@@ -1606,5 +1606,16 @@ app.registerExtension({
         }
       }
     }, true);
+
+    // Expose the group color palette so other Pixaroma canvas features (Group
+    // Pixaroma) can open the exact same picker without re-importing this module
+    // (importing an extension entry risks a second evaluation / double menu
+    // wiring). Read-only handles to two module-scope fns; safe to call anytime.
+    try {
+      window.PixaromaGroupColors = {
+        open: openGroupColorsPalette,
+        getTargets: getTargetGroups,
+      };
+    } catch (_e) {}
   },
 });
