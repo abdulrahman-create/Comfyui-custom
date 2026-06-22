@@ -336,13 +336,15 @@ function paintGroup(group, gc, ctx) {
   ctx.strokeStyle = color;
   ctx.stroke();
 
-  // 4) Resize hint (bottom-right triangle), subtle.
+  // 4) Resize hint (bottom-right triangle), subtle. Inset by ~RADIUS so it tucks
+  // INSIDE the rounded corner instead of poking past the rounded border.
+  const rm = RADIUS - 1;
   ctx.globalAlpha = 0.45 * ea;
   ctx.fillStyle = ink;
   ctx.beginPath();
-  ctx.moveTo(x + w - 2, y + h - 2);
-  ctx.lineTo(x + w - 2 - RES_MARK, y + h - 2);
-  ctx.lineTo(x + w - 2, y + h - 2 - RES_MARK);
+  ctx.moveTo(x + w - rm, y + h - rm);
+  ctx.lineTo(x + w - rm - RES_MARK, y + h - rm);
+  ctx.lineTo(x + w - rm, y + h - rm - RES_MARK);
   ctx.closePath();
   ctx.fill();
 
