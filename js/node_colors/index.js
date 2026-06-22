@@ -48,6 +48,7 @@ import { createPixaromaColorPicker } from "../shared/color_picker.mjs";
 const HUE_FOLDERS = [
   { label: "Dark", presets: [
     { label: "Default", title: "#1d1d1d", body: "#2a2a2a" },
+    { label: "Pixaroma Orange", title: "#f66744", body: "#242424" },
     { label: "Onyx", title: "#060606", body: "#141414" },
     { label: "Charcoal", title: "#262220", body: "#36312f" },
     { label: "Red", title: "#231011", body: "#351d1d" },
@@ -285,6 +286,9 @@ const GROUP_DEFAULT_COLOR = "#3f789e"; // LiteGraph's default (pale_blue)
 // Hand-picked group colors (user selection, May 2026), ordered by hue then
 // light → dark. Applied directly to group.color; the label is the menu name.
 const GROUP_COLORS = [
+  // Quick-access, pinned first: Pixaroma brand orange + a neutral dark gray.
+  { label: "Pixaroma Orange", color: "#f66744" },
+  { label: "Dark Gray",       color: "#4a4a4e" },
   { label: "Light Red",    color: "#d57b7b" },
   { label: "Soft Red",     color: "#d35050" },
   { label: "Mid Red",      color: "#cf2a2a" },
@@ -1090,10 +1094,10 @@ function openGroupColorModal(opts) {
 }
 
 function pickCustomGroup(groups, anchorGroup) {
-  const fav = getGroupFavorites().find((f) => f);
-  const seed = colorClipboard
-    ? pickGroupColor(colorClipboard)
-    : (fav ? pickGroupColor(fav) : GROUP_DEFAULT_COLOR);
+  // Seed from the group's CURRENT color so you can nudge it, mirroring the node
+  // Pick-custom (which seeds from captureColors). captureGroupColor falls back to
+  // the default when the group has no color set.
+  const seed = captureGroupColor(anchorGroup || groups[0]);
   const originals = groups.map((g) => g.color);
   openGroupColorModal({
     initial: seed,
