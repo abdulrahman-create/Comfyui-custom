@@ -142,9 +142,26 @@ function groupRect(g) {
 }
 function graphGroups(c) { return c?.graph?._groups || c?.graph?.groups || []; }
 
-// Nodes whose body center sits inside the group rect (matches what the user
-// sees; same idea as Align's groupContainedNodes geometry fallback). Used for
-// the count badge, the active-state of the toggles, and the actions.
+// Which nodes "belong to" the group. Matched to LiteGraph's OWN rule so this is
+// consistent with group-drag: the nodes that move with the group are exactly the
+// ones the count badge + buttons act on. LiteGraph membership = the group's
+// bounding contains the CENTER of the node's visual bounding rect
+// (node.boundingRect, which is collapse-aware - a collapsed node's rect is just
+// its title pill). We read it the same way, but WITHOUT calling
+// recomputeInsideNodes() (that re-sorts graph.groups as a side effect, so it must
+// not run every paint). Using the node's EXPANDED size for a collapsed node was
+// the bug: its "center" landed where the open body would be - often below the
+// group edge - so an edge node got skipped until you moved it up.
+function nodeCenter(n) {
+  const br = n.boundingRect;
+  if (br && br.length >= 4) return [br[0] + br[2] / 2, br[1] + br[3] / 2];
+  const th = window.LiteGraph?.NODE_TITLE_HEIGHT || 30;
+  if (n.flags?.collapsed) {
+    const cw = n._collapsed_width || window.LiteGraph?.NODE_COLLAPSED_WIDTH || 80;
+    return [n.pos[0] + cw / 2, n.pos[1] - th / 2];
+  }
+  return [n.pos[0] + n.size[0] / 2, n.pos[1] + n.size[1] / 2 - th / 2];
+}
 function containedNodes(group) {
   const c = app.canvas;
   const nodes = c?.graph?._nodes || [];
@@ -153,8 +170,7 @@ function containedNodes(group) {
   const out = [];
   for (const n of nodes) {
     if (!n.pos || !n.size) continue;
-    const cx = n.pos[0] + n.size[0] / 2;
-    const cy = n.pos[1] + n.size[1] / 2;
+    const [cx, cy] = nodeCenter(n);
     if (cx >= r.x && cx <= r.x + r.w && cy >= r.y && cy <= r.y + r.h) out.push(n);
   }
   return out;
