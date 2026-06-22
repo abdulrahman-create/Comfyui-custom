@@ -330,8 +330,7 @@ const GROUP_COLORS = [
   { label: "Rich Blue",    color: "#2a55cf" },
   { label: "Rich Violet",  color: "#6a3fcf" },
   { label: "Rich Purple",  color: "#9e3fc0" },
-  { label: "Rich Magenta", color: "#c03f9e" },
-  { label: "Rich Rose",    color: "#c03f5f" },
+  // Exactly 45 colors = 3 even rows of 15 in the palette popup (no stray 4th row).
 ];
 const GROUP_SWATCHES = GROUP_COLORS.map((c) => c.color);
 
@@ -713,25 +712,38 @@ function injectCSS() {
 .pix-nc-modal-single {
   min-width: 360px;
 }
-/* Group preview shows the fill at the same ~25% opacity LiteGraph uses, so
-   the user sees how faint the color will actually look on the canvas. */
+/* Group preview mirrors the ACTUAL styled group: a colored header bar (title +
+   count badge) over a faint interior tint, rounded with clipped corners. */
 .pix-nc-grouppreview {
   width: 240px;
   height: 96px;
   border: 2px solid #3f789e;
-  border-radius: 6px;
+  border-radius: 8px;
   box-shadow: 0 4px 14px rgba(0,0,0,0.5);
-  background-color: rgba(63,120,158,0.25);
+  background-color: rgba(63,120,158,0.18);
+  overflow: hidden;
   transition: border-color 0.08s linear, background-color 0.08s linear;
 }
+.pix-nc-grouppreview-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 7px 12px;
+  background: #3f789e;
+  transition: background 0.08s linear;
+}
 .pix-nc-grouppreview-title {
-  padding: 6px 10px;
-  font: 12px Tahoma, system-ui, sans-serif;
-  color: rgba(255,255,255,0.7);
+  font: 600 13px Tahoma, system-ui, sans-serif;
+  color: #fff;
+}
+.pix-nc-grouppreview-badge {
+  font: 11px Tahoma, system-ui, sans-serif;
+  background: rgba(255,255,255,0.18);
+  color: #fff;
+  border-radius: 9px; padding: 1px 9px;
+  transition: background 0.08s linear, color 0.08s linear;
 }
 /* ── Nodes 2.0 swatch-palette popup ── */
 .pix-nc-pal {
-  width: 760px;          /* fits the widest hue (15 swatches) on one line */
+  width: 728px;          /* snug to the 15-swatch grid (684px) — no right-side slack */
   max-width: 96vw;
   min-width: 0;
   max-height: 90vh;
@@ -984,17 +996,42 @@ function pickCustom(nodes, anchorNode) {
 
 // ── Single-color modal for groups (one picker + a preview that mimics the
 // ~25% group transparency so the faint look isn't a surprise).
+// White or near-black ink for text on a colored bar, by luminance — keeps the
+// preview's title/badge readable on any group color (mirrors the actual group's
+// adaptive title text).
+function _previewInk(hex) {
+  const rgb = hexToRgb(hex);
+  if (!rgb) return "#ffffff";
+  const lum = (0.2126 * rgb.r + 0.7152 * rgb.g + 0.0722 * rgb.b) / 255;
+  return lum > 0.62 ? "#1a1a1a" : "#ffffff";
+}
+
+// Mirrors the ACTUAL styled group (Group Pixaroma): a rounded box with a solid
+// colored header bar (title + node-count badge in adaptive ink) over a faint
+// interior tint — so hovering a swatch previews how a real group will look.
 function buildGroupPreview(initial) {
   const el = document.createElement("div");
   el.className = "pix-nc-grouppreview";
+  const bar = document.createElement("div");
+  bar.className = "pix-nc-grouppreview-bar";
   const title = document.createElement("div");
   title.className = "pix-nc-grouppreview-title";
   title.textContent = "Group";
-  el.appendChild(title);
+  const badge = document.createElement("div");
+  badge.className = "pix-nc-grouppreview-badge";
+  badge.textContent = "2";
+  bar.appendChild(title);
+  bar.appendChild(badge);
+  el.appendChild(bar);
   function setColor(c) {
     const rgb = hexToRgb(c) || { r: 63, g: 120, b: 158 };
     el.style.borderColor = c;
-    el.style.backgroundColor = `rgba(${rgb.r},${rgb.g},${rgb.b},0.25)`;
+    el.style.backgroundColor = `rgba(${rgb.r},${rgb.g},${rgb.b},0.18)`;
+    bar.style.backgroundColor = c;
+    const ink = _previewInk(c);
+    title.style.color = ink;
+    badge.style.color = ink;
+    badge.style.background = ink === "#ffffff" ? "rgba(255,255,255,0.18)" : "rgba(0,0,0,0.18)";
   }
   setColor(initial);
   return { el, setColor };
@@ -1479,6 +1516,7 @@ function openGroupColorsPalette(targets, group) {
   scroll.appendChild(tools);
 
   const { sec, grid } = palSection("Group colors");
+  grid.style.justifyContent = "center"; // 3 even rows of 15, centered
   for (const c of GROUP_COLORS) {
     const sw = makeSingleSwatch(c.color);
     sw.title = c.label;
