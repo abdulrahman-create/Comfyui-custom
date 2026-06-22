@@ -571,20 +571,19 @@ function refreshGroupCache(c) {
   for (const g of graphGroups(c)) { const r = groupRect(g); if (r) state._prevGroupRects.set(g, r); }
 }
 
-// Identify a group being MOVED this tick. Strong signal first (legacy canvas
-// tracks the grabbed group), then a renderer-agnostic fallback: a group whose
-// top-left changed since last tick with its SIZE unchanged (a size change means
-// a resize, which we don't snap). Returns the group or null.
+// Identify a group being MOVED this tick: a group whose top-left changed since
+// last tick with its SIZE unchanged (a size change means a resize, which we
+// don't snap). _prevGroupRects is baselined on pointerdown, so a real group drag
+// is caught on the very first move tick.
+//
+// We deliberately do NOT trust c.selected_group. It can be STALE (it stays set
+// after you interact with a group, e.g. recolor it), and in the Vue renderer it
+// remains set while you drag a NODE or select TEXT inside the group - which made
+// Align move the whole group instead of the node / instead of selecting text
+// (reported June 2026, both renderers). Movement-based detection can't
+// false-fire: dragging a node or selecting text never moves the group.
 function findDraggedGroup(c) {
   const prev = state._prevGroupRects;
-  const sizeUnchanged = (g) => {
-    const p = prev?.get(g), r = groupRect(g);
-    if (!p || !r) return true;
-    return Math.abs(r.w - p.w) <= 0.01 && Math.abs(r.h - p.h) <= 0.01;
-  };
-  if (c.selected_group && !c.selected_group_resizing && sizeUnchanged(c.selected_group)) {
-    return c.selected_group;
-  }
   if (!prev) return null;
   for (const g of graphGroups(c)) {
     const r = groupRect(g), p = prev.get(g);
