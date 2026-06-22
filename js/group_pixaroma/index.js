@@ -763,8 +763,27 @@ function boundsOfNodes(ids) {
 }
 function unfoldGroup(group) {
   const f = group.flags?.[FOLD_KEY];
+  const cur = groupRect(group); // the bar's CURRENT spot (it may have been dragged)
   if (f && arrLike(f.box, 4) && f.box.every((v) => Number.isFinite(v))) {
-    setGroupRect(group, f.box[0], f.box[1], f.box[2], f.box[3]);
+    // Expand the group WHERE THE BAR IS now: shift every member node + nested
+    // group by however far the bar was dragged from its fold spot, then open the
+    // box there. No teleport back to the original location (users found that
+    // confusing) - dragging the bar relocates the whole group.
+    const dx = cur ? cur.x - f.box[0] : 0;
+    const dy = cur ? cur.y - f.box[1] : 0;
+    if (dx || dy) {
+      const graph = app.canvas?.graph;
+      for (const id of (Array.isArray(f.nodes) ? f.nodes : [])) {
+        const n = findNode(graph, id);
+        if (n && n.pos) { n.pos[0] += dx; n.pos[1] += dy; }
+      }
+      for (const gid of (Array.isArray(f.groups) ? f.groups : [])) {
+        const ig = findGroup(gid);
+        const ir = ig && groupRect(ig);
+        if (ir) setGroupRect(ig, ir.x + dx, ir.y + dy, ir.w, ir.h);
+      }
+    }
+    setGroupRect(group, f.box[0] + dx, f.box[1] + dy, f.box[2], f.box[3]);
   } else if (f) {
     // Restore box lost/corrupt: rebuild it from the member nodes so the group can
     // never get stuck at bar size with no way back.

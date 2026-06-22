@@ -365,6 +365,10 @@ function setGroupPos(g, x, y) {
 function graphGroups(c) {
   return c?.graph?._groups || c?.graph?.groups || [];
 }
+// A group folded by Group Pixaroma is a slim "bar" that Group Pixaroma drags
+// itself (bar-only). Align must NOT also treat it as a draggable group or the two
+// fight and the bar appears stuck. (Detected via the fold flag the features share.)
+function isFoldedGroup(g) { return !!(g && g.flags && g.flags.pixFold); }
 
 // Unified alignment targets: every node (its visual rect, title bar included)
 // PLUS every group (its bounding box). The snap loops and guide extension
@@ -587,6 +591,7 @@ function findDraggedGroup(c) {
   const prev = state._prevGroupRects;
   if (!prev) return null;
   for (const g of graphGroups(c)) {
+    if (isFoldedGroup(g)) continue; // Group Pixaroma drags folded bars itself
     const r = groupRect(g), p = prev.get(g);
     if (!r || !p) continue;
     const moved = Math.abs(r.x - p.x) > 0.01 || Math.abs(r.y - p.y) > 0.01;
@@ -605,6 +610,7 @@ function countMovedGroups(c) {
   if (!prev) return 0;
   let n = 0;
   for (const g of graphGroups(c)) {
+    if (isFoldedGroup(g)) continue;
     const r = groupRect(g), p = prev.get(g);
     if (!r || !p) continue;
     const moved = Math.abs(r.x - p.x) > 0.01 || Math.abs(r.y - p.y) > 0.01;
