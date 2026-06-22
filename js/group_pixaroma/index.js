@@ -65,7 +65,7 @@ const RESIZE_GRAB = 20; // group-resize grab depth (px) + the visual hint size
 // blue, which was confusing).
 const NEUTRAL = "#58585e";
 
-const BTN_KEYS = ["mute", "bypass", "color", "collapse"];
+const BTN_KEYS = ["mute", "bypass", "color", "collapse", "fold"];
 const ICONS = {
   mute: "/pixaroma/assets/icons/ui/off.svg",
   bypass: "/pixaroma/assets/icons/ui/bypass.svg",
@@ -75,6 +75,8 @@ const ICONS = {
   // an X at button size.
   collapse: "/pixaroma/assets/icons/ui/minus.svg",
   expand: "/pixaroma/assets/icons/ui/plus.svg",
+  // Fold = collapse the WHOLE group to a slim bar (distinct from per-node collapse).
+  fold: "/pixaroma/assets/icons/ui/fold.svg",
 };
 
 // =============================================================================
@@ -122,6 +124,7 @@ app.registerExtension({
       if (Number.isFinite(d)) state.interiorStrength = Math.max(0, Math.min(40, d)) / 100;
     }
     installDrawOverride();
+    installFoldHooks();
     applyResizeLength();
     installPointerHook();
     // Warm the icon cache so the first hover doesn't flash empty buttons.
@@ -312,6 +315,9 @@ function paintGroup(group, gc, ctx) {
   // can always balance exactly one ctx.save() if anything below throws. groupRect
   // (the only call above) returns null on bad input rather than throwing.
   ctx.save();
+  // Folded? Draw the slim bar instead of the full group and bail. (drawFoldedBar
+  // is the only call here; the wrapper's catch still balances this ctx.save().)
+  if (isFolded(group)) { drawFoldedBar(group, gc, ctx, r); ctx.restore(); return; }
   const { x, y, w, h } = r;
   const ea = gc?.editor_alpha != null ? gc.editor_alpha : 1;
   const color = group.color || NEUTRAL;
@@ -509,6 +515,335 @@ function runAction(key, group) {
   else if (key === "bypass") toggleMode(group, 4);
   else if (key === "collapse") toggleCollapse(group);
   else if (key === "color") openColor(group);
+  else if (key === "fold") toggleFold(group);
+}
+
+// =============================================================================
+// Fold - collapse the WHOLE group to a slim bar (distinct from the per-node
+// "collapse" button). Folding stores { nodes:[ids], box:[x,y,w,h] } on
+// group.flags.pixFold (flags serialize natively, so a folded group reopens
+// folded) and shrinks the group bounding to a bar. Member nodes are NOT moved on
+// fold - they are hidden by dropping them from computeVisibleNodes (which drives
+// node PAINT, the CLICK hit-test via getNodeOnPos(x,y,visible_nodes), AND the
+// marquee). Their wires still render (drawConnections iterates graph._nodes), so
+// a renderLink wrap reroutes any wire touching a hidden node onto the bar's edge
+// and drops wires internal to the group. All verified against api-B1Iozgjo.js.
+// (This pushes index.js over the ~400-line guideline; split into fold.mjs later.)
+// =============================================================================
+const FOLD_KEY = "pixFold";
+
+function isFolded(g) { return !!(g && g.flags && g.flags[FOLD_KEY]); }
+
+function findNode(graph, idStr) {
+  if (!graph) return null;
+  if (typeof graph.getNodeById === "function") {
+    return graph.getNodeById(Number(idStr)) || graph.getNodeById(idStr) || null;
+  }
+  for (const n of graph._nodes || []) if (String(n.id) === String(idStr)) return n;
+  return null;
+}
+
+// Write group geometry IN PLACE - _pos/_size are often Float32Array subarray
+// views of _bounding, so set all three (Align Pattern #18: never Array.isArray a
+// typed array; arrLike handles it).
+function setGroupRect(g, x, y, w, h) {
+  if (arrLike(g._bounding, 4)) { g._bounding[0] = x; g._bounding[1] = y; g._bounding[2] = w; g._bounding[3] = h; }
+  if (arrLike(g._pos, 2)) { g._pos[0] = x; g._pos[1] = y; }
+  if (arrLike(g._size, 2)) { g._size[0] = w; g._size[1] = h; }
+}
+
+// Per-frame cache, rebuilt by the computeVisibleNodes wrap (once/frame) and on
+// fold/unfold/drag. { hiddenSet:Set<idStr>, hiddenNodes:[{node,rect,group}],
+// info:Map<group,{count,inC,outC}> }
+let _foldFrameMaps = null;
+function invalidateFold() { _foldFrameMaps = null; }
+function buildFoldMaps() {
+  const graph = app.canvas?.graph;
+  const hiddenSet = new Set();
+  const hiddenNodes = [];
+  const info = new Map();
+  for (const g of graphGroups(app.canvas)) {
+    const f = g?.flags?.[FOLD_KEY];
+    if (!f || !Array.isArray(f.nodes)) continue;
+    const memberSet = new Set(f.nodes.map(String));
+    const gi = { count: f.nodes.length, inC: 0, outC: 0 };
+    info.set(g, gi);
+    for (const idStr of f.nodes) {
+      const n = findNode(graph, idStr);
+      if (!n || !n.pos || !n.size) continue;
+      hiddenSet.add(String(n.id));
+      hiddenNodes.push({ node: n, rect: nodeVisualRect(n), group: g });
+      // Crossing-wire counts via PUBLIC node methods (this fork does not expose
+      // link.origin_id - verified - so we never read link fields).
+      try {
+        if (Array.isArray(n.inputs) && typeof n.getInputNode === "function") {
+          for (let i = 0; i < n.inputs.length; i++) {
+            if (n.inputs[i]?.link == null) continue;
+            const src = n.getInputNode(i);
+            if (src && !memberSet.has(String(src.id))) gi.inC++;
+          }
+        }
+        if (Array.isArray(n.outputs) && typeof n.getOutputNodes === "function") {
+          for (let o = 0; o < n.outputs.length; o++) {
+            const links = n.outputs[o]?.links;
+            if (!links || !links.length) continue;
+            const tns = n.getOutputNodes(o);
+            if (tns) for (const tn of tns) if (tn && !memberSet.has(String(tn.id))) gi.outC++;
+          }
+        }
+      } catch (_e) {}
+    }
+  }
+  return { hiddenSet, hiddenNodes, info };
+}
+function foldMaps() { if (!_foldFrameMaps) _foldFrameMaps = buildFoldMaps(); return _foldFrameMaps; }
+
+// Hide a node's DOM widgets (Note / preview / our DOM-widget nodes) while folded;
+// ComfyUI re-shows them when the node re-enters visible_nodes on unfold.
+function hideNodeWidgets(n) {
+  const ws = n?.widgets;
+  if (!ws) return;
+  for (const w of ws) {
+    const el = w?.element;
+    if (el && el.style && el.style.display !== "none") el.style.display = "none";
+  }
+}
+
+function posXY(p) {
+  if (!p) return null;
+  if (typeof p[0] === "number") return [p[0], p[1]];
+  if (typeof p.x === "number") return [p.x, p.y];
+  return null;
+}
+function hitHidden(fm, p) {
+  const xy = posXY(p);
+  if (!xy) return null;
+  const T = 3;
+  for (const h of fm.hiddenNodes) {
+    const r = h.rect;
+    if (xy[0] >= r.x - T && xy[0] <= r.x + r.w + T && xy[1] >= r.y - T && xy[1] <= r.y + r.h + T) return h;
+  }
+  return null;
+}
+function barOut(g) { const r = groupRect(g); return r ? [r.x + r.w, r.y + r.h / 2] : null; }
+function barIn(g) { const r = groupRect(g); return r ? [r.x, r.y + r.h / 2] : null; }
+
+function _measCtx() {
+  if (!_measCtx._c) _measCtx._c = document.createElement("canvas").getContext("2d");
+  return _measCtx._c;
+}
+function computeBarWidth(group) {
+  const oc = _measCtx();
+  oc.font = `600 ${TITLE_FONT}px ${window.LiteGraph?.GROUP_FONT || "Arial"}`;
+  const tw = oc.measureText(group.title || "Group").width;
+  // chevron + title + count badge + links hint + side dots + pads
+  return Math.round(Math.max(180, PAD + 14 + tw + 16 + 34 + 58 + PAD));
+}
+
+function foldGroup(group) {
+  const r = groupRect(group);
+  if (!r) return;
+  const members = containedNodes(group);
+  group.flags = group.flags || {};
+  group.flags[FOLD_KEY] = { v: 1, nodes: members.map((n) => String(n.id)), box: [r.x, r.y, r.w, r.h] };
+  setGroupRect(group, r.x, r.y, computeBarWidth(group), TITLE_H());
+  invalidateFold();
+  app.graph?.setDirtyCanvas?.(true, true);
+  try { app.graph?.change?.(); } catch (_e) {}
+}
+function unfoldGroup(group) {
+  const f = group.flags?.[FOLD_KEY];
+  if (f && arrLike(f.box, 4)) setGroupRect(group, f.box[0], f.box[1], f.box[2], f.box[3]);
+  if (group.flags) delete group.flags[FOLD_KEY];
+  invalidateFold();
+  app.graph?.setDirtyCanvas?.(true, true);
+  try { app.graph?.change?.(); } catch (_e) {}
+}
+function toggleFold(group) { if (isFolded(group)) unfoldGroup(group); else foldGroup(group); }
+
+// The slim bar drawn in place of a folded group (called from paintGroup).
+function drawFoldedBar(group, gc, ctx, r) {
+  const { x, y, w, h } = r;
+  const ea = gc?.editor_alpha != null ? gc.editor_alpha : 1;
+  const color = group.color || NEUTRAL;
+  const ink = pickInk(color);
+  const inkWhite = ink === "#ffffff";
+  const cy = y + h / 2;
+  const gi = foldMaps().info.get(group) || { count: group.flags?.[FOLD_KEY]?.nodes?.length || 0, inC: 0, outC: 0 };
+  const GF = window.LiteGraph?.GROUP_FONT || "Arial";
+
+  rr(ctx, x + 0.5, y + 0.5, w, h, RADIUS);
+  ctx.globalAlpha = 0.92 * ea; ctx.fillStyle = color; ctx.fill();
+  rr(ctx, x + 0.5, y + 0.5, w, h, RADIUS);
+  ctx.globalAlpha = 0.55 * ea; ctx.lineWidth = 2; ctx.strokeStyle = color; ctx.stroke();
+  ctx.globalAlpha = ea;
+
+  if (group.selected) {
+    rr(ctx, x - 1.5, y - 1.5, w + 3, h + 3, RADIUS + 2);
+    ctx.lineWidth = 2; ctx.strokeStyle = BRAND; ctx.stroke();
+  }
+
+  // Collapsed chevron (points right = "click to open").
+  ctx.fillStyle = ink;
+  const chx = x + PAD + 1, chs = 5;
+  ctx.beginPath();
+  ctx.moveTo(chx, cy - chs); ctx.lineTo(chx + chs, cy); ctx.lineTo(chx, cy + chs); ctx.closePath(); ctx.fill();
+
+  // Side dots where the rerouted wires attach (left = incoming, right = outgoing).
+  ctx.fillStyle = ink;
+  if (gi.inC > 0) { ctx.beginPath(); ctx.arc(x, cy, 3.5, 0, Math.PI * 2); ctx.fill(); }
+  if (gi.outC > 0) { ctx.beginPath(); ctx.arc(x + w, cy, 3.5, 0, Math.PI * 2); ctx.fill(); }
+
+  ctx.textBaseline = "middle";
+  let rightLimit = x + w - PAD;
+  const links = gi.inC + gi.outC;
+  if (links > 0) {
+    ctx.font = `${BADGE_FONT - 1}px ${GF}`;
+    const lstr = links + (links === 1 ? " link" : " links");
+    const lw = ctx.measureText(lstr).width;
+    ctx.fillStyle = ink; ctx.globalAlpha = 0.7 * ea; ctx.textAlign = "right";
+    ctx.fillText(lstr, rightLimit, cy + 0.5);
+    ctx.globalAlpha = ea;
+    rightLimit -= lw + 8;
+  }
+  ctx.font = `${BADGE_FONT}px ${GF}`;
+  const cstr = String(gi.count);
+  const bw = ctx.measureText(cstr).width + 12;
+  const bh = BADGE_FONT + 6;
+  const badgeX = rightLimit - bw;
+  if (badgeX > x + 44) {
+    rr(ctx, badgeX, y + (h - bh) / 2, bw, bh, bh / 2);
+    ctx.fillStyle = inkWhite ? "rgba(255,255,255,0.16)" : "rgba(0,0,0,0.13)"; ctx.fill();
+    ctx.fillStyle = ink; ctx.textAlign = "center";
+    ctx.fillText(cstr, badgeX + bw / 2, cy + 0.5);
+    rightLimit = badgeX - 6;
+  }
+  ctx.font = `600 ${TITLE_FONT}px ${GF}`;
+  ctx.fillStyle = ink; ctx.textAlign = "left";
+  const titleX = x + PAD + 14;
+  const title = ellipsize(ctx, group.title || "Group", rightLimit - titleX - 4);
+  ctx.fillText(title, titleX, cy + 0.5);
+}
+
+// ── Folded-bar pointer handling: drag to move (member nodes ride along), quick
+//    double-tap to unfold. We fully own the pointer here (the caller already
+//    swallowed the event), so native group drag/rename never fires on the bar.
+let _lastBarDown = { t: 0, g: null, moved: false };
+function screenToGraph(c, ev) {
+  const rect = c.canvas.getBoundingClientRect();
+  const scale = c.ds?.scale || 1;
+  const off = c.ds?.offset || [0, 0];
+  return [(ev.clientX - rect.left) / scale - off[0], (ev.clientY - rect.top) / scale - off[1]];
+}
+function onFoldedBarPointerDown(e, group, c, gx, gy) {
+  const now = typeof performance !== "undefined" ? performance.now() : 0;
+  if (_lastBarDown.g === group && !_lastBarDown.moved && now - _lastBarDown.t < 340) {
+    _lastBarDown = { t: 0, g: null, moved: false };
+    unfoldGroup(group);
+    c.setDirty?.(true, true);
+    return;
+  }
+  _lastBarDown = { t: now, g: group, moved: false };
+  const f = group.flags?.[FOLD_KEY];
+  const r0 = groupRect(group);
+  if (!f || !r0) return;
+  const barW = r0.w, barH = r0.h, bx = r0.x, by = r0.y;
+  const members = (Array.isArray(f.nodes) ? f.nodes : [])
+    .map((id) => findNode(app.graph, id))
+    .filter((n) => n && n.pos);
+  const startPos = members.map((n) => [n.pos[0], n.pos[1]]);
+  const start = [gx, gy];
+  let moved = false;
+  const onMove = (ev) => {
+    const p = screenToGraph(c, ev);
+    const dx = p[0] - start[0], dy = p[1] - start[1];
+    if (!moved && Math.abs(dx) + Math.abs(dy) < 4) return;
+    moved = true; _lastBarDown.moved = true;
+    setGroupRect(group, bx + dx, by + dy, barW, barH);
+    for (let i = 0; i < members.length; i++) {
+      members[i].pos[0] = startPos[i][0] + dx;
+      members[i].pos[1] = startPos[i][1] + dy;
+    }
+    invalidateFold();
+    c.setDirty?.(true, true);
+  };
+  const onUp = () => {
+    window.removeEventListener("pointermove", onMove, true);
+    window.removeEventListener("pointerup", onUp, true);
+    if (moved) {
+      const r2 = groupRect(group);
+      if (f && arrLike(f.box, 4) && r2) { f.box[0] = r2.x; f.box[1] = r2.y; }
+      try { app.graph?.change?.(); } catch (_e) {}
+    }
+  };
+  window.addEventListener("pointermove", onMove, true);
+  window.addEventListener("pointerup", onUp, true);
+}
+
+// =============================================================================
+// The fold hooks (the heart of it). Verified against api-B1Iozgjo.js:
+//  - computeVisibleNodes builds canvas.visible_nodes, which drives node PAINT,
+//    the CLICK hit-test (getNodeOnPos(x,y,visible_nodes)) AND the marquee, so
+//    dropping a node here hides it from all three at once.
+//  - drawConnections iterates graph._nodes (NOT visible_nodes) and calls
+//    this.renderLink(ctx, startPos, endPos, link, ...) per wire, so wrapping
+//    renderLink lets us reroute a wire that touches a hidden node onto the bar
+//    (identified positionally - link fields are not exposed in this fork) or
+//    drop a wire that is internal to one folded group.
+// =============================================================================
+let _foldHooksInstalled = false;
+let _origCVN = null;
+let _origRenderLink = null;
+function installFoldHooks() {
+  if (_foldHooksInstalled) return;
+  const Canvas = window.LiteGraph?.LGraphCanvas || window.LGraphCanvas;
+  const proto = Canvas?.prototype;
+  if (!proto) { console.warn("[Pixaroma.Groups] LGraphCanvas not found - fold disabled"); return; }
+
+  if (typeof proto.computeVisibleNodes === "function") {
+    _origCVN = proto.computeVisibleNodes;
+    proto.computeVisibleNodes = function (nodes, out) {
+      const res = _origCVN.call(this, nodes, out);
+      if (!state.enabled || !Array.isArray(res)) return res;
+      const fm = (_foldFrameMaps = buildFoldMaps());
+      if (fm.hiddenSet.size) {
+        for (let i = res.length - 1; i >= 0; i--) {
+          if (fm.hiddenSet.has(String(res[i].id))) res.splice(i, 1);
+        }
+        for (const h of fm.hiddenNodes) hideNodeWidgets(h.node);
+      }
+      return res;
+    };
+  } else {
+    console.warn("[Pixaroma.Groups] computeVisibleNodes not found - fold hide disabled");
+  }
+
+  if (typeof proto.renderLink === "function") {
+    _origRenderLink = proto.renderLink;
+    proto.renderLink = function (ctx, a, b, link, skipBorder, flow, color, startDir, endDir, opts) {
+      if (state.enabled) {
+        const fm = _foldFrameMaps || buildFoldMaps();
+        if (fm.hiddenNodes.length) {
+          const ah = hitHidden(fm, a);
+          const bh = hitHidden(fm, b);
+          if (ah && bh && ah.group === bh.group) return; // wire internal to a folded group
+          if (ah || bh) {
+            const na = ah ? barOut(ah.group) : a;
+            const nb = bh ? barIn(bh.group) : b;
+            let no = opts;
+            if (opts) { no = Object.assign({}, opts); no.startControl = undefined; no.endControl = undefined; }
+            return _origRenderLink.call(this, ctx, na || a, nb || b, link, skipBorder, flow, color, startDir, endDir, no);
+          }
+        }
+      }
+      return _origRenderLink.call(this, ctx, a, b, link, skipBorder, flow, color, startDir, endDir, opts);
+    };
+  } else {
+    console.warn("[Pixaroma.Groups] renderLink not found - wire reroute disabled");
+  }
+
+  _foldHooksInstalled = true;
+  console.log("[Pixaroma.Groups] fold hooks installed");
 }
 
 // =============================================================================
@@ -571,7 +906,22 @@ function onWindowPointerDown(e) {
   const off = c.ds?.offset || [0, 0];
   const gx = (e.clientX - rect.left) / scale - off[0];
   const gy = (e.clientY - rect.top) / scale - off[1];
+  // Folded bars first: they carry no header buttons, and we own their pointer
+  // (drag to move, double-click to unfold). Bail as soon as one is hit.
   for (const g of graphGroups(c)) {
+    if (!isFolded(g)) continue;
+    const fr = groupRect(g);
+    if (!fr) continue;
+    if (gx >= fr.x && gx <= fr.x + fr.w && gy >= fr.y && gy <= fr.y + fr.h) {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      onFoldedBarPointerDown(e, g, c, gx, gy);
+      return;
+    }
+  }
+  for (const g of graphGroups(c)) {
+    if (isFolded(g)) continue;
     const head = computeHeader(g);
     if (!head || !head.fits) continue;
     // Cheap reject: only the header band carries buttons.
