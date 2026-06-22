@@ -878,50 +878,27 @@ function onFoldedBarPointerDown(e, group, c, gx, gy) {
   }
   _lastBarDown = { t: now, g: group, moved: false };
   const barW = r0.w, barH = r0.h, bx = r0.x, by = r0.y;
-  const members = (Array.isArray(f.nodes) ? f.nodes : [])
-    .map((id) => findNode(app.graph, id))
-    .filter((n) => n && n.pos);
-  const startPos = members.map((n) => [n.pos[0], n.pos[1]]);
-  // Nested groups ride along too: capture each one's current box plus, if it is
-  // itself folded, its stored restore box, so reopening stays aligned.
-  const memberGroups = (Array.isArray(f.groups) ? f.groups : []).map(findGroup).filter(Boolean);
-  const mgStart = memberGroups.map((g) => {
-    const gr = groupRect(g);
-    const inf = g.flags?.[FOLD_KEY];
-    return {
-      box: gr ? [gr.x, gr.y, gr.w, gr.h] : null,
-      rbox: inf && arrLike(inf.box, 4) ? [inf.box[0], inf.box[1]] : null,
-    };
-  });
   const start = [gx, gy];
   let moved = false;
+  // Drag moves ONLY the bar (a movable handle). The member nodes, any nested
+  // groups, and the stored restore box (f.box) are all left untouched - so you
+  // can park a folded bar anywhere (even over another group) without disturbing
+  // the layout, and expanding always brings the group back exactly where its
+  // nodes live. This is what stops a folded bar from overlapping or absorbing
+  // another group.
   const onMove = (ev) => {
     const p = screenToGraph(c, ev);
     const dx = p[0] - start[0], dy = p[1] - start[1];
     if (!moved && Math.abs(dx) + Math.abs(dy) < 4) return;
     moved = true; _lastBarDown.moved = true;
     setGroupRect(group, bx + dx, by + dy, barW, barH);
-    for (let i = 0; i < members.length; i++) {
-      members[i].pos[0] = startPos[i][0] + dx;
-      members[i].pos[1] = startPos[i][1] + dy;
-    }
-    for (let i = 0; i < memberGroups.length; i++) {
-      const s = mgStart[i];
-      if (s.box) setGroupRect(memberGroups[i], s.box[0] + dx, s.box[1] + dy, s.box[2], s.box[3]);
-      const inf = memberGroups[i].flags?.[FOLD_KEY];
-      if (inf && s.rbox && arrLike(inf.box, 4)) { inf.box[0] = s.rbox[0] + dx; inf.box[1] = s.rbox[1] + dy; }
-    }
     invalidateFold();
     c.setDirty?.(true, true);
   };
   const onUp = () => {
     window.removeEventListener("pointermove", onMove, true);
     window.removeEventListener("pointerup", onUp, true);
-    if (moved) {
-      const r2 = groupRect(group);
-      if (f && arrLike(f.box, 4) && r2) { f.box[0] = r2.x; f.box[1] = r2.y; }
-      try { app.graph?.change?.(); } catch (_e) {}
-    }
+    if (moved) { try { app.graph?.change?.(); } catch (_e) {} }
   };
   window.addEventListener("pointermove", onMove, true);
   window.addEventListener("pointerup", onUp, true);
