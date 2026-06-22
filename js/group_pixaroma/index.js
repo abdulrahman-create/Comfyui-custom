@@ -578,6 +578,25 @@ function containedGroups(G) {
   }
   return out;
 }
+// Membership for FOLDING = node CENTER inside the group box. This mirrors
+// LiteGraph's own containsCentre rule (what it uses to decide which nodes a
+// group drag moves), so folding can never swallow a node that merely overlaps
+// the group's edge but actually belongs to a neighbouring/overlapping group.
+// (Read-only - unlike group.recomputeInsideNodes(), which re-sorts graph.groups.
+// containedNodes' looser overlap rule stays for the mute/bypass/count buttons.)
+function containedNodesCentered(group) {
+  const nodes = app.canvas?.graph?._nodes || [];
+  const r = groupRect(group);
+  if (!r) return [];
+  const out = [];
+  for (const n of nodes) {
+    if (!n.pos || !n.size) continue;
+    const nr = nodeVisualRect(n);
+    const cx = nr.x + nr.w / 2, cy = nr.y + nr.h / 2;
+    if (cx > r.x && cx < r.x + r.w && cy > r.y && cy < r.y + r.h) out.push(n);
+  }
+  return out;
+}
 
 // Write group geometry IN PLACE - _pos/_size are often Float32Array subarray
 // views of _bounding, so set all three (Align Pattern #18: never Array.isArray a
@@ -689,7 +708,7 @@ function computeBarWidth(group) {
 function foldGroup(group) {
   const r = groupRect(group);
   if (!r) return;
-  const members = containedNodes(group);
+  const members = containedNodesCentered(group);
   const grps = containedGroups(group).filter((g) => g.id != null);
   group.flags = group.flags || {};
   group.flags[FOLD_KEY] = {
