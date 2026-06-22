@@ -21,9 +21,12 @@ import { createPixaromaColorPicker } from "../shared/color_picker.mjs";
 // without this plugin installed. The group fill's ~25% transparency is
 // LiteGraph's own rendering and is left untouched.
 //
-// CROSS-TYPE: the clipboard + the 4 favorite slots are SHARED between nodes
-// and groups. A node carries two colors and a group one, so pickGroupColor()
-// maps a pair → the more saturated of the two when applying to a group.
+// CROSS-TYPE: the session clipboard is SHARED between nodes and groups (Copy
+// on one type, Paste on the other). A node carries two colors and a group one,
+// so pickGroupColor() maps a pair → the more saturated of the two when applying
+// to a group. Favorites, by contrast, live in SEPARATE per-type stores (node
+// favorites vs group favorites), so saving a group color never overwrites a
+// saved node color, and vice versa.
 //
 // Multi-select aware: when 2+ nodes (or groups) are selected AND the
 // right-clicked one is among them, the action applies to all, and the label
@@ -331,10 +334,12 @@ const GROUP_COLORS = [
 ];
 const GROUP_SWATCHES = GROUP_COLORS.map((c) => c.color);
 
-// ── Favorites: 4 fixed slots, persisted as ONE compact JSON value in
+// ── Favorites: 15 fixed slots, persisted as ONE compact JSON value in
 // ComfyUI's settings store (unregistered key → no Settings-panel clutter;
 // managed entirely through the right-click menu). Each slot is either
-// null (empty) or { title, body }.
+// null (empty) or { title, body }. These are the NODE favorites; GROUP
+// favorites use a SEPARATE store (see GROUP_FAVORITES_ID below) so saving a
+// group color can never overwrite a saved node color.
 const FAVORITES_ID = "Pixaroma.NodeColors.Favorites";
 // Matches the widest hue row (15 swatches) so the favorites fill exactly one
 // line at the top of the palette.
@@ -414,6 +419,51 @@ function saveFavoriteSlot(index, title, body) {
   const favs = getFavorites().slice();
   favs[index] = { title, body };
   setFavorites(favs);
+}
+
+// ── Group favorites: a SEPARATE 15-slot store from the node favorites above,
+// so saving a group color never overwrites a saved node color (and the reverse
+// can't happen either). A group has ONE color; each slot is stored as a flat
+// { title:hex, body:hex } pair so it reuses the same validation + swatch
+// helpers. There's no legacy single-favorite to migrate here, so the loader is
+// a plain read-or-empty.
+const GROUP_FAVORITES_ID = "Pixaroma.GroupColors.Favorites";
+let _groupFavoritesCache = null;
+
+function persistGroupFavorites(favs) {
+  const s = app.ui?.settings;
+  if (!s) return;
+  const json = JSON.stringify(favs);
+  try {
+    if (typeof s.setSettingValueAsync === "function") s.setSettingValueAsync(GROUP_FAVORITES_ID, json);
+    else if (typeof s.setSettingValue === "function") s.setSettingValue(GROUP_FAVORITES_ID, json);
+  } catch (e) { /* non-fatal: the color is already applied to the group */ }
+}
+
+function getGroupFavorites() {
+  if (_groupFavoritesCache) return _groupFavoritesCache;
+  const s = app.ui?.settings;
+  const raw = s?.getSettingValue?.(GROUP_FAVORITES_ID);
+  if (raw) {
+    try {
+      _groupFavoritesCache = normalizeFavorites(typeof raw === "string" ? JSON.parse(raw) : raw);
+      return _groupFavoritesCache;
+    } catch (e) { /* corrupted → start empty */ }
+  }
+  _groupFavoritesCache = emptyFavorites();
+  return _groupFavoritesCache;
+}
+
+function setGroupFavorites(favs) {
+  _groupFavoritesCache = normalizeFavorites(favs);
+  persistGroupFavorites(_groupFavoritesCache);
+}
+
+function saveGroupFavoriteSlot(index, color) {
+  if (index < 0 || index >= FAVORITE_SLOTS) return;
+  const favs = getGroupFavorites().slice();
+  favs[index] = { title: color, body: color };
+  setGroupFavorites(favs);
 }
 
 // ── Session clipboard for Copy / Paste colors (cleared on page reload).
@@ -1038,7 +1088,7 @@ function openGroupColorModal(opts) {
 }
 
 function pickCustomGroup(groups, anchorGroup) {
-  const fav = getFavorites().find((f) => f);
+  const fav = getGroupFavorites().find((f) => f);
   const seed = colorClipboard
     ? pickGroupColor(colorClipboard)
     : (fav ? pickGroupColor(fav) : GROUP_DEFAULT_COLOR);
@@ -1377,7 +1427,7 @@ function openGroupColorsPalette(targets, group) {
   favSec.appendChild(favGrid);
   function renderFavorites() {
     favGrid.innerHTML = "";
-    const favs = getFavorites();
+    const favs = getGroupFavorites();
     for (let i = 0; i < FAVORITE_SLOTS; i++) {
       const f = favs[i];
       const tile = document.createElement("div");
@@ -1404,7 +1454,7 @@ function openGroupColorsPalette(targets, group) {
       save.addEventListener("click", (e) => {
         e.stopPropagation();
         const c = captureGroupColor(group);
-        saveFavoriteSlot(i, c, c);
+        saveGroupFavoriteSlot(i, c);
         renderFavorites();
       });
       tile.appendChild(save);
