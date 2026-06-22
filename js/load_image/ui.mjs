@@ -10,17 +10,30 @@ export function injectCSS() {
     .pix-li-root {
       width: 100%;
       box-sizing: border-box;
-      /* Small top padding pulls the Upload button up tight under the output
-         dots (the body can't sit higher than the slot area). */
-      padding: 2px 8px 8px;
+      position: relative;
       background: #2a2a2a;
       border-radius: 4px;
       color: #ddd;
       font-family: ui-sans-serif, system-ui, sans-serif;
       font-size: 11px;
+    }
+    /* The flex column lives on an inner layer that fills the root (absolute
+       inset:0). ComfyUI forces the widget ROOT to display:block on rebuild /
+       collapse, which would kill a flex column ON the root (the 7px gaps
+       collapse and the flex:1 image canvas drops to its min height, then
+       visibly grows back when flex is restored - the flicker). The inner is
+       never touched by ComfyUI, so the layout is ALWAYS flex: no transition,
+       no flicker. Padding lives here so the absolute inner respects it. */
+    .pix-li-inner {
+      position: absolute;
+      inset: 0;
       display: flex;
       flex-direction: column;
       gap: 7px;
+      /* Small top padding pulls the Upload button up tight under the output
+         dots (the body can't sit higher than the slot area). */
+      padding: 2px 8px 8px;
+      box-sizing: border-box;
     }
     .pix-li-upload-btn {
       width: 100%;

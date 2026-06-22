@@ -291,7 +291,10 @@ function updateInfoBar(node) {
 }
 
 function renderUI(node) {
-  const root = node._pixLiRoot;
+  // Operate on the inner flex layer (chips / panel / globals / canvases all live
+  // there); root holds only `inner`. querySelector still works (it searches
+  // descendants), and every append/insert below targets inner. See setup.
+  const root = node._pixLiInner || node._pixLiRoot;
   if (!root) return;
   // No `isConnected` check: queueMicrotask fires BEFORE LiteGraph's first
   // canvas paint, so the DOM widget root isn't attached to the document yet.
@@ -515,7 +518,9 @@ const LI_PREVIEW_FILL_MIN = 258;
 // at the TOP (prepended, above the Upload button), the IMAGE canvas at the
 // BOTTOM. Both have explicit heights so the panel grows to include them.
 function createLoadImagePreviewCanvas(node) {
-  const root = node._pixLiRoot;
+  // Append the canvases into the inner flex layer (the cards canvas first, the
+  // image canvas last), not the root — root holds only `inner` (see setup).
+  const root = node._pixLiInner || node._pixLiRoot;
   if (!root) return;
 
   // Cards canvas — at the TOP of the node body (like Legacy's top-right cards).
@@ -571,26 +576,22 @@ function setupLoadImageNode(node) {
   const root = buildRoot();
   node._pixLiRoot = root;
 
-  // ComfyUI's DOM-widget manager forces the widget root to inline display:block
-  // on rebuild / collapse-expand (verified via a live measurement on the video
-  // nodes: the root's computed display became "block", killing the .pix-li-root
-  // flex column → the 7px row gaps collapsed and the image canvas, a flex:1
-  // grower, dropped to its min height instead of filling). This node's root is
-  // content-measured with children appended at many sites, so it can't take the
-  // video nodes' absolute-inner-layer fix without a risky restructure. Instead,
-  // re-assert display:flex the instant ComfyUI clobbers it to block, while
-  // leaving display:none alone (that is ComfyUI's own collapse-hide). The class
-  // already declares display:flex; this just removes the inline block override.
-  // ComfyUI sets display once on show (not per-frame), so this reverts once and
-  // sticks — no fight, no flicker. Loop-safe: after we set flex the next
-  // mutation reads "flex" and the guard no-ops.
-  const displayGuard = new MutationObserver(() => {
-    if (node.flags?.collapsed) return; // don't fight the collapse-hide
-    const d = root.style.display;
-    if (d && d !== "flex" && d !== "none") root.style.display = "flex";
-  });
-  displayGuard.observe(root, { attributes: true, attributeFilter: ["style"] });
-  node._pixLiDisplayGuard = displayGuard;
+  // Inner flex layer (same fix as the video nodes). ComfyUI's DOM-widget manager
+  // forces the widget ROOT to inline display:block on rebuild / collapse-expand
+  // (verified via a live measurement: the root's computed display became "block",
+  // media_h 0 while media_grow 1). A flex column ON the root would therefore die
+  // there — the 7px row gaps collapse and the flex:1 image canvas drops to its
+  // min height, then visibly grows back when restored (the flicker). So the flex
+  // column lives on an inner layer (position:absolute; inset:0, .pix-li-inner)
+  // that ComfyUI never touches → the layout is ALWAYS flex, no transition, no
+  // flicker. The root keeps its background/border and is content-measured via
+  // inner.children (measureContentHeight). buildRoot's children are moved into
+  // inner; all later appends (renderUI + the preview canvases) target inner too.
+  const inner = document.createElement("div");
+  inner.className = "pix-li-inner";
+  while (root.firstChild) inner.appendChild(root.firstChild);
+  root.appendChild(inner);
+  node._pixLiInner = inner;
 
   // Intrinsic content-height measurement. We DO NOT use root.scrollHeight
   // or root.offsetHeight here: LiteGraph stretches root vertically when the
@@ -603,7 +604,9 @@ function setupLoadImageNode(node) {
   function measureContentHeight() {
     let totalH = 0;
     let visible = 0;
-    for (const child of root.children) {
+    // Children live on the inner flex layer (see the inner-layer note above), so
+    // measure inner.children, not root.children (root holds only `inner`).
+    for (const child of inner.children) {
       const style = window.getComputedStyle(child);
       if (style.position === "absolute" || style.position === "fixed") continue;
       if (style.display === "none") continue;
@@ -1032,8 +1035,6 @@ app.registerExtension({
       this._pixLiPreviewRO = null;
       try { cancelAnimationFrame(this._pixLiZoomRaf); } catch {}
       this._pixLiZoomRaf = null;
-      try { this._pixLiDisplayGuard?.disconnect(); } catch {}
-      this._pixLiDisplayGuard = null;
       if (_activeLoadImageNode === this) _activeLoadImageNode = null;
       return _origRemoved?.apply(this, arguments);
     };
