@@ -958,9 +958,11 @@ function openCustomColorsModal(opts) {
 }
 
 function pickCustom(nodes, anchorNode) {
-  const seed = colorClipboard
-    || getFavorites().find((f) => f)
-    || { title: "#1d1d1d", body: "#2a2a2a" };
+  // Seed the picker with the node's CURRENT colors so the user can nudge an
+  // existing color instead of starting from an unrelated one. anchorNode is the
+  // right-clicked / selected node (its color is "the" color when several are
+  // selected); captureColors falls back through class / LiteGraph defaults.
+  const seed = captureColors(anchorNode || nodes[0]);
   // Snapshot raw colors so Cancel can restore exactly what was there before.
   const originals = nodes.map((n) => ({ color: n.color, bgcolor: n.bgcolor }));
   openCustomColorsModal({
