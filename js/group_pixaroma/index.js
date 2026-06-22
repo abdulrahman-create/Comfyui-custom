@@ -708,8 +708,13 @@ function barIn(g) { const r = groupRect(g); return r ? [r.x, r.y + r.h / 2] : nu
 // paint (drawFoldedBar) and the click hit-test (onFoldedBarPointerDown).
 function foldChevronRect(r) {
   const s = Math.min(BTN, r.h - 6);
-  return { x: r.x + 4, y: r.y + (r.h - s) / 2, w: s, h: s };
+  return { x: r.x + r.w - 4 - s, y: r.y + (r.h - s) / 2, w: s, h: s };
 }
+
+// The expand control on a folded bar sits at the RIGHT, where the fold button is
+// on an expanded group - so fold and expand are the same spot (single source of
+// truth for the paint + the click hit-test).
+// (foldChevronRect defined just above; this comment documents the right-side move.)
 
 // Is (gx,gy) on a group's title strip (the draggable bar at the top of its box)?
 function groupTitleHit(g, gx, gy) {
@@ -889,18 +894,21 @@ function drawFoldedBar(group, gc, ctx, r) {
   ctx.beginPath();
   ctx.moveTo(ccx, cy - chs); ctx.lineTo(ccx + chs, cy); ctx.lineTo(ccx, cy + chs); ctx.closePath(); ctx.fill();
 
-  // Side dots where the rerouted wires attach (left = incoming, right = outgoing).
-  ctx.fillStyle = ink;
-  if (gi.inC > 0) { ctx.beginPath(); ctx.arc(x, cy, 3.5, 0, Math.PI * 2); ctx.fill(); }
-  if (gi.outC > 0) { ctx.beginPath(); ctx.arc(x + w, cy, 3.5, 0, Math.PI * 2); ctx.fill(); }
+  // Side dots where rerouted wires attach (only meaningful when wires are
+  // rerouted onto the bar - skip them when wires are hidden).
+  if (!state.foldHideWires) {
+    ctx.fillStyle = ink;
+    if (gi.inC > 0) { ctx.beginPath(); ctx.arc(x, cy, 3.5, 0, Math.PI * 2); ctx.fill(); }
+    if (gi.outC > 0) { ctx.beginPath(); ctx.arc(x + w, cy, 3.5, 0, Math.PI * 2); ctx.fill(); }
+  }
 
   ctx.textBaseline = "middle";
-  let rightLimit = x + w - PAD;
+  let rightLimit = cr.x - 6; // leave room for the right-side expand button
   if (running) {
     // Show WHICH node is running (more useful than the link/count during a run).
     ctx.font = `${BADGE_FONT}px ${GF}`;
     ctx.fillStyle = RUN_GREEN; ctx.globalAlpha = ea; ctx.textAlign = "right";
-    const rtMax = Math.max(40, x + w - PAD - (cr.x + cr.w + 4) - 60);
+    const rtMax = Math.max(40, rightLimit - (x + PAD) - 40);
     const shown = ellipsize(ctx, "▶ " + runTitle, rtMax);
     ctx.fillText(shown, rightLimit, cy + 0.5);
     rightLimit -= ctx.measureText(shown).width + 8;
@@ -930,7 +938,7 @@ function drawFoldedBar(group, gc, ctx, r) {
   }
   ctx.font = `600 ${TITLE_FONT}px ${GF}`;
   ctx.fillStyle = ink; ctx.textAlign = "left";
-  const titleX = cr.x + cr.w + 4;
+  const titleX = x + PAD;
   const title = ellipsize(ctx, group.title || "Group", rightLimit - titleX - 4);
   ctx.fillText(title, titleX, cy + 0.5);
 
