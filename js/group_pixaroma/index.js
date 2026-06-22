@@ -142,25 +142,24 @@ function groupRect(g) {
 }
 function graphGroups(c) { return c?.graph?._groups || c?.graph?.groups || []; }
 
-// Which nodes "belong to" the group. Matched to LiteGraph's OWN rule so this is
-// consistent with group-drag: the nodes that move with the group are exactly the
-// ones the count badge + buttons act on. LiteGraph membership = the group's
-// bounding contains the CENTER of the node's visual bounding rect
-// (node.boundingRect, which is collapse-aware - a collapsed node's rect is just
-// its title pill). We read it the same way, but WITHOUT calling
-// recomputeInsideNodes() (that re-sorts graph.groups as a side effect, so it must
-// not run every paint). Using the node's EXPANDED size for a collapsed node was
-// the bug: its "center" landed where the open body would be - often below the
-// group edge - so an edge node got skipped until you moved it up.
-function nodeCenter(n) {
+// Which nodes "belong to" the group for the count + buttons. A group is a visual
+// container, so we use OVERLAP: any node whose visual rect intersects the group
+// box counts - so a tall node poking out the bottom edge is still collapsed /
+// muted (the user's case). This is deliberately MORE inclusive than LiteGraph's
+// own membership (which uses the node CENTER, and is what decides group-DRAG), so
+// a node that is mostly outside but overlapping will be affected by the buttons
+// even though it won't move when you drag the group. The rect is collapse-aware
+// via node.boundingRect (a collapsed node's rect is just its title pill); read
+// only, no recomputeInsideNodes() side effects.
+function nodeVisualRect(n) {
   const br = n.boundingRect;
-  if (br && br.length >= 4) return [br[0] + br[2] / 2, br[1] + br[3] / 2];
+  if (br && br.length >= 4) return { x: br[0], y: br[1], w: br[2], h: br[3] };
   const th = window.LiteGraph?.NODE_TITLE_HEIGHT || 30;
   if (n.flags?.collapsed) {
     const cw = n._collapsed_width || window.LiteGraph?.NODE_COLLAPSED_WIDTH || 80;
-    return [n.pos[0] + cw / 2, n.pos[1] - th / 2];
+    return { x: n.pos[0], y: n.pos[1] - th, w: cw, h: th };
   }
-  return [n.pos[0] + n.size[0] / 2, n.pos[1] + n.size[1] / 2 - th / 2];
+  return { x: n.pos[0], y: n.pos[1] - th, w: n.size[0], h: n.size[1] + th };
 }
 function containedNodes(group) {
   const c = app.canvas;
@@ -170,8 +169,9 @@ function containedNodes(group) {
   const out = [];
   for (const n of nodes) {
     if (!n.pos || !n.size) continue;
-    const [cx, cy] = nodeCenter(n);
-    if (cx >= r.x && cx <= r.x + r.w && cy >= r.y && cy <= r.y + r.h) out.push(n);
+    const nr = nodeVisualRect(n);
+    // Rect-intersection: node overlaps the group box on both axes.
+    if (nr.x < r.x + r.w && nr.x + nr.w > r.x && nr.y < r.y + r.h && nr.y + nr.h > r.y) out.push(n);
   }
   return out;
 }
