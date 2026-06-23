@@ -1,6 +1,6 @@
 import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
-import { BRAND } from "../shared/index.mjs";
+import { BRAND, isVueNodes } from "../shared/index.mjs";
 
 // =============================================================================
 // Group Pixaroma - a nicer look + quick actions for ComfyUI groups.
