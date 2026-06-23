@@ -624,14 +624,20 @@ function injectCSS() {
    hex bars + small full-width preset grid (replaces the preview box +
    separate "Pick custom" modal). ── */
 .pix-nc-pal-scroll { flex: 1 1 auto; min-height: 0; }
-.pix-nc-prow { display: flex; gap: 12px; align-items: stretch; margin: 0 0 2px; }
+.pix-nc-prow { display: flex; gap: 12px; align-items: flex-start; margin: 0 0 2px; }
 .pix-nc-pickerwrap { flex: 1 1 auto; min-width: 0; display: flex; }
-.pix-nc-pickerwrap .pix-cp { width: 100%; height: 100%; gap: 0; }
-.pix-nc-pickerwrap .pix-cp-sv-row { flex: 1 1 auto; min-height: 156px; }
-.pix-nc-pickerwrap .pix-cp-sv { height: auto; aspect-ratio: auto; border-radius: 6px; border-color: #45454c; }
+.pix-nc-pickerwrap .pix-cp { width: 100%; gap: 0; }
+/* SQUARE SV plane (height derived from width via aspect-ratio) — NOT a
+   flex-stretched height. A stretched canvas + the picker's renderSV (which
+   writes canvas.height = clientHeight every paint) forms a feedback loop that
+   grows the plane on every drag. Square = width-driven = stable. The hue strip
+   stretches to the SV's height via the picker's own align-items:stretch row. */
+.pix-nc-pickerwrap .pix-cp-sv { aspect-ratio: 1; height: auto; border-radius: 6px; border-color: #45454c; }
 .pix-nc-pickerwrap .pix-cp-hue { width: 16px; height: auto; border-radius: 6px; border-color: #45454c; }
 .pix-nc-pickerwrap .pix-cp-hexrow { display: none; }
-.pix-nc-favcol { flex: 0 0 58px; display: flex; flex-direction: column; }
+/* 74px keeps the 8-row favourites column ~the same height as the square SV
+   plane (≈330px at the 470px popup width), so they line up with no gap. */
+.pix-nc-favcol { flex: 0 0 74px; display: flex; flex-direction: column; }
 .pix-nc-favlbl { font: 11px system-ui, sans-serif; letter-spacing: 0.06em; color: #8a8a90; margin: 0 0 6px; }
 .pix-nc-favgrid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px; align-content: start; }
 .pix-nc-sw {
