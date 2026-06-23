@@ -962,8 +962,11 @@ function setupLoadImageNode(node) {
         // slots above it - the same `aboveControls` math fitPreview uses for legacy.
         // (Sizing to `content` alone left the node short by the slot rows → clipped.)
         const SLOT_H = window.LiteGraph?.NODE_SLOT_HEIGHT || 20;
+        const TITLE_H = window.LiteGraph?.NODE_TITLE_HEIGHT || 30;
         const aboveControls = (node.outputs?.length || 7) * SLOT_H + 6;
-        node.setSize([node.size[0], aboveControls + content]);
+        // In Nodes 2.0 node.size[1] INCLUDES the title bar (unlike legacy), so add it
+        // too - otherwise the last ~30px (the dims label under the preview) is clipped.
+        node.setSize([node.size[0], TITLE_H + aboveControls + content]);
       });
     }
   });
