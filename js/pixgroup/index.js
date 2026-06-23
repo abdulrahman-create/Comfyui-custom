@@ -1,4 +1,5 @@
 import { app } from "/scripts/app.js";
+import { createPixaromaColorPicker } from "../shared/color_picker.mjs";
 
 // ╔══════════════════════════════════════════════════════════════════════╗
 // ║  Pixaroma Group (custom) — PROTOTYPE                                   ║
@@ -23,7 +24,6 @@ import { app } from "/scripts/app.js";
 
 const BRAND = "#f66744";
 const DEFAULT_COLOR = "#3f789e";
-const TITLE_H = 30;     // header bar height, graph units
 const HANDLE = 18;      // bottom-right resize grab box, graph units
 const MIN_W = 140, MIN_H = 80;
 
@@ -59,6 +59,16 @@ function ink(hex) {
   return lum > 0.62 ? "#1a1a1a" : "#ffffff";
 }
 
+// ── per-group style, with back-compat (prototype groups stored a single `color`
+// → both title and body fall back to it; new groups carry separate fields).
+function gTitleColor(g) { return g.titleColor || g.color || DEFAULT_COLOR; }
+function gBodyColor(g)  { return g.bodyColor  || g.color || DEFAULT_COLOR; }
+function gTitleAlpha(g) { return Number.isFinite(g.titleAlpha) ? g.titleAlpha : 0.92; }
+function gBodyAlpha(g)  { return Number.isFinite(g.bodyAlpha)  ? g.bodyAlpha  : 0.12; }
+function gFontSize(g)   { return Number.isFinite(g.fontSize)   ? g.fontSize   : 14; }
+// Header bar grows with the title font so big text never clips.
+function headerH(g) { return Math.round(Math.max(26, gFontSize(g) + 14)); }
+
 // ── screen → graph coords (manual, reliable during Vue drags) ───────────
 function screenToGraph(clientX, clientY) {
   const c = app.canvas;
@@ -71,7 +81,7 @@ function screenToGraph(clientX, clientY) {
 
 // ── geometry ────────────────────────────────────────────────────────────
 function inRect(g, p)   { return p[0] >= g.x && p[0] <= g.x + g.w && p[1] >= g.y && p[1] <= g.y + g.h; }
-function inHeader(g, p) { return p[0] >= g.x && p[0] <= g.x + g.w && p[1] >= g.y && p[1] <= g.y + TITLE_H; }
+function inHeader(g, p) { return p[0] >= g.x && p[0] <= g.x + g.w && p[1] >= g.y && p[1] <= g.y + headerH(g); }
 function inResize(g, p) { return p[0] >= g.x + g.w - HANDLE && p[0] <= g.x + g.w && p[1] >= g.y + g.h - HANDLE && p[1] <= g.y + g.h; }
 function groupAt(p) {
   const gs = ensureGroups();
@@ -127,39 +137,41 @@ function fillTextVCenter(ctx, text, x, yMid) {
 let _selectedId = null;
 
 function drawOne(ctx, g) {
-  const color = g.color || DEFAULT_COLOR;
+  const tColor = gTitleColor(g), bColor = gBodyColor(g);
+  const tA = gTitleAlpha(g), bA = gBodyAlpha(g);
+  const fs = gFontSize(g), hH = headerH(g);
   const sel = g.id === _selectedId;
   const scale = app.canvas?.ds?.scale || 1;
-  const tInk = ink(color);
+  const tInk = ink(tColor);
 
-  // interior tint
-  ctx.fillStyle = rgba(color, 0.12);
+  // interior fill (body color + body opacity)
+  ctx.fillStyle = rgba(bColor, bA);
   roundRect(ctx, g.x, g.y, g.w, g.h, 8); ctx.fill();
 
-  // header bar (clipped to the rounded top)
+  // header bar (title color + title opacity), clipped to the rounded top
   ctx.save();
   roundRect(ctx, g.x, g.y, g.w, g.h, 8); ctx.clip();
-  ctx.fillStyle = rgba(color, 0.92);
-  ctx.fillRect(g.x, g.y, g.w, TITLE_H);
+  ctx.fillStyle = rgba(tColor, tA);
+  ctx.fillRect(g.x, g.y, g.w, hH);
   ctx.restore();
 
-  // border (orange when selected)
-  ctx.strokeStyle = sel ? BRAND : rgba(color, 0.85);
+  // border (from the title color; orange when selected)
+  ctx.strokeStyle = sel ? BRAND : rgba(tColor, Math.max(0.5, tA));
   ctx.lineWidth = (sel ? 2.5 : 1.5) / scale;
   roundRect(ctx, g.x, g.y, g.w, g.h, 8); ctx.stroke();
 
   // title (clipped so it doesn't run under the badge)
   ctx.save();
-  ctx.beginPath(); ctx.rect(g.x, g.y, g.w - 46, TITLE_H); ctx.clip();
+  ctx.beginPath(); ctx.rect(g.x, g.y, g.w - 46, hH); ctx.clip();
   ctx.fillStyle = tInk;
-  ctx.font = "600 14px 'Segoe UI', system-ui, sans-serif";
+  ctx.font = `600 ${fs}px 'Segoe UI', system-ui, sans-serif`;
   ctx.textBaseline = "middle"; ctx.textAlign = "left";
-  ctx.fillText(g.title || "Group", g.x + 12, g.y + TITLE_H / 2 + 1);
+  ctx.fillText(g.title || "Group", g.x + 12, g.y + hH / 2 + 1);
   ctx.restore();
 
   // node-count badge
   const count = containedNodes(g).length;
-  const bw = 28, bh = 16, bx = g.x + g.w - bw - 8, by = g.y + (TITLE_H - bh) / 2;
+  const bw = 28, bh = 16, bx = g.x + g.w - bw - 8, by = g.y + (hH - bh) / 2;
   ctx.fillStyle = tInk === "#ffffff" ? "rgba(255,255,255,0.22)" : "rgba(0,0,0,0.22)";
   roundRect(ctx, bx, by, bw, bh, 8); ctx.fill();
   ctx.fillStyle = tInk;
@@ -173,7 +185,7 @@ function drawOne(ctx, g) {
   // corner follows the curve instead of poking a sharp triangle past the edge.
   ctx.save();
   roundRect(ctx, g.x, g.y, g.w, g.h, 8); ctx.clip();
-  ctx.fillStyle = rgba(color, sel ? 1 : 0.85);
+  ctx.fillStyle = rgba(tColor, sel ? 1 : 0.85);
   ctx.beginPath();
   ctx.moveTo(g.x + g.w, g.y + g.h - HANDLE);
   ctx.lineTo(g.x + g.w, g.y + g.h);
@@ -296,6 +308,20 @@ function onHover(e) {
   else if (_cursorOverride) { el.style.cursor = ""; _cursorOverride = false; }
 }
 
+// Double-click the header → open the style editor.
+function onDblClick(e) {
+  const c = app.canvas;
+  if (!c || e.target !== c.canvas) return;
+  const p = screenToGraph(e.clientX, e.clientY);
+  if (!p) return;
+  const gs = ensureGroups();
+  for (let i = gs.length - 1; i >= 0; i--) {
+    const g = gs[i];
+    if (inHeader(g, p)) { e.preventDefault(); e.stopImmediatePropagation(); openEditor(g, groupScreenRect(g)); return; }
+    if (inRect(g, p)) break;
+  }
+}
+
 // ── create / rename / delete ────────────────────────────────────────────
 function addGroup(p) {
   const gs = ensureGroups();
@@ -308,27 +334,179 @@ function addGroup(p) {
       minx = Math.min(minx, b.x); miny = Math.min(miny, b.y);
       maxx = Math.max(maxx, b.x + b.w); maxy = Math.max(maxy, b.y + b.h);
     }
-    const pad = 22;
-    x = minx - pad; y = miny - pad - TITLE_H;
-    w = (maxx - minx) + pad * 2; h = (maxy - miny) + pad * 2 + TITLE_H;
+    const pad = 22, hH = headerH({});
+    x = minx - pad; y = miny - pad - hH;
+    w = (maxx - minx) + pad * 2; h = (maxy - miny) + pad * 2 + hH;
   } else {
     x = p ? p[0] : 100; y = p ? p[1] : 100; w = 320; h = 220;
   }
-  const g = { id: newId(), title: "Pixaroma Group", x, y, w: Math.max(MIN_W, w), h: Math.max(MIN_H, h), color: DEFAULT_COLOR };
+  const g = {
+    id: newId(), title: "Pixaroma Group",
+    x, y, w: Math.max(MIN_W, w), h: Math.max(MIN_H, h),
+    titleColor: DEFAULT_COLOR, bodyColor: DEFAULT_COLOR,
+    titleAlpha: 0.92, bodyAlpha: 0.12, fontSize: 14,
+  };
   gs.push(g);
   _selectedId = g.id;
   markChanged();
-}
-function renameGroup(g) {
-  const t = window.prompt("Group title", g.title || "Pixaroma Group");
-  if (t != null) { g.title = t; markChanged(); }
 }
 function deleteGroup(g) {
   const gs = ensureGroups();
   const i = gs.indexOf(g);
   if (i >= 0) gs.splice(i, 1);
   if (_selectedId === g.id) _selectedId = null;
+  closeEditor();
   markChanged();
+}
+
+// ── style editor popup ──────────────────────────────────────────────────
+function injectEditorCSS() {
+  if (document.getElementById("pix-pg-css")) return;
+  const s = document.createElement("style");
+  s.id = "pix-pg-css";
+  s.textContent = `
+.pix-pg-editor { position: fixed; z-index: 10000; width: 300px; box-sizing: border-box;
+  background: #26262b; border: 1px solid #3a3a40; border-radius: 12px; padding: 14px 15px;
+  color: #e8e8ea; font: 13px 'Segoe UI', system-ui, sans-serif; box-shadow: 0 8px 32px rgba(0,0,0,0.6); }
+.pix-pg-hd { display: flex; align-items: center; justify-content: space-between; margin-bottom: 11px; cursor: move; }
+.pix-pg-hd h4 { margin: 0; font-size: 14px; font-weight: 500; color: #f2f2f4; }
+.pix-pg-x { background: transparent; border: none; color: #9a9aa0; font-size: 16px; line-height: 1; cursor: pointer; padding: 2px 6px; border-radius: 4px; }
+.pix-pg-x:hover { color: #fff; background: rgba(255,255,255,0.08); }
+.pix-pg-titleinput { width: 100%; box-sizing: border-box; background: #1d1d1d; border: 1px solid #444;
+  border-radius: 5px; color: #e0e0e0; font: 13px 'Segoe UI', system-ui, sans-serif; padding: 6px 8px; margin-bottom: 10px; }
+.pix-pg-titleinput:focus { outline: none; border-color: #f66744; }
+.pix-pg-seg { display: flex; background: #1d1d1d; border: 1px solid #3a3a40; border-radius: 7px; padding: 3px; gap: 3px; margin: 0 0 10px; }
+.pix-pg-seg button { flex: 1; text-align: center; font: 12px 'Segoe UI', system-ui, sans-serif; padding: 5px 0;
+  border-radius: 5px; color: #bdbdc2; background: transparent; border: none; cursor: pointer; }
+.pix-pg-seg button.on { background: #f66744; color: #fff; }
+.pix-pg-editor .pix-cp { width: 100%; gap: 0; }
+.pix-pg-editor .pix-cp-sv { height: 188px; min-width: 0; border-radius: 6px; border-color: #45454c; }
+.pix-pg-editor .pix-cp-hue { width: 16px; height: 188px; border-radius: 6px; border-color: #45454c; }
+.pix-pg-editor .pix-cp-hexrow { display: none; }
+.pix-pg-hex { display: flex; align-items: center; gap: 8px; background: #161616; border: 1px solid #3a3a40;
+  border-radius: 6px; padding: 6px 9px; margin-top: 9px; }
+.pix-pg-chip { width: 16px; height: 16px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.2); flex: 0 0 auto; }
+.pix-pg-hexk { font: 11px 'Segoe UI', system-ui, sans-serif; color: #8a8a90; flex: 0 0 auto; }
+.pix-pg-hexv { flex: 1; min-width: 0; background: transparent; border: none; outline: none;
+  color: #f66744; font: 12px 'Consolas', monospace; letter-spacing: 0.03em; padding: 0; }
+.pix-pg-row { display: flex; align-items: center; gap: 10px; margin-top: 9px; }
+.pix-pg-row label { font: 11px 'Segoe UI', system-ui, sans-serif; color: #8a8a90; width: 86px; flex: 0 0 auto; letter-spacing: 0.04em; }
+.pix-pg-row input[type=range] { flex: 1; min-width: 0; accent-color: #f66744; cursor: pointer; }
+.pix-pg-row .val { width: 38px; text-align: right; font-size: 12px; color: #bbb; }
+  `;
+  document.head.appendChild(s);
+}
+
+// graph → screen rect for a group, to place the editor beside it.
+function groupScreenRect(g) {
+  const c = app.canvas, el = c?.canvas, ds = c?.ds;
+  if (!el || !ds) return null;
+  const r = el.getBoundingClientRect();
+  const s = ds.scale || 1, o = ds.offset || [0, 0];
+  const left = r.left + (g.x + o[0]) * s, top = r.top + (g.y + o[1]) * s;
+  return { left, top, width: g.w * s, height: g.h * s, right: left + g.w * s, bottom: top + g.h * s };
+}
+function placeEditor(el, rect) {
+  const vw = window.innerWidth, vh = window.innerHeight, mw = el.offsetWidth, mh = el.offsetHeight, gap = 12, pad = 8;
+  if (!rect) { el.style.left = Math.max(pad, (vw - mw) / 2) + "px"; el.style.top = Math.max(pad, (vh - mh) / 2) + "px"; return; }
+  let left = rect.right + gap;
+  if (left + mw > vw - pad) left = rect.left - gap - mw;
+  if (left < pad) left = Math.max(pad, vw - mw - pad);
+  let top = rect.top;
+  if (top + mh > vh - pad) top = vh - mh - pad;
+  if (top < pad) top = pad;
+  el.style.left = left + "px"; el.style.top = top + "px";
+}
+function makeDraggable(el, handle) {
+  let sx = 0, sy = 0, sl = 0, st = 0, on = false;
+  handle.addEventListener("pointerdown", (e) => {
+    if (e.target.closest(".pix-pg-x")) return;
+    on = true; sx = e.clientX; sy = e.clientY;
+    const r = el.getBoundingClientRect(); sl = r.left; st = r.top;
+    try { handle.setPointerCapture(e.pointerId); } catch (_e) {}
+    e.preventDefault(); e.stopPropagation();
+  });
+  handle.addEventListener("pointermove", (e) => { if (!on) return; e.stopPropagation(); el.style.left = (sl + e.clientX - sx) + "px"; el.style.top = (st + e.clientY - sy) + "px"; });
+  const end = (e) => { on = false; try { handle.releasePointerCapture(e.pointerId); } catch (_e) {} };
+  handle.addEventListener("pointerup", end);
+  handle.addEventListener("pointercancel", end);
+}
+
+let _editorEl = null;
+function closeEditor() { if (_editorEl) { try { _editorEl._cleanup?.(); } catch (_e) {} _editorEl.remove(); _editorEl = null; } }
+
+function openEditor(g, anchorRect) {
+  closeEditor();
+  injectEditorCSS();
+  let target = "title";
+  const cur = () => (target === "title" ? gTitleColor(g) : gBodyColor(g));
+  const setCur = (c) => { if (target === "title") g.titleColor = c; else g.bodyColor = c; };
+
+  const panel = document.createElement("div");
+  panel.className = "pix-pg-editor";
+  panel.style.left = "-9999px"; panel.style.top = "0px";
+
+  const hd = document.createElement("div"); hd.className = "pix-pg-hd";
+  const h4 = document.createElement("h4"); h4.textContent = "Pixaroma Group"; hd.appendChild(h4);
+  const xb = document.createElement("button"); xb.className = "pix-pg-x"; xb.textContent = "✕"; xb.title = "Close";
+  xb.addEventListener("click", closeEditor); hd.appendChild(xb);
+  panel.appendChild(hd);
+
+  const ti = document.createElement("input"); ti.className = "pix-pg-titleinput"; ti.value = g.title || ""; ti.placeholder = "Group title";
+  ti.addEventListener("mousedown", (e) => e.stopPropagation());
+  ti.addEventListener("input", () => { g.title = ti.value; repaint(); markChanged(); });
+  panel.appendChild(ti);
+
+  const seg = document.createElement("div"); seg.className = "pix-pg-seg";
+  const tb = document.createElement("button"); tb.type = "button"; tb.textContent = "Title";
+  const bb = document.createElement("button"); bb.type = "button"; bb.textContent = "Body";
+  seg.appendChild(tb); seg.appendChild(bb); panel.appendChild(seg);
+  const syncSeg = () => { tb.classList.toggle("on", target === "title"); bb.classList.toggle("on", target === "body"); };
+
+  const picker = createPixaromaColorPicker({
+    initialColor: cur(), swatches: [], hideReset: true,
+    onChange: (c) => { if (c == null) return; setCur(c); refreshHex(); repaint(); markChanged(); },
+  });
+  panel.appendChild(picker.element);
+
+  const hex = document.createElement("div"); hex.className = "pix-pg-hex";
+  const chip = document.createElement("span"); chip.className = "pix-pg-chip";
+  const hk = document.createElement("span"); hk.className = "pix-pg-hexk"; hk.textContent = "Title";
+  const hv = document.createElement("input"); hv.className = "pix-pg-hexv"; hv.spellcheck = false;
+  hex.appendChild(chip); hex.appendChild(hk); hex.appendChild(hv); panel.appendChild(hex);
+  hv.addEventListener("mousedown", (e) => e.stopPropagation());
+  hv.addEventListener("input", () => {
+    let v = hv.value.trim(); if (!v.startsWith("#")) v = "#" + v;
+    if (/^#[0-9a-f]{6}$/i.test(v)) { setCur(v); chip.style.background = v; picker.setColor(v); repaint(); markChanged(); }
+  });
+  function refreshHex() { const c = cur(); hk.textContent = target === "title" ? "Title" : "Body"; hv.value = c; chip.style.background = c; }
+
+  function slider(label, min, max, step, get, set, fmt) {
+    const row = document.createElement("div"); row.className = "pix-pg-row";
+    const l = document.createElement("label"); l.textContent = label;
+    const s = document.createElement("input"); s.type = "range"; s.min = String(min); s.max = String(max); s.step = String(step); s.value = String(get());
+    const v = document.createElement("span"); v.className = "val"; v.textContent = fmt(get());
+    s.addEventListener("input", () => { const n = Number(s.value); set(n); v.textContent = fmt(n); repaint(); markChanged(); });
+    row.appendChild(l); row.appendChild(s); row.appendChild(v); panel.appendChild(row);
+  }
+  slider("Title opacity", 0.2, 1, 0.05, () => gTitleAlpha(g), (n) => { g.titleAlpha = n; }, (n) => Math.round(n * 100) + "%");
+  slider("Body opacity", 0, 0.6, 0.02, () => gBodyAlpha(g), (n) => { g.bodyAlpha = n; }, (n) => Math.round(n * 100) + "%");
+  slider("Font size", 10, 32, 1, () => gFontSize(g), (n) => { g.fontSize = n; }, (n) => String(n));
+
+  tb.addEventListener("click", () => { target = "title"; syncSeg(); picker.setColor(gTitleColor(g)); refreshHex(); });
+  bb.addEventListener("click", () => { target = "body"; syncSeg(); picker.setColor(gBodyColor(g)); refreshHex(); });
+  syncSeg(); refreshHex();
+
+  document.body.appendChild(panel);
+  placeEditor(panel, anchorRect);
+  makeDraggable(panel, hd);
+
+  function onDoc(e) { if (!panel.contains(e.target)) closeEditor(); }
+  function onKey(e) { if (e.key === "Escape") { e.stopImmediatePropagation(); e.preventDefault(); closeEditor(); } }
+  setTimeout(() => document.addEventListener("pointerdown", onDoc, true), 0);
+  window.addEventListener("keydown", onKey, true);
+  panel._cleanup = () => { document.removeEventListener("pointerdown", onDoc, true); window.removeEventListener("keydown", onKey, true); try { picker.destroy(); } catch (_e) {} };
+  _editorEl = panel;
 }
 
 function installMenu() {
@@ -343,7 +521,7 @@ function installMenu() {
     opts.push(null);
     opts.push({ content: "👑 Add Pixaroma Group", callback: () => addGroup(p) });
     if (over) {
-      opts.push({ content: "👑 Rename Pixaroma Group", callback: () => renameGroup(over) });
+      opts.push({ content: "👑 Edit Pixaroma Group", callback: () => openEditor(over, groupScreenRect(over)) });
       opts.push({ content: "👑 Delete Pixaroma Group", callback: () => deleteGroup(over) });
     }
     return opts;
@@ -400,6 +578,7 @@ app.registerExtension({
     } catch (_e) {}
     window.addEventListener("pointerdown", onDown, true);
     window.addEventListener("pointermove", onHover, false);
+    window.addEventListener("dblclick", onDblClick, true);
     // Prototype: expose a console helper for quick add while testing.
     try { window.PixAddGroup = () => addGroup(app.canvas?.graph_mouse ? [app.canvas.graph_mouse[0], app.canvas.graph_mouse[1]] : null); } catch (_e) {}
   },
