@@ -167,6 +167,10 @@ app.registerExtension({
     // One-time, non-invasive heads-up if another extension also draws group-header
     // buttons (they'd overlap ours). Deferred so every extension has registered.
     setTimeout(() => { try { maybeShowGroupButtonOverlapNotice(); } catch (_e) {} }, 2500);
+    // Nodes 2.0: keep the fold node-hide CSS in sync (covers folded-on-load groups +
+    // a live renderer toggle). Cheap: returns early in legacy / when nothing changed,
+    // and only rewrites the DOM rule when the hidden set actually changes.
+    setInterval(() => { try { updateFoldNodeHideCSS(); } catch (_e) {} }, 600);
     console.log("[Pixaroma.Groups] setup: enabled =", state.enabled, "strength =", state.interiorStrength);
   },
 });
@@ -910,6 +914,36 @@ function syncHiddenWidgets(hiddenSet) {
   if (restored) requestAnimationFrame(() => { try { window.dispatchEvent(new Event("resize")); } catch (_e) {} });
 }
 
+// Nodes 2.0: computeVisibleNodes (above) hides folded members from the LEGACY canvas
+// paint, but Vue-rendered nodes are DOM, not canvas - so they'd stay visible. Hide them
+// with a stylesheet rule (display:none on [data-node-id]). A stylesheet !important
+// rule survives Vue re-renders (an inline style would be reset) and auto-applies to any
+// matching node element, so we only rewrite it when the hidden set changes. The bare
+// [data-node-id="X"] selector is the node element (same one connection_fx / node_colors
+// use). No-op in legacy (computeVisibleNodes already hides there).
+let _foldHideStyleEl = null;
+let _foldHideCSSKey = ""; // last-applied id set ("" = nothing applied yet)
+function updateFoldNodeHideCSS() {
+  const ids = (isVueNodes() && state.enabled) ? [...buildFoldMaps().hiddenSet] : [];
+  const key = ids.sort().join(",");
+  if (key === _foldHideCSSKey) return;
+  const prev = _foldHideCSSKey;
+  _foldHideCSSKey = key;
+  if (!_foldHideStyleEl) {
+    _foldHideStyleEl = document.createElement("style");
+    _foldHideStyleEl.id = "pix-fold-node-hide";
+    (document.head || document.documentElement).appendChild(_foldHideStyleEl);
+  }
+  _foldHideStyleEl.textContent = ids.map((id) => `[data-node-id="${id}"]{display:none !important;}`).join("\n");
+  // If any node was just UN-hidden, kick a re-layout so a fill DOM widget (Save Mp4 /
+  // Load Video video area) re-fits instead of coming back collapsed.
+  const prevIds = prev && prev !== "" ? prev.split(",").filter(Boolean) : [];
+  const nowSet = new Set(ids);
+  if (prevIds.some((id) => !nowSet.has(id))) {
+    requestAnimationFrame(() => { try { window.dispatchEvent(new Event("resize")); } catch (_e) {} });
+  }
+}
+
 function barOut(g) { const r = groupRect(g); return r ? [r.x + r.w, r.y + r.h / 2] : null; }
 function barIn(g) { const r = groupRect(g); return r ? [r.x, r.y + r.h / 2] : null; }
 
@@ -963,6 +997,7 @@ function foldGroup(group) {
   };
   setGroupRect(group, r.x, r.y, computeBarWidth(group), TITLE_H());
   invalidateFold();
+  updateFoldNodeHideCSS(); // Nodes 2.0: hide the member nodes' DOM (no-op in legacy)
   app.graph?.setDirtyCanvas?.(true, true);
   try { app.graph?.change?.(); } catch (_e) {}
   nudgeSelectionToolbox(group); // box shrank → reposition the native toolbar
@@ -1016,6 +1051,7 @@ function unfoldGroup(group) {
   }
   if (group.flags) delete group.flags[FOLD_KEY];
   invalidateFold();
+  updateFoldNodeHideCSS(); // Nodes 2.0: un-hide the member nodes' DOM (no-op in legacy)
   app.graph?.setDirtyCanvas?.(true, true);
   try { app.graph?.change?.(); } catch (_e) {}
   nudgeSelectionToolbox(group); // box grew back → reposition the native toolbar
