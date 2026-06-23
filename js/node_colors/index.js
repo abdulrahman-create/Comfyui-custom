@@ -45,6 +45,9 @@ import { createPixaromaColorPicker } from "../shared/color_picker.mjs";
 // both serialize into the workflow JSON and travel to recipients without
 // this plugin. Each shade: { label, title, body }. To add/remove a shade,
 // edit the relevant hue's `presets` array.
+// NOTE (2026-06-23): HUE_FOLDERS is no longer shown in the palette — the node
+// presets now derive from GROUP_COLORS (see NODE_PAIRS below). This curated
+// data is kept for reference / possible reuse; safe to delete if never revived.
 const HUE_FOLDERS = [
   { label: "Dark", presets: [
     { label: "Default", title: "#1d1d1d", body: "#2a2a2a" },
@@ -296,6 +299,20 @@ const GROUP_COLORS = [
   { label: "Rich Purple",  color: "#9e3fc0" },
   // Exactly 45 colors = 3 even rows of 15 in the palette popup (no stray 4th row).
 ];
+
+// Node color PRESETS derive from the 45 GROUP_COLORS so the node + group
+// palettes share ONE hue set (user choice, 2026-06-23). Each renders as a node:
+// the colorful group hue is the TITLE bar over a dark, faintly hue-tinted BODY
+// (kept dark so node widgets stay readable). darkBodyFor mixes a 15% wash of the
+// hue into the #242424 neutral. (The legacy hand-picked HUE_FOLDERS pairs above
+// are no longer shown in the palette — kept for reference / possible reuse.)
+function darkBodyFor(hex) {
+  const c = hexToRgb(hex) || { r: 36, g: 36, b: 36 };
+  const mix = (ch) => Math.round(0.85 * 0x24 + 0.15 * ch);
+  const to2 = (n) => Math.max(0, Math.min(255, n)).toString(16).padStart(2, "0");
+  return "#" + to2(mix(c.r)) + to2(mix(c.g)) + to2(mix(c.b));
+}
+const NODE_PAIRS = GROUP_COLORS.map((c) => ({ label: c.label, title: c.color, body: darkBodyFor(c.color) }));
 
 // ── Favorites: 15 fixed slots, persisted as ONE compact JSON value in
 // ComfyUI's settings store (unregistered key → no Settings-panel clutter;
@@ -1013,22 +1030,20 @@ function openNodeColorsPalette(targets, node, groups = []) {
   bodyBtn.addEventListener("click",  () => { target = "body";  syncSeg(); picker.setColor(bodyHex); });
   syncSeg();
 
-  // ── Preset hue folders (scrollable, small two-tone swatches) ──
+  // ── Preset node colors (one compact grid, derived from the group palette) ──
   const scroll = document.createElement("div");
   scroll.className = "pix-nc-pal-scroll";
   modal.appendChild(scroll);
-  for (const g of HUE_FOLDERS) {
-    const lbl = document.createElement("div"); lbl.className = "pix-nc-presetlbl"; lbl.textContent = g.label;
-    scroll.appendChild(lbl);
-    const grid = document.createElement("div"); grid.className = "pix-nc-presetgrid";
-    for (const p of g.presets) {
-      const sw = makeTwoToneSwatch(p.title, p.body);
-      sw.title = `${g.label} — ${p.label}`;
-      sw.addEventListener("click", () => applyPair(p.title, p.body));
-      grid.appendChild(sw);
-    }
-    scroll.appendChild(grid);
+  const plbl = document.createElement("div"); plbl.className = "pix-nc-presetlbl"; plbl.textContent = "Node colors";
+  scroll.appendChild(plbl);
+  const grid = document.createElement("div"); grid.className = "pix-nc-presetgrid";
+  for (const p of NODE_PAIRS) {
+    const sw = makeTwoToneSwatch(p.title, p.body);
+    sw.title = p.label;
+    sw.addEventListener("click", () => applyPair(p.title, p.body));
+    grid.appendChild(sw);
   }
+  scroll.appendChild(grid);
 
   // ── Footer: save hint + Reset ──
   const foot = document.createElement("div"); foot.className = "pix-nc-foot";
