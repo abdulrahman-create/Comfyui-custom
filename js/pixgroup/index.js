@@ -1,4 +1,5 @@
 import { app } from "/scripts/app.js";
+import { api } from "/scripts/api.js";
 import { isVueNodes } from "../shared/index.mjs";
 
 // ╔══════════════════════════════════════════════════════════════════════╗
@@ -23,9 +24,13 @@ import { isVueNodes } from "../shared/index.mjs";
 // support, port the header buttons, then retire the native-group overlay.
 
 const BRAND = "#f66744";
+const RUN_GREEN = "#3ec371";  // a folded group lights up green while a member runs
 const DEFAULT_COLOR = "#3f789e";
 const HANDLE = 18;      // bottom-right resize grab box, graph units
 const MIN_W = 140, MIN_H = 80;
+
+// Set by the execution listeners so a folded bar can show what's running inside it.
+let _runningNodeId = null, _progress = null;
 
 let _idc = 0;
 function newId() { return "pg_" + Date.now().toString(36) + "_" + (_idc++); }
@@ -248,6 +253,19 @@ function drawOne(ctx, g) {
   const showBtns = g.id === _hoverId || g.id === _selectedId;
   const layout = headerButtons(g, showBtns);
 
+  // Running indicator (folded only): is a hidden member executing right now? The
+  // member list is fixed at fold time, so a folded bar lights up for its nodes.
+  let running = false, runTitle = "", prog = null;
+  if (g.folded && _runningNodeId != null && Array.isArray(g.foldNodes) &&
+      g.foldNodes.some((id) => String(id) === String(_runningNodeId))) {
+    running = true;
+    const rn = (app.graph?._nodes || []).find((n) => String(n.id) === String(_runningNodeId));
+    runTitle = (rn && (rn.title || rn.type)) || "running";
+    if (_progress && _progress.max > 0 && String(_progress.node) === String(_runningNodeId)) {
+      prog = Math.max(0, Math.min(1, _progress.value / _progress.max));
+    }
+  }
+
   // interior fill (body color + body opacity) — when folded, g.h IS the bar height
   ctx.fillStyle = rgba(bColor, bA);
   roundRect(ctx, g.x, g.y, g.w, g.h, 8); ctx.fill();
@@ -259,18 +277,24 @@ function drawOne(ctx, g) {
   ctx.fillRect(g.x, g.y, g.w, hH);
   ctx.restore();
 
-  // border (from the title color; orange when selected)
+  // border (from the title color; orange when selected; green while running)
   ctx.strokeStyle = sel ? BRAND : rgba(tColor, Math.max(0.5, tA));
   ctx.lineWidth = (sel ? 2.5 : 1.5) / scale;
   roundRect(ctx, g.x, g.y, g.w, g.h, 8); ctx.stroke();
+  if (running) {
+    ctx.strokeStyle = RUN_GREEN;
+    ctx.lineWidth = 2.5 / scale;
+    roundRect(ctx, g.x, g.y, g.w, g.h, 8); ctx.stroke();
+  }
 
-  // title (clipped so it doesn't run under the badge / buttons)
+  // title — while a member runs, show "▶ <running node>" in green so a folded
+  // group tells you what's busy (its nodes are hidden).
   ctx.save();
   ctx.beginPath(); ctx.rect(g.x, g.y, layout.titleClipW, hH); ctx.clip();
-  ctx.fillStyle = tInk;
+  ctx.fillStyle = running ? RUN_GREEN : tInk;
   ctx.font = `600 ${fs}px 'Segoe UI', system-ui, sans-serif`;
   ctx.textBaseline = "middle"; ctx.textAlign = "left";
-  ctx.fillText(g.title || "Group", g.x + 12, g.y + hH / 2 + 1);
+  ctx.fillText(running ? ("▶ " + runTitle) : (g.title || "Group"), g.x + 12, g.y + hH / 2 + 1);
   ctx.restore();
 
   // node-count badge
@@ -287,6 +311,12 @@ function drawOne(ctx, g) {
 
   // header buttons (revealed on hover / select)
   if (showBtns) for (const b of layout.btns) drawButton(ctx, b, g, tInk);
+
+  // progress bar along the bottom edge of a running folded bar
+  if (prog != null) {
+    ctx.fillStyle = RUN_GREEN;
+    ctx.fillRect(g.x + 2, g.y + hH - 3, (g.w - 4) * prog, 2.5);
+  }
 
   // resize handle (bottom-right) — not while folded (the bar isn't resizable).
   if (!g.folded) {
@@ -573,16 +603,27 @@ function toggleMode(g, mode) {
 }
 
 // Fold = collapse the whole group to a slim bar: capture the member ids, shrink the
-// box to the header height, hide the members (computeVisibleNodes wrap in legacy +
+// box to a SHORT left-aligned bar (header height + a width that just fits the title
+// + count + unfold button), hide the members (computeVisibleNodes wrap in legacy +
 // a CSS rule in Nodes 2.0) and their crossing wires (renderLink wrap; hidden by
 // default, per-group "show links" opt-in). All fields ride on the group object,
 // so they serialize with the group.
+let _measCtxEl = null;
+function measCtx() { if (!_measCtxEl) _measCtxEl = document.createElement("canvas").getContext("2d"); return _measCtxEl; }
+function computeBarWidth(g) {
+  const oc = measCtx();
+  oc.font = `600 ${gFontSize(g)}px 'Segoe UI', system-ui, sans-serif`;
+  const tw = oc.measureText(g.title || "Group").width;
+  // left pad(12) + title + gap(10) + unfold button(BSZ) + gap(6) + badge(24) + right pad(BPAD)
+  return Math.round(Math.max(150, 12 + tw + 10 + BSZ + 6 + 24 + BPAD));
+}
 function foldGroup(g) {
   if (g.folded) return;
   g.foldNodes = containedNodes(g).map((n) => String(n.id));
-  g.hOpen = g.h;
+  g.hOpen = g.h; g.wOpen = g.w;        // remember the open box to restore
   g.folded = true;
   g.h = headerH(g);
+  g.w = computeBarWidth(g);            // shrink to a short bar, left edge unchanged
   if (g.showLinks == null) g.showLinks = false;
   invalidateHidden(); updateFoldNodeHideCSS(); markChanged();
 }
@@ -590,6 +631,7 @@ function unfoldGroup(g) {
   if (!g.folded) return;
   g.folded = false;
   g.h = Math.max(MIN_H, g.hOpen || MIN_H);
+  g.w = Math.max(MIN_W, g.wOpen || g.w);
   delete g.foldNodes;
   invalidateHidden(); updateFoldNodeHideCSS(); markChanged();
 }
@@ -668,6 +710,33 @@ function updateFoldNodeHideCSS() {
     (document.head || document.documentElement).appendChild(_foldCSSEl);
   }
   _foldCSSEl.textContent = ids.map((id) => `[data-node-id="${id}"]{display:none !important;}`).join("\n");
+}
+
+// Execution indicator: track which node is running (ComfyUI api events) so a folded
+// bar can light up green + name the running member — you can't see the hidden nodes,
+// so the bar tells you the group is busy. detail may be a bare id or { node }; a
+// null id = the prompt finished.
+let _execInstalled = false;
+function installExecListeners() {
+  if (_execInstalled || !api || !api.addEventListener) return;
+  const clear = () => { _runningNodeId = null; _progress = null; repaint(); };
+  api.addEventListener("executing", (e) => {
+    const d = e && e.detail;
+    _runningNodeId = d && typeof d === "object" ? d.node : d;
+    if (_runningNodeId == null) _progress = null;
+    repaint();
+  });
+  api.addEventListener("progress", (e) => {
+    const d = (e && e.detail) || {};
+    const node = d.node != null ? d.node : _runningNodeId;
+    _progress = { value: Number(d.value) || 0, max: Number(d.max) || 0, node };
+    repaint();
+  });
+  api.addEventListener("execution_start", clear);
+  api.addEventListener("execution_success", clear);
+  api.addEventListener("execution_error", clear);
+  api.addEventListener("execution_interrupted", clear);
+  _execInstalled = true;
 }
 
 // ── style editor popup ──────────────────────────────────────────────────
@@ -809,6 +878,7 @@ app.registerExtension({
     installMenu();
     installPersistence();
     installFoldHooks();
+    installExecListeners();
     // Pick up groups from a workflow that was already loaded before this ran.
     try {
       const init = app.graph?.extra?.pixaromaGroups;
