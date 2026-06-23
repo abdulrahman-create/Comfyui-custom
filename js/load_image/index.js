@@ -953,21 +953,23 @@ function setupLoadImageNode(node) {
     // Size it to the content once, AFTER layout (so the measure is real). Fresh drops
     // ONLY - a saved workflow keeps its size (Vue Compat #18: never resize on load).
     if (isVueNodes() && !wasConfigured) {
-      requestAnimationFrame(() => {
-        if (isGraphLoading()) return;
-        const content = node._pixLiMeasureHeight?.();
-        if (!content || typeof node.setSize !== "function") return;
-        // node.size[1] is the slot area + body, but measureContentHeight is only the
-        // controls panel (which in Nodes 2.0 includes the preview canvas). So add the
-        // slots above it - the same `aboveControls` math fitPreview uses for legacy.
-        // (Sizing to `content` alone left the node short by the slot rows → clipped.)
-        const SLOT_H = window.LiteGraph?.NODE_SLOT_HEIGHT || 20;
-        const TITLE_H = window.LiteGraph?.NODE_TITLE_HEIGHT || 30;
-        const aboveControls = (node.outputs?.length || 7) * SLOT_H + 6;
-        // In Nodes 2.0 node.size[1] INCLUDES the title bar (unlike legacy), so add it
-        // too - otherwise the last ~30px (the dims label under the preview) is clipped.
-        node.setSize([node.size[0], TITLE_H + aboveControls + content]);
+      // The Vue node opens too short for the controls panel, and node.size does NOT
+      // map cleanly to the rendered widget height (the title+slot chrome varies and
+      // node.size "lies" in Nodes 2.0). So instead of computing from constants, GROW
+      // the node by the MEASURED overflow until nothing is clipped: the panel is an
+      // absolute overflow:hidden layer, so (scrollHeight - clientHeight) is exactly
+      // the clipped amount. The flex preview absorbs any excess, so it settles in a
+      // frame or two. Fresh drops only - never on the load path (Vue Compat #18).
+      const settleSize = (tries) => requestAnimationFrame(() => {
+        const inner = node._pixLiInner;
+        if (isGraphLoading() || !inner || typeof node.setSize !== "function") return;
+        const clipped = inner.scrollHeight - inner.clientHeight;
+        if (clipped > 1 && tries > 0) {
+          node.setSize([node.size[0], (node.size[1] || 0) + clipped + 2]);
+          settleSize(tries - 1);
+        }
       });
+      settleSize(6);
     }
   });
 }
