@@ -44,6 +44,10 @@ const state = {
   interiorStrength: 0.12, // 0..0.4, from the strength setting / 100
   cursor: null,           // { gx, gy } in graph space, tracked from pointermove
   foldHideWires: true,    // hide crossing wires of a folded group instead of rerouting them (default ON)
+  // Per-button visibility (each is a setting; default all ON). Lets users slim the
+  // header bar - e.g. hide Run/Mute/Bypass if they prefer another extension's group
+  // toggles, so the two don't sit on top of each other.
+  buttons: { queue: true, mute: true, bypass: true, color: true, collapse: true, fold: true },
 };
 // Declared up here (NOT next to applyResizeLength below) because ComfyUI can fire
 // the Enabled setting's onChange -> applyResizeLength SYNCHRONOUSLY during
@@ -74,8 +78,21 @@ const NEUTRAL = "#58585e";
 // Folded-bar "a node inside me is running right now" accent (success green).
 const RUN_GREEN = "#3ec371";
 
-const BTN_KEYS = ["mute", "bypass", "color", "collapse", "fold"];
+const BTN_KEYS = ["queue", "mute", "bypass", "color", "collapse", "fold"];
+// Per-button settings (key, label, tooltip) - generated into boolean settings +
+// read back in setup(). Distinct category leaves per button (the Vue settings
+// panel collapses two settings that share a leaf, so each gets its own).
+const BTN_SETTINGS = [
+  ["queue", "Run", "Show the Run button on group headers (generates only this group's output nodes)."],
+  ["mute", "Mute", "Show the Mute button on group headers (mute every node in the group)."],
+  ["bypass", "Bypass", "Show the Bypass button on group headers (bypass every node in the group)."],
+  ["color", "Color", "Show the Color button on group headers (recolor the whole group)."],
+  ["collapse", "Collapse", "Show the Collapse button on group headers (collapse every node in the group)."],
+  ["fold", "Fold", "Show the Fold button on group headers (fold the whole group to a slim bar)."],
+];
+const BTN_SETTING_ID = (key) => `Pixaroma.Groups.Show_${key}`;
 const ICONS = {
+  queue: "/pixaroma/assets/icons/ui/play.svg",
   mute: "/pixaroma/assets/icons/ui/off.svg",
   bypass: "/pixaroma/assets/icons/ui/bypass.svg",
   color: "/pixaroma/assets/icons/ui/fill.svg",
@@ -136,6 +153,19 @@ app.registerExtension({
         app.canvas?.setDirty?.(true, true);
       },
     },
+    // Per-button show/hide toggles (one boolean each, default ON).
+    ...BTN_SETTINGS.map(([key, label, tip]) => ({
+      id: BTN_SETTING_ID(key),
+      name: `Show ${label} button on group headers`,
+      type: "boolean",
+      defaultValue: true,
+      category: ["👑 Pixaroma", `Group buttons (${label})`],
+      tooltip: tip,
+      onChange: (v) => {
+        state.buttons[key] = v === undefined ? true : !!v;
+        app.canvas?.setDirty?.(true, true);
+      },
+    })),
   ],
   setup() {
     const s = app.ui?.settings;
@@ -146,6 +176,10 @@ app.registerExtension({
       if (Number.isFinite(d)) state.interiorStrength = Math.max(0, Math.min(40, d)) / 100;
       const hw = s.getSettingValue(SETTING_HIDE_WIRES);
       state.foldHideWires = hw === undefined ? true : !!hw;
+      for (const [key] of BTN_SETTINGS) {
+        const v = s.getSettingValue(BTN_SETTING_ID(key));
+        state.buttons[key] = v === undefined ? true : !!v;
+      }
     }
     installDrawOverride();
     installFoldHooks();
@@ -154,6 +188,9 @@ app.registerExtension({
     installPointerHook();
     // Warm the icon cache so the first hover doesn't flash empty buttons.
     for (const url of Object.values(ICONS)) getRawImg(url);
+    // One-time, non-invasive heads-up if another extension also draws group-header
+    // buttons (they'd overlap ours). Deferred so every extension has registered.
+    setTimeout(() => { try { maybeShowGroupButtonOverlapNotice(); } catch (_e) {} }, 2500);
     console.log("[Pixaroma.Groups] setup: enabled =", state.enabled, "strength =", state.interiorStrength);
   },
 });
@@ -313,20 +350,22 @@ function computeHeader(group) {
   const r = groupRect(group);
   if (!r) return null;
   const th = TITLE_H();
-  const total = BTN_KEYS.length * BTN + (BTN_KEYS.length - 1) * BTN_GAP;
-  const fits = r.w >= total + 70; // leave room for title + badge
+  const keys = BTN_KEYS.filter((k) => state.buttons[k] !== false);
+  const n = keys.length;
+  const total = n * BTN + Math.max(0, n - 1) * BTN_GAP;
+  const fits = n > 0 && r.w >= total + 70; // leave room for title + badge
   const by = r.y + (th - BTN) / 2;
   const buttons = [];
   if (fits) {
     let bx = r.x + r.w - PAD - total;
-    for (const key of BTN_KEYS) {
+    for (const key of keys) {
       buttons.push({ key, x: bx, y: by, w: BTN, h: BTN });
       bx += BTN + BTN_GAP;
     }
   }
   const cur = state.cursor;
   const hover = !!(cur && cur.gx >= r.x && cur.gx <= r.x + r.w && cur.gy >= r.y && cur.gy <= r.y + r.h);
-  const showButtons = fits && (hover || isGroupSelected(group));
+  const showButtons = fits && buttons.length > 0 && (hover || isGroupSelected(group));
   return { x: r.x, y: r.y, w: r.w, h: r.h, th, buttons, fits, showButtons };
 }
 
@@ -590,8 +629,70 @@ function openColor(group) {
     console.warn("[Pixaroma.Groups] group color palette unavailable (Node Colors not loaded?)");
   }
 }
+// Run = queue ONLY this group's output nodes (everything upstream they need runs;
+// nothing else does). Uses ComfyUI's native partial execution - the 3rd arg of
+// queuePrompt(number, batchCount, queueNodeIds) is the list of output-node ids.
+function isGroupOutputNode(n) {
+  const NEVER = window.LiteGraph?.NEVER != null ? window.LiteGraph.NEVER : 2;
+  return !!(n && n.mode !== NEVER && n.constructor && n.constructor.nodeData && n.constructor.nodeData.output_node);
+}
+function queueGroup(group) {
+  const outs = containedNodes(group).filter(isGroupOutputNode);
+  if (!outs.length) {
+    pixGroupToast("Nothing to run in this group", "Put an output node (a Save or Preview, etc.) inside the group, then press Run.", "warn");
+    return;
+  }
+  const ids = outs.map((n) => n.id);
+  try {
+    const r = app.queuePrompt(0, 1, ids);
+    if (r && typeof r.then === "function") r.catch((e) => console.error("[Pixaroma.Groups] run group failed", e));
+  } catch (e) {
+    console.error("[Pixaroma.Groups] run group failed", e);
+    pixGroupToast("Could not run this group", String((e && e.message) || e), "error");
+  }
+}
+
+// Small toast (ComfyUI's toast manager when present, else a brand-bordered banner).
+function pixGroupToast(summary, detail, severity = "info", life = 5000) {
+  try {
+    const t = app.extensionManager && app.extensionManager.toast;
+    if (t && typeof t.add === "function") { t.add({ severity, summary, detail, life }); return; }
+  } catch (_e) {}
+  try {
+    const el = document.createElement("div");
+    el.textContent = detail ? `${summary} - ${detail}` : summary;
+    el.style.cssText =
+      "position:fixed;top:56px;left:50%;transform:translateX(-50%);z-index:99999;background:#1d1d1d;color:#fff;border:1px solid " +
+      BRAND + ";border-radius:6px;padding:9px 15px;font:13px 'Segoe UI',sans-serif;box-shadow:0 4px 14px rgba(0,0,0,0.45);max-width:540px;text-align:center;";
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), life);
+  } catch (_e) {}
+}
+
+// One-time, non-invasive heads-up when ANOTHER extension that also paints buttons on
+// group headers is loaded - the two would overlap (both draw on the same strip and we
+// can't move theirs). We never touch the other extension's settings; we just inform.
+// Worded conditionally so it's accurate whether or not the other one is currently on.
+const GROUP_OVERLAP_NOTICE_KEY = "pixaroma.groups.headerOverlapNotice.v1";
+function maybeShowGroupButtonOverlapNotice() {
+  if (!state.enabled) return;
+  const exts = app.extensions;
+  const present = Array.isArray(exts) && exts.some(
+    (e) => e && typeof e.name === "string" && e.name.toLowerCase().includes("groupheadertoggle"),
+  );
+  if (!present) return;
+  try { if (localStorage.getItem(GROUP_OVERLAP_NOTICE_KEY)) return; } catch (_e) {}
+  pixGroupToast(
+    "Group buttons may overlap",
+    "Another extension also adds buttons to group headers. If its group-header toggles are on, they sit on top of Pixaroma's. Use one: turn the other off, or hide Pixaroma's group buttons in Settings (search \"Group buttons\").",
+    "info", 16000,
+  );
+  try { localStorage.setItem(GROUP_OVERLAP_NOTICE_KEY, "1"); } catch (_e) {}
+}
+
 function runAction(key, group) {
-  if (key === "mute") toggleMode(group, 2);
+  if (key === "queue") queueGroup(group);
+  else if (key === "mute") toggleMode(group, 2);
   else if (key === "bypass") toggleMode(group, 4);
   else if (key === "collapse") toggleCollapse(group);
   else if (key === "color") openColor(group);
