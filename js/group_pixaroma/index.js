@@ -667,7 +667,7 @@ function maybeShowGroupButtonOverlapNotice(force) {
   }
   pixGroupToast(
     "Group buttons may overlap",
-    "Another extension also adds buttons to group headers. If its group-header toggles are on, they sit on top of Pixaroma's. Use one: turn the other off, or hide Pixaroma's group buttons in Settings (search \"Group buttons\").",
+    "Another extension also adds buttons to group headers. If its group-header toggles are on, they sit on top of Pixaroma's. Use one: turn the other off, or right-click a group and pick \"Hide Pixaroma group buttons\".",
     "info", 16000,
   );
   try { localStorage.setItem(GROUP_OVERLAP_NOTICE_KEY, "1"); } catch (_e) {}
