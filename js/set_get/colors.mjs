@@ -36,6 +36,9 @@ export function setColorFor(getNode) {
 // a real change so it never spams redraws or dirties a workflow.
 export function inheritSetColor(getNode) {
   if (!getNode || !isColorMatchOn()) return;
+  // A manually-colored Get (pinned via the color picker) opts out of mirroring so
+  // its color isn't reverted every frame; "Reset colors" clears the flag.
+  if (getNode.flags?.pixSGManual) return;
   try {
     if (isGraphLoading()) return;
   } catch {
@@ -62,21 +65,17 @@ export function recolorAllGets() {
 
 // Exposed for the color picker (js/node_colors). A Get mirrors its Set's colour
 // every frame (inheritSetColor in onDrawForeground), so colouring a Get directly
-// just flashes and reverts. Colour the SET instead: it sticks AND the whole
-// variable (Set + all its Gets) takes the colour, which matches the ColorMatch
-// idea. Returns the node the picker should actually colour (the in-scope Set for a
-// Get when ColorMatch is on; otherwise the node unchanged, incl. ColorMatch off or
-// an orphan Get with no Set).
-export function colorTargetFor(node) {
-  try {
-    if (node && node.type === GET_TYPE && isColorMatchOn()) {
-      const setter = findSetterByName(node.graph, node.widgets?.[0]?.value)?.node;
-      if (setter) return setter;
-    }
-  } catch { /* ignore */ }
-  return node;
+// just flashes and reverts. The picker calls this to PIN the Get it colours: while
+// pinned, inheritSetColor leaves it alone, so only the nodes the user selected get
+// the colour and it sticks. "Reset colors" clears the pin so the Get re-mirrors its
+// Set. No-op on non-Get nodes. The flag lives on node.flags (serializes).
+export function markManualColor(node, on) {
+  if (!node || node.type !== GET_TYPE) return;
+  node.flags = node.flags || {};
+  if (on) node.flags.pixSGManual = true;
+  else delete node.flags.pixSGManual;
 }
 try {
   window.PixaromaSetGet = window.PixaromaSetGet || {};
-  window.PixaromaSetGet.colorTargetFor = colorTargetFor;
+  window.PixaromaSetGet.markManualColor = markManualColor;
 } catch { /* ignore */ }

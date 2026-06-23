@@ -480,28 +480,22 @@ function captureColors(node) {
   return { title, body };
 }
 
-// A Set/Get "Get" node mirrors its Set's color every frame (Set/Get ColorMatch), so
-// coloring a Get directly just flashes and reverts. Redirect Gets to their Set so the
-// color sticks (and colors the whole variable). The Set/Get module exposes the lookup;
-// it returns the node unchanged when ColorMatch is off or there's no Set in scope.
-function colorTarget(n) {
-  try { return window.PixaromaSetGet?.colorTargetFor?.(n) || n; } catch (_e) { return n; }
-}
 function getTargetNodes(currentNode) {
   const sel = app.canvas?.selected_nodes;
-  let nodes = [currentNode];
   if (sel) {
-    const arr = Object.values(sel);
-    if (arr.length > 1 && arr.includes(currentNode)) nodes = arr;
+    const nodes = Object.values(sel);
+    if (nodes.length > 1 && nodes.includes(currentNode)) return nodes;
   }
-  // Map Gets → their Set, then dedup (several Gets can share one Set).
-  return [...new Set(nodes.map(colorTarget))];
+  return [currentNode];
 }
 
 function applyColors(nodes, titleHex, bodyHex) {
   for (const n of nodes) {
     n.color   = titleHex;
     n.bgcolor = bodyHex;
+    // Pin a Set/Get "Get" so its Set-mirror stops reverting this manual color
+    // (colors ONLY the selected node, not its Set or sibling Gets). No-op otherwise.
+    try { window.PixaromaSetGet?.markManualColor?.(n, true); } catch (_e) {}
   }
   app.graph?.setDirtyCanvas(true, true);
 }
@@ -521,6 +515,8 @@ function resetColors(nodes) {
       delete n.color;
       delete n.bgcolor;
     }
+    // Un-pin a Set/Get "Get" so it resumes mirroring its Set's color. No-op otherwise.
+    try { window.PixaromaSetGet?.markManualColor?.(n, false); } catch (_e) {}
   }
   app.graph?.setDirtyCanvas(true, true);
 }
@@ -998,7 +994,7 @@ function pickCustom(nodes, anchorNode, groups = []) {
   // selected); captureColors falls back through class / LiteGraph defaults.
   const seed = captureColors(anchorNode || nodes[0]);
   // Snapshot raw colors so Cancel can restore exactly what was there before.
-  const originals = nodes.map((n) => ({ color: n.color, bgcolor: n.bgcolor }));
+  const originals = nodes.map((n) => ({ color: n.color, bgcolor: n.bgcolor, manual: n.flags?.pixSGManual }));
   const groupOriginals = groups.map((g) => g.color);
   // Mixed selection: also color the groups (single color via pickGroupColor).
   const applyAll = (titleHex, bodyHex) => {
@@ -1015,7 +1011,10 @@ function pickCustom(nodes, anchorNode, groups = []) {
       colorClipboard = { title: titleHex, body: bodyHex };
     },
     onCancel: () => {
-      nodes.forEach((n, i) => { n.color = originals[i].color; n.bgcolor = originals[i].bgcolor; });
+      nodes.forEach((n, i) => {
+        n.color = originals[i].color; n.bgcolor = originals[i].bgcolor;
+        try { window.PixaromaSetGet?.markManualColor?.(n, originals[i].manual); } catch (_e) {}
+      });
       groups.forEach((g, i) => { g.color = groupOriginals[i]; });
       app.graph?.setDirtyCanvas(true, true);
     },
