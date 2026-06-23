@@ -136,7 +136,7 @@ function cornerAt(g, p) {
 function cornerCursor(c) { return (c === "tl" || c === "br") ? "nwse-resize" : "nesw-resize"; }
 function groupAt(p) {
   const gs = ensureGroups();
-  for (let i = gs.length - 1; i >= 0; i--) if (inRect(gs[i], p)) return gs[i];
+  for (let i = gs.length - 1; i >= 0; i--) if (!isHiddenGroup(gs[i]) && inRect(gs[i], p)) return gs[i];
   return null;
 }
 
@@ -194,13 +194,25 @@ function invalidateHidden() { _hiddenCache = null; }
 function buildHidden() {
   const hidden = new Set();
   const owner = new Map(); // idStr -> the folded group hiding it (read .showLinks live)
+  const hiddenGroups = new Set(); // group ids hidden because a folded ancestor contains them
   for (const g of ensureGroups()) {
     if (!g.folded || !Array.isArray(g.foldNodes)) continue;
     for (const id of g.foldNodes) { const s = String(id); hidden.add(s); if (!owner.has(s)) owner.set(s, g); }
+    if (Array.isArray(g.foldGroups)) for (const gid of g.foldGroups) hiddenGroups.add(String(gid));
   }
-  return { hidden, owner };
+  return { hidden, owner, hiddenGroups };
 }
 function hiddenMaps() { if (!_hiddenCache) _hiddenCache = buildHidden(); return _hiddenCache; }
+function isHiddenGroup(g) { return hiddenMaps().hiddenGroups.has(String(g.id)); }
+// Member groups (frames), folded-aware like groupMemberNodes.
+function groupMemberGroups(g) {
+  if (g.folded && Array.isArray(g.foldGroups)) {
+    const all = ensureGroups(), out = [];
+    for (const id of g.foldGroups) { const sg = all.find((o) => String(o.id) === String(id)); if (sg) out.push(sg); }
+    return out;
+  }
+  return containedGroups(g);
+}
 // Bar attach points (graph coords) for rerouting a crossing wire onto a folded bar.
 function barOut(g) { return [g.x + g.w, g.y + g.h / 2]; }
 function barIn(g) { return [g.x, g.y + g.h / 2]; }
@@ -388,7 +400,12 @@ function installDraw() {
     if (prev) { try { prev(ctx, area); } catch (_e) {} }
     try {
       const gs = ensureGroups();
-      if (gs.length) { ctx.save(); for (const g of gs) drawOne(ctx, g); ctx.restore(); }
+      if (gs.length) {
+        const { hiddenGroups } = hiddenMaps();
+        ctx.save();
+        for (const g of gs) { if (hiddenGroups.has(String(g.id))) continue; drawOne(ctx, g); }
+        ctx.restore();
+      }
     } catch (_e) { /* never break the canvas */ }
   };
   c._pixGroupBgWrapped = true;
@@ -434,6 +451,7 @@ function onDown(e) {
   const gs = ensureGroups();
   for (let i = gs.length - 1; i >= 0; i--) {
     const g = gs[i];
+    if (isHiddenGroup(g)) continue; // hidden by a folded ancestor → not interactive
     // header buttons FIRST, so a button click never starts a drag/rename
     if (inHeader(g, p)) {
       const { btns } = headerButtons(g, true);
@@ -456,7 +474,7 @@ function onDown(e) {
       // groupMemberNodes (not containedNodes) so a folded bar drags its hidden members.
       const members = groupMemberNodes(g).map((n) => ({ n, dx: n.pos[0] - g.x, dy: n.pos[1] - g.y }));
       // nested Pixaroma groups ride along too (their frames; nodes move via `members`).
-      const subGroups = containedGroups(g).map((sg) => ({ sg, dx: sg.x - g.x, dy: sg.y - g.y }));
+      const subGroups = groupMemberGroups(g).map((sg) => ({ sg, dx: sg.x - g.x, dy: sg.y - g.y }));
       _drag = { mode: "move", g, ox: p[0], oy: p[1], gx: g.x, gy: g.y, members, subGroups };
       selectGroup(g); e.preventDefault(); e.stopImmediatePropagation(); startWin(); repaint(); return;
     }
@@ -517,6 +535,7 @@ function onHover(e) {
   const gs = ensureGroups();
   for (let i = gs.length - 1; i >= 0; i--) {
     const g = gs[i];
+    if (isHiddenGroup(g)) continue; // hidden by a folded ancestor
     if (!inRect(g, p)) continue;
     hoverId = g.id; // hovering anywhere in the group reveals its buttons
     if (inHeader(g, p)) {
@@ -687,7 +706,13 @@ function computeBarWidth(g) {
 }
 function foldGroup(g) {
   if (g.folded) return;
-  g.foldNodes = containedNodes(g).map((n) => String(n.id));
+  // Capture member nodes AND nested groups so both hide with the parent. Union in
+  // each nested group's own members (covers a nested group that is already folded).
+  const subs = containedGroups(g);
+  const ids = new Set(containedNodes(g).map((n) => String(n.id)));
+  for (const sg of subs) for (const n of groupMemberNodes(sg)) ids.add(String(n.id));
+  g.foldNodes = [...ids];
+  g.foldGroups = subs.map((sg) => sg.id);
   g.hOpen = g.h; g.wOpen = g.w;        // remember the open box to restore
   g.folded = true;
   g.h = headerH(g);
@@ -701,6 +726,7 @@ function unfoldGroup(g) {
   g.h = Math.max(MIN_H, g.hOpen || MIN_H);
   g.w = Math.max(MIN_W, g.wOpen || g.w);
   delete g.foldNodes;
+  delete g.foldGroups;
   invalidateHidden(); updateFoldNodeHideCSS(); markChanged();
 }
 function toggleFold(g) { if (g.folded) unfoldGroup(g); else foldGroup(g); }
