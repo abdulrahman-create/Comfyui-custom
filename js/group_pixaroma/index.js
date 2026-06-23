@@ -654,14 +654,17 @@ function pixGroupToast(summary, detail, severity = "info", life = 5000) {
 // can't move theirs). We never touch the other extension's settings; we just inform.
 // Worded conditionally so it's accurate whether or not the other one is currently on.
 const GROUP_OVERLAP_NOTICE_KEY = "pixaroma.groups.headerOverlapNotice.v1";
-function maybeShowGroupButtonOverlapNotice() {
+function maybeShowGroupButtonOverlapNotice(force) {
   if (!state.enabled || !state.buttonsVisible) return;
   const exts = app.extensions;
   const present = Array.isArray(exts) && exts.some(
     (e) => e && typeof e.name === "string" && e.name.toLowerCase().includes("groupheadertoggle"),
   );
   if (!present) return;
-  try { if (localStorage.getItem(GROUP_OVERLAP_NOTICE_KEY)) return; } catch (_e) {}
+  // force = show every time (the manual "Show" click); otherwise once ever (page-load reminder).
+  if (!force) {
+    try { if (localStorage.getItem(GROUP_OVERLAP_NOTICE_KEY)) return; } catch (_e) {}
+  }
   pixGroupToast(
     "Group buttons may overlap",
     "Another extension also adds buttons to group headers. If its group-header toggles are on, they sit on top of Pixaroma's. Use one: turn the other off, or hide Pixaroma's group buttons in Settings (search \"Group buttons\").",
@@ -693,8 +696,8 @@ function setButtonsVisible(v) {
   state.buttonsVisible = !!v;
   try { app.ui?.settings?.setSettingValueAsync?.(BTN_VIS_SETTING, state.buttonsVisible); } catch (_e) {}
   app.canvas?.setDirty?.(true, true);
-  // Showing ours? Remind once if another extension also draws on group headers.
-  if (state.buttonsVisible) maybeShowGroupButtonOverlapNotice();
+  // Showing ours? Remind (every time) if another extension also draws on group headers.
+  if (state.buttonsVisible) maybeShowGroupButtonOverlapNotice(true);
 }
 let _groupMenuPatched = false;
 function installGroupMenu() {
