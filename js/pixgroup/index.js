@@ -904,6 +904,8 @@ function installMenu() {
     opts.push({ content: "👑 Add Pixaroma Group", callback: () => addGroup(p) });
     if (over) {
       opts.push({ content: "👑 Edit Pixaroma Group", callback: () => { if (window.PixaromaNodeColors?.openPixGroup) window.PixaromaNodeColors.openPixGroup(over); else inlineRename(over); } });
+      opts.push({ content: "👑 Copy Group Colors", callback: () => { window.PixaromaNodeColors?.setColorClipboard?.({ title: gTitleColor(over), body: gBodyColor(over) }); } });
+      if (window.PixaromaNodeColors?.getColorClipboard?.()) opts.push({ content: "👑 Paste Group Colors", callback: () => { const c = window.PixaromaNodeColors?.getColorClipboard?.(); if (c) { over.titleColor = c.title; over.bodyColor = c.body; markChanged(); } } });
       opts.push({ content: over.folded ? "👑 Unfold Group" : "👑 Fold Group", callback: () => toggleFold(over) });
       if (over.folded) opts.push({ content: (over.showLinks !== false) ? "👑 Hide links while folded" : "👑 Show links while folded", callback: () => { over.showLinks = (over.showLinks === false); invalidateHidden(); markChanged(); } });
       opts.push({ content: "👑 Group Help", callback: () => openHelpPopup(GROUP_HELP) });

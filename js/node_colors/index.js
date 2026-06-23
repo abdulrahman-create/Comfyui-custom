@@ -1410,8 +1410,34 @@ function openPixGroupPalette(g) {
   place(pixGroupScreenRect(g));
 }
 
+// The "\" shortcut logic, shared by the keybinding command below: color the
+// selected node(s) (and any selected groups alongside, if mixed), else a selected
+// Pixaroma group, else a selected native group. No-op while a palette is already
+// open or nothing is selected.
+function openColorsForSelection() {
+  if (document.querySelector(".pix-nc-pal")) return;
+  const c = app.canvas;
+  if (!c) return;
+  const nodes = c.selected_nodes ? Object.values(c.selected_nodes) : [];
+  const groups = getSelectedGroups();
+  if (nodes.length) { openNodeColorsPalette(getTargetNodes(nodes[0]), nodes[0], groups); return; }
+  const pix = window.PixaromaPixGroup?.getSelected?.();
+  if (pix) { openPixGroupPalette(pix); return; }
+  if (groups.length) openGroupColorsPalette(groups, groups[0]);
+}
+
 app.registerExtension({
   name: "Pixaroma.NodeColors",
+  // "\" opens the color tool for the current selection, via ComfyUI's keybinding
+  // system (NOT a raw key listener) so it's listed + rebindable in Settings →
+  // Keybindings and never silently fights another extension's key. Matches the G
+  // group shortcut.
+  commands: [
+    { id: "Pixaroma.OpenColors", label: "Pixaroma: Color selected node or group", function: () => openColorsForSelection() },
+  ],
+  keybindings: [
+    { combo: { key: "\\" }, commandId: "Pixaroma.OpenColors" },
+  ],
 
   async setup() {
     // ── Node right-click menu ──────────────────────────────────────────
@@ -1497,38 +1523,8 @@ app.registerExtension({
       };
     }
 
-    // ── Keyboard shortcut: press "\" to open the color palette for the current
-    // selection — selected node(s) take priority, else a selected group. Ignored
-    // while typing in a field, with a modifier held, or when a palette is already
-    // open. Only acts (and swallows the key) when something is selected, so a bare
-    // "\" otherwise passes through to ComfyUI.
-    window.addEventListener("keydown", (e) => {
-      if (e.key !== "\\" || e.ctrlKey || e.metaKey || e.altKey) return;
-      const t = e.target;
-      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
-      if (document.querySelector(".pix-nc-pal")) return;   // a palette is already open
-      const c = app.canvas;
-      if (!c) return;
-      const nodes = c.selected_nodes ? Object.values(c.selected_nodes) : [];
-      const groups = getSelectedGroups();
-      if (nodes.length) {
-        e.preventDefault(); e.stopPropagation();
-        // Mixed selection → color the selected groups alongside the nodes (one pick).
-        openNodeColorsPalette(getTargetNodes(nodes[0]), nodes[0], groups);
-        return;
-      }
-      // A selected custom Pixaroma group (its own selection, owned by js/pixgroup).
-      const pix = window.PixaromaPixGroup?.getSelected?.();
-      if (pix) {
-        e.preventDefault(); e.stopPropagation();
-        openPixGroupPalette(pix);
-        return;
-      }
-      if (groups.length) {
-        e.preventDefault(); e.stopPropagation();
-        openGroupColorsPalette(groups, groups[0]);
-      }
-    }, true);
+    // (The "\" shortcut is now registered via commands/keybindings above, so it
+    // shows in Settings → Keybindings and is rebindable — no raw listener here.)
 
     // Expose the group color palette so other Pixaroma canvas features (Group
     // Pixaroma) can open the exact same picker without re-importing this module
@@ -1541,7 +1537,13 @@ app.registerExtension({
       };
       // The custom Pixaroma group (js/pixgroup) opens its styling through this
       // same color tool — node-style title/body picker + opacity + font sliders.
-      window.PixaromaNodeColors = { openPixGroup: openPixGroupPalette };
+      window.PixaromaNodeColors = {
+        openPixGroup: openPixGroupPalette,
+        // Shared session color clipboard, so the Pixaroma group right-click menu
+        // (js/pixgroup) can Copy/Paste colors using the SAME clipboard as nodes.
+        getColorClipboard: () => colorClipboard,
+        setColorClipboard: (c) => { colorClipboard = c; },
+      };
     } catch (_e) {}
   },
 });
