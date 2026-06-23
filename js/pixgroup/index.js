@@ -222,12 +222,13 @@ function headerButtons(g, showButtons) {
   // group (nested or not). Buttons sit to the LEFT of the badge.
   const badge = { x: g.x + g.w - BPAD - bw, y: g.y + (hH - bh) / 2, w: bw, h: bh };
   let rx = badge.x - 6;
+  // The fold/unfold toggle is ALWAYS shown; Run/Mute/Bypass reveal on hover/select.
+  const keys = g.folded
+    ? ["unfold"]
+    : (showButtons ? ["run", "mute", "bypass", "fold"] : ["fold"]);
+  const by = g.y + (hH - BSZ) / 2;
   const btns = [];
-  if (showButtons) {
-    const keys = g.folded ? ["unfold"] : ["run", "mute", "bypass", "fold"];
-    const by = g.y + (hH - BSZ) / 2;
-    for (let i = keys.length - 1; i >= 0; i--) { rx -= BSZ; btns.unshift({ key: keys[i], x: rx, y: by, w: BSZ, h: BSZ }); rx -= BGAP; }
-  }
+  for (let i = keys.length - 1; i >= 0; i--) { rx -= BSZ; btns.unshift({ key: keys[i], x: rx, y: by, w: BSZ, h: BSZ }); rx -= BGAP; }
   const leftmost = btns.length ? btns[0].x : badge.x;
   const titleClipW = Math.max(20, leftmost - 6 - (g.x + 12));
   return { btns, badge, titleClipW };
@@ -258,13 +259,21 @@ function drawOne(ctx, g) {
   // Running indicator (folded only): is a hidden member executing right now? The
   // member list is fixed at fold time, so a folded bar lights up for its nodes.
   let running = false, runTitle = "", prog = null;
-  if (g.folded && _runningNodeId != null && Array.isArray(g.foldNodes) &&
-      g.foldNodes.some((id) => String(id) === String(_runningNodeId))) {
-    running = true;
-    const rn = (app.graph?._nodes || []).find((n) => String(n.id) === String(_runningNodeId));
-    runTitle = (rn && (rn.title || rn.type)) || "running";
-    if (_progress && _progress.max > 0 && String(_progress.node) === String(_runningNodeId)) {
-      prog = Math.max(0, Math.min(1, _progress.value / _progress.max));
+  if (g.folded && _runningNodeId != null && Array.isArray(g.foldNodes)) {
+    const rid = String(_runningNodeId);
+    // Match a member directly OR a node INSIDE a member subgraph (composite "id:inner"
+    // ids), so the bar stays lit through a subgraph's run (e.g. the KSampler), not
+    // just the top-level nodes — that's why only the VAE flashed before.
+    let matchedId = null;
+    for (const id of g.foldNodes) { const s = String(id); if (rid === s || rid.startsWith(s + ":")) { matchedId = s; break; } }
+    if (matchedId != null) {
+      running = true;
+      const nodes = app.graph?._nodes || [];
+      const rn = nodes.find((n) => String(n.id) === rid) || nodes.find((n) => String(n.id) === matchedId);
+      runTitle = (rn && (rn.title || rn.type)) || "running";
+      if (_progress && _progress.max > 0 && String(_progress.node) === rid) {
+        prog = Math.max(0, Math.min(1, _progress.value / _progress.max));
+      }
     }
   }
 
@@ -311,8 +320,8 @@ function drawOne(ctx, g) {
   ctx.textAlign = "left";
   ctx.textBaseline = "middle";
 
-  // header buttons (revealed on hover / select)
-  if (showBtns) for (const b of layout.btns) drawButton(ctx, b, g, tInk);
+  // header buttons (fold/unfold always shown; Run/Mute/Bypass reveal on hover/select)
+  for (const b of layout.btns) drawButton(ctx, b, g, tInk);
 
   // progress bar along the bottom edge of a running folded bar
   if (prog != null) {
@@ -616,8 +625,9 @@ function computeBarWidth(g) {
   const oc = measCtx();
   oc.font = `600 ${gFontSize(g)}px 'Segoe UI', system-ui, sans-serif`;
   const tw = oc.measureText(g.title || "Group").width;
-  // left pad(12) + title + gap(10) + unfold button(BSZ) + gap(6) + badge(24) + right pad(BPAD)
-  return Math.round(Math.max(150, 12 + tw + 10 + BSZ + 6 + 24 + BPAD));
+  // left pad(12) + title + gap(16) + toggle(BSZ) + gap(8) + badge(24) + right pad(BPAD) + slack(10)
+  // — generous so the (always-visible) toggle + count never clip the title.
+  return Math.round(Math.max(180, 12 + tw + 16 + BSZ + 8 + 24 + BPAD + 10));
 }
 function foldGroup(g) {
   if (g.folded) return;
@@ -626,7 +636,7 @@ function foldGroup(g) {
   g.folded = true;
   g.h = headerH(g);
   g.w = computeBarWidth(g);            // shrink to a short bar, left edge unchanged
-  if (g.showLinks == null) g.showLinks = false;
+  if (g.showLinks == null) g.showLinks = true;  // outside-crossing wires shown by default
   invalidateHidden(); updateFoldNodeHideCSS(); markChanged();
 }
 function unfoldGroup(g) {
@@ -690,7 +700,7 @@ function installFoldHooks() {
               // hidden by default; when that group opts to "show links" we render it
               // REROUTED to the bar edge — so only outside-going wires show and they
               // connect to the bar instead of being cut off at the hidden node.
-              const show = (oG ? !!oG.showLinks : true) && (tG ? !!tG.showLinks : true);
+              const show = (oG ? oG.showLinks !== false : true) && (tG ? tG.showLinks !== false : true);
               if (!show) return;
               const na = oG ? barOut(oG) : a;
               const nb = tG ? barIn(tG) : b;
@@ -819,7 +829,7 @@ function installMenu() {
     if (over) {
       opts.push({ content: "👑 Edit Pixaroma Group", callback: () => { if (window.PixaromaNodeColors?.openPixGroup) window.PixaromaNodeColors.openPixGroup(over); else inlineRename(over); } });
       opts.push({ content: over.folded ? "👑 Unfold Group" : "👑 Fold Group", callback: () => toggleFold(over) });
-      if (over.folded) opts.push({ content: over.showLinks ? "👑 Hide links while folded" : "👑 Show links while folded", callback: () => { over.showLinks = !over.showLinks; invalidateHidden(); markChanged(); } });
+      if (over.folded) opts.push({ content: (over.showLinks !== false) ? "👑 Hide links while folded" : "👑 Show links while folded", callback: () => { over.showLinks = (over.showLinks === false); invalidateHidden(); markChanged(); } });
       opts.push({ content: "👑 Delete Pixaroma Group", callback: () => deleteGroup(over) });
     }
     return opts;
