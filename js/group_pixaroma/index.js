@@ -44,10 +44,11 @@ const state = {
   interiorStrength: 0.12, // 0..0.4, from the strength setting / 100
   cursor: null,           // { gx, gy } in graph space, tracked from pointermove
   foldHideWires: true,    // hide crossing wires of a folded group instead of rerouting them (default ON)
-  // Per-button visibility (each is a setting; default all ON). Lets users slim the
-  // header bar - e.g. hide Run/Mute/Bypass if they prefer another extension's group
-  // toggles, so the two don't sit on top of each other.
+  // Header button + count-badge visibility (toggled from the group right-click menu,
+  // persisted in one setting). Default all ON. Lets users slim the header - e.g. hide
+  // Run/Mute/Bypass if they use another extension's group toggles, so they don't clash.
   buttons: { queue: true, mute: true, bypass: true, color: true, collapse: true, fold: true },
+  showCount: true,         // the node-count badge
 };
 // Declared up here (NOT next to applyResizeLength below) because ComfyUI can fire
 // the Enabled setting's onChange -> applyResizeLength SYNCHRONOUSLY during
@@ -79,18 +80,19 @@ const NEUTRAL = "#58585e";
 const RUN_GREEN = "#3ec371";
 
 const BTN_KEYS = ["queue", "mute", "bypass", "color", "collapse", "fold"];
-// Per-button settings (key, label, tooltip) - generated into boolean settings +
-// read back in setup(). Distinct category leaves per button (the Vue settings
-// panel collapses two settings that share a leaf, so each gets its own).
-const BTN_SETTINGS = [
-  ["queue", "Run", "Show the Run button on group headers (generates only this group's output nodes)."],
-  ["mute", "Mute", "Show the Mute button on group headers (mute every node in the group)."],
-  ["bypass", "Bypass", "Show the Bypass button on group headers (bypass every node in the group)."],
-  ["color", "Color", "Show the Color button on group headers (recolor the whole group)."],
-  ["collapse", "Collapse", "Show the Collapse button on group headers (collapse every node in the group)."],
-  ["fold", "Fold", "Show the Fold button on group headers (fold the whole group to a slim bar)."],
+// Button key -> menu label. The show/hide toggles live in the group RIGHT-CLICK
+// menu (see installGroupMenu), not the Settings panel - one discoverable place,
+// no settings-panel clutter, and the node-count badge gets a toggle too.
+const BTN_LABELS = [
+  ["queue", "Run"],
+  ["mute", "Mute"],
+  ["bypass", "Bypass"],
+  ["color", "Color"],
+  ["collapse", "Collapse"],
+  ["fold", "Fold"],
 ];
-const BTN_SETTING_ID = (key) => `Pixaroma.Groups.Show_${key}`;
+// One UNREGISTERED setting (no Settings-panel row) holds the visibility JSON blob.
+const BTN_VIS_SETTING = "Pixaroma.Groups.ButtonVisibility";
 const ICONS = {
   queue: "/pixaroma/assets/icons/ui/play.svg",
   mute: "/pixaroma/assets/icons/ui/off.svg",
@@ -153,19 +155,6 @@ app.registerExtension({
         app.canvas?.setDirty?.(true, true);
       },
     },
-    // Per-button show/hide toggles (one boolean each, default ON).
-    ...BTN_SETTINGS.map(([key, label, tip]) => ({
-      id: BTN_SETTING_ID(key),
-      name: `Show ${label} button on group headers`,
-      type: "boolean",
-      defaultValue: true,
-      category: ["👑 Pixaroma", `Group buttons (${label})`],
-      tooltip: tip,
-      onChange: (v) => {
-        state.buttons[key] = v === undefined ? true : !!v;
-        app.canvas?.setDirty?.(true, true);
-      },
-    })),
   ],
   setup() {
     const s = app.ui?.settings;
@@ -176,11 +165,9 @@ app.registerExtension({
       if (Number.isFinite(d)) state.interiorStrength = Math.max(0, Math.min(40, d)) / 100;
       const hw = s.getSettingValue(SETTING_HIDE_WIRES);
       state.foldHideWires = hw === undefined ? true : !!hw;
-      for (const [key] of BTN_SETTINGS) {
-        const v = s.getSettingValue(BTN_SETTING_ID(key));
-        state.buttons[key] = v === undefined ? true : !!v;
-      }
     }
+    loadButtonVis();
+    installGroupMenu();
     installDrawOverride();
     installFoldHooks();
     installExecListeners();
@@ -495,8 +482,8 @@ function paintGroup(group, gc, ctx) {
 
   ctx.globalAlpha = ea;
 
-  // 6) Count badge (always shown). Right-aligned: left of the buttons if shown,
-  // else at the right edge.
+  // 6) Count badge (shown unless turned off via the group menu). Right-aligned:
+  // left of the buttons if shown, else at the right edge.
   ctx.font = `${BADGE_FONT}px ${window.LiteGraph?.GROUP_FONT || "Arial"}`;
   const cstr = String(count);
   const ctw = ctx.measureText(cstr).width;
@@ -506,7 +493,8 @@ function paintGroup(group, gc, ctx) {
   const rightLimit = head && head.showButtons ? head.buttons[0].x - BTN_GAP : x + w - PAD;
   const badgeX = rightLimit - bw;
   const badgeY = y + (th - bh) / 2;
-  if (badgeX > x + PAD + 8) {
+  const showCountBadge = state.showCount !== false && badgeX > x + PAD + 8;
+  if (showCountBadge) {
     rr(ctx, badgeX, badgeY, bw, bh, bh / 2);
     ctx.fillStyle = inkWhite ? "rgba(255,255,255,0.16)" : "rgba(0,0,0,0.13)";
     ctx.fill();
@@ -522,7 +510,7 @@ function paintGroup(group, gc, ctx) {
   ctx.textAlign = "left";
   ctx.textBaseline = "middle";
   const titleX = x + PAD;
-  const titleMax = (badgeX > x + PAD + 8 ? badgeX : rightLimit) - BTN_GAP - titleX;
+  const titleMax = (showCountBadge ? badgeX : rightLimit) - BTN_GAP - titleX;
   const title = ellipsize(ctx, group.title || "Group", titleMax);
   ctx.fillText(title, titleX, y + th / 2 + 0.5);
 
@@ -642,7 +630,10 @@ function queueGroup(group) {
     pixGroupToast("Nothing to run in this group", "Put an output node (a Save or Preview, etc.) inside the group, then press Run.", "warn");
     return;
   }
-  const ids = outs.map((n) => n.id);
+  // Ids MUST be strings: the backend matches partial-execution targets against the
+  // prompt's STRING node-id keys (execution.py `x in partial_execution_list`), so
+  // numbers never match and it 400s with "Prompt has no outputs".
+  const ids = outs.map((n) => String(n.id));
   try {
     const r = app.queuePrompt(0, 1, ids);
     if (r && typeof r.then === "function") r.catch((e) => console.error("[Pixaroma.Groups] run group failed", e));
@@ -697,6 +688,73 @@ function runAction(key, group) {
   else if (key === "collapse") toggleCollapse(group);
   else if (key === "color") openColor(group);
   else if (key === "fold") toggleFold(group);
+}
+
+// =============================================================================
+// Button visibility - toggled from the group right-click menu, persisted in one
+// unregistered setting (so no Settings-panel clutter). Includes the count badge.
+// =============================================================================
+function loadButtonVis() {
+  try {
+    let raw = app.ui?.settings?.getSettingValue?.(BTN_VIS_SETTING);
+    if (typeof raw === "string") raw = JSON.parse(raw);
+    if (raw && typeof raw === "object") {
+      for (const [key] of BTN_LABELS) if (key in raw) state.buttons[key] = raw[key] !== false;
+      if ("count" in raw) state.showCount = raw.count !== false;
+    }
+  } catch (_e) {}
+}
+function saveButtonVis() {
+  try {
+    const obj = { count: state.showCount !== false };
+    for (const [key] of BTN_LABELS) obj[key] = state.buttons[key] !== false;
+    app.ui?.settings?.setSettingValueAsync?.(BTN_VIS_SETTING, JSON.stringify(obj));
+  } catch (_e) {}
+}
+function toggleButtonVis(key) {
+  if (key === "count") state.showCount = state.showCount === false; // flip
+  else state.buttons[key] = state.buttons[key] === false;           // flip
+  saveButtonVis();
+  app.canvas?.setDirty?.(true, true);
+}
+function groupButtonMenuItems() {
+  const mark = (on) => (on === false ? "☐  " : "☑  ");
+  const items = BTN_LABELS.map(([key, label]) => ({
+    content: mark(state.buttons[key]) + label,
+    callback: () => toggleButtonVis(key),
+  }));
+  items.push(null); // separator
+  items.push({ content: mark(state.showCount) + "Node count", callback: () => toggleButtonVis("count") });
+  return items;
+}
+let _groupMenuPatched = false;
+function installGroupMenu() {
+  if (_groupMenuPatched) return;
+  const LGC = window.LiteGraph?.LGraphCanvas || window.LGraphCanvas;
+  if (!LGC?.prototype || typeof LGC.prototype.getCanvasMenuOptions !== "function") return;
+  const orig = LGC.prototype.getCanvasMenuOptions;
+  LGC.prototype.getCanvasMenuOptions = function () {
+    const opts = orig.apply(this, arguments) || [];
+    try {
+      // getCanvasMenuOptions takes no args, so read the live cursor + the group under
+      // it (the toggles are global, but we only show the entry on a group right-click).
+      if (state.enabled) {
+        const gm = this.graph_mouse || [0, 0];
+        const grp = this.graph?.getGroupOnPos?.(gm[0], gm[1]);
+        if (grp) {
+          opts.push(null, {
+            content: "👑 Group buttons",
+            has_submenu: true,
+            callback: (_v, _o, e, parentMenu) => {
+              new window.LiteGraph.ContextMenu(groupButtonMenuItems(), { event: e, parentMenu, title: "Group buttons" });
+            },
+          });
+        }
+      }
+    } catch (_e) {}
+    return opts;
+  };
+  _groupMenuPatched = true;
 }
 
 // =============================================================================
