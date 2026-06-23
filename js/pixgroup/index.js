@@ -308,7 +308,8 @@ function onHover(e) {
   else if (_cursorOverride) { el.style.cursor = ""; _cursorOverride = false; }
 }
 
-// Double-click the header → open the style editor.
+// Double-click the header → inline rename (native-group style). The styling
+// editor opens from the right-click menu (and the Color button in step 2).
 function onDblClick(e) {
   const c = app.canvas;
   if (!c || e.target !== c.canvas) return;
@@ -317,7 +318,7 @@ function onDblClick(e) {
   const gs = ensureGroups();
   for (let i = gs.length - 1; i >= 0; i--) {
     const g = gs[i];
-    if (inHeader(g, p)) { e.preventDefault(); e.stopImmediatePropagation(); openEditor(g, groupScreenRect(g)); return; }
+    if (inHeader(g, p)) { e.preventDefault(); e.stopImmediatePropagation(); inlineRename(g); return; }
     if (inRect(g, p)) break;
   }
 }
@@ -341,7 +342,7 @@ function addGroup(p) {
     x = p ? p[0] : 100; y = p ? p[1] : 100; w = 320; h = 220;
   }
   const g = {
-    id: newId(), title: "Pixaroma Group",
+    id: newId(), title: "Group",
     x, y, w: Math.max(MIN_W, w), h: Math.max(MIN_H, h),
     titleColor: DEFAULT_COLOR, bodyColor: DEFAULT_COLOR,
     titleAlpha: 0.92, bodyAlpha: 0.12, fontSize: 14,
@@ -372,9 +373,9 @@ function injectEditorCSS() {
 .pix-pg-hd h4 { margin: 0; font-size: 14px; font-weight: 500; color: #f2f2f4; }
 .pix-pg-x { background: transparent; border: none; color: #9a9aa0; font-size: 16px; line-height: 1; cursor: pointer; padding: 2px 6px; border-radius: 4px; }
 .pix-pg-x:hover { color: #fff; background: rgba(255,255,255,0.08); }
-.pix-pg-titleinput { width: 100%; box-sizing: border-box; background: #1d1d1d; border: 1px solid #444;
-  border-radius: 5px; color: #e0e0e0; font: 13px 'Segoe UI', system-ui, sans-serif; padding: 6px 8px; margin-bottom: 10px; }
-.pix-pg-titleinput:focus { outline: none; border-color: #f66744; }
+.pix-pg-rename { position: fixed; z-index: 10001; box-sizing: border-box;
+  background: rgba(20,20,20,0.96); border: 1px solid #f66744; border-radius: 4px;
+  color: #fff; padding: 0 6px; font-family: 'Segoe UI', system-ui, sans-serif; font-weight: 600; outline: none; }
 .pix-pg-seg { display: flex; background: #1d1d1d; border: 1px solid #3a3a40; border-radius: 7px; padding: 3px; gap: 3px; margin: 0 0 10px; }
 .pix-pg-seg button { flex: 1; text-align: center; font: 12px 'Segoe UI', system-ui, sans-serif; padding: 5px 0;
   border-radius: 5px; color: #bdbdc2; background: transparent; border: none; cursor: pointer; }
@@ -452,11 +453,6 @@ function openEditor(g, anchorRect) {
   xb.addEventListener("click", closeEditor); hd.appendChild(xb);
   panel.appendChild(hd);
 
-  const ti = document.createElement("input"); ti.className = "pix-pg-titleinput"; ti.value = g.title || ""; ti.placeholder = "Group title";
-  ti.addEventListener("mousedown", (e) => e.stopPropagation());
-  ti.addEventListener("input", () => { g.title = ti.value; repaint(); markChanged(); });
-  panel.appendChild(ti);
-
   const seg = document.createElement("div"); seg.className = "pix-pg-seg";
   const tb = document.createElement("button"); tb.type = "button"; tb.textContent = "Title";
   const bb = document.createElement("button"); bb.type = "button"; bb.textContent = "Body";
@@ -507,6 +503,36 @@ function openEditor(g, anchorRect) {
   window.addEventListener("keydown", onKey, true);
   panel._cleanup = () => { document.removeEventListener("pointerdown", onDoc, true); window.removeEventListener("keydown", onKey, true); try { picker.destroy(); } catch (_e) {} };
   _editorEl = panel;
+}
+
+// Inline rename right on the group header (native-group style), positioned over
+// the title in screen space. Commit on Enter / blur, cancel on Esc.
+function inlineRename(g) {
+  injectEditorCSS();
+  const rect = groupScreenRect(g);
+  if (!rect) return;
+  const scale = app.canvas?.ds?.scale || 1;
+  const inp = document.createElement("input");
+  inp.className = "pix-pg-rename";
+  inp.value = g.title || "";
+  inp.spellcheck = false;
+  inp.style.left = (rect.left + 8 * scale) + "px";
+  inp.style.top = (rect.top + 5 * scale) + "px";
+  inp.style.width = Math.max(60, rect.width - 56 * scale) + "px";
+  inp.style.height = Math.max(20, headerH(g) * scale - 10 * scale) + "px";
+  inp.style.fontSize = Math.max(11, Math.round(gFontSize(g) * scale)) + "px";
+  document.body.appendChild(inp);
+  inp.focus(); inp.select();
+  let done = false;
+  const cleanup = () => { if (done) return; done = true; inp.removeEventListener("blur", commit); inp.remove(); };
+  const commit = () => { g.title = inp.value; repaint(); markChanged(); cleanup(); };
+  inp.addEventListener("blur", commit);
+  inp.addEventListener("pointerdown", (e) => e.stopPropagation());
+  inp.addEventListener("keydown", (e) => {
+    e.stopPropagation();
+    if (e.key === "Enter") { e.preventDefault(); commit(); }
+    else if (e.key === "Escape") { e.preventDefault(); cleanup(); }
+  });
 }
 
 function installMenu() {
