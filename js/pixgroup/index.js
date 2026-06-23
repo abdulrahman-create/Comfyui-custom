@@ -183,19 +183,25 @@ function drawOne(ctx, g) {
   ctx.restore();
 }
 
-let _origDrawGroups = null;
+// Draw via the canvas's onDrawBackground hook (graph-space ctx, behind nodes) —
+// NOT a wrap of drawGroups. LiteGraph SKIPS drawGroups entirely when there are
+// zero NATIVE groups, so a wrap there stops firing the instant the last ComfyUI
+// group is deleted and our groups appear "deleted" (they were only unpainted).
+// onDrawBackground runs every back-canvas redraw regardless of group count, in
+// both renderers, with the transform already applied.
 function installDraw() {
-  const C = window.LGraphCanvas?.prototype;
-  if (!C || !C.drawGroups || C._pixGroupDrawWrapped) return;
-  _origDrawGroups = C.drawGroups;
-  C.drawGroups = function (canvas, ctx) {
-    try { _origDrawGroups.apply(this, arguments); } catch (_e) { /* keep ours alive */ }
+  const c = app.canvas;
+  if (!c) { setTimeout(installDraw, 150); return; }
+  if (c._pixGroupBgWrapped) return;
+  const prev = (typeof c.onDrawBackground === "function") ? c.onDrawBackground.bind(c) : null;
+  c.onDrawBackground = function (ctx, area) {
+    if (prev) { try { prev(ctx, area); } catch (_e) {} }
     try {
       const gs = ensureGroups();
       if (gs.length) { ctx.save(); for (const g of gs) drawOne(ctx, g); ctx.restore(); }
     } catch (_e) { /* never break the canvas */ }
   };
-  C._pixGroupDrawWrapped = true;
+  c._pixGroupBgWrapped = true;
 }
 
 // ── interaction ─────────────────────────────────────────────────────────
