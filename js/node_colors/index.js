@@ -446,6 +446,64 @@ function saveGroupFavoriteSlot(index, color) {
   setGroupFavorites(favs);
 }
 
+// ── Custom Pixaroma-group favourites: a THIRD, separate 15-slot store. Unlike
+// node/group favourites (a color pair), each slot here is a FULL style
+// { title, body, titleAlpha, bodyAlpha, fontSize } so a saved favourite restores
+// the whole look — colors + opacity + font. Separate store = saving one never
+// touches node or ComfyUI-group favourites.
+const PIX_FAVORITES_ID = "Pixaroma.PixGroupColors.Favorites";
+let _pixFavoritesCache = null;
+function normalizePixFavorites(arr) {
+  const out = emptyFavorites();
+  if (Array.isArray(arr)) {
+    for (let i = 0; i < FAVORITE_SLOTS; i++) {
+      const e = arr[i];
+      if (e && typeof e.title === "string" && typeof e.body === "string") {
+        out[i] = {
+          title: e.title, body: e.body,
+          titleAlpha: Number.isFinite(e.titleAlpha) ? e.titleAlpha : 0.92,
+          bodyAlpha: Number.isFinite(e.bodyAlpha) ? e.bodyAlpha : 0.12,
+          fontSize: Number.isFinite(e.fontSize) ? e.fontSize : 14,
+        };
+      }
+    }
+  }
+  return out;
+}
+function persistPixFavorites(favs) {
+  const s = app.ui?.settings;
+  if (!s) return;
+  const json = JSON.stringify(favs);
+  try {
+    if (typeof s.setSettingValueAsync === "function") s.setSettingValueAsync(PIX_FAVORITES_ID, json);
+    else if (typeof s.setSettingValue === "function") s.setSettingValue(PIX_FAVORITES_ID, json);
+  } catch (e) { /* non-fatal: the style is already applied to the group */ }
+}
+function getPixGroupFavorites() {
+  if (_pixFavoritesCache) return _pixFavoritesCache;
+  const s = app.ui?.settings;
+  const raw = s?.getSettingValue?.(PIX_FAVORITES_ID);
+  if (raw) {
+    try { _pixFavoritesCache = normalizePixFavorites(typeof raw === "string" ? JSON.parse(raw) : raw); return _pixFavoritesCache; }
+    catch (e) { /* corrupted → start empty */ }
+  }
+  _pixFavoritesCache = emptyFavorites();
+  return _pixFavoritesCache;
+}
+function setPixGroupFavorites(favs) {
+  _pixFavoritesCache = normalizePixFavorites(favs);
+  persistPixFavorites(_pixFavoritesCache);
+}
+function savePixGroupFavoriteSlot(index, style) {
+  if (index < 0 || index >= FAVORITE_SLOTS) return;
+  const favs = getPixGroupFavorites().slice();
+  favs[index] = {
+    title: style.title, body: style.body,
+    titleAlpha: style.titleAlpha, bodyAlpha: style.bodyAlpha, fontSize: style.fontSize,
+  };
+  setPixGroupFavorites(favs);
+}
+
 // ── Session clipboard for Copy / Paste colors (cleared on page reload).
 let colorClipboard = null; // { title, body } or null
 
@@ -1255,24 +1313,39 @@ function openPixGroupPalette(g) {
   favCol.appendChild(favGrid); prow.appendChild(favCol); modal.appendChild(prow);
 
   const applyPair = (t, b) => { titleHex = t; bodyHex = b; applyNow(); picker.setColor(target === "title" ? titleHex : bodyHex); refreshHex(); };
+  // Pixaroma-group favourites store the FULL look; clicking one restores colors
+  // + opacity + font (own store — see savePixGroupFavoriteSlot).
+  const curStyle = () => ({
+    title: titleHex, body: bodyHex,
+    titleAlpha: Number.isFinite(g.titleAlpha) ? g.titleAlpha : 0.92,
+    bodyAlpha: Number.isFinite(g.bodyAlpha) ? g.bodyAlpha : 0.12,
+    fontSize: Number.isFinite(g.fontSize) ? g.fontSize : 14,
+  });
+  const applyFavStyle = (f) => {
+    titleHex = f.title; bodyHex = f.body;
+    g.titleColor = f.title; g.bodyColor = f.body;
+    g.titleAlpha = f.titleAlpha; g.bodyAlpha = f.bodyAlpha; g.fontSize = f.fontSize;
+    picker.setColor(target === "title" ? titleHex : bodyHex);
+    refreshHex(); refreshSliders(); pixRepaint();
+  };
   function renderFavorites() {
     favGrid.innerHTML = "";
     const add = document.createElement("div"); add.className = "pix-nc-addfav"; add.textContent = "+";
-    add.title = "Save the current colors to favourites";
+    add.title = "Save the current style (colors + opacity + font) to favourites";
     add.addEventListener("click", () => {
-      const favs = getFavorites(); let idx = favs.findIndex((f) => !f);
+      const favs = getPixGroupFavorites(); let idx = favs.findIndex((f) => !f);
       if (idx < 0) idx = FAVORITE_SLOTS - 1;
-      saveFavoriteSlot(idx, titleHex, bodyHex); renderFavorites();
+      savePixGroupFavoriteSlot(idx, curStyle()); renderFavorites();
     });
     favGrid.appendChild(add);
-    const favs = getFavorites();
+    const favs = getPixGroupFavorites();
     for (let i = 0; i < FAVORITE_SLOTS; i++) {
       const f = favs[i];
       if (f) {
         const sw = makeTwoToneSwatch(f.title, f.body);
-        sw.title = `Favourite ${i + 1} — click to apply, right-click to remove`;
-        sw.addEventListener("click", () => applyPair(f.title, f.body));
-        sw.addEventListener("contextmenu", (e) => { e.preventDefault(); const a = getFavorites().slice(); a[i] = null; setFavorites(a); renderFavorites(); });
+        sw.title = `Favourite ${i + 1} — click to apply (full style), right-click to remove`;
+        sw.addEventListener("click", () => applyFavStyle(f));
+        sw.addEventListener("contextmenu", (e) => { e.preventDefault(); const a = getPixGroupFavorites().slice(); a[i] = null; setPixGroupFavorites(a); renderFavorites(); });
         favGrid.appendChild(sw);
       } else {
         const empty = document.createElement("div"); empty.className = "pix-nc-fav-empty"; empty.title = `Favourite ${i + 1} (empty)`;
