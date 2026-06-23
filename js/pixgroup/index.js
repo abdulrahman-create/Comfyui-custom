@@ -209,17 +209,20 @@ let _hoverPt = null;        // last cursor pos in graph coords
 const BSZ = 18, BGAP = 4, BPAD = 8, BICON = 12;
 function headerButtons(g, showButtons) {
   const hH = headerH(g);
-  let rx = g.x + g.w - BPAD;
+  const bw = 24, bh = 16;
+  // The count badge is ALWAYS flush in the group's top-right corner — it never
+  // drifts when the buttons appear on hover, so the number stays put in every
+  // group (nested or not). Buttons sit to the LEFT of the badge.
+  const badge = { x: g.x + g.w - BPAD - bw, y: g.y + (hH - bh) / 2, w: bw, h: bh };
+  let rx = badge.x - 6;
   const btns = [];
   if (showButtons) {
     const keys = g.folded ? ["unfold"] : ["run", "mute", "bypass", "fold"];
     const by = g.y + (hH - BSZ) / 2;
     for (let i = keys.length - 1; i >= 0; i--) { rx -= BSZ; btns.unshift({ key: keys[i], x: rx, y: by, w: BSZ, h: BSZ }); rx -= BGAP; }
-    rx -= 6;
   }
-  const bw = 24, bh = 16;
-  const badge = { x: rx - bw, y: g.y + (hH - bh) / 2, w: bw, h: bh };
-  const titleClipW = Math.max(20, badge.x - 6 - (g.x + 12));
+  const leftmost = btns.length ? btns[0].x : badge.x;
+  const titleClipW = Math.max(20, leftmost - 6 - (g.x + 12));
   return { btns, badge, titleClipW };
 }
 
