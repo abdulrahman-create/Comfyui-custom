@@ -1,4 +1,5 @@
 import { app } from "/scripts/app.js";
+import { isVueNodes } from "../shared/index.mjs";
 
 // ╔══════════════════════════════════════════════════════════════════════╗
 // ║  Pixaroma Group (custom) — PROTOTYPE                                   ║
@@ -58,6 +59,39 @@ function ink(hex) {
   return lum > 0.62 ? "#1a1a1a" : "#ffffff";
 }
 
+// ── header-button icons (SVGs tinted + drawn on the canvas) ──────────────
+const ICON_BASE = "/pixaroma/assets/icons/ui/";
+const BTN_ICONS = { run: "play", mute: "mute", bypass: "bypass", fold: "fold", unfold: "unfold" };
+const _iconImgs = {};   // url -> { img, loaded, err }
+const _tintCache = {};  // url|hex -> canvas
+function getRawImg(url) {
+  let e = _iconImgs[url];
+  if (!e) {
+    e = { img: new Image(), loaded: false, err: false };
+    e.img.onload = () => { e.loaded = true; repaint(); };
+    e.img.onerror = () => { e.err = true; };
+    e.img.src = url;
+    _iconImgs[url] = e;
+  }
+  return e;
+}
+function tintedIcon(name, hex) {
+  const url = ICON_BASE + name + ".svg";
+  const key = url + "|" + hex;
+  if (_tintCache[key]) return _tintCache[key];
+  const e = getRawImg(url);
+  if (!e.loaded) return null;
+  const S = 64;
+  const oc = document.createElement("canvas");
+  oc.width = S; oc.height = S;
+  const o = oc.getContext("2d");
+  o.drawImage(e.img, 0, 0, S, S);
+  o.globalCompositeOperation = "source-in";
+  o.fillStyle = hex; o.fillRect(0, 0, S, S);
+  _tintCache[key] = oc;
+  return oc;
+}
+
 // ── per-group style, with back-compat (prototype groups stored a single `color`
 // → both title and body fall back to it; new groups carry separate fields).
 function gTitleColor(g) { return g.titleColor || g.color || DEFAULT_COLOR; }
@@ -107,6 +141,37 @@ function containedNodes(g) {
   return out;
 }
 
+// ── fold state + members ──────────────────────────────────────────────────
+// When folded the box is just the bar, so the live center-inside test finds no
+// members; resolve the ids captured at fold time instead.
+function groupMemberNodes(g) {
+  if (g.folded && Array.isArray(g.foldNodes)) {
+    const byId = {};
+    for (const n of (app.graph?._nodes || [])) byId[String(n.id)] = n;
+    const out = [];
+    for (const id of g.foldNodes) { const n = byId[String(id)]; if (n) out.push(n); }
+    return out;
+  }
+  return containedNodes(g);
+}
+
+// Set of all node ids hidden by folded groups + whether each owner shows wires.
+// Cached; invalidated on fold / unfold / delete / configure (the id set only
+// changes then — node moves don't change it).
+let _hiddenCache = null;
+function invalidateHidden() { _hiddenCache = null; }
+function buildHidden() {
+  const hidden = new Set();
+  const showById = new Map(); // idStr -> owning folded group's showLinks
+  for (const g of ensureGroups()) {
+    if (!g.folded || !Array.isArray(g.foldNodes)) continue;
+    const sl = !!g.showLinks;
+    for (const id of g.foldNodes) { const s = String(id); hidden.add(s); if (!showById.has(s)) showById.set(s, sl); }
+  }
+  return { hidden, showById };
+}
+function hiddenMaps() { if (!_hiddenCache) _hiddenCache = buildHidden(); return _hiddenCache; }
+
 // ── drawing (graph-space ctx, behind nodes) ─────────────────────────────
 function roundRect(ctx, x, y, w, h, r) {
   r = Math.min(r, w / 2, h / 2);
@@ -134,6 +199,37 @@ function fillTextVCenter(ctx, text, x, yMid) {
 }
 
 let _selectedId = null;
+let _hoverId = null;        // group whose buttons are revealed (cursor inside it)
+let _hotBtn = null;         // { gid, key } of the button under the cursor
+let _hoverPt = null;        // last cursor pos in graph coords
+
+// Header-button geometry — the SINGLE source for both paint + hit-test, so they
+// can't drift. Buttons sit at the header's right; the count badge to their left.
+// Folded → one Unfold button; expanded → Run / Mute / Bypass / Fold.
+const BSZ = 18, BGAP = 4, BPAD = 8, BICON = 12;
+function headerButtons(g, showButtons) {
+  const hH = headerH(g);
+  let rx = g.x + g.w - BPAD;
+  const btns = [];
+  if (showButtons) {
+    const keys = g.folded ? ["unfold"] : ["run", "mute", "bypass", "fold"];
+    const by = g.y + (hH - BSZ) / 2;
+    for (let i = keys.length - 1; i >= 0; i--) { rx -= BSZ; btns.unshift({ key: keys[i], x: rx, y: by, w: BSZ, h: BSZ }); rx -= BGAP; }
+    rx -= 6;
+  }
+  const bw = 24, bh = 16;
+  const badge = { x: rx - bw, y: g.y + (hH - bh) / 2, w: bw, h: bh };
+  const titleClipW = Math.max(20, badge.x - 6 - (g.x + 12));
+  return { btns, badge, titleClipW };
+}
+
+function drawButton(ctx, b, g, tInk) {
+  const hot = _hotBtn && _hotBtn.gid === g.id && _hotBtn.key === b.key;
+  ctx.fillStyle = hot ? BRAND : (tInk === "#ffffff" ? "rgba(255,255,255,0.14)" : "rgba(0,0,0,0.14)");
+  roundRect(ctx, b.x, b.y, b.w, b.h, 4); ctx.fill();
+  const ic = tintedIcon(BTN_ICONS[b.key], hot ? "#ffffff" : tInk);
+  if (ic) ctx.drawImage(ic, b.x + (b.w - BICON) / 2, b.y + (b.h - BICON) / 2, BICON, BICON);
+}
 
 function drawOne(ctx, g) {
   const tColor = gTitleColor(g), bColor = gBodyColor(g);
@@ -142,8 +238,10 @@ function drawOne(ctx, g) {
   const sel = g.id === _selectedId;
   const scale = app.canvas?.ds?.scale || 1;
   const tInk = ink(tColor);
+  const showBtns = g.id === _hoverId || g.id === _selectedId;
+  const layout = headerButtons(g, showBtns);
 
-  // interior fill (body color + body opacity)
+  // interior fill (body color + body opacity) — when folded, g.h IS the bar height
   ctx.fillStyle = rgba(bColor, bA);
   roundRect(ctx, g.x, g.y, g.w, g.h, 8); ctx.fill();
 
@@ -159,9 +257,9 @@ function drawOne(ctx, g) {
   ctx.lineWidth = (sel ? 2.5 : 1.5) / scale;
   roundRect(ctx, g.x, g.y, g.w, g.h, 8); ctx.stroke();
 
-  // title (clipped so it doesn't run under the badge)
+  // title (clipped so it doesn't run under the badge / buttons)
   ctx.save();
-  ctx.beginPath(); ctx.rect(g.x, g.y, g.w - 46, hH); ctx.clip();
+  ctx.beginPath(); ctx.rect(g.x, g.y, layout.titleClipW, hH); ctx.clip();
   ctx.fillStyle = tInk;
   ctx.font = `600 ${fs}px 'Segoe UI', system-ui, sans-serif`;
   ctx.textBaseline = "middle"; ctx.textAlign = "left";
@@ -169,29 +267,33 @@ function drawOne(ctx, g) {
   ctx.restore();
 
   // node-count badge
-  const count = containedNodes(g).length;
-  const bw = 28, bh = 16, bx = g.x + g.w - bw - 8, by = g.y + (hH - bh) / 2;
+  const count = groupMemberNodes(g).length;
+  const bd = layout.badge;
   ctx.fillStyle = tInk === "#ffffff" ? "rgba(255,255,255,0.22)" : "rgba(0,0,0,0.22)";
-  roundRect(ctx, bx, by, bw, bh, 8); ctx.fill();
+  roundRect(ctx, bd.x, bd.y, bd.w, bd.h, 8); ctx.fill();
   ctx.fillStyle = tInk;
   ctx.font = "11px 'Segoe UI', system-ui, sans-serif";
   ctx.textAlign = "center";
-  fillTextVCenter(ctx, String(count), bx + bw / 2, by + bh / 2);
+  fillTextVCenter(ctx, String(count), bd.x + bd.w / 2, bd.y + bd.h / 2);
   ctx.textAlign = "left";
   ctx.textBaseline = "middle";
 
-  // resize handle (bottom-right) — clipped to the rounded border so its outer
-  // corner follows the curve instead of poking a sharp triangle past the edge.
-  ctx.save();
-  roundRect(ctx, g.x, g.y, g.w, g.h, 8); ctx.clip();
-  ctx.fillStyle = rgba(tColor, sel ? 1 : 0.85);
-  ctx.beginPath();
-  ctx.moveTo(g.x + g.w, g.y + g.h - HANDLE);
-  ctx.lineTo(g.x + g.w, g.y + g.h);
-  ctx.lineTo(g.x + g.w - HANDLE, g.y + g.h);
-  ctx.closePath();
-  ctx.fill();
-  ctx.restore();
+  // header buttons (revealed on hover / select)
+  if (showBtns) for (const b of layout.btns) drawButton(ctx, b, g, tInk);
+
+  // resize handle (bottom-right) — not while folded (the bar isn't resizable).
+  if (!g.folded) {
+    ctx.save();
+    roundRect(ctx, g.x, g.y, g.w, g.h, 8); ctx.clip();
+    ctx.fillStyle = rgba(tColor, sel ? 1 : 0.85);
+    ctx.beginPath();
+    ctx.moveTo(g.x + g.w, g.y + g.h - HANDLE);
+    ctx.lineTo(g.x + g.w, g.y + g.h);
+    ctx.lineTo(g.x + g.w - HANDLE, g.y + g.h);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
 }
 
 // Draw via the canvas's onDrawBackground hook (graph-space ctx, behind nodes) —
@@ -241,12 +343,23 @@ function onDown(e) {
   const gs = ensureGroups();
   for (let i = gs.length - 1; i >= 0; i--) {
     const g = gs[i];
-    if (inResize(g, p)) {
+    // header buttons FIRST, so a button click never starts a drag/rename
+    if (inHeader(g, p)) {
+      const { btns } = headerButtons(g, true);
+      for (const b of btns) {
+        if (p[0] >= b.x && p[0] <= b.x + b.w && p[1] >= b.y && p[1] <= b.y + b.h) {
+          _selectedId = g.id; e.preventDefault(); e.stopImmediatePropagation();
+          runButtonAction(g, b.key); repaint(); return;
+        }
+      }
+    }
+    if (!g.folded && inResize(g, p)) {
       _drag = { mode: "resize", g, ox: p[0], oy: p[1], ow: g.w, oh: g.h };
       _selectedId = g.id; e.preventDefault(); e.stopImmediatePropagation(); startWin(); repaint(); return;
     }
     if (inHeader(g, p)) {
-      const members = containedNodes(g).map((n) => ({ n, dx: n.pos[0] - g.x, dy: n.pos[1] - g.y }));
+      // groupMemberNodes (not containedNodes) so a folded bar drags its hidden members.
+      const members = groupMemberNodes(g).map((n) => ({ n, dx: n.pos[0] - g.x, dy: n.pos[1] - g.y }));
       _drag = { mode: "move", g, ox: p[0], oy: p[1], gx: g.x, gy: g.y, members };
       _selectedId = g.id; e.preventDefault(); e.stopImmediatePropagation(); startWin(); repaint(); return;
     }
@@ -291,20 +404,33 @@ function onHover(e) {
   if (!el) return;
   if (e.target !== el) {
     if (_cursorOverride) { el.style.cursor = ""; _cursorOverride = false; }
+    if (_hoverId !== null || _hotBtn !== null) { _hoverId = null; _hotBtn = null; repaint(); }
     return;
   }
   const p = screenToGraph(e.clientX, e.clientY);
   if (!p) return;
-  let cur = null;
+  _hoverPt = p;
+  let cur = null, hoverId = null, hotBtn = null;
   const gs = ensureGroups();
   for (let i = gs.length - 1; i >= 0; i--) {
     const g = gs[i];
-    if (inResize(g, p)) { cur = "nwse-resize"; break; }
-    if (inHeader(g, p)) { cur = "move"; break; }
-    if (inRect(g, p)) break; // body → leave the node / default cursor alone
+    if (!inRect(g, p)) continue;
+    hoverId = g.id; // hovering anywhere in the group reveals its buttons
+    if (inHeader(g, p)) {
+      const { btns } = headerButtons(g, true);
+      for (const b of btns) if (p[0] >= b.x && p[0] <= b.x + b.w && p[1] >= b.y && p[1] <= b.y + b.h) { hotBtn = { gid: g.id, key: b.key }; break; }
+    }
+    if (hotBtn) cur = "pointer";
+    else if (!g.folded && inResize(g, p)) cur = "nwse-resize";
+    else if (inHeader(g, p)) cur = "move";
+    break; // topmost group only
   }
   if (cur) { el.style.cursor = cur; _cursorOverride = true; }
   else if (_cursorOverride) { el.style.cursor = ""; _cursorOverride = false; }
+  const changed = hoverId !== _hoverId
+    || (hotBtn ? hotBtn.key : null) !== (_hotBtn ? _hotBtn.key : null)
+    || (hotBtn ? hotBtn.gid : null) !== (_hotBtn ? _hotBtn.gid : null);
+  if (changed) { _hoverId = hoverId; _hotBtn = hotBtn; repaint(); }
 }
 
 // The currently-selected Pixaroma group (our own selection, by _selectedId).
@@ -377,7 +503,153 @@ function deleteGroup(g) {
   const i = gs.indexOf(g);
   if (i >= 0) gs.splice(i, 1);
   if (_selectedId === g.id) _selectedId = null;
+  invalidateHidden(); updateFoldNodeHideCSS(); // a folded group deleted → un-hide its nodes
   markChanged();
+}
+
+// ── header-button actions ─────────────────────────────────────────────────
+function runButtonAction(g, key) {
+  if (key === "run") queueGroup(g);
+  else if (key === "mute") toggleMode(g, 2);
+  else if (key === "bypass") toggleMode(g, 4);
+  else if (key === "fold") foldGroup(g);
+  else if (key === "unfold") unfoldGroup(g);
+}
+
+// Run = queue ONLY this group's output nodes (ComfyUI partial execution). Ids MUST
+// be strings — the backend matches partial-execution targets against the prompt's
+// string node-id keys; numbers never match and it 400s with "no outputs".
+function isGroupOutputNode(n) {
+  const NEVER = window.LiteGraph?.NEVER != null ? window.LiteGraph.NEVER : 2;
+  return !!(n && n.mode !== NEVER && n.constructor && n.constructor.nodeData && n.constructor.nodeData.output_node);
+}
+function queueGroup(g) {
+  const outs = groupMemberNodes(g).filter(isGroupOutputNode);
+  if (!outs.length) { toast("Nothing to run in this group", "Put an output node (a Save or Preview) inside, then press Run."); return; }
+  const ids = outs.map((n) => String(n.id));
+  try {
+    const r = app.queuePrompt(0, 1, ids);
+    if (r && typeof r.then === "function") r.catch((e) => console.error("[PixGroup] run failed", e));
+  } catch (e) { console.error("[PixGroup] run failed", e); toast("Could not run this group", String((e && e.message) || e)); }
+}
+
+// Apply a mode to a node AND every node inside it if it's a subgraph (recursively),
+// so muting/bypassing a group also stops a branch nested in a subgraph.
+function applyModeDeep(node, mode) {
+  const stack = [node];
+  while (stack.length) {
+    const n = stack.pop(); if (!n) continue;
+    n.mode = mode;
+    let inner = null;
+    try { if (typeof n.isSubgraphNode === "function" && n.isSubgraphNode() && n.subgraph) inner = n.subgraph.nodes || n.subgraph._nodes; } catch (_e) {}
+    if (inner && inner.length) for (let i = inner.length - 1; i >= 0; i--) stack.push(inner[i]);
+  }
+}
+function toggleMode(g, mode) {
+  const ns = groupMemberNodes(g);
+  if (!ns.length) return;
+  const all = ns.every((n) => n.mode === mode);
+  const target = all ? 0 : mode;
+  for (const n of ns) applyModeDeep(n, target);
+  markChanged();
+}
+
+// Fold = collapse the whole group to a slim bar: capture the member ids, shrink the
+// box to the header height, hide the members (computeVisibleNodes wrap in legacy +
+// a CSS rule in Nodes 2.0) and their crossing wires (renderLink wrap; hidden by
+// default, per-group "show links" opt-in). All fields ride on the group object,
+// so they serialize with the group.
+function foldGroup(g) {
+  if (g.folded) return;
+  g.foldNodes = containedNodes(g).map((n) => String(n.id));
+  g.hOpen = g.h;
+  g.folded = true;
+  g.h = headerH(g);
+  if (g.showLinks == null) g.showLinks = false;
+  invalidateHidden(); updateFoldNodeHideCSS(); markChanged();
+}
+function unfoldGroup(g) {
+  if (!g.folded) return;
+  g.folded = false;
+  g.h = Math.max(MIN_H, g.hOpen || MIN_H);
+  delete g.foldNodes;
+  invalidateHidden(); updateFoldNodeHideCSS(); markChanged();
+}
+function toggleFold(g) { if (g.folded) unfoldGroup(g); else foldGroup(g); }
+
+// Small toast (ComfyUI's manager when present, else a brand-bordered banner).
+function toast(summary, detail) {
+  try { const t = app.extensionManager && app.extensionManager.toast; if (t && t.add) { t.add({ severity: "warn", summary, detail, life: 5000 }); return; } } catch (_e) {}
+  try {
+    const el = document.createElement("div");
+    el.textContent = detail ? `${summary} - ${detail}` : summary;
+    el.style.cssText = "position:fixed;top:56px;left:50%;transform:translateX(-50%);z-index:99999;background:#1d1d1d;color:#fff;border:1px solid " + BRAND + ";border-radius:6px;padding:9px 15px;font:13px 'Segoe UI',sans-serif;box-shadow:0 4px 14px rgba(0,0,0,0.45);max-width:540px;text-align:center;";
+    document.body.appendChild(el); setTimeout(() => { try { el.remove(); } catch (_e) {} }, 5000);
+  } catch (_e) {}
+}
+
+// ── fold hooks: hide folded members + their wires (both renderers) ─────────
+let _foldHooksInstalled = false, _origCVN = null, _origRenderLink = null;
+function installFoldHooks() {
+  if (_foldHooksInstalled) return;
+  const proto = (window.LiteGraph?.LGraphCanvas || window.LGraphCanvas)?.prototype;
+  if (!proto) { setTimeout(installFoldHooks, 200); return; }
+  // LEGACY: drop hidden members from visible_nodes (kills their paint + hit-test).
+  if (typeof proto.computeVisibleNodes === "function") {
+    _origCVN = proto.computeVisibleNodes;
+    proto.computeVisibleNodes = function (nodes, out) {
+      const res = _origCVN.call(this, nodes, out);
+      try {
+        const { hidden } = hiddenMaps();
+        if (hidden.size && Array.isArray(res)) {
+          for (let i = res.length - 1; i >= 0; i--) if (hidden.has(String(res[i].id))) res.splice(i, 1);
+          const vn = this.visible_nodes;
+          if (Array.isArray(vn) && vn !== res) for (let i = vn.length - 1; i >= 0; i--) if (hidden.has(String(vn[i].id))) vn.splice(i, 1);
+        }
+      } catch (_e) {}
+      return res;
+    };
+  }
+  // Hide a crossing wire whose hidden endpoint's group does NOT opt to show links.
+  // Identify endpoints by the link's real node ids (reliable), never by position.
+  if (typeof proto.renderLink === "function") {
+    _origRenderLink = proto.renderLink;
+    proto.renderLink = function (ctx, a, b, link, skipBorder, flow, color, startDir, endDir, opts) {
+      try {
+        if (link && link.origin_id != null) {
+          const { hidden, showById } = hiddenMaps();
+          if (hidden.size) {
+            const o = String(link.origin_id), t = String(link.target_id);
+            const oh = hidden.has(o), th = hidden.has(t);
+            if (oh || th) {
+              const showO = oh ? showById.get(o) : true;
+              const showT = th ? showById.get(t) : true;
+              if (!(showO && showT)) return; // hidden by default while folded
+            }
+          }
+        }
+      } catch (_e) {}
+      return _origRenderLink.call(this, ctx, a, b, link, skipBorder, flow, color, startDir, endDir, opts);
+    };
+  }
+  _foldHooksInstalled = true;
+}
+
+// NODES 2.0: members are Vue DOM (not canvas), so the CVN wrap can't hide them —
+// a stylesheet rule does (an !important rule survives Vue re-renders). No-op in legacy.
+let _foldCSSEl = null, _foldCSSKey = "";
+function updateFoldNodeHideCSS() {
+  let ids = [];
+  try { ids = isVueNodes() ? [...hiddenMaps().hidden] : []; } catch (_e) {}
+  const key = ids.slice().sort().join(",");
+  if (key === _foldCSSKey) return;
+  _foldCSSKey = key;
+  if (!_foldCSSEl) {
+    _foldCSSEl = document.createElement("style");
+    _foldCSSEl.id = "pix-pixgroup-fold-hide";
+    (document.head || document.documentElement).appendChild(_foldCSSEl);
+  }
+  _foldCSSEl.textContent = ids.map((id) => `[data-node-id="${id}"]{display:none !important;}`).join("\n");
 }
 
 // ── style editor popup ──────────────────────────────────────────────────
@@ -447,6 +719,8 @@ function installMenu() {
     opts.push({ content: "👑 Add Pixaroma Group", callback: () => addGroup(p) });
     if (over) {
       opts.push({ content: "👑 Edit Pixaroma Group", callback: () => { if (window.PixaromaNodeColors?.openPixGroup) window.PixaromaNodeColors.openPixGroup(over); else inlineRename(over); } });
+      opts.push({ content: over.folded ? "👑 Unfold Group" : "👑 Fold Group", callback: () => toggleFold(over) });
+      if (over.folded) opts.push({ content: over.showLinks ? "👑 Hide links while folded" : "👑 Show links while folded", callback: () => { over.showLinks = !over.showLinks; invalidateHidden(); markChanged(); } });
       opts.push({ content: "👑 Delete Pixaroma Group", callback: () => deleteGroup(over) });
     }
     return opts;
@@ -483,6 +757,10 @@ function installPersistence() {
         _mirror.length = 0;
         if (Array.isArray(arr)) for (const x of arr) _mirror.push({ ...x });
         if (this.extra) this.extra.pixaromaGroups = _mirror;
+        invalidateHidden();
+        // a group loaded already folded must re-hide its members (Nodes 2.0 CSS;
+        // legacy is handled by the computeVisibleNodes wrap on the next paint).
+        try { updateFoldNodeHideCSS(); } catch (_e) {}
       }
     } catch (_e) { /* never break a load */ }
     return r;
@@ -496,11 +774,17 @@ app.registerExtension({
     installDraw();
     installMenu();
     installPersistence();
+    installFoldHooks();
     // Pick up groups from a workflow that was already loaded before this ran.
     try {
       const init = app.graph?.extra?.pixaromaGroups;
       if (Array.isArray(init)) { _mirror.length = 0; for (const x of init) _mirror.push({ ...x }); }
     } catch (_e) {}
+    invalidateHidden();
+    try { updateFoldNodeHideCSS(); } catch (_e) {}
+    // Nodes 2.0: re-assert the hide CSS for groups loaded already folded (a node
+    // element may mount a beat after configure). Cheap: a no-op unless the set changed.
+    setInterval(() => { try { updateFoldNodeHideCSS(); } catch (_e) {} }, 700);
     window.addEventListener("pointerdown", onDown, true);
     window.addEventListener("pointermove", onHover, false);
     window.addEventListener("dblclick", onDblClick, true);
