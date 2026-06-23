@@ -1489,44 +1489,56 @@ function openGroupColorsPalette(targets, group) {
 
   const applyOne = (hex) => { applyGroupColor(targets, hex); applied = hex; showApplied(); };
 
-  // Transparency (per-group color opacity) — dim a bright group so its title stays
-  // legible, right here instead of the Settings panel. Stored on group.flags
-  // (pixGroupAlpha, serializes) and read by Group Pixaroma's renderer. Only shown
-  // when Group Pixaroma styling is on (native groups ignore the flag).
+  // Per-group display sliders, in the picker instead of the Settings panel:
+  // Transparency (dim the whole color so the title stays legible) + Interior fill (how
+  // strongly the body is tinted). Stored on group.flags (serialize) and read by Group
+  // Pixaroma's renderer. Only shown when Group Pixaroma styling is on (native groups
+  // ignore the flags).
   const groupsStylingOn = app.ui?.settings?.getSettingValue?.("Pixaroma.Groups.Enabled");
   if (groupsStylingOn !== false) {
-    const opSec = document.createElement("div");
-    opSec.className = "pix-nc-pal-section";
-    const opLbl = document.createElement("div");
-    opLbl.className = "pix-nc-pal-grouplabel";
-    opLbl.textContent = "Transparency";
-    opSec.appendChild(opLbl);
-    const opRow = document.createElement("div");
-    opRow.style.cssText = "display:flex;align-items:center;gap:10px;padding:2px 0 4px;";
-    const slider = document.createElement("input");
-    slider.type = "range";
-    slider.min = "20"; slider.max = "100"; slider.step = "5";
-    slider.title = "Dim the group color so the title stays readable (100% = full color).";
-    slider.style.cssText = "flex:1 1 auto;accent-color:#f66744;cursor:pointer;";
-    const initA = Number.isFinite(group.flags?.pixGroupAlpha) ? group.flags.pixGroupAlpha : 1;
-    slider.value = String(Math.round(Math.max(0.2, Math.min(1, initA)) * 100));
-    const opVal = document.createElement("span");
-    opVal.style.cssText = "min-width:40px;text-align:right;font-size:12px;color:#bbb;";
-    opVal.textContent = slider.value + "%";
-    slider.addEventListener("input", () => {
-      const a = Math.max(0.2, Math.min(1, Number(slider.value) / 100));
-      opVal.textContent = slider.value + "%";
-      for (const g of targets) {
-        g.flags = g.flags || {};
-        g.flags.pixGroupAlpha = a;
-        if (typeof g.setDirtyCanvas === "function") g.setDirtyCanvas(false, true);
-      }
-      app.graph?.setDirtyCanvas(true, true);
-    });
-    opRow.appendChild(slider);
-    opRow.appendChild(opVal);
-    opSec.appendChild(opRow);
-    scroll.appendChild(opSec);
+    const sec = document.createElement("div");
+    sec.className = "pix-nc-pal-section";
+    // One labeled slider row; onVal(g, n) writes the flag on each target group live.
+    const sliderRow = (labelText, title, min, max, step, initVal, fmt, onVal) => {
+      const lbl = document.createElement("div");
+      lbl.className = "pix-nc-pal-grouplabel";
+      lbl.textContent = labelText;
+      sec.appendChild(lbl);
+      const row = document.createElement("div");
+      row.style.cssText = "display:flex;align-items:center;gap:10px;padding:2px 0 6px;";
+      const s = document.createElement("input");
+      s.type = "range"; s.min = String(min); s.max = String(max); s.step = String(step);
+      s.title = title;
+      s.style.cssText = "flex:1 1 auto;accent-color:#f66744;cursor:pointer;";
+      s.value = String(initVal);
+      const v = document.createElement("span");
+      v.style.cssText = "min-width:40px;text-align:right;font-size:12px;color:#bbb;";
+      v.textContent = fmt(initVal);
+      s.addEventListener("input", () => {
+        const n = Number(s.value);
+        v.textContent = fmt(n);
+        for (const g of targets) {
+          g.flags = g.flags || {};
+          onVal(g, n);
+          if (typeof g.setDirtyCanvas === "function") g.setDirtyCanvas(false, true);
+        }
+        app.graph?.setDirtyCanvas(true, true);
+      });
+      row.appendChild(s); row.appendChild(v);
+      sec.appendChild(row);
+    };
+    // Transparency: 20-100% → pixGroupAlpha 0.2-1.0
+    const initA = Math.round(Math.max(0.2, Math.min(1, Number.isFinite(group.flags?.pixGroupAlpha) ? group.flags.pixGroupAlpha : 1)) * 100);
+    sliderRow("Transparency", "Dim the whole group color so the title stays readable (100% = full color).",
+      20, 100, 5, initA, (n) => n + "%", (g, n) => { g.flags.pixGroupAlpha = Math.max(0.2, Math.min(1, n / 100)); });
+    // Interior fill: 0-40 → pixInteriorStrength 0-0.4 (the global Settings value is the default)
+    const globalInt = Number(app.ui?.settings?.getSettingValue?.("Pixaroma.Groups.InteriorStrength"));
+    const baseInt = Number.isFinite(group.flags?.pixInteriorStrength)
+      ? group.flags.pixInteriorStrength * 100
+      : (Number.isFinite(globalInt) ? globalInt : 12);
+    sliderRow("Interior fill", "How strongly the group body is tinted (per-group; the Settings value is the default).",
+      0, 40, 1, Math.round(Math.max(0, Math.min(40, baseInt))), (n) => String(n), (g, n) => { g.flags.pixInteriorStrength = Math.max(0, Math.min(40, n)) / 100; });
+    scroll.appendChild(sec);
   }
 
   // Favorites mapped to a single color via pickGroupColor; Save stores the

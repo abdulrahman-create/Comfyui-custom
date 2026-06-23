@@ -454,7 +454,7 @@ function paintGroup(group, gc, ctx) {
 
   // 1) Interior fill (whole body, rounded), at the user's strength.
   rr(ctx, x + 0.5, y + 0.5, w, h, RADIUS);
-  ctx.globalAlpha = state.interiorStrength * ea * ga;
+  ctx.globalAlpha = (Number.isFinite(group.flags?.pixInteriorStrength) ? group.flags.pixInteriorStrength : state.interiorStrength) * ea * ga;
   ctx.fillStyle = color;
   ctx.fill();
 
