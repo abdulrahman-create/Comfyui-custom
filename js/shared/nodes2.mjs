@@ -46,8 +46,8 @@ export function canvasBackingScale(cssW, cssH) {
  * A `ResizeObserver` does NOT fire on graph zoom (the element's `clientWidth`
  * in layout px is unchanged - only the CSS transform scale changes), so without
  * this watcher a DOM canvas keeps its old resolution and stays blurry until the
- * next layout-size change. The loop is cheap: it only reads the size + diffs the
- * scale each frame and repaints on an actual change.
+ * next layout-size change. The loop is cheap: it diffs the graph zoom each frame
+ * (no DOM read) and repaints only when the zoom actually changes.
  *
  * Stores the rAF id on `node[rafKey]` so an `onRemoved` handler can
  * `cancelAnimationFrame(node[rafKey])`. Also returns a stop() function.
@@ -59,13 +59,19 @@ export function canvasBackingScale(cssW, cssH) {
  * @returns {() => void} stop - cancels the loop
  */
 export function installZoomRepaint(node, getSize, render, rafKey) {
-  let lastScale = -1;
+  // getSize is kept for API compatibility but is NOT read every frame: reading the
+  // element's clientWidth/clientHeight per frame forces a layout reflow PER node using
+  // this, so a big graph with several preview / Compare / Load-Image nodes floods the
+  // console with rAF + forced-reflow warnings (worst during a marquee's nonstop redraw).
+  // The only thing that needs a re-render here is a graph ZOOM change
+  // (app.canvas.ds.scale - no DOM read); render() reads the element size itself and
+  // applies canvasBackingScale's cap, and a node-SIZE change is already handled by the
+  // caller's ResizeObserver. So watch the zoom only.
+  void getSize;
+  let lastZoom = -1;
   const tick = () => {
-    const [w, h] = getSize() || [0, 0];
-    if (w > 0 && h > 0) {
-      const s = canvasBackingScale(w, h);
-      if (Math.abs(s - lastScale) > 0.005) { lastScale = s; render(); }
-    }
+    const zoom = Math.max(1, app.canvas?.ds?.scale || 1);
+    if (Math.abs(zoom - lastZoom) > 0.005) { lastZoom = zoom; render(); }
     node[rafKey] = requestAnimationFrame(tick);
   };
   node[rafKey] = requestAnimationFrame(tick);
