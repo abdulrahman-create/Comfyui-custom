@@ -30,12 +30,19 @@ const MIN_W = 140, MIN_H = 80;
 let _idc = 0;
 function newId() { return "pg_" + Date.now().toString(36) + "_" + (_idc++); }
 
+// Authoritative in-memory list of our groups for the current graph. We keep
+// graph.extra.pixaromaGroups pointed at it AND (via installPersistence) inject
+// it into every graph.serialize() + re-read it on every graph.configure(), so
+// ComfyUI's change-tracker snapshots always carry our groups — an undo or a
+// native-group delete that reconciles the graph state can no longer wipe them.
+let _mirror = [];
 function ensureGroups() {
   const g = app.graph;
-  if (!g) return [];
-  if (!g.extra) g.extra = {};
-  if (!Array.isArray(g.extra.pixaromaGroups)) g.extra.pixaromaGroups = [];
-  return g.extra.pixaromaGroups;
+  if (g) {
+    if (!g.extra) g.extra = {};
+    if (g.extra.pixaromaGroups !== _mirror) g.extra.pixaromaGroups = _mirror;
+  }
+  return _mirror;
 }
 
 // ── color helpers ───────────────────────────────────────────────────────
@@ -256,6 +263,33 @@ function onUp(e) {
   markChanged();
 }
 
+// Cursor hint so the grab zones are discoverable: a resize arrow over the
+// bottom-right handle, a move cursor over the header. Bubble phase so it wins
+// over ComfyUI's own per-move cursor; only clears what WE set (no flicker
+// fight elsewhere).
+let _cursorOverride = false;
+function onHover(e) {
+  if (_drag) return;
+  const el = app.canvas?.canvas;
+  if (!el) return;
+  if (e.target !== el) {
+    if (_cursorOverride) { el.style.cursor = ""; _cursorOverride = false; }
+    return;
+  }
+  const p = screenToGraph(e.clientX, e.clientY);
+  if (!p) return;
+  let cur = null;
+  const gs = ensureGroups();
+  for (let i = gs.length - 1; i >= 0; i--) {
+    const g = gs[i];
+    if (inResize(g, p)) { cur = "nwse-resize"; break; }
+    if (inHeader(g, p)) { cur = "move"; break; }
+    if (inRect(g, p)) break; // body → leave the node / default cursor alone
+  }
+  if (cur) { el.style.cursor = cur; _cursorOverride = true; }
+  else if (_cursorOverride) { el.style.cursor = ""; _cursorOverride = false; }
+}
+
 // ── create / rename / delete ────────────────────────────────────────────
 function addGroup(p) {
   const gs = ensureGroups();
@@ -311,12 +345,55 @@ function installMenu() {
   C._pixGroupMenuWrapped = true;
 }
 
+// Ride ComfyUI's own save / undo / change-tracker cycle. graph.serialize() is
+// what the change-tracker snapshots AND what a workflow save writes, so
+// injecting our live list there means every snapshot carries our groups;
+// graph.configure() is what load / undo / a graph reconcile calls, so we re-read
+// our list from the restored data. Net effect: deleting a native group (which
+// triggers a reconcile) can no longer wipe our groups, and undo/redo carry them.
+function installPersistence() {
+  const G = app.graph?.constructor?.prototype || window.LGraph?.prototype;
+  if (!G || G._pixGroupPersistWrapped) return;
+  const origSerialize = G.serialize;
+  G.serialize = function () {
+    const data = origSerialize.apply(this, arguments);
+    try {
+      if (this === app.graph && _mirror.length && data) {
+        if (!data.extra) data.extra = {};
+        data.extra.pixaromaGroups = JSON.parse(JSON.stringify(_mirror));
+      }
+    } catch (_e) { /* never break a save */ }
+    return data;
+  };
+  const origConfigure = G.configure;
+  G.configure = function (data) {
+    const r = origConfigure.apply(this, arguments);
+    try {
+      if (this === app.graph) {
+        const arr = data && data.extra && data.extra.pixaromaGroups;
+        _mirror.length = 0;
+        if (Array.isArray(arr)) for (const x of arr) _mirror.push({ ...x });
+        if (this.extra) this.extra.pixaromaGroups = _mirror;
+      }
+    } catch (_e) { /* never break a load */ }
+    return r;
+  };
+  G._pixGroupPersistWrapped = true;
+}
+
 app.registerExtension({
   name: "Pixaroma.PixGroup",
   setup() {
     installDraw();
     installMenu();
+    installPersistence();
+    // Pick up groups from a workflow that was already loaded before this ran.
+    try {
+      const init = app.graph?.extra?.pixaromaGroups;
+      if (Array.isArray(init)) { _mirror.length = 0; for (const x of init) _mirror.push({ ...x }); }
+    } catch (_e) {}
     window.addEventListener("pointerdown", onDown, true);
+    window.addEventListener("pointermove", onHover, false);
     // Prototype: expose a console helper for quick add while testing.
     try { window.PixAddGroup = () => addGroup(app.canvas?.graph_mouse ? [app.canvas.graph_mouse[0], app.canvas.graph_mouse[1]] : null); } catch (_e) {}
   },
