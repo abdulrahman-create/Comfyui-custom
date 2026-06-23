@@ -1,6 +1,7 @@
 import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
 import { isVueNodes } from "../shared/index.mjs";
+import { openHelpPopup } from "../shared/help.mjs";
 
 // ╔══════════════════════════════════════════════════════════════════════╗
 // ║  Pixaroma Group (custom) — PROTOTYPE                                   ║
@@ -371,6 +372,20 @@ let _drag = null;
 function repaint() { try { app.canvas?.setDirty(true, true); } catch (_e) {} }
 function markChanged() { try { app.graph?.change?.(); } catch (_e) {} repaint(); }
 
+// Selecting one of OUR groups is EXCLUSIVE: clear ComfyUI's native node/group
+// selection too, or a previously-selected node stays selected and its native
+// selection toolbar lingers on top (that toolbar isn't ours).
+function clearNativeSelection() {
+  const c = app.canvas;
+  if (!c) return;
+  try { if (typeof c.deselectAllNodes === "function") c.deselectAllNodes(); } catch (_e) {}
+  try { if (c.selectedItems && typeof c.deselect === "function") for (const it of [...c.selectedItems]) c.deselect(it); } catch (_e) {}
+  try { if (c.selectedItems && c.selectedItems.clear) c.selectedItems.clear(); } catch (_e) {}
+  try { if (c.selected_nodes) for (const k of Object.keys(c.selected_nodes)) delete c.selected_nodes[k]; } catch (_e) {}
+  try { c.selected_group = null; } catch (_e) {}
+}
+function selectGroup(g) { _selectedId = g.id; clearNativeSelection(); }
+
 function startWin() {
   window.addEventListener("pointermove", onMove, true);
   window.addEventListener("pointerup", onUp, true);
@@ -396,20 +411,20 @@ function onDown(e) {
       const { btns } = headerButtons(g, true);
       for (const b of btns) {
         if (p[0] >= b.x && p[0] <= b.x + b.w && p[1] >= b.y && p[1] <= b.y + b.h) {
-          _selectedId = g.id; e.preventDefault(); e.stopImmediatePropagation();
+          selectGroup(g); e.preventDefault(); e.stopImmediatePropagation();
           runButtonAction(g, b.key); repaint(); return;
         }
       }
     }
     if (!g.folded && inResize(g, p)) {
       _drag = { mode: "resize", g, ox: p[0], oy: p[1], ow: g.w, oh: g.h };
-      _selectedId = g.id; e.preventDefault(); e.stopImmediatePropagation(); startWin(); repaint(); return;
+      selectGroup(g); e.preventDefault(); e.stopImmediatePropagation(); startWin(); repaint(); return;
     }
     if (inHeader(g, p)) {
       // groupMemberNodes (not containedNodes) so a folded bar drags its hidden members.
       const members = groupMemberNodes(g).map((n) => ({ n, dx: n.pos[0] - g.x, dy: n.pos[1] - g.y }));
       _drag = { mode: "move", g, ox: p[0], oy: p[1], gx: g.x, gy: g.y, members };
-      _selectedId = g.id; e.preventDefault(); e.stopImmediatePropagation(); startWin(); repaint(); return;
+      selectGroup(g); e.preventDefault(); e.stopImmediatePropagation(); startWin(); repaint(); return;
     }
   }
   // Clicked the body (likely a node) or empty canvas → deselect, do NOT
@@ -554,7 +569,7 @@ function addGroup(p) {
     titleAlpha: 0.92, bodyAlpha: 0.12, fontSize: 14,
   };
   gs.push(g);
-  _selectedId = g.id;
+  selectGroup(g);   // exclusive: the new group is selected, the wrapped nodes are not
   markChanged();
 }
 function deleteGroup(g) {
@@ -815,6 +830,29 @@ function inlineRename(g) {
   });
 }
 
+// Help content for the group (a Pixaroma group isn't a real node, so it has no
+// comfyClass and the node selection-toolbar "?" can't target it — we surface the
+// same popup from the right-click menu instead).
+const GROUP_HELP = {
+  title: "Pixaroma Group",
+  tagline: "A custom group container you fully control: color it, fold it, run it.",
+  sections: [
+    { heading: "Create & move", bullets: [
+      "Right-click the canvas and pick \"Add Pixaroma Group\", or select nodes and press G.",
+      "Drag the header to move it (the nodes inside move with it); drag the bottom-right corner to resize.",
+      "Double-click the title to rename. Select it and press Delete to remove it (the nodes stay).",
+    ]},
+    { heading: "Header buttons", defs: [
+      ["Run", "Queue only this group's output nodes (a Save or Preview inside it)."],
+      ["Mute", "Mute every node in the group (toggle); reaches into subgraphs."],
+      ["Bypass", "Bypass every node in the group (toggle)."],
+      ["Fold", "Collapse the whole group to a slim bar and hide its nodes. Click Unfold to reopen."],
+    ]},
+    { heading: "Folded bar", body: "While folded the bar turns green and names the node running inside it, so you can watch progress without the nodes showing. Wires that cross to outside nodes stay visible and attach to the bar; right-click the bar to hide them. Wires between hidden nodes stay hidden." },
+    { heading: "Style", body: "Right-click and pick \"Edit Pixaroma Group\" (or press the \\ key with the group selected) to open the color tool: title and body color, title and body opacity, font size, plus your own saved favourites." },
+  ],
+};
+
 function installMenu() {
   const C = window.LGraphCanvas?.prototype;
   if (!C || !C.getCanvasMenuOptions || C._pixGroupMenuWrapped) return;
@@ -830,6 +868,7 @@ function installMenu() {
       opts.push({ content: "👑 Edit Pixaroma Group", callback: () => { if (window.PixaromaNodeColors?.openPixGroup) window.PixaromaNodeColors.openPixGroup(over); else inlineRename(over); } });
       opts.push({ content: over.folded ? "👑 Unfold Group" : "👑 Fold Group", callback: () => toggleFold(over) });
       if (over.folded) opts.push({ content: (over.showLinks !== false) ? "👑 Hide links while folded" : "👑 Show links while folded", callback: () => { over.showLinks = (over.showLinks === false); invalidateHidden(); markChanged(); } });
+      opts.push({ content: "👑 Group Help", callback: () => openHelpPopup(GROUP_HELP) });
       opts.push({ content: "👑 Delete Pixaroma Group", callback: () => deleteGroup(over) });
     }
     return opts;
