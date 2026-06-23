@@ -574,11 +574,34 @@ function applyResizeLength() {
 // =============================================================================
 // Actions
 // =============================================================================
+// Apply a mode to a node AND, if it's a subgraph, every node INSIDE it (recursively,
+// nested subgraphs included). Without this, muting/bypassing a group only sets the
+// subgraph NODE's mode and a branch inside it still runs - the issue #7 bug. Mirrors
+// the depth-first walk other group-tools use; guarded so it degrades to top-level-only
+// on a build without the subgraph API.
+function applyModeDeep(node, mode) {
+  const stack = [node];
+  while (stack.length) {
+    const n = stack.pop();
+    if (!n) continue;
+    n.mode = mode;
+    let inner = null;
+    try {
+      if (typeof n.isSubgraphNode === "function" && n.isSubgraphNode() && n.subgraph) {
+        inner = n.subgraph.nodes || n.subgraph._nodes;
+      }
+    } catch (_e) {}
+    if (inner && inner.length) for (let i = inner.length - 1; i >= 0; i--) stack.push(inner[i]);
+  }
+}
 function toggleMode(group, mode) {
   const ns = containedNodes(group);
   if (!ns.length) return;
+  // Toggle direction is decided by the visible (top-level) members; the chosen mode
+  // is then applied deeply (into subgraphs) to every member.
   const all = ns.every((n) => n.mode === mode);
-  for (const n of ns) n.mode = all ? 0 : mode;
+  const target = all ? 0 : mode;
+  for (const n of ns) applyModeDeep(n, target);
   app.graph?.setDirtyCanvas?.(true, true);
   try { app.graph?.change?.(); } catch (_e) {}
 }
