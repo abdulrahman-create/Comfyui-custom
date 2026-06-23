@@ -3,15 +3,15 @@ import { createPixaromaColorPicker } from "../shared/color_picker.mjs";
 
 // ── Pixaroma node + group colors: right-click menu + presets + favorites ─
 // NODES — right-click any node:
-//   • 👑 Pixaroma Node Colors → favorites + Save to slot + Pick custom +
-//     Neutrals / Plain hues / Pixa hues subfolders (title+body picker).
+//   • 👑 Pixaroma Node Colors → opens the embedded palette (SV+hue picker with
+//     a Title/Body toggle, dark hex bars, favourites strip, hue-folder presets).
 //   • 👑 Copy Node Colors / 👑 Paste Node Colors (session clipboard, pair).
 //   • 👑 Reset Node Colors clears the override.
 // GROUPS — right-click a group → TOP-LEVEL canvas menu (like nodes, NOT
-// buried under "Edit Group"): 👑 Pixaroma Group Colors (favorites + Save +
-//   Pick custom + the hand-picked GROUP_COLORS listed directly) + 👑 Copy
-//   Group Color + 👑 Paste Group Color + 👑 Reset Group Color. Single-color
-//   picker — a group has ONE fill color, not
+// buried under "Edit Group"): 👑 Pixaroma Group Colors (the same palette with
+//   one picker + Transparency / Interior-fill sliders + the hand-picked
+//   GROUP_COLORS) + 👑 Copy Group Color + 👑 Paste Group Color + 👑 Reset Group
+//   Color. Single-color picker — a group has ONE fill color, not
 //   title+body. Added by wrapping getCanvasMenuOptions and gating on a group
 //   under the cursor (this.graph_mouse + graph.getGroupOnPos), since
 //   getCanvasMenuOptions receives no event/position argument.
@@ -236,42 +236,6 @@ const HUE_FOLDERS = [
   ] },
 ];
 
-// Swatch sets for the Pick-custom modal - a modern, vibrant palette. Node titles
-// now auto-pick readable white/dark ink (js/node_titles), so the TITLE strip is
-// no longer constrained to dark fills. Brand orange + a dark gray are pinned
-// first in BOTH strips. 3 rows of 12 each so the grid stays clean (no orphan
-// row):
-//   Row 1: brand orange, dark gray, then a neutral ramp
-//   Row 2: warm vivid (red -> lime)
-//   Row 3: cool vivid (green -> pink)
-// TITLE = saturated header colors. BODY = rich DARK surfaces in matching hues
-// (kept dark so node widgets stay readable on top). The strips are picked
-// independently, so any title can pair with any body.
-
-const TITLE_SWATCHES = [
-  // Neutrals: brand orange, dark gray, then a gray ramp
-  "#f66744", "#4a4a4e", "#000000", "#161618", "#222226", "#2e2e33",
-  "#3c3c43", "#4d4d55", "#646470", "#8a8a96", "#5b524b", "#4b4540",
-  // Warm vivid
-  "#ef4444", "#dc2626", "#f97316", "#ea580c", "#f59e0b", "#d97706",
-  "#eab308", "#ca8a04", "#84cc16", "#65a30d", "#b45309", "#9f1239",
-  // Cool vivid
-  "#22c55e", "#16a34a", "#10b981", "#14b8a6", "#06b6d4", "#0ea5e9",
-  "#3b82f6", "#2563eb", "#6366f1", "#8b5cf6", "#a855f7", "#ec4899",
-];
-
-const BODY_SWATCHES = [
-  // Neutrals: dark gray + a warm dark (pairs with the orange title), then darks
-  "#4a4a4e", "#2e2018", "#000000", "#101012", "#19191c", "#222226",
-  "#2c2c31", "#383840", "#1c1a17", "#222019", "#2a2620", "#1a1a1a",
-  // Warm rich-dark (match the warm title hues)
-  "#4a1f1f", "#3d1818", "#4a2a14", "#3d2010", "#4a3414", "#3d2a10",
-  "#463f14", "#3a3210", "#3a4514", "#2e3a10", "#3a2410", "#3a1420",
-  // Cool rich-dark (match the cool title hues)
-  "#16401f", "#164028", "#164035", "#163d3a", "#163a40", "#16344a",
-  "#1a2e50", "#16204a", "#26204a", "#321d4a", "#3d1d44", "#40182e",
-];
-
 // ── Group colors. A group has a SINGLE fill color (no title/body split),
 // and LiteGraph draws it at ~25% opacity (hardcoded in its renderer — not
 // adjustable per group). We write the chosen hex straight to group.color,
@@ -332,7 +296,6 @@ const GROUP_COLORS = [
   { label: "Rich Purple",  color: "#9e3fc0" },
   // Exactly 45 colors = 3 even rows of 15 in the palette popup (no stray 4th row).
 ];
-const GROUP_SWATCHES = GROUP_COLORS.map((c) => c.color);
 
 // ── Favorites: 15 fixed slots, persisted as ONE compact JSON value in
 // ComfyUI's settings store (unregistered key → no Settings-panel clutter;
@@ -592,114 +555,23 @@ function captureGroupColor(group) {
   return group?.color || GROUP_DEFAULT_COLOR;
 }
 
-// ── Custom-colors modal: side-by-side title + body pickers with a live
-// node preview. Built from scratch (not openPixaromaColorPickerModal)
-// because we want both pickers visible at once and a preview that
-// updates as the user drags either SV plane.
+// ── Palette popup CSS (one injected stylesheet). The palette embeds the
+// shared Pixaroma color picker (SV + hue) directly, with its own dark hex
+// bar(s), a 2-wide favourites strip, and a small preset grid — all live-apply,
+// so there is no preview box and no separate "Pick custom" modal.
 
 function injectCSS() {
   if (document.getElementById("pix-nc-css")) return;
   const s = document.createElement("style");
   s.id = "pix-nc-css";
   s.textContent = `
-.pix-nc-backdrop {
-  position: fixed; inset: 0;
-  background: rgba(0,0,0,0.6);
-  z-index: 10000;
-  display: flex; align-items: center; justify-content: center;
-}
 .pix-nc-modal {
   background: #1f1f1f;
   color: #e0e0e0;
   border: 1px solid #333;
   border-radius: 8px;
   box-shadow: 0 8px 32px rgba(0,0,0,0.6);
-  padding: 18px 22px 16px;
-  min-width: 680px;
-  max-width: 90vw;
   font: 13px system-ui, sans-serif;
-}
-/* Force the embedded color pickers to a proper roomy size with a
-   Photoshop-style square SV plane (the picker module only sets this
-   when the picker sits inside .pix-cp-modal-box, which is a sibling
-   modal, so we replicate the override for our own modal class). */
-.pix-nc-modal .pix-cp {
-  width: 280px;
-}
-.pix-nc-modal .pix-cp-sv {
-  aspect-ratio: 1;
-  height: auto;
-}
-.pix-nc-modal-title {
-  font-size: 15px;
-  font-weight: 600;
-  margin: 0 0 14px;
-  text-align: center;
-  color: #e0e0e0;
-}
-.pix-nc-preview-wrap {
-  display: flex; justify-content: center;
-  padding: 4px 0 18px;
-}
-.pix-nc-preview-node {
-  width: 220px;
-  border-radius: 6px;
-  border: 1px solid rgba(255,255,255,0.08);
-  box-shadow: 0 4px 14px rgba(0,0,0,0.5);
-  overflow: hidden;
-  transition: background 0.08s linear;
-}
-/* Preview matches LiteGraph's UNSELECTED node rendering: title text in
-   dim gray (#999, the NODE_TITLE_COLOR default), regular weight, no
-   bright-white overlay. When the user selects the actual node in the
-   workflow the text flips white, but the saved workflow JSON only
-   carries the base color, so the unselected look is what most viewers
-   see most of the time. */
-.pix-nc-preview-titlebar {
-  padding: 6px 10px;
-  font: 12px Tahoma, system-ui, sans-serif;
-  font-weight: 400;
-  color: #999;
-  transition: background 0.08s linear;
-}
-.pix-nc-preview-body {
-  padding: 8px 10px 10px;
-  transition: background 0.08s linear;
-}
-.pix-nc-preview-row {
-  font: 11px Tahoma, system-ui, sans-serif;
-  color: rgba(255,255,255,0.5);
-  padding: 2px 0;
-  display: flex; align-items: center; gap: 6px;
-}
-.pix-nc-preview-dot {
-  width: 6px; height: 6px;
-  border-radius: 50%;
-  background: #f66744;
-  display: inline-block;
-  flex-shrink: 0;
-}
-.pix-nc-pickers {
-  display: flex; gap: 20px;
-  justify-content: center;
-  margin-bottom: 12px;
-}
-.pix-nc-picker-col {
-  display: flex; flex-direction: column;
-  align-items: center;
-}
-.pix-nc-picker-label {
-  font: 11px system-ui, sans-serif;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: #999;
-  margin: 0 0 8px;
-  align-self: stretch;
-  text-align: center;
-}
-.pix-nc-actions {
-  display: flex; justify-content: flex-end; gap: 8px;
-  margin-top: 8px;
 }
 .pix-nc-btn {
   background: rgba(255,255,255,0.06);
@@ -725,42 +597,9 @@ function injectCSS() {
   background: #e85a3a;
   border-color: #e85a3a;
 }
-/* Single-color (group) variant of the modal: one picker column, narrower. */
-.pix-nc-modal-single {
-  min-width: 360px;
-}
-/* Group preview mirrors the ACTUAL styled group: a colored header bar (title +
-   count badge) over a faint interior tint, rounded with clipped corners. */
-.pix-nc-grouppreview {
-  width: 240px;
-  height: 96px;
-  border: 2px solid #3f789e;
-  border-radius: 8px;
-  box-shadow: 0 4px 14px rgba(0,0,0,0.5);
-  background-color: rgba(63,120,158,0.18);
-  overflow: hidden;
-  transition: border-color 0.08s linear, background-color 0.08s linear;
-}
-.pix-nc-grouppreview-bar {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 7px 12px;
-  background: #3f789e;
-  transition: background 0.08s linear;
-}
-.pix-nc-grouppreview-title {
-  font: 600 13px Tahoma, system-ui, sans-serif;
-  color: #fff;
-}
-.pix-nc-grouppreview-badge {
-  font: 11px Tahoma, system-ui, sans-serif;
-  background: rgba(255,255,255,0.18);
-  color: #fff;
-  border-radius: 9px; padding: 1px 9px;
-  transition: background 0.08s linear, color 0.08s linear;
-}
-/* ── Nodes 2.0 swatch-palette popup ── */
+/* ── Palette popup shell (free-floating, draggable; both renderers) ── */
 .pix-nc-pal {
-  width: 748px;          /* 684px 15-swatch grid + scrollbar + padding; content blocks are centered */
+  width: 470px;          /* embedded-picker layout: comfortable square picker + a small 15-wide preset grid */
   max-width: 96vw;
   min-width: 0;
   max-height: 90vh;
@@ -779,429 +618,134 @@ function injectCSS() {
   padding: 3px 7px; border-radius: 4px;
 }
 .pix-nc-pal-close:hover { color: #fff; background: rgba(255,255,255,0.08); }
-.pix-nc-pal-previewwrap { display: flex; justify-content: center; padding: 0 0 14px; }
 .pix-nc-pal-scroll { overflow-y: auto; overflow-x: hidden; padding-right: 4px; }
-.pix-nc-pal-section { width: 684px; max-width: 100%; margin: 0 auto 10px; }
-.pix-nc-pal-grouplabel {
-  font: 11px system-ui, sans-serif; letter-spacing: 0.06em;
-  text-transform: uppercase; color: #888; margin: 0 0 5px;
-}
-.pix-nc-pal-grid { display: grid; grid-template-columns: repeat(15, 40px); gap: 6px; }
-.pix-nc-pal-swatch {
-  width: 40px; height: 30px; border-radius: 5px;
-  border: 1px solid rgba(255,255,255,0.15);
+
+/* ── Redesigned palette: embedded picker + favourites strip + dark/orange
+   hex bars + small full-width preset grid (replaces the preview box +
+   separate "Pick custom" modal). ── */
+.pix-nc-pal-scroll { flex: 1 1 auto; min-height: 0; }
+.pix-nc-prow { display: flex; gap: 12px; align-items: stretch; margin: 0 0 2px; }
+.pix-nc-pickerwrap { flex: 1 1 auto; min-width: 0; display: flex; }
+.pix-nc-pickerwrap .pix-cp { width: 100%; height: 100%; gap: 0; }
+.pix-nc-pickerwrap .pix-cp-sv-row { flex: 1 1 auto; min-height: 156px; }
+.pix-nc-pickerwrap .pix-cp-sv { height: auto; aspect-ratio: auto; border-radius: 6px; border-color: #45454c; }
+.pix-nc-pickerwrap .pix-cp-hue { width: 16px; height: auto; border-radius: 6px; border-color: #45454c; }
+.pix-nc-pickerwrap .pix-cp-hexrow { display: none; }
+.pix-nc-favcol { flex: 0 0 58px; display: flex; flex-direction: column; }
+.pix-nc-favlbl { font: 11px system-ui, sans-serif; letter-spacing: 0.06em; color: #8a8a90; margin: 0 0 6px; }
+.pix-nc-favgrid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px; align-content: start; }
+.pix-nc-sw {
+  width: 100%; aspect-ratio: 1; border-radius: 5px;
+  border: 1px solid rgba(255,255,255,0.14);
   box-shadow: inset 0 0 0 1px rgba(0,0,0,0.25);
   cursor: pointer; transition: border-color 0.1s;
 }
-.pix-nc-pal-swatch:hover { border-color: #f66744; }
-.pix-nc-pal-empty {
+.pix-nc-sw:hover { border-color: #f66744; }
+.pix-nc-fav-empty {
+  width: 100%; aspect-ratio: 1; border-radius: 5px;
+  border: 1px dashed rgba(255,255,255,0.2);
+}
+.pix-nc-addfav {
+  width: 100%; aspect-ratio: 1; border-radius: 5px;
+  border: 1px dashed #f66744; color: #f66744;
   display: flex; align-items: center; justify-content: center;
-  color: #555; background: rgba(255,255,255,0.03);
-  cursor: default; box-shadow: none;
+  font-size: 14px; line-height: 1; cursor: pointer; transition: background 0.1s;
 }
-.pix-nc-pal-empty:hover { border-color: rgba(255,255,255,0.15); }
-.pix-nc-pal-fav { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 40px; }
-.pix-nc-pal-favsave {
-  width: 40px; box-sizing: border-box; text-align: center;
-  font: 9px system-ui, sans-serif;
-  background: rgba(255,255,255,0.05);
-  border: 1px solid rgba(255,255,255,0.14);
-  color: rgba(255,255,255,0.7);
-  border-radius: 3px; padding: 2px 0; cursor: pointer;
-  transition: background 0.1s, border-color 0.1s, color 0.1s;
+.pix-nc-addfav:hover { background: rgba(246,103,68,0.14); }
+.pix-nc-hexwrap { display: flex; gap: 8px; margin: 10px 0 0; }
+.pix-nc-hexbar {
+  flex: 1 1 0; min-width: 0; display: flex; align-items: center; gap: 8px;
+  background: #161616; border: 1px solid #3a3a40; border-radius: 6px; padding: 6px 9px;
 }
-.pix-nc-pal-favsave:hover { background: #f66744; border-color: #f66744; color: #fff; }
-/* 684 = 15*40 + 14*6: match the swatch-grid width so the buttons line up
-   under the swatches and never overflow past them. border-box keeps flex:1
-   from overshooting once padding/border are added. */
-.pix-nc-pal-tools { display: flex; gap: 8px; margin: 0 auto 14px; width: 684px; max-width: 100%; }
-.pix-nc-pal-tools .pix-nc-btn { min-width: 0; flex: 1; padding: 6px 12px; box-sizing: border-box; }
+.pix-nc-chip { width: 18px; height: 18px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.2); flex: 0 0 auto; }
+.pix-nc-hxk { font: 11px system-ui, sans-serif; color: #8a8a90; flex: 0 0 auto; }
+.pix-nc-hxv {
+  flex: 1 1 auto; min-width: 0; background: transparent; border: none; outline: none;
+  color: #f66744; font: 12.5px "Consolas", monospace; letter-spacing: 0.03em; padding: 0;
+}
+.pix-nc-seg {
+  display: flex; background: #1d1d1d; border: 1px solid #3a3a40;
+  border-radius: 7px; padding: 3px; gap: 3px; margin: 0 0 11px;
+}
+.pix-nc-seg button {
+  flex: 1; text-align: center; font: 12px system-ui, sans-serif;
+  padding: 5px 0; border-radius: 5px; color: #bdbdc2;
+  background: transparent; border: none; cursor: pointer; transition: background 0.1s, color 0.1s;
+}
+.pix-nc-seg button.on { background: #f66744; color: #fff; }
+.pix-nc-presetlbl {
+  font: 11px system-ui, sans-serif; letter-spacing: 0.06em; text-transform: uppercase;
+  color: #888; margin: 13px 0 6px;
+}
+.pix-nc-presetgrid { display: grid; grid-template-columns: repeat(15, 1fr); gap: 4px; }
+.pix-nc-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 12px; }
+.pix-nc-hint { font: 11px system-ui, sans-serif; color: #8a8a90; }
+.pix-nc-hint b { color: #f66744; font-weight: 400; }
   `;
   document.head.appendChild(s);
 }
 
-function buildPreviewNode(initialTitle, initialBody) {
-  const el = document.createElement("div");
-  el.className = "pix-nc-preview-node";
-
-  const titleBar = document.createElement("div");
-  titleBar.className = "pix-nc-preview-titlebar";
-  titleBar.textContent = "Example Node";
-  titleBar.style.background = initialTitle;
-  // Match the actual title-text color of the current renderer: Nodes 2.0
-  // draws node titles near-white; legacy draws them dim gray (the #999 CSS
-  // default on .pix-nc-preview-titlebar).
-  if (isVueNodes()) titleBar.style.color = "#e6e6e6";
-  el.appendChild(titleBar);
-
-  const body = document.createElement("div");
-  body.className = "pix-nc-preview-body";
-  body.style.background = initialBody;
-  el.appendChild(body);
-
-  function row(label) {
-    const r = document.createElement("div");
-    r.className = "pix-nc-preview-row";
-    const dot = document.createElement("span");
-    dot.className = "pix-nc-preview-dot";
-    r.appendChild(dot);
-    const t = document.createElement("span");
-    t.textContent = label;
-    r.appendChild(t);
-    return r;
-  }
-  body.appendChild(row("input"));
-  body.appendChild(row("another input"));
-  body.appendChild(row("widget"));
-
-  return {
-    el,
-    setTitle: (c) => { titleBar.style.background = c; },
-    setBody:  (c) => { body.style.background = c; },
-  };
-}
-
-function openCustomColorsModal(opts) {
-  injectCSS();
-  const { initialTitle, initialBody, anchorRect = null, onPreview = () => {}, onApply, onCancel = () => {} } = opts;
-  let titleHex = initialTitle;
-  let bodyHex  = initialBody;
-
-  // Side-floating (transparent overlay) so the node stays visible beside the
-  // picker and recolors live as you drag. The overlay still captures an
-  // outside click for cancel.
-  const backdrop = document.createElement("div");
-  backdrop.className = "pix-nc-backdrop";
-  backdrop.style.background = "transparent";
-  backdrop.style.display = "block";
-
-  const modal = document.createElement("div");
-  modal.className = "pix-nc-modal";
-  modal.style.position = "fixed";
-  modal.style.left = "-9999px";
-  modal.style.top = "0px";
-
-  const titleEl = document.createElement("div");
-  titleEl.className = "pix-nc-modal-title";
-  titleEl.textContent = "Pick custom colors";
-  modal.appendChild(titleEl);
-
-  const previewWrap = document.createElement("div");
-  previewWrap.className = "pix-nc-preview-wrap";
-  const preview = buildPreviewNode(titleHex, bodyHex);
-  previewWrap.appendChild(preview.el);
-  modal.appendChild(previewWrap);
-
-  const pickers = document.createElement("div");
-  pickers.className = "pix-nc-pickers";
-
-  // Title bar picker column
-  const titleCol = document.createElement("div");
-  titleCol.className = "pix-nc-picker-col";
-  const titleLabel = document.createElement("div");
-  titleLabel.className = "pix-nc-picker-label";
-  titleLabel.textContent = "Title bar color";
-  titleCol.appendChild(titleLabel);
-  const titlePicker = createPixaromaColorPicker({
-    initialColor: titleHex,
-    swatches: TITLE_SWATCHES,
-    hideReset: true,
-    onChange: (c) => { titleHex = c; preview.setTitle(c); onPreview(titleHex, bodyHex); },
-  });
-  titleCol.appendChild(titlePicker.element);
-  pickers.appendChild(titleCol);
-
-  // Body picker column
-  const bodyCol = document.createElement("div");
-  bodyCol.className = "pix-nc-picker-col";
-  const bodyLabel = document.createElement("div");
-  bodyLabel.className = "pix-nc-picker-label";
-  bodyLabel.textContent = "Body color";
-  bodyCol.appendChild(bodyLabel);
-  const bodyPicker = createPixaromaColorPicker({
-    initialColor: bodyHex,
-    swatches: BODY_SWATCHES,
-    hideReset: true,
-    onChange: (c) => { bodyHex = c; preview.setBody(c); onPreview(titleHex, bodyHex); },
-  });
-  bodyCol.appendChild(bodyPicker.element);
-  pickers.appendChild(bodyCol);
-
-  modal.appendChild(pickers);
-
-  // Action buttons
-  const actions = document.createElement("div");
-  actions.className = "pix-nc-actions";
-  const cancelBtn = document.createElement("button");
-  cancelBtn.type = "button";
-  cancelBtn.className = "pix-nc-btn";
-  cancelBtn.textContent = "Cancel";
-  const applyBtn = document.createElement("button");
-  applyBtn.type = "button";
-  applyBtn.className = "pix-nc-btn primary";
-  applyBtn.textContent = "Apply";
-  actions.appendChild(cancelBtn);
-  actions.appendChild(applyBtn);
-  modal.appendChild(actions);
-
-  backdrop.appendChild(modal);
-  document.body.appendChild(backdrop);
-  makeDraggable(modal, titleEl);
-  placeBeside(modal, anchorRect);
-
-  function close() {
-    window.removeEventListener("keydown", onKey, true);
-    titlePicker.destroy();
-    bodyPicker.destroy();
-    if (backdrop.parentNode) backdrop.remove();
-  }
-
-  applyBtn.addEventListener("click", () => { onApply(titleHex, bodyHex); close(); });
-  cancelBtn.addEventListener("click", () => { onCancel(); close(); });
-
-  // Click-outside-to-cancel, but ONLY if both mousedown AND click happened
-  // on the backdrop. A drag that starts in the SV plane and releases off
-  // the modal would otherwise cancel and discard the user's pick.
-  let mouseDownOnBackdrop = false;
-  backdrop.addEventListener("mousedown", (e) => {
-    mouseDownOnBackdrop = (e.target === backdrop);
-  });
-  backdrop.addEventListener("click", (e) => {
-    if (e.target === backdrop && mouseDownOnBackdrop) { onCancel(); close(); }
-    mouseDownOnBackdrop = false;
-  });
-
-  function onKey(e) {
-    if (e.key === "Escape") {
-      e.stopImmediatePropagation();
-      e.preventDefault();
-      onCancel();
-      close();
-    } else if (e.key === "Enter") {
-      e.stopImmediatePropagation();
-      e.preventDefault();
-      onApply(titleHex, bodyHex);
-      close();
-    }
-  }
-  window.addEventListener("keydown", onKey, true);
-}
-
-function pickCustom(nodes, anchorNode, groups = []) {
-  // Seed the picker with the node's CURRENT colors so the user can nudge an
-  // existing color instead of starting from an unrelated one. anchorNode is the
-  // right-clicked / selected node (its color is "the" color when several are
-  // selected); captureColors falls back through class / LiteGraph defaults.
-  const seed = captureColors(anchorNode || nodes[0]);
-  // Snapshot raw colors so Cancel can restore exactly what was there before.
-  const originals = nodes.map((n) => ({ color: n.color, bgcolor: n.bgcolor, manual: n.flags?.pixSGManual }));
-  const groupOriginals = groups.map((g) => g.color);
-  // Mixed selection: also color the groups (single color via pickGroupColor).
-  const applyAll = (titleHex, bodyHex) => {
-    applyColors(nodes, titleHex, bodyHex);
-    if (groups.length) applyGroupColor(groups, pickGroupColor({ title: titleHex, body: bodyHex }));
-  };
-  openCustomColorsModal({
-    initialTitle: seed.title,
-    initialBody:  seed.body,
-    anchorRect: getNodeScreenRect(anchorNode || nodes[0]),
-    onPreview: applyAll,
-    onApply: (titleHex, bodyHex) => {
-      applyAll(titleHex, bodyHex);
-      colorClipboard = { title: titleHex, body: bodyHex };
-    },
-    onCancel: () => {
-      nodes.forEach((n, i) => {
-        n.color = originals[i].color; n.bgcolor = originals[i].bgcolor;
-        try { window.PixaromaSetGet?.markManualColor?.(n, originals[i].manual); } catch (_e) {}
-      });
-      groups.forEach((g, i) => { g.color = groupOriginals[i]; });
-      app.graph?.setDirtyCanvas(true, true);
-    },
-  });
-}
-
-// ── Single-color modal for groups (one picker + a preview that mimics the
-// ~25% group transparency so the faint look isn't a surprise).
-// White or near-black ink for text on a colored bar, by luminance — keeps the
-// preview's title/badge readable on any group color (mirrors the actual group's
-// adaptive title text).
-function _previewInk(hex) {
-  const rgb = hexToRgb(hex);
-  if (!rgb) return "#ffffff";
-  const lum = (0.2126 * rgb.r + 0.7152 * rgb.g + 0.0722 * rgb.b) / 255;
-  return lum > 0.62 ? "#1a1a1a" : "#ffffff";
-}
-
-// Mirrors the ACTUAL styled group (Group Pixaroma): a rounded box with a solid
-// colored header bar (title + node-count badge in adaptive ink) over a faint
-// interior tint — so hovering a swatch previews how a real group will look.
-function buildGroupPreview(initial) {
-  const el = document.createElement("div");
-  el.className = "pix-nc-grouppreview";
-  const bar = document.createElement("div");
-  bar.className = "pix-nc-grouppreview-bar";
-  const title = document.createElement("div");
-  title.className = "pix-nc-grouppreview-title";
-  title.textContent = "Group";
-  const badge = document.createElement("div");
-  badge.className = "pix-nc-grouppreview-badge";
-  badge.textContent = "2";
-  bar.appendChild(title);
-  bar.appendChild(badge);
-  el.appendChild(bar);
-  function setColor(c) {
-    const rgb = hexToRgb(c) || { r: 63, g: 120, b: 158 };
-    el.style.borderColor = c;
-    el.style.backgroundColor = `rgba(${rgb.r},${rgb.g},${rgb.b},0.18)`;
-    bar.style.backgroundColor = c;
-    const ink = _previewInk(c);
-    title.style.color = ink;
-    badge.style.color = ink;
-    badge.style.background = ink === "#ffffff" ? "rgba(255,255,255,0.18)" : "rgba(0,0,0,0.18)";
-  }
-  setColor(initial);
-  return { el, setColor };
-}
-
-function openGroupColorModal(opts) {
-  injectCSS();
-  const { initial, anchorRect = null, onPreview = () => {}, onApply, onCancel = () => {} } = opts;
-  let hex = initial;
-
-  const backdrop = document.createElement("div");
-  backdrop.className = "pix-nc-backdrop";
-  backdrop.style.background = "transparent";
-  backdrop.style.display = "block";
-
-  const modal = document.createElement("div");
-  modal.className = "pix-nc-modal pix-nc-modal-single";
-  modal.style.position = "fixed";
-  modal.style.left = "-9999px";
-  modal.style.top = "0px";
-
-  const titleEl = document.createElement("div");
-  titleEl.className = "pix-nc-modal-title";
-  titleEl.textContent = "Pick group color";
-  modal.appendChild(titleEl);
-
-  const previewWrap = document.createElement("div");
-  previewWrap.className = "pix-nc-preview-wrap";
-  const preview = buildGroupPreview(hex);
-  previewWrap.appendChild(preview.el);
-  modal.appendChild(previewWrap);
-
-  const pickers = document.createElement("div");
-  pickers.className = "pix-nc-pickers";
-  const col = document.createElement("div");
-  col.className = "pix-nc-picker-col";
-  const label = document.createElement("div");
-  label.className = "pix-nc-picker-label";
-  label.textContent = "Group color";
-  col.appendChild(label);
-  const picker = createPixaromaColorPicker({
-    initialColor: hex,
-    swatches: GROUP_SWATCHES,
-    hideReset: true,
-    onChange: (c) => { hex = c; preview.setColor(c); onPreview(c); },
-  });
-  col.appendChild(picker.element);
-  pickers.appendChild(col);
-  modal.appendChild(pickers);
-
-  const actions = document.createElement("div");
-  actions.className = "pix-nc-actions";
-  const cancelBtn = document.createElement("button");
-  cancelBtn.type = "button";
-  cancelBtn.className = "pix-nc-btn";
-  cancelBtn.textContent = "Cancel";
-  const applyBtn = document.createElement("button");
-  applyBtn.type = "button";
-  applyBtn.className = "pix-nc-btn primary";
-  applyBtn.textContent = "Apply";
-  actions.appendChild(cancelBtn);
-  actions.appendChild(applyBtn);
-  modal.appendChild(actions);
-
-  backdrop.appendChild(modal);
-  document.body.appendChild(backdrop);
-  makeDraggable(modal, titleEl);
-  placeBeside(modal, anchorRect);
-
-  function close() {
-    window.removeEventListener("keydown", onKey, true);
-    picker.destroy();
-    if (backdrop.parentNode) backdrop.remove();
-  }
-
-  applyBtn.addEventListener("click", () => { onApply(hex); close(); });
-  cancelBtn.addEventListener("click", () => { onCancel(); close(); });
-
-  let mouseDownOnBackdrop = false;
-  backdrop.addEventListener("mousedown", (e) => { mouseDownOnBackdrop = (e.target === backdrop); });
-  backdrop.addEventListener("click", (e) => {
-    if (e.target === backdrop && mouseDownOnBackdrop) { onCancel(); close(); }
-    mouseDownOnBackdrop = false;
-  });
-
-  function onKey(e) {
-    if (e.key === "Escape") {
-      e.stopImmediatePropagation(); e.preventDefault(); onCancel(); close();
-    } else if (e.key === "Enter") {
-      e.stopImmediatePropagation(); e.preventDefault(); onApply(hex); close();
-    }
-  }
-  window.addEventListener("keydown", onKey, true);
-}
-
-function pickCustomGroup(groups, anchorGroup) {
-  // Seed from the group's CURRENT color so you can nudge it, mirroring the node
-  // Pick-custom (which seeds from captureColors). captureGroupColor falls back to
-  // the default when the group has no color set.
-  const seed = captureGroupColor(anchorGroup || groups[0]);
-  const originals = groups.map((g) => g.color);
-  openGroupColorModal({
-    initial: seed,
-    anchorRect: getGroupScreenRect(anchorGroup || groups[0]),
-    onPreview: (hex) => applyGroupColor(groups, hex),
-    onApply: (hex) => {
-      applyGroupColor(groups, hex);
-      colorClipboard = { title: hex, body: hex };
-    },
-    onCancel: () => {
-      groups.forEach((g, i) => {
-        g.color = originals[i];
-        if (typeof g.setDirtyCanvas === "function") g.setDirtyCanvas(false, true);
-      });
-      app.graph?.setDirtyCanvas(true, true);
-    },
-  });
-}
-
-// ── Swatch-palette popup (both renderers) ───────────────────────────────
-// The Vue (Nodes 2.0) right-click menu renders only ONE fly-out level and
-// strips inline swatch HTML to plain text, so the legacy 3-level nested color
-// menu can't work there. In Nodes 2.0 the "Pixaroma Node/Group Colors" entry
-// is a single click that opens this popup instead: a live preview + a visual
-// grid of real color swatches (favorites + hue folders), plus Pick custom and
-// Reset. The classic-renderer nested menu is left untouched.
+// ── Color palette popup (both renderers) ────────────────────────────────
+// One free-floating, draggable panel opened by the "Pixaroma Node/Group
+// Colors" menu entry (and the "\" shortcut). It embeds the shared Pixaroma
+// color picker (SV + hue) directly, with a dark hex bar (orange code), a
+// 2-wide favourites strip (the orange + tile saves the current color/pair),
+// and a small preset grid below — everything applies live. Node colors edit a
+// title+body pair via a Title/Body toggle; group colors edit one color and add
+// per-group Transparency + Interior-fill sliders.
 function isVueNodes() {
   return !!(window.LiteGraph && window.LiteGraph.vueNodesMode);
 }
 
 function makeTwoToneSwatch(titleHex, bodyHex) {
   const el = document.createElement("div");
-  el.className = "pix-nc-pal-swatch";
+  el.className = "pix-nc-sw";
   el.style.background =
-    `linear-gradient(to bottom, ${titleHex} 0%, ${titleHex} 45%, ${bodyHex} 45%, ${bodyHex} 100%)`;
+    `linear-gradient(to bottom, ${titleHex} 0%, ${titleHex} 40%, ${bodyHex} 40%, ${bodyHex} 100%)`;
   return el;
 }
 
 function makeSingleSwatch(hex) {
   const el = document.createElement("div");
-  el.className = "pix-nc-pal-swatch";
+  el.className = "pix-nc-sw";
   el.style.background = hex;
   return el;
+}
+
+// Dark hex bar with a live color chip + orange code (typeable). Used by the
+// embedded palettes — group shows one, node shows two (Title / Body). getVal()
+// seeds the field; onCommit(hex) fires on a valid 6-digit hex. Returns a
+// `set(hex)` to refresh the chip + value when the color changes elsewhere
+// (SV drag, swatch click, toggle).
+function buildHexBar(label, getVal, onCommit) {
+  const el = document.createElement("div");
+  el.className = "pix-nc-hexbar";
+  const chip = document.createElement("span");
+  chip.className = "pix-nc-chip";
+  el.appendChild(chip);
+  if (label) {
+    const k = document.createElement("span");
+    k.className = "pix-nc-hxk";
+    k.textContent = label;
+    el.appendChild(k);
+  }
+  const inp = document.createElement("input");
+  inp.type = "text";
+  inp.className = "pix-nc-hxv";
+  inp.spellcheck = false;
+  inp.setAttribute("aria-label", (label || "color") + " hex");
+  el.appendChild(inp);
+  // Keep the palette's drag / outside-close from hijacking the field.
+  inp.addEventListener("mousedown", (e) => e.stopPropagation());
+  inp.addEventListener("pointerdown", (e) => e.stopPropagation());
+  inp.addEventListener("input", () => {
+    let v = inp.value.trim();
+    if (!v.startsWith("#")) v = "#" + v;
+    if (/^#[0-9a-f]{6}$/i.test(v)) { chip.style.background = v; onCommit(v); }
+  });
+  const set = (v) => { inp.value = v || ""; chip.style.background = v || "transparent"; };
+  set(getVal());
+  return { el, set };
 }
 
 // Shared shell: a free-floating panel (NO dimming backdrop) so the canvas
@@ -1233,9 +777,16 @@ function makePalShell(titleText) {
 
   document.body.appendChild(modal);
 
+  // Cleanups registered by the caller (e.g. picker.destroy() to release the
+  // shared picker's window mousemove/mouseup listeners) run once on close.
+  const cleanups = [];
+  let closed = false;
   function close() {
+    if (closed) return;
+    closed = true;
     document.removeEventListener("pointerdown", onDocDown, true);
     window.removeEventListener("keydown", onKey, true);
+    for (const fn of cleanups) { try { fn(); } catch (_e) {} }
     if (modal.parentNode) modal.remove();
   }
   closeX.addEventListener("click", close);
@@ -1250,7 +801,11 @@ function makePalShell(titleText) {
 
   makeDraggable(modal, header);
 
-  return { modal, close, place: (rect) => placeBeside(modal, rect) };
+  return {
+    modal, close,
+    place: (rect) => placeBeside(modal, rect),
+    onClose: (fn) => { if (typeof fn === "function") cleanups.push(fn); },
+  };
 }
 
 // Drag the panel by its header so the user can move it off whatever it
@@ -1340,21 +895,6 @@ function getGroupScreenRect(group) {
   return { left, top, right: left + width, bottom: top + height, width, height };
 }
 
-function palSection(label) {
-  const sec = document.createElement("div");
-  sec.className = "pix-nc-pal-section";
-  if (label) {
-    const l = document.createElement("div");
-    l.className = "pix-nc-pal-grouplabel";
-    l.textContent = label;
-    sec.appendChild(l);
-  }
-  const grid = document.createElement("div");
-  grid.className = "pix-nc-pal-grid";
-  sec.appendChild(grid);
-  return { sec, grid };
-}
-
 function palToolBtn(text, onClick) {
   const b = document.createElement("button");
   b.type = "button";
@@ -1367,145 +907,159 @@ function palToolBtn(text, onClick) {
 function openNodeColorsPalette(targets, node, groups = []) {
   const gsuffix = groups.length ? ` + ${groups.length} group${groups.length > 1 ? "s" : ""}` : "";
   const suffix = (targets.length > 1 ? ` (${targets.length} nodes)` : "") + gsuffix;
-  const { modal, close, place } = makePalShell(`Pixaroma Node Colors${suffix}`);
+  const { modal, place, onClose } = makePalShell(`Pixaroma Node Colors${suffix}`);
 
-  // Live preview node — updates on hover, persists the applied combo.
-  let applied = captureColors(node);
-  const previewWrap = document.createElement("div");
-  previewWrap.className = "pix-nc-pal-previewwrap";
-  const preview = buildPreviewNode(applied.title, applied.body);
-  previewWrap.appendChild(preview.el);
-  modal.appendChild(previewWrap);
-  const showApplied = () => { preview.setTitle(applied.title); preview.setBody(applied.body); };
+  const applied = captureColors(node);
+  let titleHex = applied.title, bodyHex = applied.body;
+  let target = "title"; // which color the single picker edits
 
-  const scroll = document.createElement("div");
-  scroll.className = "pix-nc-pal-scroll";
-  scroll.addEventListener("mouseleave", showApplied);
-  modal.appendChild(scroll);
-
-  const applyPair = (t, b) => {
-    applyColors(targets, t, b);
-    // Groups also selected → color them too (single color = the more saturated of
-    // the node's title/body), so one pick recolors nodes + groups together.
-    if (groups.length) applyGroupColor(groups, pickGroupColor({ title: t, body: b }));
-    applied = { title: t, body: b }; showApplied();
+  // Apply the current title+body to all target nodes; co-selected groups get
+  // the more-saturated of the two as their single color (one pick → both).
+  const applyNow = () => {
+    applyColors(targets, titleHex, bodyHex);
+    if (groups.length) applyGroupColor(groups, pickGroupColor({ title: titleHex, body: bodyHex }));
   };
 
-  // Favorites: click a filled swatch to apply; per-slot Save captures the
-  // node's CURRENT colors (so apply-then-Save stores the chosen combo).
-  const favSec = document.createElement("div");
-  favSec.className = "pix-nc-pal-section";
-  const favLbl = document.createElement("div");
-  favLbl.className = "pix-nc-pal-grouplabel";
-  favLbl.textContent = "Favorites";
-  favSec.appendChild(favLbl);
-  const favGrid = document.createElement("div");
-  favGrid.className = "pix-nc-pal-grid";
-  favSec.appendChild(favGrid);
+  // ── Title / Body toggle: which color the one picker edits ──
+  const seg = document.createElement("div");
+  seg.className = "pix-nc-seg";
+  const titleBtn = document.createElement("button"); titleBtn.type = "button"; titleBtn.textContent = "Title";
+  const bodyBtn  = document.createElement("button"); bodyBtn.type  = "button"; bodyBtn.textContent  = "Body";
+  seg.appendChild(titleBtn); seg.appendChild(bodyBtn);
+  modal.appendChild(seg);
+  const syncSeg = () => { titleBtn.classList.toggle("on", target === "title"); bodyBtn.classList.toggle("on", target === "body"); };
+
+  // ── Picker + favourites row ──
+  const prow = document.createElement("div"); prow.className = "pix-nc-prow";
+  const pickerWrap = document.createElement("div"); pickerWrap.className = "pix-nc-pickerwrap";
+  const picker = createPixaromaColorPicker({
+    initialColor: titleHex, swatches: [], hideReset: true,
+    onChange: (c) => {
+      if (c == null) return;
+      if (target === "title") titleHex = c; else bodyHex = c;
+      applyNow();
+      refreshHex();
+    },
+  });
+  pickerWrap.appendChild(picker.element);
+  prow.appendChild(pickerWrap);
+  onClose(() => picker.destroy());
+
+  const favCol = document.createElement("div"); favCol.className = "pix-nc-favcol";
+  const favLbl = document.createElement("div"); favLbl.className = "pix-nc-favlbl"; favLbl.textContent = "FAVS";
+  favCol.appendChild(favLbl);
+  const favGrid = document.createElement("div"); favGrid.className = "pix-nc-favgrid";
+  favCol.appendChild(favGrid);
+  prow.appendChild(favCol);
+  modal.appendChild(prow);
+
+  // Apply a stored / preset pair, then sync the picker + hex bars to it.
+  const applyPair = (t, b) => {
+    titleHex = t; bodyHex = b;
+    applyNow();
+    picker.setColor(target === "title" ? titleHex : bodyHex);
+    refreshHex();
+  };
   function renderFavorites() {
     favGrid.innerHTML = "";
+    const add = document.createElement("div");
+    add.className = "pix-nc-addfav"; add.textContent = "+";
+    add.title = "Save the current colors to favourites";
+    add.addEventListener("click", () => {
+      const favs = getFavorites();
+      let idx = favs.findIndex((f) => !f);
+      if (idx < 0) idx = FAVORITE_SLOTS - 1; // all full → overwrite the last
+      saveFavoriteSlot(idx, titleHex, bodyHex);
+      renderFavorites();
+    });
+    favGrid.appendChild(add);
     const favs = getFavorites();
     for (let i = 0; i < FAVORITE_SLOTS; i++) {
       const f = favs[i];
-      const tile = document.createElement("div");
-      tile.className = "pix-nc-pal-fav";
-      let sw;
       if (f) {
-        sw = makeTwoToneSwatch(f.title, f.body);
-        sw.title = `Favorite ${i + 1} — apply`;
-        sw.addEventListener("mouseenter", () => { preview.setTitle(f.title); preview.setBody(f.body); });
+        const sw = makeTwoToneSwatch(f.title, f.body);
+        sw.title = `Favourite ${i + 1} — click to apply, right-click to remove`;
         sw.addEventListener("click", () => applyPair(f.title, f.body));
+        sw.addEventListener("contextmenu", (e) => {
+          e.preventDefault();
+          const a = getFavorites().slice(); a[i] = null; setFavorites(a); renderFavorites();
+        });
+        favGrid.appendChild(sw);
       } else {
-        sw = document.createElement("div");
-        sw.className = "pix-nc-pal-swatch pix-nc-pal-empty";
-        sw.textContent = "—";
-        sw.title = `Favorite ${i + 1} (empty)`;
+        const empty = document.createElement("div");
+        empty.className = "pix-nc-fav-empty"; empty.title = `Favourite ${i + 1} (empty)`;
+        favGrid.appendChild(empty);
       }
-      tile.appendChild(sw);
-      const save = document.createElement("button");
-      save.type = "button";
-      save.className = "pix-nc-pal-favsave";
-      save.textContent = "Save";
-      save.title = `Save the node's current colors to slot ${i + 1}`;
-      save.addEventListener("click", (e) => {
-        e.stopPropagation();
-        const c = captureColors(node);
-        saveFavoriteSlot(i, c.title, c.body);
-        renderFavorites();
-      });
-      tile.appendChild(save);
-      favGrid.appendChild(tile);
     }
   }
   renderFavorites();
-  favGrid.addEventListener("mouseleave", showApplied);
-  scroll.appendChild(favSec);
 
-  // Tools: Pick custom… / Reset.
-  const tools = document.createElement("div");
-  tools.className = "pix-nc-pal-tools";
-  tools.appendChild(palToolBtn("Pick custom…", () => { close(); pickCustom(targets, node, groups); }));
-  tools.appendChild(palToolBtn("Reset colors", () => {
-    resetColors(targets);
-    if (groups.length) resetGroupColor(groups);
-    applied = captureColors(node);
-    showApplied();
-  }));
-  scroll.appendChild(tools);
+  // ── Hex bars (Title / Body): dark field, orange code, live chip ──
+  const hexWrap = document.createElement("div"); hexWrap.className = "pix-nc-hexwrap";
+  const titleBar = buildHexBar("Title", () => titleHex, (v) => { titleHex = v; applyNow(); if (target === "title") picker.setColor(v); });
+  const bodyBar  = buildHexBar("Body",  () => bodyHex,  (v) => { bodyHex  = v; applyNow(); if (target === "body")  picker.setColor(v); });
+  hexWrap.appendChild(titleBar.el); hexWrap.appendChild(bodyBar.el);
+  modal.appendChild(hexWrap);
+  function refreshHex() { titleBar.set(titleHex); bodyBar.set(bodyHex); }
 
-  // Hue folders (Dark + the 10 hues), exactly the legacy preset set.
+  // Toggle wiring. setColor does NOT fire onChange, so toggling re-applies nothing.
+  titleBtn.addEventListener("click", () => { target = "title"; syncSeg(); picker.setColor(titleHex); });
+  bodyBtn.addEventListener("click",  () => { target = "body";  syncSeg(); picker.setColor(bodyHex); });
+  syncSeg();
+
+  // ── Preset hue folders (scrollable, small two-tone swatches) ──
+  const scroll = document.createElement("div");
+  scroll.className = "pix-nc-pal-scroll";
+  modal.appendChild(scroll);
   for (const g of HUE_FOLDERS) {
-    const { sec, grid } = palSection(g.label);
+    const lbl = document.createElement("div"); lbl.className = "pix-nc-presetlbl"; lbl.textContent = g.label;
+    scroll.appendChild(lbl);
+    const grid = document.createElement("div"); grid.className = "pix-nc-presetgrid";
     for (const p of g.presets) {
       const sw = makeTwoToneSwatch(p.title, p.body);
       sw.title = `${g.label} — ${p.label}`;
-      sw.addEventListener("mouseenter", () => { preview.setTitle(p.title); preview.setBody(p.body); });
       sw.addEventListener("click", () => applyPair(p.title, p.body));
       grid.appendChild(sw);
     }
-    grid.addEventListener("mouseleave", showApplied);
-    scroll.appendChild(sec);
+    scroll.appendChild(grid);
   }
+
+  // ── Footer: save hint + Reset ──
+  const foot = document.createElement("div"); foot.className = "pix-nc-foot";
+  const hint = document.createElement("span"); hint.className = "pix-nc-hint";
+  hint.innerHTML = "<b>+</b> save current · click = apply";
+  foot.appendChild(hint);
+  foot.appendChild(palToolBtn("Reset colors", () => {
+    resetColors(targets);
+    if (groups.length) resetGroupColor(groups);
+    const c = captureColors(node);
+    titleHex = c.title; bodyHex = c.body;
+    picker.setColor(target === "title" ? titleHex : bodyHex);
+    refreshHex();
+  }));
+  modal.appendChild(foot);
 
   place(getNodeScreenRect(node));
 }
 
 function openGroupColorsPalette(targets, group) {
   const suffix = targets.length > 1 ? ` (${targets.length} groups)` : "";
-  const { modal, close, place } = makePalShell(`Pixaroma Group Colors${suffix}`);
+  const { modal, place, onClose } = makePalShell(`Pixaroma Group Colors${suffix}`);
 
-  let applied = captureGroupColor(group);
-  const previewWrap = document.createElement("div");
-  previewWrap.className = "pix-nc-pal-previewwrap";
-  const preview = buildGroupPreview(applied);
-  previewWrap.appendChild(preview.el);
-  modal.appendChild(previewWrap);
-  const showApplied = () => preview.setColor(applied);
+  let hex = captureGroupColor(group);
+  const applyNow = () => applyGroupColor(targets, hex);
 
-  const scroll = document.createElement("div");
-  scroll.className = "pix-nc-pal-scroll";
-  scroll.addEventListener("mouseleave", showApplied);
-  modal.appendChild(scroll);
-
-  const applyOne = (hex) => { applyGroupColor(targets, hex); applied = hex; showApplied(); };
-
-  // Per-group display sliders, in the picker instead of the Settings panel:
-  // Transparency (dim the whole color so the title stays legible) + Interior fill (how
-  // strongly the body is tinted). Stored on group.flags (serialize) and read by Group
-  // Pixaroma's renderer. Only shown when Group Pixaroma styling is on (native groups
-  // ignore the flags).
+  // ── Per-group display sliders (Transparency + Interior fill), shown only
+  // when Group Pixaroma styling is on. Stored on group.flags (serialize),
+  // read by Group Pixaroma's renderer. Native groups ignore the flags. ──
   const groupsStylingOn = app.ui?.settings?.getSettingValue?.("Pixaroma.Groups.Enabled");
   if (groupsStylingOn !== false) {
-    const sec = document.createElement("div");
-    sec.className = "pix-nc-pal-section";
-    // One labeled slider row; onVal(g, n) writes the flag on each target group live.
     const sliderRow = (labelText, title, min, max, step, initVal, fmt, onVal) => {
       const lbl = document.createElement("div");
-      lbl.className = "pix-nc-pal-grouplabel";
-      lbl.textContent = labelText;
-      sec.appendChild(lbl);
+      lbl.className = "pix-nc-presetlbl"; lbl.style.marginTop = "0"; lbl.textContent = labelText;
+      modal.appendChild(lbl);
       const row = document.createElement("div");
-      row.style.cssText = "display:flex;align-items:center;gap:10px;padding:2px 0 6px;";
+      row.style.cssText = "display:flex;align-items:center;gap:10px;padding:0 0 8px;";
       const s = document.createElement("input");
       s.type = "range"; s.min = String(min); s.max = String(max); s.step = String(step);
       s.title = title;
@@ -1525,93 +1079,108 @@ function openGroupColorsPalette(targets, group) {
         app.graph?.setDirtyCanvas(true, true);
       });
       row.appendChild(s); row.appendChild(v);
-      sec.appendChild(row);
+      modal.appendChild(row);
     };
-    // Transparency: 20-100% → pixGroupAlpha 0.2-1.0
     const initA = Math.round(Math.max(0.2, Math.min(1, Number.isFinite(group.flags?.pixGroupAlpha) ? group.flags.pixGroupAlpha : 1)) * 100);
     sliderRow("Transparency", "Dim the whole group color so the title stays readable (100% = full color).",
       20, 100, 5, initA, (n) => n + "%", (g, n) => { g.flags.pixGroupAlpha = Math.max(0.2, Math.min(1, n / 100)); });
-    // Interior fill: 0-40 → pixInteriorStrength 0-0.4 (the global Settings value is the default)
     const globalInt = Number(app.ui?.settings?.getSettingValue?.("Pixaroma.Groups.InteriorStrength"));
     const baseInt = Number.isFinite(group.flags?.pixInteriorStrength)
       ? group.flags.pixInteriorStrength * 100
       : (Number.isFinite(globalInt) ? globalInt : 12);
     sliderRow("Interior fill", "How strongly the group body is tinted (per-group; the Settings value is the default).",
       0, 40, 1, Math.round(Math.max(0, Math.min(40, baseInt))), (n) => String(n), (g, n) => { g.flags.pixInteriorStrength = Math.max(0, Math.min(40, n)) / 100; });
-    scroll.appendChild(sec);
   }
 
-  // Favorites mapped to a single color via pickGroupColor; Save stores the
-  // group's current color as a flat title==body pair (shared with nodes).
-  const favSec = document.createElement("div");
-  favSec.className = "pix-nc-pal-section";
-  const favLbl = document.createElement("div");
-  favLbl.className = "pix-nc-pal-grouplabel";
-  favLbl.textContent = "Favorites";
-  favSec.appendChild(favLbl);
-  const favGrid = document.createElement("div");
-  favGrid.className = "pix-nc-pal-grid";
-  favSec.appendChild(favGrid);
+  // ── Picker + favourites row ──
+  const prow = document.createElement("div"); prow.className = "pix-nc-prow";
+  const pickerWrap = document.createElement("div"); pickerWrap.className = "pix-nc-pickerwrap";
+  const picker = createPixaromaColorPicker({
+    initialColor: hex, swatches: [], hideReset: true,
+    onChange: (c) => { if (c == null) return; hex = c; applyNow(); refreshHex(); },
+  });
+  pickerWrap.appendChild(picker.element);
+  prow.appendChild(pickerWrap);
+  onClose(() => picker.destroy());
+
+  const favCol = document.createElement("div"); favCol.className = "pix-nc-favcol";
+  const favLbl = document.createElement("div"); favLbl.className = "pix-nc-favlbl"; favLbl.textContent = "FAVS";
+  favCol.appendChild(favLbl);
+  const favGrid = document.createElement("div"); favGrid.className = "pix-nc-favgrid";
+  favCol.appendChild(favGrid);
+  prow.appendChild(favCol);
+  modal.appendChild(prow);
+
+  const applyFav = (c) => { hex = c; applyNow(); picker.setColor(c); refreshHex(); };
   function renderFavorites() {
     favGrid.innerHTML = "";
+    const add = document.createElement("div");
+    add.className = "pix-nc-addfav"; add.textContent = "+";
+    add.title = "Save the current color to favourites";
+    add.addEventListener("click", () => {
+      const favs = getGroupFavorites();
+      let idx = favs.findIndex((f) => !f);
+      if (idx < 0) idx = FAVORITE_SLOTS - 1;
+      saveGroupFavoriteSlot(idx, hex);
+      renderFavorites();
+    });
+    favGrid.appendChild(add);
     const favs = getGroupFavorites();
     for (let i = 0; i < FAVORITE_SLOTS; i++) {
       const f = favs[i];
-      const tile = document.createElement("div");
-      tile.className = "pix-nc-pal-fav";
-      let sw;
       if (f) {
-        const hex = pickGroupColor(f);
-        sw = makeSingleSwatch(hex);
-        sw.title = `Favorite ${i + 1} — apply`;
-        sw.addEventListener("mouseenter", () => preview.setColor(hex));
-        sw.addEventListener("click", () => applyOne(hex));
+        const c = pickGroupColor(f);
+        const sw = makeSingleSwatch(c);
+        sw.title = `Favourite ${i + 1} — click to apply, right-click to remove`;
+        sw.addEventListener("click", () => applyFav(c));
+        sw.addEventListener("contextmenu", (e) => {
+          e.preventDefault();
+          const a = getGroupFavorites().slice(); a[i] = null; setGroupFavorites(a); renderFavorites();
+        });
+        favGrid.appendChild(sw);
       } else {
-        sw = document.createElement("div");
-        sw.className = "pix-nc-pal-swatch pix-nc-pal-empty";
-        sw.textContent = "—";
-        sw.title = `Favorite ${i + 1} (empty)`;
+        const empty = document.createElement("div");
+        empty.className = "pix-nc-fav-empty"; empty.title = `Favourite ${i + 1} (empty)`;
+        favGrid.appendChild(empty);
       }
-      tile.appendChild(sw);
-      const save = document.createElement("button");
-      save.type = "button";
-      save.className = "pix-nc-pal-favsave";
-      save.textContent = "Save";
-      save.title = `Save the group's current color to slot ${i + 1}`;
-      save.addEventListener("click", (e) => {
-        e.stopPropagation();
-        const c = captureGroupColor(group);
-        saveGroupFavoriteSlot(i, c);
-        renderFavorites();
-      });
-      tile.appendChild(save);
-      favGrid.appendChild(tile);
     }
   }
   renderFavorites();
-  favGrid.addEventListener("mouseleave", showApplied);
-  scroll.appendChild(favSec);
 
-  const tools = document.createElement("div");
-  tools.className = "pix-nc-pal-tools";
-  tools.appendChild(palToolBtn("Pick custom…", () => { close(); pickCustomGroup(targets, group); }));
-  tools.appendChild(palToolBtn("Reset color", () => {
-    resetGroupColor(targets);
-    applied = captureGroupColor(group);
-    showApplied();
-  }));
-  scroll.appendChild(tools);
+  // ── Hex bar (single): dark field, orange code, live chip ──
+  const hexWrap = document.createElement("div"); hexWrap.className = "pix-nc-hexwrap";
+  const bar = buildHexBar(null, () => hex, (v) => { hex = v; applyNow(); picker.setColor(v); });
+  hexWrap.appendChild(bar.el);
+  modal.appendChild(hexWrap);
+  function refreshHex() { bar.set(hex); }
 
-  const { sec, grid } = palSection("Group colors");
+  // ── Preset group colors (scrollable, small 15-wide) ──
+  const scroll = document.createElement("div");
+  scroll.className = "pix-nc-pal-scroll";
+  modal.appendChild(scroll);
+  const plbl = document.createElement("div"); plbl.className = "pix-nc-presetlbl"; plbl.textContent = "Group colors";
+  scroll.appendChild(plbl);
+  const grid = document.createElement("div"); grid.className = "pix-nc-presetgrid";
   for (const c of GROUP_COLORS) {
     const sw = makeSingleSwatch(c.color);
     sw.title = c.label;
-    sw.addEventListener("mouseenter", () => preview.setColor(c.color));
-    sw.addEventListener("click", () => applyOne(c.color));
+    sw.addEventListener("click", () => applyFav(c.color));
     grid.appendChild(sw);
   }
-  grid.addEventListener("mouseleave", showApplied);
-  scroll.appendChild(sec);
+  scroll.appendChild(grid);
+
+  // ── Footer: save hint + Reset ──
+  const foot = document.createElement("div"); foot.className = "pix-nc-foot";
+  const hint = document.createElement("span"); hint.className = "pix-nc-hint";
+  hint.innerHTML = "<b>+</b> save current · click = apply";
+  foot.appendChild(hint);
+  foot.appendChild(palToolBtn("Reset color", () => {
+    resetGroupColor(targets);
+    hex = captureGroupColor(group);
+    picker.setColor(hex);
+    refreshHex();
+  }));
+  modal.appendChild(foot);
 
   place(getGroupScreenRect(group));
 }
