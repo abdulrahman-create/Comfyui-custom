@@ -642,15 +642,17 @@ function injectCSS() {
    separate "Pick custom" modal). ── */
 .pix-nc-pal-scroll { flex: 1 1 auto; min-height: 0; }
 .pix-nc-prow { display: flex; gap: 12px; align-items: flex-start; margin: 0 0 2px; }
-.pix-nc-pickerwrap { flex: 1 1 auto; min-width: 0; display: flex; overflow: hidden; }
+.pix-nc-pickerwrap { flex: 1 1 auto; min-width: 0; display: flex; }
 .pix-nc-pickerwrap .pix-cp { width: 100%; gap: 0; }
 /* FIXED-height SV plane — NOT aspect-ratio, NOT flex-stretch. The shared
    picker's renderSV writes canvas.height = clientHeight on every paint, so ANY
    layout-derived height (flex stretch, OR aspect-ratio inside a flex row) feeds
    back and the plane grows on every drag (the More-colors modal is immune only
    because it's a fixed-WIDTH block, not a flex item). A fixed CSS px height makes
-   clientHeight constant => canvas.height constant => no feedback. Hue matches it. */
-.pix-nc-pickerwrap .pix-cp-sv { height: 300px; border-radius: 6px; border-color: #45454c; }
+   clientHeight constant => canvas.height constant => no feedback. Hue matches it.
+   min-width:0 lets the SV shrink so the 16px hue strip fits beside it (a canvas's
+   intrinsic width otherwise acts as a min-content floor and pushes the hue out). */
+.pix-nc-pickerwrap .pix-cp-sv { height: 300px; min-width: 0; border-radius: 6px; border-color: #45454c; }
 .pix-nc-pickerwrap .pix-cp-hue { width: 16px; height: 300px; border-radius: 6px; border-color: #45454c; }
 .pix-nc-pickerwrap .pix-cp-hexrow { display: none; }
 /* 66px keeps the 8-row favourites column ~300px tall to match the SV height,
