@@ -34,6 +34,13 @@ function setupLabel(node, withResize = false) {
     node.bgcolor = "rgba(0,0,0,0)";
     node.flags = node.flags || {};
     node.flags.no_title = true;
+    // Title-less, self-sizing node: it snaps to its text (resizeLabelToContent /
+    // computeSize), so a manual resize is meaningless. In Nodes 2.0 the grips are
+    // hidden via CSS; in Legacy, disable the resize handle outright so a
+    // corner-drag can't stretch the node into an empty black box (the body fill
+    // showing past the small text pill). resizable is NOT serialized, so this
+    // never dirties a saved workflow (Vue Compat #18).
+    node.resizable = false;
     // Remove input slots so no connections can be made (only when some exist,
     // so a saved label with none doesn't get a needless write on load).
     if (node.inputs && node.inputs.length) node.inputs.length = 0;

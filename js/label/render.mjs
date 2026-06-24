@@ -216,6 +216,27 @@ export function injectVueLabelCSS() {
    deleting / double-click-to-edit all still work (those aren't these handles). */
 .lg-node:has(.pix-lbl-vue) > div:has(> svg),
 .lg-node:has(.pix-lbl-vue) > div.h-5.w-5 { display: none !important; }
+/* 6. Hide the Nodes 2.0 node FOOTER row (the muted status strip that holds the
+   category chip, e.g. "Pixaroma" from the "👑 Pixaroma/..." category). A newer
+   frontend added this row; on a title-less, transparent Label it's pure clutter
+   AND reserves a ~37px strip below the text, so the node frame can't hug the
+   label (the "contour" floating below + around the pill). The node sizes to its
+   content, so removing the footer lets the frame shrink back to the label.
+   We hide the node-body child that CONTAINS the chip (the footer row, robust to
+   its utility classes changing) PLUS the chip itself as a fallback. Scoped to
+   Label nodes via :has(); the label content is .pix-lbl-vue (no such class), so
+   only the footer/chip are hit. */
+.lg-node:has(.pix-lbl-vue) [class*="component-node-background"] > div:has(.bg-node-component-surface),
+.lg-node:has(.pix-lbl-vue) .bg-node-component-surface { display: none !important; }
+/* 7. Hide the node's RESTING border. A newer frontend draws it as an absolute
+   child overlay (<div class="pointer-events-none absolute border border-solid
+   ...">) instead of a border on .lg-node, so the host border:none rule above does
+   not reach it. It rendered as a faint rounded contour around the pill with a LARGER
+   corner radius than the label (the node frame's radius vs the pill's), reading as
+   an unwanted second outline. The resting border has NO data-testid; the SELECTION
+   outline overlay DOES (handled by rule #4 above), so :not([data-testid]) hides
+   only the resting frame and a picked label still shows a hugging outline. */
+.lg-node:has(.pix-lbl-vue) > div.absolute.border:not([data-testid]) { display: none !important; }
 `;
   document.head.appendChild(s);
 }
