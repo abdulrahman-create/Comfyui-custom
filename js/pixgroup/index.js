@@ -598,7 +598,7 @@ function onMove(e) {
       if (snap) { sdx = snap.dx || 0; sdy = snap.dy || 0; }
     }
     for (const s of starts) { s.gr.x = s.x + ddx + sdx; s.gr.y = s.y + ddy + sdy; }
-    const vue = !!window.LiteGraph?.vueNodesMode;
+    const vue = isVueNodes();
     for (const s of _drag.nodeStarts) {
       const nx = s.x + ddx + sdx, ny = s.y + ddy + sdy;
       // Nodes 2.0 renders node positions from a reactive layout store, so a silent
@@ -1176,8 +1176,11 @@ const GROUP_HELP = {
 };
 
 function installMenu() {
-  const C = window.LGraphCanvas?.prototype;
-  if (!C) return;
+  // Retry until LGraphCanvas exists (load-order varies across ComfyUI builds), same as
+  // installDraw / installFoldHooks — else the right-click group menu silently never
+  // installs for the whole session (the 700ms self-heal interval doesn't re-run this).
+  const C = (window.LiteGraph?.LGraphCanvas || window.LGraphCanvas)?.prototype;
+  if (!C) { setTimeout(installMenu, 200); return; }
   // NODE right-click menu: "Add Pixaroma Group (G)" wraps the selected node(s) —
   // same as pressing G. (Right-clicking a node selects it, so the selection is set.)
   if (C.getNodeMenuOptions && !C._pixGroupNodeMenuWrapped) {

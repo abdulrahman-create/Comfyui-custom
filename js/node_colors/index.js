@@ -463,8 +463,8 @@ function normalizePixFavorites(arr) {
         out[i] = {
           title: e.title, body: e.body,
           titleAlpha: Number.isFinite(e.titleAlpha) ? e.titleAlpha : 0.92,
-          bodyAlpha: Number.isFinite(e.bodyAlpha) ? e.bodyAlpha : 0.12,
-          fontSize: Number.isFinite(e.fontSize) ? e.fontSize : 14,
+          bodyAlpha: Number.isFinite(e.bodyAlpha) ? e.bodyAlpha : 0.5,
+          fontSize: Number.isFinite(e.fontSize) ? e.fontSize : 18,
         };
       }
     }
@@ -1386,8 +1386,8 @@ function openPixGroupPalette(g) {
   const curStyle = () => ({
     title: titleHex, body: bodyHex,
     titleAlpha: Number.isFinite(g.titleAlpha) ? g.titleAlpha : 0.92,
-    bodyAlpha: Number.isFinite(g.bodyAlpha) ? g.bodyAlpha : 0.12,
-    fontSize: Number.isFinite(g.fontSize) ? g.fontSize : 14,
+    bodyAlpha: Number.isFinite(g.bodyAlpha) ? g.bodyAlpha : 0.5,
+    fontSize: Number.isFinite(g.fontSize) ? g.fontSize : 18,
   });
   const applyFavStyle = (f) => {
     titleHex = f.title; bodyHex = f.body;
@@ -1568,7 +1568,13 @@ app.registerExtension({
         // render the old nested submenu, and the popup is the unified UI).
         options.push(null, {
           content: `👑 Pixaroma Node Colors (\\)${suffix}`,
-          callback: () => openNodeColorsPalette(targets, node),
+          // Mirror the "\" shortcut: also colour any co-selected native + Pixaroma
+          // groups in the same pick (was nodes-only), so right-click matches the
+          // shortcut and ComfyUI's own node+group colouring.
+          callback: () => openNodeColorsPalette(
+            targets, node, getSelectedGroups(),
+            window.PixaromaPixGroup?.getSelectedGroups?.() || [],
+          ),
         });
         options.push({
           content: `👑 Copy Node Colors`,

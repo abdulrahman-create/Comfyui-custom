@@ -820,6 +820,9 @@ function snapMovingRect(rect, opts) {
   opts = opts || {};
   const c = app.canvas;
   if (!state.enabled || !c || opts.bypass || !rect) { clearExternalGuides(); return { dx: 0, dy: 0 }; }
+  // Defensive: an external caller (pixgroup) could pass a non-finite rect; bail cleanly
+  // instead of computing NaN snap deltas that would get written back as positions.
+  if (![rect.x, rect.y, rect.w, rect.h].every(Number.isFinite)) { clearExternalGuides(); return { dx: 0, dy: 0 }; }
   const scale = c.ds?.scale || 1;
   const snapGraph = state.snapDistPx / scale;
   const stickyG = snapGraph * 1.5;
@@ -866,6 +869,8 @@ function snapResizeCorner(x, y, opts) {
   opts = opts || {};
   const c = app.canvas;
   if (!state.enabled || !c || opts.bypass) { clearExternalGuides(); return { x, y }; }
+  // Defensive: bail on a non-finite corner from an external caller (pixgroup).
+  if (!Number.isFinite(x) || !Number.isFinite(y)) { clearExternalGuides(); return { x, y }; }
   const scale = c.ds?.scale || 1;
   const snapGraph = state.snapDistPx / scale;
   const stickyG = snapGraph * 1.5;
