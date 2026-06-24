@@ -107,9 +107,9 @@ function tintedIcon(name, hex) {
 // → both title and body fall back to it; new groups carry separate fields).
 function gTitleColor(g) { return g.titleColor || g.color || DEFAULT_COLOR; }
 function gBodyColor(g)  { return g.bodyColor  || g.color || DEFAULT_COLOR; }
-function gTitleAlpha(g) { return Number.isFinite(g.titleAlpha) ? g.titleAlpha : 0.92; }
-function gBodyAlpha(g)  { return Number.isFinite(g.bodyAlpha)  ? g.bodyAlpha  : 0.12; }
-function gFontSize(g)   { return Number.isFinite(g.fontSize)   ? g.fontSize   : 14; }
+function gTitleAlpha(g) { return Number.isFinite(g.titleAlpha) ? g.titleAlpha : DEF_TITLE_A; }
+function gBodyAlpha(g)  { return Number.isFinite(g.bodyAlpha)  ? g.bodyAlpha  : DEF_BODY_A; }
+function gFontSize(g)   { return Number.isFinite(g.fontSize)   ? g.fontSize   : DEF_FONT; }
 // Header bar grows with the title font so big text never clips.
 function headerH(g) { return Math.round(Math.max(26, gFontSize(g) + 14)); }
 
@@ -686,8 +686,15 @@ function trackNativeGroupDrag(e) {
 let _cursorOverride = false;
 function onHover(e) {
   if (_drag) return;
-  trackNativeGroupDrag(e);
   const el = app.canvas?.canvas;
+  // Zero Pixaroma groups → nothing to hover, carry, or marquee-select. Bail before
+  // any per-move work (matches Align's "zero cost when nothing present" contract).
+  if (!ensureGroups().length) {
+    if (_cursorOverride && el) { el.style.cursor = ""; _cursorOverride = false; }
+    if (_hoverId !== null || _hotBtn !== null) { _hoverId = null; _hotBtn = null; repaint(); }
+    return;
+  }
+  trackNativeGroupDrag(e);
   if (!el) return;
   // Track ComfyUI's marquee rect while it drags, so onWinPointerUp can add our
   // groups to the selection (the marquee already grabs nodes + native groups).
@@ -1269,7 +1276,11 @@ app.registerExtension({
     try { updateFoldNodeHideCSS(); } catch (_e) {}
     // Nodes 2.0: re-assert the hide CSS for groups loaded already folded (a node
     // element may mount a beat after configure). Cheap: a no-op unless the set changed.
-    setInterval(() => { try { updateFoldNodeHideCSS(); } catch (_e) {} }, 700);
+    // installDraw is idempotent (returns if already wrapped); calling it here
+    // self-heals the draw if ComfyUI ever recreates app.canvas (the wrap is on the
+    // canvas INSTANCE, not the prototype). updateFoldNodeHideCSS re-asserts Nodes 2.0
+    // hide CSS for late-mounted nodes.
+    setInterval(() => { try { installDraw(); updateFoldNodeHideCSS(); } catch (_e) {} }, 700);
     window.addEventListener("pointerdown", onDown, true);
     window.addEventListener("pointermove", onHover, false);
     window.addEventListener("pointerup", onWinPointerUp, true);
