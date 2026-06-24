@@ -250,6 +250,8 @@ function fillTextVCenter(ctx, text, x, yMid) {
 
 let _selectedId = null;            // the PRIMARY selected group (last clicked) — drives palette values
 let _selectedIds = new Set();      // ALL selected groups (multi-select via shift-click)
+let _groupClipboard = null;        // copied group frames (Ctrl+C); frame/style only, not nodes
+let _groupClipActive = false;      // true when OUR groups were the last Ctrl+C (so Ctrl+V is ours)
 let _hoverId = null;        // group whose buttons are revealed (cursor inside it)
 let _hotBtn = null;         // { gid, key } of the button under the cursor
 let _hoverPt = null;        // last cursor pos in graph coords
@@ -493,6 +495,14 @@ function onDown(e) {
       if (e.shiftKey) { toggleGroupSelection(g); repaint(); return; } // shift = add/remove, no drag
       if (!_selectedIds.has(g.id)) selectGroup(g);              // plain click on an unselected group → select only it
       else { _selectedId = g.id; clearNativeSelection(); }      // already in the selection → keep it, drag them all
+      if (e.altKey) {
+        // alt-drag = duplicate the styled frame(s) and drag the COPIES (frame only;
+        // the nodes stay with the originals).
+        duplicateSelectedFrames();
+        const groupStarts = getSelectedGroups().map((gr) => ({ gr, x: gr.x, y: gr.y }));
+        _drag = { mode: "move", ox: p[0], oy: p[1], groupStarts, nodeStarts: [] };
+        startWin(); repaint(); return;
+      }
       // Move EVERY selected group + its members + nested frames (deduped) by one delta.
       const movedGroups = new Set(), movedNodes = new Map();
       for (const sgrp of getSelectedGroups()) {
@@ -597,9 +607,26 @@ function getSelected() {
 // commands/keybindings in registerExtension — so it's discoverable + rebindable
 // and can't silently fight another extension's key.)
 function onKeyDown(e) {
-  if (e.ctrlKey || e.metaKey || e.altKey) return;
   const t = e.target;
   if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
+  // Ctrl/Cmd + C / V — copy/paste the selected Pixaroma group FRAME(s). Only takes
+  // over Ctrl+V when OUR groups were the last thing copied (else ComfyUI handles it).
+  if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey) {
+    const k = (e.key || "").toLowerCase();
+    if (k === "c") {
+      const sel = getSelectedGroups();
+      const nativeNodes = app.canvas?.selected_nodes ? Object.keys(app.canvas.selected_nodes).length : 0;
+      if (sel.length && !nativeNodes) { _groupClipboard = sel.map((gr) => cloneGroupFrame(gr, 0, 0)); _groupClipActive = true; }
+      else if (nativeNodes) { _groupClipActive = false; } // nodes selected → defer to ComfyUI
+      return;
+    }
+    if (k === "v") {
+      if (_groupClipActive && _groupClipboard && _groupClipboard.length) { e.preventDefault(); e.stopImmediatePropagation(); pasteGroups(); }
+      return;
+    }
+    return;
+  }
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
   if (e.key === "Delete" || e.key === "Backspace") {
     if (document.querySelector(".pix-nc-pal, .pix-pg-rename")) return; // editing → don't delete
     const sel = getSelectedGroups();
@@ -667,6 +694,39 @@ function deleteGroup(g) {
   if (_selectedId === g.id) _selectedId = null;
   invalidateHidden(); updateFoldNodeHideCSS(); // a folded group deleted → un-hide its nodes
   markChanged();
+}
+
+// ── duplicate / copy / paste (FRAME ONLY — the styled container, not the nodes) ──
+// A duplicated group is a fresh frame (new id, offset, unfolded) carrying the same
+// title / size / colors / opacity / font. The nodes inside stay with the original.
+function cloneGroupFrame(g, dx, dy) {
+  const c = JSON.parse(JSON.stringify(g));
+  c.id = newId();
+  c.x = (g.x || 0) + (dx || 0);
+  c.y = (g.y || 0) + (dy || 0);
+  c.folded = false; delete c.foldNodes; delete c.foldGroups; delete c.hOpen; delete c.wOpen;
+  return c;
+}
+function duplicateSelectedFrames() {
+  const originals = getSelectedGroups();
+  if (!originals.length) return;
+  const gs = ensureGroups();
+  const newSel = new Set();
+  for (const og of originals) { const c = cloneGroupFrame(og, 0, 0); gs.push(c); newSel.add(c.id); }
+  _selectedIds = newSel; _selectedId = [...newSel].pop() || null;
+  markChanged();
+}
+function pasteGroups() {
+  if (!_groupClipboard || !_groupClipboard.length) return;
+  const gs = ensureGroups();
+  const newSel = new Set();
+  for (const data of _groupClipboard) {
+    const c = cloneGroupFrame(data, 40, 40);
+    gs.push(c); newSel.add(c.id);
+    data.x += 40; data.y += 40;   // cascade repeated pastes so they don't stack
+  }
+  _selectedIds = newSel; _selectedId = [...newSel].pop() || null;
+  clearNativeSelection(); markChanged();
 }
 
 // ── header-button actions ─────────────────────────────────────────────────
@@ -961,6 +1021,7 @@ function installMenu() {
     opts.push({ content: "👑 Add Pixaroma Group", callback: () => addGroup(p) });
     if (over) {
       opts.push({ content: "👑 Edit Pixaroma Group", callback: () => { if (window.PixaromaNodeColors?.openPixGroup) window.PixaromaNodeColors.openPixGroup(over); else inlineRename(over); } });
+      opts.push({ content: "👑 Duplicate Pixaroma Group", callback: () => { const c = cloneGroupFrame(over, 40, 40); ensureGroups().push(c); _selectedIds = new Set([c.id]); _selectedId = c.id; clearNativeSelection(); markChanged(); } });
       opts.push({ content: "👑 Copy Group Colors", callback: () => { window.PixaromaNodeColors?.setColorClipboard?.({ title: gTitleColor(over), body: gBodyColor(over) }); } });
       if (window.PixaromaNodeColors?.getColorClipboard?.()) opts.push({ content: "👑 Paste Group Colors", callback: () => { const c = window.PixaromaNodeColors?.getColorClipboard?.(); if (!c) return; const sel = getSelectedGroups(); const tgts = (sel.length && sel.includes(over)) ? sel : [over]; for (const t of tgts) { t.titleColor = c.title; t.bodyColor = c.body; } markChanged(); } });
       opts.push({ content: over.folded ? "👑 Unfold Group" : "👑 Fold Group", callback: () => toggleFold(over) });
