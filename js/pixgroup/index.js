@@ -492,7 +492,7 @@ function onDown(e) {
     }
     if (inHeader(g, p)) {
       e.preventDefault(); e.stopImmediatePropagation();
-      if (e.shiftKey) { toggleGroupSelection(g); repaint(); return; } // shift = add/remove, no drag
+      if (e.shiftKey || e.ctrlKey || e.metaKey) { toggleGroupSelection(g); repaint(); return; } // shift/ctrl/cmd = add or remove from selection, no drag
       if (!_selectedIds.has(g.id)) selectGroup(g);              // plain click on an unselected group → select only it
       else { _selectedId = g.id; clearNativeSelection(); }      // already in the selection → keep it, drag them all
       if (e.altKey) {
