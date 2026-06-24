@@ -1027,6 +1027,14 @@ function openNodeColorsPalette(targets, node, groups = []) {
   const applied = captureColors(node);
   let titleHex = applied.title, bodyHex = applied.body;
   let target = "title"; // which color the single picker edits
+  let linked = false;   // link: Body follows Title (Body = a darker tint of Title)
+  let linkBtn = null, linkIco = null;
+  const syncLink = () => {
+    if (!linkBtn) return;
+    linkBtn.style.background = linked ? "#f66744" : "rgba(255,255,255,0.05)";
+    linkBtn.style.border = "1px solid " + (linked ? "#f66744" : "rgba(255,255,255,0.14)");
+    linkIco.style.background = linked ? "#fff" : "#bbb";
+  };
 
   // Apply the current title+body to all target nodes; co-selected groups get
   // the more-saturated of the two as their single color (one pick → both).
@@ -1051,7 +1059,8 @@ function openNodeColorsPalette(targets, node, groups = []) {
     initialColor: titleHex, swatches: [], hideReset: true,
     onChange: (c) => {
       if (c == null) return;
-      if (target === "title") titleHex = c; else bodyHex = c;
+      if (target === "title") { titleHex = c; if (linked) bodyHex = darkBodyFor(c); }
+      else { bodyHex = c; if (linked) { linked = false; syncLink(); } }
       applyNow();
       refreshHex();
     },
@@ -1111,9 +1120,21 @@ function openNodeColorsPalette(targets, node, groups = []) {
 
   // ── Hex bars (Title / Body): dark field, orange code, live chip ──
   const hexWrap = document.createElement("div"); hexWrap.className = "pix-nc-hexwrap";
-  const titleBar = buildHexBar("Title", () => titleHex, (v) => { titleHex = v; applyNow(); if (target === "title") picker.setColor(v); });
-  const bodyBar  = buildHexBar("Body",  () => bodyHex,  (v) => { bodyHex  = v; applyNow(); if (target === "body")  picker.setColor(v); });
-  hexWrap.appendChild(titleBar.el); hexWrap.appendChild(bodyBar.el);
+  const titleBar = buildHexBar("Title", () => titleHex, (v) => { titleHex = v; if (linked) { bodyHex = darkBodyFor(v); bodyBar.set(bodyHex); } applyNow(); if (target === "title") picker.setColor(v); });
+  const bodyBar  = buildHexBar("Body",  () => bodyHex,  (v) => { bodyHex  = v; if (linked) { linked = false; syncLink(); } applyNow(); if (target === "body")  picker.setColor(v); });
+  // link toggle between Title & Body (when on, Body = a darker tint of Title)
+  linkBtn = document.createElement("button"); linkBtn.type = "button"; linkBtn.title = "Link Title & Body (Body = darker tint of Title)";
+  linkBtn.style.cssText = "flex:0 0 auto;width:30px;align-self:stretch;display:flex;align-items:center;justify-content:center;border-radius:6px;cursor:pointer;padding:0;";
+  linkIco = document.createElement("span");
+  linkIco.style.cssText = "width:16px;height:16px;-webkit-mask:url(/pixaroma/assets/icons/ui/link.svg) center/contain no-repeat;mask:url(/pixaroma/assets/icons/ui/link.svg) center/contain no-repeat;transform:rotate(45deg);";
+  linkBtn.appendChild(linkIco);
+  linkBtn.addEventListener("click", () => {
+    linked = !linked;
+    if (linked) { bodyHex = darkBodyFor(titleHex); bodyBar.set(bodyHex); if (target === "body") picker.setColor(bodyHex); }
+    applyNow(); refreshHex(); syncLink();
+  });
+  syncLink();
+  hexWrap.appendChild(titleBar.el); hexWrap.appendChild(linkBtn); hexWrap.appendChild(bodyBar.el);
   modal.appendChild(hexWrap);
   function refreshHex() { titleBar.set(titleHex); bodyBar.set(bodyHex); }
 
@@ -1157,7 +1178,7 @@ function openNodeColorsPalette(targets, node, groups = []) {
 
 function openGroupColorsPalette(targets, group) {
   const suffix = targets.length > 1 ? ` (${targets.length} groups)` : "";
-  const { modal, place, onClose } = makePalShell(`Pixaroma Group Colors${suffix}`);
+  const { modal, place, onClose } = makePalShell(`ComfyUI Group Color${suffix}`);
 
   let hex = captureGroupColor(group);
   const applyNow = () => applyGroupColor(targets, hex);
@@ -1176,14 +1197,17 @@ function openGroupColorsPalette(targets, group) {
       const s = document.createElement("input");
       s.type = "range"; s.min = String(min); s.max = String(max); s.step = String(step);
       s.title = title;
-      s.style.cssText = "flex:1 1 auto;accent-color:#f66744;cursor:pointer;";
+      s.className = "pix-nc-slider";
       s.value = String(initVal);
+      const setFill = () => { const pct = (max === min) ? 0 : ((Number(s.value) - min) / (max - min)) * 100; s.style.setProperty("--fill", Math.max(0, Math.min(100, pct)) + "%"); };
+      setFill();
       const v = document.createElement("span");
       v.style.cssText = "min-width:40px;text-align:right;font-size:12px;color:#bbb;";
       v.textContent = fmt(initVal);
       s.addEventListener("input", () => {
         const n = Number(s.value);
         v.textContent = fmt(n);
+        setFill();
         for (const g of targets) {
           g.flags = g.flags || {};
           onVal(g, n);
