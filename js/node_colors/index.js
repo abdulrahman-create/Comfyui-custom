@@ -1295,6 +1295,19 @@ function openPixGroupPalette(g) {
   let target = "title";
   const applyNow = () => { for (const t of targets) { t.titleColor = titleHex; t.bodyColor = bodyHex; } pixRepaint(); };
 
+  // Link Title & Body color: when ON, Body follows Title (the low body opacity
+  // gives the faint "same color" variation). Editing Body breaks the link; click
+  // the chain again to re-link. Persisted per group (travels with the workflow).
+  let linked = !!g.linkColors;
+  let linkBtn = null, linkIco = null;
+  const persistLink = () => { for (const t of targets) t.linkColors = linked; };
+  const syncLink = () => {
+    if (!linkBtn) return;
+    linkBtn.style.background = linked ? "#f66744" : "rgba(255,255,255,0.05)";
+    linkBtn.style.border = "1px solid " + (linked ? "#f66744" : "rgba(255,255,255,0.14)");
+    linkIco.style.background = linked ? "#fff" : "#bbb";
+  };
+
   const seg = document.createElement("div"); seg.className = "pix-nc-seg";
   const titleBtn = document.createElement("button"); titleBtn.type = "button"; titleBtn.textContent = "Title";
   const bodyBtn  = document.createElement("button"); bodyBtn.type  = "button"; bodyBtn.textContent  = "Body";
@@ -1305,7 +1318,12 @@ function openPixGroupPalette(g) {
   const pickerWrap = document.createElement("div"); pickerWrap.className = "pix-nc-pickerwrap";
   const picker = createPixaromaColorPicker({
     initialColor: titleHex, swatches: [], hideReset: true,
-    onChange: (c) => { if (c == null) return; if (target === "title") titleHex = c; else bodyHex = c; applyNow(); refreshHex(); },
+    onChange: (c) => {
+      if (c == null) return;
+      if (target === "title") { titleHex = c; if (linked) bodyHex = c; }
+      else { bodyHex = c; if (linked) { linked = false; persistLink(); syncLink(); } }
+      applyNow(); refreshHex();
+    },
   });
   pickerWrap.appendChild(picker.element); prow.appendChild(pickerWrap);
   onClose(() => picker.destroy());
@@ -1328,6 +1346,7 @@ function openPixGroupPalette(g) {
   const applyFavStyle = (f) => {
     titleHex = f.title; bodyHex = f.body;
     for (const t of targets) { t.titleColor = f.title; t.bodyColor = f.body; t.titleAlpha = f.titleAlpha; t.bodyAlpha = f.bodyAlpha; t.fontSize = f.fontSize; }
+    linked = false; persistLink(); syncLink();   // a favourite defines title + body → unlink
     picker.setColor(target === "title" ? titleHex : bodyHex);
     refreshHex(); refreshSliders(); pixRepaint();
   };
@@ -1359,9 +1378,21 @@ function openPixGroupPalette(g) {
   renderFavorites();
 
   const hexWrap = document.createElement("div"); hexWrap.className = "pix-nc-hexwrap";
-  const titleBar = buildHexBar("Title", () => titleHex, (v) => { titleHex = v; applyNow(); if (target === "title") picker.setColor(v); });
-  const bodyBar  = buildHexBar("Body",  () => bodyHex,  (v) => { bodyHex  = v; applyNow(); if (target === "body")  picker.setColor(v); });
-  hexWrap.appendChild(titleBar.el); hexWrap.appendChild(bodyBar.el); modal.appendChild(hexWrap);
+  const titleBar = buildHexBar("Title", () => titleHex, (v) => { titleHex = v; if (linked) { bodyHex = v; bodyBar.set(v); } applyNow(); if (target === "title") picker.setColor(v); });
+  const bodyBar  = buildHexBar("Body",  () => bodyHex,  (v) => { bodyHex  = v; if (linked) { linked = false; persistLink(); syncLink(); } applyNow(); if (target === "body")  picker.setColor(v); });
+  // chain toggle between the two hex bars
+  linkBtn = document.createElement("button"); linkBtn.type = "button"; linkBtn.title = "Link Title & Body color (Body follows Title)";
+  linkBtn.style.cssText = "flex:0 0 auto;width:30px;align-self:stretch;display:flex;align-items:center;justify-content:center;border-radius:6px;cursor:pointer;padding:0;";
+  linkIco = document.createElement("span");
+  linkIco.style.cssText = "width:16px;height:16px;-webkit-mask:url(/pixaroma/assets/icons/ui/link.svg) center/contain no-repeat;mask:url(/pixaroma/assets/icons/ui/link.svg) center/contain no-repeat;transform:rotate(45deg);";
+  linkBtn.appendChild(linkIco);
+  linkBtn.addEventListener("click", () => {
+    linked = !linked;
+    if (linked) { bodyHex = titleHex; bodyBar.set(bodyHex); if (target === "body") picker.setColor(bodyHex); }
+    persistLink(); applyNow(); refreshHex(); syncLink();
+  });
+  syncLink();
+  hexWrap.appendChild(titleBar.el); hexWrap.appendChild(linkBtn); hexWrap.appendChild(bodyBar.el); modal.appendChild(hexWrap);
   function refreshHex() { titleBar.set(titleHex); bodyBar.set(bodyHex); }
 
   titleBtn.addEventListener("click", () => { target = "title"; syncSeg(); picker.setColor(titleHex); });
