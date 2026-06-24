@@ -1049,8 +1049,9 @@ function palToolBtn(text, onClick) {
   return b;
 }
 
-function openNodeColorsPalette(targets, node, groups = []) {
-  const gsuffix = groups.length ? ` + ${groups.length} group${groups.length > 1 ? "s" : ""}` : "";
+function openNodeColorsPalette(targets, node, groups = [], pixGroups = []) {
+  const gcount = groups.length + pixGroups.length;
+  const gsuffix = gcount ? ` + ${gcount} group${gcount > 1 ? "s" : ""}` : "";
   const suffix = (targets.length > 1 ? ` (${targets.length} nodes)` : "") + gsuffix;
   const { modal, place, onClose } = makePalShell(`Pixaroma Node Colors${suffix}`);
 
@@ -1071,6 +1072,8 @@ function openNodeColorsPalette(targets, node, groups = []) {
   const applyNow = () => {
     applyColors(targets, titleHex, bodyHex);
     if (groups.length) applyGroupColor(groups, pickGroupColor({ title: titleHex, body: bodyHex }));
+    // Pixaroma groups have their OWN title + body, so map directly (no single-colour squash).
+    if (pixGroups.length) { for (const pg of pixGroups) { pg.titleColor = titleHex; pg.bodyColor = bodyHex; } pixRepaint(); }
   };
 
   // ── Title / Body toggle: which color the one picker edits ──
@@ -1197,6 +1200,8 @@ function openNodeColorsPalette(targets, node, groups = []) {
   foot.appendChild(palToolBtn("Reset colors", () => {
     resetColors(targets);
     if (groups.length) resetGroupColor(groups);
+    // Pixaroma groups reset to their neutral default look (DEF_TITLE/DEF_BODY in js/pixgroup).
+    if (pixGroups.length) { for (const pg of pixGroups) { pg.titleColor = "#4a4a4e"; pg.bodyColor = "#2a2a2a"; } pixRepaint(); }
     const c = captureColors(node);
     titleHex = c.title; bodyHex = c.body;
     picker.setColor(target === "title" ? titleHex : bodyHex);
@@ -1569,14 +1574,14 @@ function openColorsForSelection() {
   if (document.querySelector(".pix-nc-pal")) return;
   const c = app.canvas;
   if (!c) return;
-  // A selected Pixaroma group wins: if one is selected, color the GROUP, even
-  // when a node is also selected (nodes have ComfyUI's own colour picker in the
-  // floating toolbar, so the group would otherwise be unreachable here).
+  const nodes = c.selected_nodes ? Object.values(c.selected_nodes) : [];
+  const groups = getSelectedGroups();                                     // native ComfyUI groups
+  const pixGroups = window.PixaromaPixGroup?.getSelectedGroups?.() || []; // our Pixaroma groups
+  // Nodes selected → the node palette, which ALSO colors any co-selected groups
+  // (native AND Pixaroma) in the same pick — like ComfyUI's own node+group colouring.
+  if (nodes.length) { openNodeColorsPalette(getTargetNodes(nodes[0]), nodes[0], groups, pixGroups); return; }
   const pix = window.PixaromaPixGroup?.getSelected?.();
   if (pix) { openPixGroupPalette(pix); return; }
-  const nodes = c.selected_nodes ? Object.values(c.selected_nodes) : [];
-  const groups = getSelectedGroups();
-  if (nodes.length) { openNodeColorsPalette(getTargetNodes(nodes[0]), nodes[0], groups); return; }
   if (groups.length) openGroupColorsPalette(groups, groups[0]);
 }
 
