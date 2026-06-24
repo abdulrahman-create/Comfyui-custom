@@ -137,6 +137,22 @@ export class LabelEditor {
     this.close();
   }
 
+  // Reset styling to defaults (keeps the typed text). Rebuilds the editor UI in
+  // place so every control reflects the defaults; the change only reaches the
+  // node when the user clicks Save (Cancel still discards everything).
+  _resetAll() {
+    const keepText = this.cfg.text;
+    this.cfg = { ...DEFAULTS, text: keepText };
+    const old = this._el;
+    this._picker?.destroy?.();
+    this._picker = null;
+    this._build();
+    if (old && old.parentNode) old.replaceWith(this._el);
+    else document.body.appendChild(this._el);
+    this._updatePreview();
+    requestAnimationFrame(() => requestAnimationFrame(() => this._alignColorColumns()));
+  }
+
   _build() {
     const c = this.cfg;
     const el = (tag, cls) => {
@@ -451,6 +467,11 @@ export class LabelEditor {
     helpBtn.textContent = "?";
     helpBtn.title = "Help";
     helpBtn.onclick = () => this._showHelp();
+    const resetBtn = el("button", "pix-lbl-btn-reset");
+    resetBtn.textContent = "Reset";
+    resetBtn.title = "Reset styling to defaults (keeps your text)";
+    resetBtn.onclick = () => this._resetAll();
+    const spacer = el("div", "pix-lbl-footer-spacer");
     const cancelBtn = el("button", "pix-lbl-btn-cancel");
     cancelBtn.textContent = "Cancel";
     cancelBtn.onclick = () => this.close();
@@ -458,6 +479,8 @@ export class LabelEditor {
     saveBtn.textContent = "Save";
     saveBtn.onclick = () => this.save();
     footer.appendChild(helpBtn);
+    footer.appendChild(resetBtn);
+    footer.appendChild(spacer);
     footer.appendChild(cancelBtn);
     footer.appendChild(saveBtn);
     panel.appendChild(footer);

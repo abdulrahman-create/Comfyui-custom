@@ -318,12 +318,16 @@ export function injectCSS() {
     help-overlay CSS needed.) */
 /* Round help button (matches the Group Colors / toolbar look) */
 .pix-lbl-help-btn {
-    margin-right: auto; width: 24px; height: 24px; border-radius: 50%;
+    width: 24px; height: 24px; border-radius: 50%;
     border: none; background: ${BRAND}; color: #fff; font-size: 13px; font-weight: 700;
     cursor: pointer; line-height: 1; padding: 0; flex-shrink: 0;
     display: flex; align-items: center; justify-content: center;
 }
 .pix-lbl-help-btn:hover { filter: brightness(1.12); }
+/* Reset button sits next to Help on the left; spacer pushes Cancel/Save right. */
+.pix-lbl-footer-spacer { flex: 1 1 auto; }
+.pix-lbl-btn-reset { background: #252527; color: #aaa; border: 1px solid #333; }
+.pix-lbl-btn-reset:hover { background: #2e2e30; color: #ddd; }
 /* Slider + editable number + spinner arrows (matches .pix-nc-slider) */
 /* inline label (left of the slider) so the row is one line - saves height */
 .pix-lbl-slbl { flex: 0 0 auto; min-width: 58px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: #777; white-space: nowrap; }
