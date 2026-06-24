@@ -627,6 +627,11 @@ function setupLoadImageNode(node) {
   // shrink). measureContentHeight uses the FULL preview min (the natural/default size);
   // measureFloorHeight uses a SMALLER one (the manual-resize floor) so the node can be
   // dragged compact. Children live on the inner flex layer, so measure inner.children.
+  // previewMin -> last laid-out height. Returned while the node is HIDDEN (children
+  // measure 0) so a fold/unfold of a Pixaroma group can't grow the node (see the
+  // fold/unfold note inside measureH). Empty at first, so the genuine pre-first-paint
+  // measure still falls back to the 280 placeholder.
+  const _lastGoodH = {};
   function measureH(previewMin) {
     let totalH = 0;
     let visible = 0;
@@ -640,11 +645,20 @@ function setupLoadImageNode(node) {
     }
     const padding = 10; // root padding: 2px top + 8px bottom
     const gaps = Math.max(0, visible - 1) * 7; // flex `gap: 7px` between children
-    // Before the DOM widget is attached to the document, every child's offsetHeight
-    // is 0 (queueMicrotask renders before LiteGraph's first paint), so return a sane
-    // placeholder in that pre-layout case ONLY. Once laid out, hug the real content.
-    if (totalH < 20) return 280;
-    return totalH + padding + gaps;
+    // When every child's offsetHeight is 0 (totalH ~0) there are two cases: (a)
+    // pre-first-paint (queueMicrotask renders before LiteGraph's first paint), or
+    // (b) the node is HIDDEN - e.g. its Pixaroma group is folded, so LiteGraph sets
+    // the widget root display:none. In BOTH, return the LAST GOOD laid-out measure
+    // (or the 280 placeholder if we've never measured yet) - NOT a fixed 280.
+    // Returning 280 while hidden corrupted the height: LiteGraph captured 280 as the
+    // controls-widget size, grew node.size to fit, and on unfold the node stayed tall
+    // (size is grow-only) even though the real content is smaller - so the node "grew
+    // and overflowed the group" by (280 - content) px (legacy fold/unfold bug
+    // confirmed 2026-06-24: size 596->646, rootOffH 230->280, while measure stayed 230).
+    if (totalH < 20) return _lastGoodH[previewMin] || 280;
+    const result = totalH + padding + gaps;
+    _lastGoodH[previewMin] = result;
+    return result;
   }
   const measureContentHeight = () => measureH(LI_PREVIEW_FILL_MIN);
   const measureFloorHeight = () => measureH(LI_PREVIEW_FLOOR_MIN);
