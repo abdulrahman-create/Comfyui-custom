@@ -1,16 +1,39 @@
 import { app } from "/scripts/app.js";
-import { BRAND, installFocusTrap } from "../shared/index.mjs";
+import { createPixaromaColorPicker, PIXAROMA_PALETTE } from "../shared/color_picker.mjs";
+import { openHelpPopup, closeHelpPopup } from "../shared/help.mjs";
 import {
   DEFAULTS,
   FONT_CHOICES,
   FONT_SHORT,
-  TEXT_SWATCHES,
-  BG_SWATCHES,
-  fontStr,
   measureLabel,
   renderLabelToCanvas,
   injectCSS,
 } from "./render.mjs";
+
+// Shared-style help (same themed popup as the Group help). Registered for the
+// selection-toolbar ? button (index.js) AND opened by the in-editor ? button.
+export const LABEL_HELP = {
+  title: "Label Pixaroma",
+  tagline: "A floating text caption for documenting your workflow. Double-click a label on the canvas to open this editor.",
+  sections: [
+    { heading: "Text", body: "Type any text - multiple lines and emoji are supported." },
+    { heading: "Typography", defs: [
+      ["Font", "Switch between Arial, Times, Courier and Impact."],
+      ["B", "Toggle bold on or off."],
+      ["Align", "Left, center or right alignment for multi-line text."],
+      ["Font Size", "Drag the slider, type a value, or use the arrows (8 to 256 px)."],
+    ] },
+    { heading: "Colors", body: "Click the `Background` or `Text` bar to choose which one you are changing - each bar shows its current color code. Then pick a swatch on the right, drag in the color square on the left, or type a hex code straight into the bar. The `Transparent` button makes the background see-through (Background only)." },
+    { heading: "Spacing & Style", defs: [
+      ["Padding", "Space between the text and the label edge."],
+      ["Radius", "Corner roundness of the background."],
+      ["Opacity", "Overall transparency of the label."],
+      ["Line Height", "Spacing between lines of text."],
+    ] },
+    { heading: "Add to canvas", body: "Right-click the canvas and pick `Add Label Pixaroma` to drop a new label, then double-click it to edit." },
+  ],
+  footer: "Pixaroma - youtube.com/@pixaroma",
+};
 
 // ─── Config helpers ──────────────────────────────────────────
 export function parseCfg(node) {
@@ -66,9 +89,26 @@ export class LabelEditor {
     injectCSS();
     this._build();
     document.body.appendChild(this._el);
-    installFocusTrap(this._el);
     this._updatePreview();
+    // Block ComfyUI's canvas shortcuts while the editor is open, but LET keys
+    // through when a form control is focused so typing + Enter / Arrow in the
+    // editor's inputs (slider number fields, hex, textarea) work normally. Esc
+    // closes the help overlay if open, otherwise the editor.
+    // NB: we deliberately do NOT call installFocusTrap - its mouseup-refocus steals
+    // focus on every button / swatch / canvas click, which breaks typing in this
+    // form-heavy editor (Vue Frontend Compatibility #7). The capture handlers below
+    // are enough to isolate ComfyUI's canvas shortcuts.
     this._keyBlock = (e) => {
+      if (e.type === "keydown" && e.key === "Escape") {
+        e.stopImmediatePropagation();
+        e.preventDefault();
+        if (document.querySelector(".pix-help-backdrop")) closeHelpPopup();
+        else this.close();
+        return;
+      }
+      const t = e.target;
+      const tag = t && t.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (t && t.isContentEditable)) return;
       e.stopImmediatePropagation();
     };
     window.addEventListener("keydown", this._keyBlock, true);
@@ -80,6 +120,9 @@ export class LabelEditor {
     window.removeEventListener("keydown", this._keyBlock, true);
     window.removeEventListener("keyup", this._keyBlock, true);
     window.removeEventListener("keypress", this._keyBlock, true);
+    closeHelpPopup();
+    this._picker?.destroy?.();
+    this._picker = null;
     if (this._el) {
       this._el.remove();
       this._el = null;
@@ -125,7 +168,7 @@ export class LabelEditor {
     titleSpan.appendChild(brandSpan);
     header.appendChild(titleSpan);
     const closeBtn = el("button", "pix-lbl-close");
-    closeBtn.textContent = "\u00d7";
+    closeBtn.textContent = "×";
     closeBtn.onclick = () => this.close();
     header.appendChild(closeBtn);
     panel.appendChild(header);
@@ -147,7 +190,7 @@ export class LabelEditor {
     textField.appendChild(ta);
     body.appendChild(textField);
 
-    // ── Preview
+    // ── Preview (fit-to-area, DPR-sharp, never clipped — see _renderPreview)
     const prevSection = el("div");
     prevSection.appendChild(lbl("Preview"));
     const prevWrap = el("div", "pix-lbl-preview");
@@ -212,231 +255,189 @@ export class LabelEditor {
 
     typoSection.appendChild(fontBtns);
 
-    // Size on its own row (label + slider + value inline)
-    const sizeRow = el("div", "pix-lbl-range-wrap");
-    sizeRow.style.marginTop = "8px";
-    const sizeLbl = el("span");
-    sizeLbl.textContent = "Font Size";
-    sizeLbl.style.cssText = "color:#777;font-size:10px;text-transform:uppercase;letter-spacing:0.6px;white-space:nowrap;";
-    const sizeRange = document.createElement("input");
-    sizeRange.type = "range";
-    sizeRange.min = 8;
-    sizeRange.max = 256;
-    sizeRange.value = c.fontSize;
-    sizeRange.style.cssText = "flex:1;accent-color:" + BRAND + ";";
-    const sizeInput = document.createElement("input");
-    sizeInput.type = "number";
-    sizeInput.min = 8;
-    sizeInput.max = 256;
-    sizeInput.value = c.fontSize;
-    sizeInput.className = "pix-lbl-num";
-    sizeRange.addEventListener("input", () => {
-      c.fontSize = Number(sizeRange.value);
-      sizeInput.value = c.fontSize;
-      this._updatePreview();
-    });
-    sizeInput.addEventListener("input", () => {
-      const v = Math.max(8, Math.min(256, Number(sizeInput.value) || 8));
-      c.fontSize = v;
-      sizeRange.value = v;
-      this._updatePreview();
-    });
-    sizeRow.appendChild(sizeLbl);
-    sizeRow.appendChild(sizeRange);
-    sizeRow.appendChild(sizeInput);
-    typoSection.appendChild(sizeRow);
+    // Font size — full-width slider + number + spinner
+    const fsField = this._sliderRow("Font Size", 8, 256, 1,
+      () => c.fontSize, (n) => { c.fontSize = n; },
+      (n) => String(Math.round(n)), (x) => x);
+    fsField.style.marginTop = "8px";
+    typoSection.appendChild(fsField);
     body.appendChild(typoSection);
 
-    // ── Colors (2-column grid)
+    // ── Colors: two Group-style bars (chip + label + editable hex) that double
+    //    as the target selector, plus the shared SV/hue/hex picker (left) and our
+    //    own swatch grid (right). The bars match the Group "Title #hex / Body #hex"
+    //    look so it's obvious WHICH colour you're changing. Transparent is a
+    //    Background-only option shown as a labelled button below the grid, so the
+    //    swatch grid always fills complete rows for BOTH targets (no empty cells).
     const colorSection = el("div");
     colorSection.appendChild(lbl("Colors"));
-    const colorGrid = el("div", "pix-lbl-color-grid");
 
-    // Background column
-    const bgCol = el("div", "pix-lbl-color-col");
-    const bgColLbl = el("div", "pix-lbl-lbl");
-    bgColLbl.textContent = "Background";
-    bgColLbl.style.color = "#444";
-    bgCol.appendChild(bgColLbl);
-    const bgSwatches = el("div", "pix-lbl-swatches");
-    const transpSw = el("div", "pix-lbl-swatch-transp");
-    transpSw.title = "Transparent";
-    if (c.backgroundColor === "transparent") transpSw.classList.add("active");
-    transpSw.onclick = () => {
-      c.backgroundColor = "transparent";
-      bgPicker.disabled = true;
-      bgHex.disabled = true;
-      bgSwatches
-        .querySelectorAll(".pix-lbl-swatch,.pix-lbl-swatch-transp")
-        .forEach((s) => s.classList.remove("active"));
-      transpSw.classList.add("active");
-      this._updatePreview();
+    let target = "bg";
+    const curColorFor = (k) => (k === "bg" ? c.backgroundColor : c.fontColor);
+    const isTransp = () => c.backgroundColor === "transparent";
+
+    // Two color bars (Background / Text) — click to select, type to edit.
+    const bars = el("div", "pix-lbl-cbars");
+    const mkBar = (key, text) => {
+      const bar = el("button", "pix-lbl-cbar");
+      bar.type = "button";
+      const chip = el("span", "pix-lbl-cbar-chip");
+      const k = el("span", "pix-lbl-cbar-k");
+      k.textContent = text;
+      const inp = document.createElement("input");
+      inp.type = "text";
+      inp.className = "pix-lbl-cbar-v";
+      inp.spellcheck = false;
+      inp.setAttribute("aria-label", text + " color hex");
+      bar.appendChild(chip);
+      bar.appendChild(k);
+      bar.appendChild(inp);
+      bar._key = key; bar._chip = chip; bar._inp = inp;
+      bars.appendChild(bar);
+      return bar;
     };
-    bgSwatches.appendChild(transpSw);
-    this._buildSwatches(
-      bgSwatches,
-      BG_SWATCHES,
-      c.backgroundColor,
-      (color, swEls) => {
-        c.backgroundColor = color;
-        bgPicker.value = color;
-        bgPicker.disabled = false;
-        bgHex.value = color;
-        bgHex.disabled = false;
-        transpSw.classList.remove("active");
-        swEls.forEach((s) =>
-          s.classList.toggle("active", s.dataset.color === color),
-        );
-        this._updatePreview();
-      },
-    );
-    bgCol.appendChild(bgSwatches);
-    const bgRow = el("div", "pix-lbl-color-row");
-    const bgPicker = document.createElement("input");
-    bgPicker.type = "color";
-    bgPicker.value =
-      c.backgroundColor === "transparent" ? "#333333" : c.backgroundColor;
-    bgPicker.disabled = c.backgroundColor === "transparent";
-    const bgHex = document.createElement("input");
-    bgHex.type = "text";
-    bgHex.className = "pix-lbl-hex";
-    bgHex.value = c.backgroundColor === "transparent" ? "" : c.backgroundColor;
-    bgHex.disabled = c.backgroundColor === "transparent";
-    bgHex.placeholder = "transparent";
-    bgPicker.addEventListener("input", () => {
-      c.backgroundColor = bgPicker.value;
-      bgHex.value = bgPicker.value;
-      transpSw.classList.remove("active");
-      this._clearSwatchActive(bgSwatches, bgPicker.value);
-      this._updatePreview();
-    });
-    bgHex.addEventListener("input", () => {
-      const v = bgHex.value.startsWith("#") ? bgHex.value : `#${bgHex.value}`;
-      if (/^#[0-9a-fA-F]{6}$/.test(v)) {
-        c.backgroundColor = v;
-        bgPicker.value = v;
-        transpSw.classList.remove("active");
-        this._clearSwatchActive(bgSwatches, v);
-        this._updatePreview();
-      }
-    });
-    bgRow.appendChild(bgPicker);
-    bgRow.appendChild(bgHex);
-    bgCol.appendChild(bgRow);
-    colorGrid.appendChild(bgCol);
+    const bgBar = mkBar("bg", "Background");
+    const txBar = mkBar("text", "Text");
+    const allBars = [bgBar, txBar];
+    colorSection.appendChild(bars);
 
-    // Text Color column
-    const tcCol = el("div", "pix-lbl-color-col");
-    const tcColLbl = el("div", "pix-lbl-lbl");
-    tcColLbl.textContent = "Text";
-    tcColLbl.style.color = "#444";
-    tcCol.appendChild(tcColLbl);
-    const tcSwatches = el("div", "pix-lbl-swatches");
-    this._buildSwatches(
-      tcSwatches,
-      TEXT_SWATCHES,
-      c.fontColor,
-      (color, swEls) => {
-        c.fontColor = color;
-        tcPicker.value = color;
-        tcHex.value = color;
-        swEls.forEach((s) =>
-          s.classList.toggle("active", s.dataset.color === color),
-        );
-        this._updatePreview();
-      },
-    );
-    tcCol.appendChild(tcSwatches);
-    const tcRow = el("div", "pix-lbl-color-row");
-    const tcPicker = document.createElement("input");
-    tcPicker.type = "color";
-    tcPicker.value = c.fontColor;
-    const tcHex = document.createElement("input");
-    tcHex.type = "text";
-    tcHex.className = "pix-lbl-hex";
-    tcHex.value = c.fontColor;
-    tcPicker.addEventListener("input", () => {
-      c.fontColor = tcPicker.value;
-      tcHex.value = tcPicker.value;
-      this._clearSwatchActive(tcSwatches, tcPicker.value);
-      this._updatePreview();
-    });
-    tcHex.addEventListener("input", () => {
-      const v = tcHex.value.startsWith("#") ? tcHex.value : `#${tcHex.value}`;
-      if (/^#[0-9a-fA-F]{6}$/.test(v)) {
-        c.fontColor = v;
-        tcPicker.value = v;
-        this._clearSwatchActive(tcSwatches, v);
-        this._updatePreview();
-      }
-    });
-    tcRow.appendChild(tcPicker);
-    tcRow.appendChild(tcHex);
-    tcCol.appendChild(tcRow);
-    colorGrid.appendChild(tcCol);
+    // Swatch grid (right column): the 36 shared palette colours in a perfect
+    // 9x4 grid (no transparent tile — it lives below as a labelled button so the
+    // grid never has empty cells, for either target).
+    const swGrid = el("div", "pix-lbl-swgrid");
+    const swTiles = [];
+    for (const hex of PIXAROMA_PALETTE) {
+      const t = el("button", "pix-lbl-swtile");
+      t.style.background = hex;
+      t.title = hex;
+      swGrid.appendChild(t);
+      swTiles.push({ el: t, hex });
+    }
 
-    colorSection.appendChild(colorGrid);
+    // Transparent — Background only, below the grid (a labelled control, never an
+    // empty grid cell).
+    const transBtn = el("button", "pix-lbl-transbtn");
+    const transSw = el("span", "pix-lbl-transbtn-sw");
+    transBtn.appendChild(transSw);
+    transBtn.append("Transparent");
+    transBtn.title = "Transparent background";
+
+    const syncBars = () => {
+      for (const bar of allBars) {
+        const cur = curColorFor(bar._key);
+        const tr = bar._key === "bg" && cur === "transparent";
+        bar._chip.classList.toggle("is-transp", tr);
+        bar._chip.style.background = tr ? "" : cur;
+        if (document.activeElement !== bar._inp) bar._inp.value = tr ? "" : cur;
+        bar._inp.placeholder = tr ? "transparent" : "";
+        bar.classList.toggle("active", target === bar._key);
+      }
+    };
+    const syncSwSel = () => {
+      const cur = curColorFor(target);
+      for (const { el: t, hex } of swTiles) {
+        t.classList.toggle("active", !!(cur && hex.toLowerCase() === String(cur).toLowerCase()));
+      }
+      transBtn.classList.toggle("active", target === "bg" && isTransp());
+    };
+    const syncTransVis = () => { transBtn.style.display = target === "bg" ? "" : "none"; };
+
+    const picker = createPixaromaColorPicker({
+      initialColor: isTransp() ? "#333333" : c.backgroundColor,
+      swatches: [],
+      showClear: false,
+      hideReset: true,   // our swatch grid already provides defaults; avoids a
+                         // Reset that would set Text to the background gray
+      resetColor: "#333333",
+      onChange: (color) => {
+        if (!color) return;
+        if (target === "bg") c.backgroundColor = color;
+        else c.fontColor = color;
+        syncBars(); syncSwSel(); this._updatePreview();
+      },
+    });
+    this._picker = picker;
+    // Layout: SV picker (left) | swatch grid + Transparent (right), full width.
+    const colorRow = el("div", "pix-lbl-colorrow");
+    const pickerCol = el("div", "pix-lbl-pickercol");
+    pickerCol.appendChild(picker.element);
+    const swatchCol = el("div", "pix-lbl-swatchcol");
+    swatchCol.appendChild(swGrid);
+    swatchCol.appendChild(transBtn);
+    colorRow.appendChild(pickerCol);
+    colorRow.appendChild(swatchCol);
+    colorSection.appendChild(colorRow);
+
+    const selectTarget = (k) => {
+      target = k;
+      const cur = curColorFor(k);
+      picker.setColor(k === "bg" && cur === "transparent" ? "#333333" : cur);
+      syncBars(); syncSwSel(); syncTransVis();
+    };
+
+    // Bar interactions: click the bar selects that target; the hex input edits live.
+    for (const bar of allBars) {
+      bar.addEventListener("click", (e) => {
+        if (e.target === bar._inp) return; // the input manages its own focus
+        selectTarget(bar._key);
+      });
+      bar._inp.addEventListener("mousedown", (e) => e.stopPropagation());
+      bar._inp.addEventListener("focus", () => { selectTarget(bar._key); bar._inp.select(); });
+      bar._inp.addEventListener("input", () => {
+        let v = bar._inp.value.trim();
+        if (!v.startsWith("#")) v = "#" + v;
+        if (/^#[0-9a-f]{6}$/i.test(v)) {
+          if (bar._key === "bg") c.backgroundColor = v;
+          else c.fontColor = v;
+          picker.setColor(v);
+          syncBars(); syncSwSel(); this._updatePreview();
+        }
+      });
+      bar._inp.addEventListener("keydown", (e) => {
+        e.stopPropagation();
+        if (e.key === "Enter") bar._inp.blur();
+      });
+      bar._inp.addEventListener("blur", () => syncBars());
+    }
+
+    for (const { el: t, hex } of swTiles) {
+      t.onclick = () => {
+        if (target === "bg") c.backgroundColor = hex;
+        else c.fontColor = hex;
+        picker.setColor(hex);          // move the SV marker to the picked swatch
+        syncBars(); syncSwSel(); this._updatePreview();
+      };
+    }
+    transBtn.onclick = () => {
+      if (target !== "bg") return;     // transparent is Background-only
+      c.backgroundColor = "transparent";
+      syncBars(); syncSwSel(); this._updatePreview();
+    };
+
+    syncBars(); syncSwSel(); syncTransVis();
     body.appendChild(colorSection);
 
-    // ── Spacing (2x2 grid)
+    // ── Spacing & Style — 2x2 grid of slider + number + spinner
     const spacingSection = el("div");
     spacingSection.appendChild(lbl("Spacing & Style"));
     const spacingGrid = el("div", "pix-lbl-spacing-grid");
-    const spacingFields = [
-      [
-        "Padding",
-        c.padding,
-        0,
-        60,
-        1,
-        (v) => {
-          c.padding = v;
-        },
-      ],
-      [
-        "Radius",
-        c.borderRadius,
-        0,
-        40,
-        1,
-        (v) => {
-          c.borderRadius = v;
-        },
-      ],
-      [
-        "Opacity",
-        c.opacity,
-        0,
-        1,
-        0.05,
-        (v) => {
-          c.opacity = v;
-        },
-      ],
-      [
-        "Line Height",
-        c.lineHeight,
-        1,
-        3,
-        0.1,
-        (v) => {
-          c.lineHeight = v;
-        },
-      ],
-    ];
-    for (const [label, val, min, max, step, onChange] of spacingFields) {
-      const f = this._rangeField(label, val, min, max, step, onChange);
-      f.className = "pix-lbl-spacing-field";
-      spacingGrid.appendChild(f);
-    }
+    spacingGrid.appendChild(this._sliderRow("Padding", 0, 60, 1,
+      () => c.padding, (n) => { c.padding = n; }, (n) => String(Math.round(n)), (x) => x));
+    spacingGrid.appendChild(this._sliderRow("Radius", 0, 40, 1,
+      () => c.borderRadius, (n) => { c.borderRadius = n; }, (n) => String(Math.round(n)), (x) => x));
+    spacingGrid.appendChild(this._sliderRow("Opacity", 0, 1, 0.05,
+      () => c.opacity, (n) => { c.opacity = n; }, (n) => Number(n).toFixed(2), (x) => x));
+    spacingGrid.appendChild(this._sliderRow("Line Height", 1, 3, 0.1,
+      () => c.lineHeight, (n) => { c.lineHeight = n; }, (n) => Number(n).toFixed(1), (x) => x));
     spacingSection.appendChild(spacingGrid);
     body.appendChild(spacingSection);
 
     // ── Footer
     const footer = el("div", "pix-lbl-footer");
-    const helpBtn = el("button", "pix-lbl-btn-help");
-    helpBtn.textContent = "? Help";
-    helpBtn.onclick = () => this._showHelp(panel);
+    const helpBtn = el("button", "pix-lbl-help-btn");
+    helpBtn.textContent = "?";
+    helpBtn.title = "Help";
+    helpBtn.onclick = () => this._showHelp();
     const cancelBtn = el("button", "pix-lbl-btn-cancel");
     cancelBtn.textContent = "Cancel";
     cancelBtn.onclick = () => this.close();
@@ -451,89 +452,83 @@ export class LabelEditor {
     this._el = overlay;
   }
 
-  // ── Help overlay ─────────────────────────────────────────
-  _showHelp(panel) {
-    if (panel.querySelector(".pix-lbl-help-overlay")) return;
-    const help = document.createElement("div");
-    help.className = "pix-lbl-help-overlay";
-    help.innerHTML = `
-            <h3>Label Pixaroma</h3>
-            <p><b>Double-click</b> a label on the canvas to open this editor.</p>
-            <p><b>Text</b> — supports multiline text and emoji.</p>
-            <p><b>Font Size</b> — drag the slider to adjust (8–256px).</p>
-            <p><b>Font buttons</b> — click to switch between Arial, Times, Courier, Impact.</p>
-            <p><b>B</b> — toggle bold on/off.</p>
-            <p><b>Align</b> — left, center, or right text alignment.</p>
-            <p><b>Color swatches</b> — click a swatch for quick color selection, or use the picker for custom colors.</p>
-            <p><b>Transparent</b> — the checkerboard swatch removes the background.</p>
-            <p><b>Padding</b> — space between text and the label edge.</p>
-            <p><b>Radius</b> — corner roundness of the background.</p>
-            <p><b>Opacity</b> — overall transparency of the label.</p>
-            <p><b>Line Height</b> — spacing between lines of text.</p>
-            <p style="margin-top:14px;color:#777">Pixaroma &mdash; <a href="https://www.youtube.com/@pixaroma" style="color:${BRAND}">youtube.com/@pixaroma</a></p>
-        `;
-    const closeBtn = document.createElement("button");
-    closeBtn.className = "pix-lbl-help-close";
-    closeBtn.textContent = "\u00d7";
-    closeBtn.onclick = () => help.remove();
-    help.appendChild(closeBtn);
-    panel.appendChild(help);
-  }
+  // ── Slider + editable number + ▲▼ spinner (matches the Group Colors style) ──
+  _sliderRow(labelText, min, max, step, get, set, fmt, parse) {
+    const row = document.createElement("div");
+    row.className = "pix-lbl-sliderrow";
 
-  // ── Swatch helpers ───────────────────────────────────────
-  _buildSwatches(container, colors, activeColor, onSelect) {
-    const swEls = [];
-    for (const color of colors) {
-      const sw = document.createElement("div");
-      sw.className = "pix-lbl-swatch";
-      sw.style.background = color;
-      sw.dataset.color = color;
-      sw.title = color;
-      if (color === activeColor) sw.classList.add("active");
-      sw.onclick = () => onSelect(color, swEls);
-      swEls.push(sw);
-      container.appendChild(sw);
-    }
-    return swEls;
-  }
+    const l = document.createElement("span");
+    l.className = "pix-lbl-slbl";       // inline label (left of the slider)
+    l.textContent = labelText;
+    row.appendChild(l);
 
-  _clearSwatchActive(container, activeColor) {
-    container
-      .querySelectorAll(".pix-lbl-swatch,.pix-lbl-swatch-transp")
-      .forEach((s) => {
-        s.classList.toggle("active", s.dataset.color === activeColor);
-      });
-  }
+    const s = document.createElement("input");
+    s.type = "range";
+    s.min = String(min); s.max = String(max); s.step = String(step);
+    s.value = String(get());
+    s.className = "pix-lbl-slider";
+    const setFill = () => {
+      const pct = max === min ? 0 : ((Number(s.value) - min) / (max - min)) * 100;
+      s.style.setProperty("--fill", Math.max(0, Math.min(100, pct)) + "%");
+    };
+    setFill();
 
-  // ── Range field ──────────────────────────────────────────
-  _rangeField(label, val, min, max, step, onChange) {
-    const field = document.createElement("div");
-    field.className = "pix-lbl-field";
-    const l = document.createElement("div");
-    l.className = "pix-lbl-lbl";
-    l.textContent = label;
-    field.appendChild(l);
-    const wrap = document.createElement("div");
-    wrap.className = "pix-lbl-range-wrap";
-    const range = document.createElement("input");
-    range.type = "range";
-    range.min = min;
-    range.max = max;
-    range.step = step;
-    range.value = val;
-    const valSpan = document.createElement("span");
-    valSpan.className = "pix-lbl-val";
-    valSpan.textContent = Number(val).toFixed(step < 1 ? 2 : 0);
-    range.addEventListener("input", () => {
-      const v = Number(range.value);
-      valSpan.textContent = v.toFixed(step < 1 ? 2 : 0);
-      onChange(v);
-      this._updatePreview();
+    const vWrap = document.createElement("div");
+    vWrap.className = "pix-lbl-spin";
+    const v = document.createElement("input");
+    v.type = "text";
+    v.value = fmt(get());
+    v.className = "pix-lbl-spinval";
+    const spin = document.createElement("div");
+    spin.className = "pix-lbl-spinbtns";
+    const up = document.createElement("button"); up.type = "button"; up.textContent = "▲"; up.title = "Increase";
+    const dn = document.createElement("button"); dn.type = "button"; dn.textContent = "▼"; dn.title = "Decrease";
+    spin.appendChild(up); spin.appendChild(dn);
+    vWrap.appendChild(v); vWrap.appendChild(spin);
+
+    s.addEventListener("input", () => {
+      const n = Number(s.value);
+      set(n); v.value = fmt(n); setFill(); this._updatePreview();
     });
-    wrap.appendChild(range);
-    wrap.appendChild(valSpan);
-    field.appendChild(wrap);
-    return field;
+    const apply = (n) => {
+      n = Math.max(min, Math.min(max, Math.round(n / step) * step));
+      // floating-point tidy so 0.65000000001 doesn't leak into the field
+      n = Number(n.toFixed(4));
+      set(n); s.value = String(n); v.value = fmt(n); setFill(); this._updatePreview();
+    };
+    const stepBy = (dir) => apply(get() + dir * step);
+    const commitV = () => {
+      const raw = parseFloat(v.value);
+      if (Number.isFinite(raw)) apply(parse ? parse(raw) : raw);
+      else v.value = fmt(get());
+    };
+    for (const b of [up, dn]) {
+      b.addEventListener("mousedown", (e) => e.stopPropagation());
+    }
+    up.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); stepBy(1); });
+    dn.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); stepBy(-1); });
+    v.addEventListener("mousedown", (e) => e.stopPropagation());
+    v.addEventListener("focus", () => v.select());
+    v.addEventListener("keydown", (e) => {
+      e.stopPropagation();
+      if (e.key === "Enter") { e.preventDefault(); commitV(); v.blur(); }
+      else if (e.key === "Escape") { e.preventDefault(); v.value = fmt(get()); v.blur(); }
+      else if (e.key === "ArrowUp") { e.preventDefault(); stepBy(1); }
+      else if (e.key === "ArrowDown") { e.preventDefault(); stepBy(-1); }
+    });
+    v.addEventListener("blur", commitV);
+
+    row.appendChild(s);
+    row.appendChild(vWrap);
+    return row;
+  }
+
+  // ── Help (shared themed popup, same style as the Group help) ──
+  _showHelp() {
+    openHelpPopup(LABEL_HELP);
+    // The editor overlay is z-index 99999; lift the help card above it.
+    const bd = document.querySelector(".pix-help-backdrop");
+    if (bd) bd.style.zIndex = "100000";
   }
 
   // ── Live preview ─────────────────────────────────────────
@@ -546,15 +541,32 @@ export class LabelEditor {
     });
   }
 
+  // Render the label into the preview area FITTED to the available space and at
+  // device-pixel resolution, so it is always sharp and never clipped regardless
+  // of font size / padding / radius. The label is re-rendered at the displayed
+  // size (ctx scaled), not CSS-stretched, so upscaling a small label stays crisp.
   _renderPreview() {
     const c = this.cfg;
     const m = measureLabel(c);
     const cvs = this._previewCanvas;
-    cvs.width = m.w;
-    cvs.height = m.h;
-    cvs.style.width = "";
-    cvs.style.height = "";
+    const wrap = cvs.parentElement;
+    if (!wrap) return;
+    const availW = Math.max(20, (wrap.clientWidth || 460) - 24);
+    const availH = Math.max(20, (wrap.clientHeight || 180) - 24);
+    // Render close to the node's actual size, a touch larger for legibility, and
+    // downscale big labels to fit. Capped at 1.5x so the preview reads a bit bigger
+    // than the canvas without the blown-up look.
+    let scale = Math.min(availW / m.w, availH / m.h, 1.5);
+    if (!Number.isFinite(scale) || scale <= 0) scale = 1;
+    const dpr = window.devicePixelRatio || 1;
+    const dispW = Math.max(1, Math.round(m.w * scale));
+    const dispH = Math.max(1, Math.round(m.h * scale));
+    cvs.width = Math.round(dispW * dpr);
+    cvs.height = Math.round(dispH * dpr);
+    cvs.style.width = dispW + "px";
+    cvs.style.height = dispH + "px";
     const ctx = cvs.getContext("2d");
+    ctx.setTransform(dpr * scale, 0, 0, dpr * scale, 0, 0);
     renderLabelToCanvas(ctx, c, m, m.w, m.h);
   }
 }

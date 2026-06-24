@@ -23,41 +23,8 @@ export const FONT_CHOICES = [
 ];
 export const FONT_SHORT = ["Arial", "Times", "Courier", "Impact"];
 
-// Color swatches
-export const TEXT_SWATCHES = [
-  "#ffffff",
-  "#cccccc",
-  "#999999",
-  "#555555",
-  "#000000",
-  "#f66744",
-  "#cc3333",
-  "#33aa33",
-  "#3388dd",
-  "#ddaa00",
-  "#ff99bb",
-  "#99ddff",
-  "#aaffaa",
-  "#ffeeaa",
-  "#cc88ff",
-];
-export const BG_SWATCHES = [
-  "#333333",
-  "#444444",
-  "#555555",
-  "#222222",
-  "#111111",
-  "#f66744",
-  "#593930",
-  "#355735",
-  "#354f6b",
-  "#4f3560",
-  "#ffe0e0",
-  "#e0ffe0",
-  "#e0e0ff",
-  "#fff3e0",
-  "#f0f0f0",
-];
+// (Legacy curated swatch arrays removed — the editor now uses the shared
+//  PIXAROMA_PALETTE from js/shared/color_picker.mjs.)
 
 // ─── Helpers ─────────────────────────────────────────────────
 export function fontStr(cfg) {
@@ -256,7 +223,7 @@ export function injectCSS() {
 }
 .pix-lbl-panel {
     background: #171718; border: 1px solid #2e2e2e; border-radius: 10px;
-    width: 520px; max-height: 90vh; overflow-y: auto;
+    width: 720px; max-height: 90vh; overflow-y: auto;
     box-shadow: 0 16px 48px rgba(0,0,0,0.7); position: relative;
     scrollbar-width: thin; scrollbar-color: #444 transparent;
 }
@@ -289,74 +256,34 @@ export function injectCSS() {
 }
 .pix-lbl-field textarea:focus { border-color: ${BRAND}; }
 .pix-lbl-preview {
-    background: #111; border-radius: 5px; border: 1px solid #222;
-    padding: 8px; min-height: 28px; display: flex;
+    border-radius: 6px; border: 1px solid #222;
+    padding: 12px; height: 200px; box-sizing: border-box; display: flex;
     align-items: center; justify-content: center; overflow: hidden;
+    /* subtle checkerboard so a transparent background reads as transparent */
+    background-color: #111;
+    background-image:
+      linear-gradient(45deg, #1b1b1b 25%, transparent 25%, transparent 75%, #1b1b1b 75%),
+      linear-gradient(45deg, #1b1b1b 25%, transparent 25%, transparent 75%, #1b1b1b 75%);
+    background-size: 16px 16px;
+    background-position: 0 0, 8px 8px;
 }
-.pix-lbl-preview canvas { max-width: 100%; height: auto; }
+.pix-lbl-preview canvas { display: block; max-width: 100%; max-height: 100%; }
 /* Toggle button group */
-.pix-lbl-btns { display: flex; gap: 3px; flex-wrap: wrap; align-items: center; }
+.pix-lbl-btns { display: flex; gap: 5px; flex-wrap: nowrap; align-items: stretch; }
 .pix-lbl-btn {
-    padding: 4px 10px; border: 1px solid #333; border-radius: 4px;
-    background: #232325; color: #888; font-size: 11px; cursor: pointer;
+    flex: 1 1 0; min-width: 0;
+    padding: 7px 8px; border: 1px solid #333; border-radius: 5px;
+    background: #232325; color: #888; font-size: 12px; cursor: pointer;
     transition: all 0.12s; line-height: 1.4;
+    display: flex; align-items: center; justify-content: center;
 }
 .pix-lbl-btn:hover { border-color: #555; color: #bbb; }
 .pix-lbl-btn.active { background: ${BRAND}22; border-color: ${BRAND}; color: ${BRAND}; }
 .pix-lbl-bold { font-weight: bold; min-width: 26px; text-align: center; }
-/* Range row */
-.pix-lbl-range-wrap { display: flex; align-items: center; gap: 6px; }
-.pix-lbl-range-wrap input[type="range"] { flex: 1; accent-color: ${BRAND}; height: 3px; }
-.pix-lbl-range-wrap .pix-lbl-val {
-    color: #666; font-size: 11px; min-width: 28px; text-align: right; font-variant-numeric: tabular-nums;
-}
-.pix-lbl-range-wrap input.pix-lbl-num {
-    width: 44px; box-sizing: border-box;
-    background: #1e1e1f; border: 1px solid #2e2e2e; border-radius: 3px;
-    color: #bbb; padding: 3px 5px; font-size: 11px; font-family: monospace;
-    text-align: center; outline: none; font-variant-numeric: tabular-nums;
-    flex-shrink: 0;
-    -moz-appearance: textfield;
-}
-.pix-lbl-range-wrap input.pix-lbl-num::-webkit-outer-spin-button,
-.pix-lbl-range-wrap input.pix-lbl-num::-webkit-inner-spin-button {
-    -webkit-appearance: none; margin: 0;
-}
-.pix-lbl-range-wrap input.pix-lbl-num:focus { border-color: ${BRAND}; }
 /* Divider inside button row */
 .pix-lbl-vsep { width: 1px; height: 16px; background: #333; margin: 0 3px; flex-shrink: 0; }
-/* 2-col color grid */
-.pix-lbl-color-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.pix-lbl-color-col { min-width: 0; }
-/* Color section */
-.pix-lbl-swatches { display: flex; gap: 3px; flex-wrap: wrap; margin-bottom: 5px; }
-.pix-lbl-swatch {
-    width: 20px; height: 20px; border-radius: 3px; cursor: pointer;
-    border: 2px solid transparent; transition: border-color 0.12s;
-    box-sizing: border-box;
-}
-.pix-lbl-swatch:hover { border-color: #888; }
-.pix-lbl-swatch.active { border-color: #fff; }
-.pix-lbl-swatch-transp {
-    width: 20px; height: 20px; border-radius: 3px; cursor: pointer;
-    border: 2px solid transparent; box-sizing: border-box;
-    background: repeating-conic-gradient(#555 0% 25%, #333 0% 50%) 50%/8px 8px;
-}
-.pix-lbl-swatch-transp:hover { border-color: #888; }
-.pix-lbl-swatch-transp.active { border-color: #fff; }
-.pix-lbl-color-row { display: flex; align-items: center; gap: 5px; }
-.pix-lbl-color-row input[type="color"] {
-    width: 26px; height: 22px; padding: 0; border: 1px solid #333;
-    border-radius: 3px; background: #1e1e1f; cursor: pointer; flex-shrink: 0;
-}
-.pix-lbl-color-row .pix-lbl-hex {
-    flex: 1; min-width: 0; background: #1e1e1f; border: 1px solid #2e2e2e; border-radius: 3px;
-    color: #bbb; padding: 3px 5px; font-size: 11px; font-family: monospace; outline: none;
-}
-.pix-lbl-color-row .pix-lbl-hex:focus { border-color: ${BRAND}; }
-/* 4-up spacing strip */
-.pix-lbl-spacing-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; }
-.pix-lbl-spacing-field { min-width: 0; }
+/* Spacing & Style — 2-col grid of slider fields */
+.pix-lbl-spacing-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 14px; }
 /* Footer */
 .pix-lbl-footer {
     display: flex; justify-content: flex-end; align-items: center; gap: 6px;
@@ -385,25 +312,127 @@ export function injectCSS() {
 .pix-lbl-align-right .pix-lbl-align-icon span:nth-child(1) { width: 13px; }
 .pix-lbl-align-right .pix-lbl-align-icon span:nth-child(2) { width: 9px; }
 .pix-lbl-align-right .pix-lbl-align-icon span:nth-child(3) { width: 11px; }
-/* Help overlay */
-.pix-lbl-help-overlay {
-    position: absolute; inset: 0; background: #171718;
-    border-radius: 10px; padding: 22px 20px; overflow-y: auto;
-    color: #bbb; font-size: 12px; line-height: 1.65; z-index: 10;
+/* (Help is the shared themed popup from js/shared/help.mjs - no editor-local
+    help-overlay CSS needed.) */
+/* Round help button (matches the Group Colors / toolbar look) */
+.pix-lbl-help-btn {
+    margin-right: auto; width: 24px; height: 24px; border-radius: 50%;
+    border: none; background: ${BRAND}; color: #fff; font-size: 13px; font-weight: 700;
+    cursor: pointer; line-height: 1; padding: 0; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
 }
-.pix-lbl-help-overlay h3 { color: ${BRAND}; margin: 0 0 10px 0; font-size: 14px; }
-.pix-lbl-help-overlay p { margin: 0 0 6px 0; }
-.pix-lbl-help-overlay kbd {
-    background: #2a2a2a; border: 1px solid #444; border-radius: 3px;
-    padding: 1px 4px; font-size: 10px; font-family: monospace; color: #ccc;
+.pix-lbl-help-btn:hover { filter: brightness(1.12); }
+/* Slider + editable number + spinner arrows (matches .pix-nc-slider) */
+/* inline label (left of the slider) so the row is one line - saves height */
+.pix-lbl-slbl { flex: 0 0 auto; min-width: 58px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: #777; white-space: nowrap; }
+.pix-lbl-sliderrow { display: flex; align-items: center; gap: 8px; }
+.pix-lbl-slider {
+    -webkit-appearance: none; appearance: none;
+    flex: 1 1 auto; min-width: 0; height: 6px; cursor: pointer; margin: 0;
+    background: linear-gradient(to right, ${BRAND} 0%, ${BRAND} var(--fill, 50%), #3a3a40 var(--fill, 50%), #3a3a40 100%);
+    border-radius: 3px; border: none; outline: none;
 }
-.pix-lbl-help-close {
-    position: absolute; top: 10px; right: 14px;
-    background: none; border: none; color: #555; font-size: 18px; cursor: pointer;
+.pix-lbl-slider::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 13px; height: 13px; border-radius: 50%;
+    background: ${BRAND}; border: none; box-shadow: 0 0 3px rgba(0,0,0,0.5);
+    cursor: pointer; margin-top: -3.5px;
 }
-.pix-lbl-help-close:hover { color: #ddd; }
-.pix-lbl-btn-help { background: none; border: none; color: #555; font-size: 11px; padding: 6px 8px; margin-right: auto; }
-.pix-lbl-btn-help:hover { color: #999; }
+.pix-lbl-slider::-moz-range-thumb {
+    width: 13px; height: 13px; border-radius: 50%;
+    background: ${BRAND}; border: none; box-shadow: 0 0 3px rgba(0,0,0,0.5); cursor: pointer;
+}
+.pix-lbl-slider::-webkit-slider-runnable-track { height: 6px; border-radius: 3px; background: transparent; border: none; }
+.pix-lbl-slider::-moz-range-track { height: 6px; border-radius: 3px; background: transparent; border: none; }
+.pix-lbl-spin {
+    display: flex; align-items: stretch; flex: 0 0 auto; height: 24px;
+    background: #161616; border: 1px solid #3a3a40; border-radius: 6px; overflow: hidden;
+}
+.pix-lbl-spinval {
+    width: 44px; min-width: 44px; text-align: right; font-size: 12px; color: #ddd;
+    background: transparent; border: none; outline: none; padding: 0 4px;
+    font-variant-numeric: tabular-nums;
+}
+.pix-lbl-spinbtns { display: flex; flex-direction: column; width: 15px; flex: 0 0 auto; border-left: 1px solid #3a3a40; }
+.pix-lbl-spinbtns button {
+    flex: 1 1 0; border: none; background: rgba(255,255,255,0.05); color: #aaa;
+    font-size: 7px; line-height: 1; cursor: pointer; padding: 0;
+    display: flex; align-items: center; justify-content: center;
+}
+.pix-lbl-spinbtns button:last-child { border-top: 1px solid #3a3a40; }
+.pix-lbl-spinbtns button:hover { background: rgba(255,255,255,0.12); color: #fff; }
+/* Background / Text color bars (Group "Title #hex / Body #hex" style): a dark
+   rounded field with a live swatch chip, a label, and an editable hex value.
+   Clicking the bar selects it as the picker's target (orange border = active). */
+.pix-lbl-cbars { display: flex; gap: 8px; margin-bottom: 10px; }
+.pix-lbl-cbar {
+    flex: 1 1 0; min-width: 0; display: flex; align-items: center; gap: 8px;
+    background: #161616; border: 1px solid #3a3a40; border-radius: 6px;
+    padding: 6px 9px; cursor: pointer; text-align: left; transition: border-color 0.12s;
+}
+.pix-lbl-cbar:hover { border-color: #555; }
+.pix-lbl-cbar.active { border-color: ${BRAND}; }
+.pix-lbl-cbar-chip {
+    width: 18px; height: 18px; border-radius: 4px; flex: 0 0 auto;
+    border: 1px solid rgba(255,255,255,0.2); box-sizing: border-box;
+}
+.pix-lbl-cbar-chip.is-transp {
+    background-color: #3a3a3a;
+    background-image:
+      linear-gradient(45deg, transparent 44%, #e0504a 44%, #e0504a 56%, transparent 56%),
+      linear-gradient(45deg, #777 25%, transparent 25%, transparent 75%, #777 75%),
+      linear-gradient(45deg, #777 25%, transparent 25%, transparent 75%, #777 75%);
+    background-size: 100% 100%, 8px 8px, 8px 8px;
+    background-position: 0 0, 0 0, 4px 4px;
+}
+.pix-lbl-cbar-k { font: 11px system-ui, sans-serif; color: #8a8a90; flex: 0 0 auto; }
+.pix-lbl-cbar-v {
+    flex: 1 1 auto; min-width: 0; background: transparent; border: none; outline: none;
+    color: ${BRAND}; font: 12.5px "Consolas", monospace; letter-spacing: 0.03em; padding: 0;
+}
+.pix-lbl-cbar-v::placeholder { color: #6a6a70; font-style: italic; letter-spacing: 0; }
+/* Colors: SV picker (left) | swatch grid (right), filling the full width.
+   The grid is a perfect 9x4 of the 36 palette colours, so it always fills
+   complete rows (no empty cells) whether or not Transparent is shown. */
+.pix-lbl-colorrow { display: flex; gap: 14px; align-items: flex-start; }
+.pix-lbl-pickercol { flex: 1 1 0; min-width: 0; }
+.pix-lbl-swatchcol { flex: 1 1 0; min-width: 0; }
+.pix-lbl-swgrid { display: grid; grid-template-columns: repeat(9, 1fr); gap: 5px; align-content: start; }
+.pix-lbl-swtile {
+    aspect-ratio: 1; min-width: 0; padding: 0; border-radius: 5px; cursor: pointer;
+    border: 2px solid transparent; box-sizing: border-box; background-clip: padding-box;
+}
+.pix-lbl-swtile:hover { border-color: #888; }
+.pix-lbl-swtile.active { border-color: #fff; }
+/* Transparent — Background only, a labelled control below the grid (so it is
+   never a half-empty grid cell). Hidden for Text via inline display:none in JS. */
+.pix-lbl-transbtn {
+    margin-top: 6px; width: 100%; box-sizing: border-box;
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 9px; border-radius: 6px; cursor: pointer; font-size: 12px;
+    background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12); color: #aaa;
+    transition: all 0.12s;
+}
+.pix-lbl-transbtn:hover { border-color: ${BRAND}; color: #ddd; }
+.pix-lbl-transbtn.active { border-color: ${BRAND}; color: ${BRAND}; }
+.pix-lbl-transbtn-sw {
+    width: 16px; height: 16px; border-radius: 3px; flex: 0 0 auto; box-sizing: border-box;
+    border: 1px solid rgba(255,255,255,0.2);
+    background-color: #3a3a3a;
+    background-image:
+      linear-gradient(45deg, transparent 44%, #e0504a 44%, #e0504a 56%, transparent 56%),
+      linear-gradient(45deg, #777 25%, transparent 25%, transparent 75%, #777 75%),
+      linear-gradient(45deg, #777 25%, transparent 25%, transparent 75%, #777 75%);
+    background-size: 100% 100%, 8px 8px, 8px 8px;
+    background-position: 0 0, 0 0, 4px 4px;
+}
+/* Embedded picker (no internal swatches): fill the left column + give the SV
+   plane a usable height. min-width:0 on the picker + its SV row + the SV canvas
+   is REQUIRED: a flex-item <canvas> keeps its intrinsic 168px width unless told
+   it may shrink, which otherwise pushed the hue strip out over the swatches. */
+.pix-lbl-panel .pix-cp { width: 100%; max-width: none; margin: 0; min-width: 0; }
+.pix-lbl-panel .pix-cp-sv-row { min-width: 0; }
+.pix-lbl-panel .pix-cp-sv { height: 170px; min-width: 0; }
 `;
   document.head.appendChild(style);
 }

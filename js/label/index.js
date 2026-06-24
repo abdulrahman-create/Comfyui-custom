@@ -3,7 +3,12 @@ import { allow_debug, hideJsonWidget } from "../shared/index.mjs";
 import { isVueNodes, applyAdaptiveCanvasOnly } from "../shared/nodes2.mjs";
 import { isGraphLoading } from "../shared/graph_loading.mjs";
 import { DEFAULTS, fontStr, measureLabel, applyLabelToDom, injectVueLabelCSS } from "./render.mjs";
-import { parseCfg, LabelEditor } from "./core.mjs";
+import { parseCfg, LabelEditor, LABEL_HELP } from "./core.mjs";
+import { registerNodeHelp } from "../shared/help.mjs";
+
+// Register help for the selection-toolbar ? button (convention #16). The same
+// LABEL_HELP is shown by the in-editor ? button.
+registerNodeHelp("PixaromaLabel", LABEL_HELP);
 
 // ─── Setup helpers ───────────────────────────────────────────
 const NO_TITLE = (typeof LiteGraph !== "undefined" && LiteGraph.NO_TITLE) || 1;
@@ -109,8 +114,9 @@ function openLabelEditor(node) {
   if (node._pixLblEditorOpen) return;
   node._pixLblEditorOpen = true;
   const ed = new LabelEditor(node);
+  node._pixLblEditor = ed;
   const origClose = ed.close.bind(ed);
-  ed.close = () => { node._pixLblEditorOpen = false; origClose(); };
+  ed.close = () => { node._pixLblEditorOpen = false; node._pixLblEditor = null; origClose(); };
   ed.open();
 }
 
@@ -182,6 +188,28 @@ app.registerExtension({
       return [null, { content: "✏️ Edit Label", callback: () => openLabelEditor(node) }];
     }
     return [];
+  },
+
+  // "👑 Add Label Pixaroma" on the canvas right-click menu (mirrors the group's
+  // add). New context-menu API (getCanvasMenuItems), not a deprecated patch. Drops
+  // a Label node at the cursor; double-click it to open the editor.
+  getCanvasMenuItems(canvas) {
+    return [
+      null,
+      {
+        content: "👑 Add Label Pixaroma",
+        callback: () => {
+          const LG = window.LiteGraph;
+          if (!LG?.createNode || !app.graph) return;
+          const node = LG.createNode("PixaromaLabel");
+          if (!node) return;
+          const gm = canvas?.graph_mouse || app.canvas?.graph_mouse || [0, 0];
+          node.pos = [gm[0], gm[1]];
+          app.graph.add(node);
+          app.graph.setDirtyCanvas(true, true);
+        },
+      },
+    ];
   },
 
   async beforeRegisterNodeDef(nodeType, nodeData) {
@@ -286,6 +314,15 @@ app.registerExtension({
     nodeType.prototype.onDblClick = function (e, pos) {
       openLabelEditor(this);
       return true;
+    };
+
+    // ── Close the open editor if the node is removed (delete / workflow switch)
+    //    so the overlay + the picker's window listeners + the key listeners don't
+    //    leak — the editor has no other teardown path for node removal.
+    const _origRemoved = nodeType.prototype.onRemoved;
+    nodeType.prototype.onRemoved = function () {
+      try { this._pixLblEditor?.close?.(); } catch (_e) {}
+      return _origRemoved?.apply(this, arguments);
     };
   },
 });
