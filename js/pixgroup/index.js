@@ -27,6 +27,9 @@ import { openHelpPopup } from "../shared/help.mjs";
 const BRAND = "#f66744";
 const RUN_GREEN = "#3ec371";  // a folded group lights up green while a member runs
 const DEFAULT_COLOR = "#3f789e";
+// Default look for a NEW Pixaroma group (neutral, user-chosen).
+const DEF_TITLE = "#4a4a4e", DEF_BODY = "#2a2a2a";
+const DEF_TITLE_A = 0.92, DEF_BODY_A = 0.5, DEF_FONT = 18;
 const HANDLE = 18;      // bottom-right resize grab box, graph units
 const MIN_W = 140, MIN_H = 80;
 
@@ -709,8 +712,8 @@ function addGroup(p) {
   const g = {
     id: newId(), title: "Group",
     x, y, w: Math.max(MIN_W, w), h: Math.max(MIN_H, h),
-    titleColor: DEFAULT_COLOR, bodyColor: DEFAULT_COLOR,
-    titleAlpha: 0.92, bodyAlpha: 0.12, fontSize: 14,
+    titleColor: DEF_TITLE, bodyColor: DEF_BODY,
+    titleAlpha: DEF_TITLE_A, bodyAlpha: DEF_BODY_A, fontSize: DEF_FONT,
   };
   gs.push(g);
   selectGroup(g);   // exclusive: the new group is selected, the wrapped nodes are not
@@ -1040,7 +1043,20 @@ const GROUP_HELP = {
 
 function installMenu() {
   const C = window.LGraphCanvas?.prototype;
-  if (!C || !C.getCanvasMenuOptions || C._pixGroupMenuWrapped) return;
+  if (!C) return;
+  // NODE right-click menu: "Add Pixaroma Group (G)" wraps the selected node(s) —
+  // same as pressing G. (Right-clicking a node selects it, so the selection is set.)
+  if (C.getNodeMenuOptions && !C._pixGroupNodeMenuWrapped) {
+    const origN = C.getNodeMenuOptions;
+    C.getNodeMenuOptions = function () {
+      const opts = origN.apply(this, arguments) || [];
+      opts.push(null);
+      opts.push({ content: "👑 Add Pixaroma Group (G)", callback: () => addGroup(null) });
+      return opts;
+    };
+    C._pixGroupNodeMenuWrapped = true;
+  }
+  if (!C.getCanvasMenuOptions || C._pixGroupMenuWrapped) return;
   const orig = C.getCanvasMenuOptions;
   C.getCanvasMenuOptions = function () {
     const opts = orig.apply(this, arguments) || [];
