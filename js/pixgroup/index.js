@@ -543,9 +543,11 @@ function onDown(e) {
       startWin(); repaint(); return;
     }
   }
-  // Clicked the body (likely a node) or empty canvas → deselect, do NOT
-  // consume so node-drag / marquee / pan all work normally.
-  if (_selectedIds.size) { _selectedId = null; _selectedIds.clear(); repaint(); }
+  // Clicked the body (likely a node) or empty canvas → deselect OUR groups, but
+  // NOT on a shift/ctrl/cmd-click: that's additive, so keep the group selected and
+  // let the node JOIN the selection (e.g. to wrap both with G). Never consume, so
+  // node-drag / marquee / pan all work normally.
+  if (!(e.shiftKey || e.ctrlKey || e.metaKey) && _selectedIds.size) { _selectedId = null; _selectedIds.clear(); repaint(); }
 }
 
 function onMove(e) {
