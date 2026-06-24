@@ -565,7 +565,9 @@ function onWinPointerUp() {
   const hit = [];
   for (const g of ensureGroups()) {
     if (isHiddenGroup(g)) continue;
-    if (g.x < x1 && g.x + g.w > x0 && g.y < y1 && g.y + g.h > y0) hit.push(g); // rect intersection
+    // ONLY when the whole group box is inside the marquee (like ComfyUI groups) —
+    // so marqueeing a node doesn't grab a big group just because it clipped its edge.
+    if (g.x >= x0 && g.x + g.w <= x1 && g.y >= y0 && g.y + g.h <= y1) hit.push(g);
   }
   if (!hit.length) return;
   for (const g of hit) _selectedIds.add(g.id); // additive (matches Ctrl-drag)
