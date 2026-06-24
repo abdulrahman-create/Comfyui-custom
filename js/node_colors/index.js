@@ -1286,10 +1286,14 @@ function pixRepaint() { try { app.canvas?.setDirty(true, true); } catch (_e) {} 
 function openPixGroupPalette(g) {
   if (!g) return;
   const { modal, place, onClose } = makePalShell("Pixaroma Group");
+  // Apply to ALL selected Pixaroma groups when g is part of a multi-selection; the
+  // displayed values come from g (the primary). Falls back to just [g].
+  const sel = window.PixaromaPixGroup?.getSelectedGroups?.() || [];
+  const targets = (sel.length && sel.includes(g)) ? sel : [g];
   let titleHex = g.titleColor || g.color || GROUP_DEFAULT_COLOR;
   let bodyHex  = g.bodyColor  || g.color || GROUP_DEFAULT_COLOR;
   let target = "title";
-  const applyNow = () => { g.titleColor = titleHex; g.bodyColor = bodyHex; pixRepaint(); };
+  const applyNow = () => { for (const t of targets) { t.titleColor = titleHex; t.bodyColor = bodyHex; } pixRepaint(); };
 
   const seg = document.createElement("div"); seg.className = "pix-nc-seg";
   const titleBtn = document.createElement("button"); titleBtn.type = "button"; titleBtn.textContent = "Title";
@@ -1323,8 +1327,7 @@ function openPixGroupPalette(g) {
   });
   const applyFavStyle = (f) => {
     titleHex = f.title; bodyHex = f.body;
-    g.titleColor = f.title; g.bodyColor = f.body;
-    g.titleAlpha = f.titleAlpha; g.bodyAlpha = f.bodyAlpha; g.fontSize = f.fontSize;
+    for (const t of targets) { t.titleColor = f.title; t.bodyColor = f.body; t.titleAlpha = f.titleAlpha; t.bodyAlpha = f.bodyAlpha; t.fontSize = f.fontSize; }
     picker.setColor(target === "title" ? titleHex : bodyHex);
     refreshHex(); refreshSliders(); pixRepaint();
   };
@@ -1378,9 +1381,9 @@ function openPixGroupPalette(g) {
     row.appendChild(s); row.appendChild(v); modal.appendChild(row);
     sliderInputs.push({ s, v, get, fmt });
   };
-  sliderRow("Title opacity", 0.2, 1, 0.05, () => (Number.isFinite(g.titleAlpha) ? g.titleAlpha : 0.92), (n) => { g.titleAlpha = n; }, (n) => Math.round(n * 100) + "%");
-  sliderRow("Body opacity", 0, 0.6, 0.02, () => (Number.isFinite(g.bodyAlpha) ? g.bodyAlpha : 0.12), (n) => { g.bodyAlpha = n; }, (n) => Math.round(n * 100) + "%");
-  sliderRow("Font size", 10, 32, 1, () => (Number.isFinite(g.fontSize) ? g.fontSize : 14), (n) => { g.fontSize = n; }, (n) => String(n));
+  sliderRow("Title opacity", 0.2, 1, 0.05, () => (Number.isFinite(g.titleAlpha) ? g.titleAlpha : 0.92), (n) => { for (const t of targets) t.titleAlpha = n; }, (n) => Math.round(n * 100) + "%");
+  sliderRow("Body opacity", 0, 0.6, 0.02, () => (Number.isFinite(g.bodyAlpha) ? g.bodyAlpha : 0.12), (n) => { for (const t of targets) t.bodyAlpha = n; }, (n) => Math.round(n * 100) + "%");
+  sliderRow("Font size", 10, 32, 1, () => (Number.isFinite(g.fontSize) ? g.fontSize : 14), (n) => { for (const t of targets) t.fontSize = n; }, (n) => String(n));
   const refreshSliders = () => { for (const si of sliderInputs) { si.s.value = String(si.get()); si.v.textContent = si.fmt(si.get()); } };
 
   const scroll = document.createElement("div"); scroll.className = "pix-nc-pal-scroll"; modal.appendChild(scroll);
@@ -1399,8 +1402,7 @@ function openPixGroupPalette(g) {
   hint.innerHTML = "<b>+</b> save current · click = apply";
   foot.appendChild(hint);
   foot.appendChild(palToolBtn("Reset", () => {
-    g.titleColor = GROUP_DEFAULT_COLOR; g.bodyColor = GROUP_DEFAULT_COLOR;
-    g.titleAlpha = 0.92; g.bodyAlpha = 0.12; g.fontSize = 14;
+    for (const t of targets) { t.titleColor = GROUP_DEFAULT_COLOR; t.bodyColor = GROUP_DEFAULT_COLOR; t.titleAlpha = 0.92; t.bodyAlpha = 0.12; t.fontSize = 14; }
     titleHex = GROUP_DEFAULT_COLOR; bodyHex = GROUP_DEFAULT_COLOR;
     picker.setColor(target === "title" ? titleHex : bodyHex);
     refreshHex(); refreshSliders(); pixRepaint();

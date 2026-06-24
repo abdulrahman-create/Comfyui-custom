@@ -248,7 +248,8 @@ function fillTextVCenter(ctx, text, x, yMid) {
   }
 }
 
-let _selectedId = null;
+let _selectedId = null;            // the PRIMARY selected group (last clicked) — drives palette values
+let _selectedIds = new Set();      // ALL selected groups (multi-select via shift-click)
 let _hoverId = null;        // group whose buttons are revealed (cursor inside it)
 let _hotBtn = null;         // { gid, key } of the button under the cursor
 let _hoverPt = null;        // last cursor pos in graph coords
@@ -293,10 +294,10 @@ function drawOne(ctx, g) {
   const tColor = gTitleColor(g), bColor = gBodyColor(g);
   const tA = gTitleAlpha(g), bA = gBodyAlpha(g);
   const fs = gFontSize(g), hH = headerH(g);
-  const sel = g.id === _selectedId;
+  const sel = _selectedIds.has(g.id);
   const scale = app.canvas?.ds?.scale || 1;
   const tInk = ink(tColor);
-  const showBtns = g.id === _hoverId || g.id === _selectedId;
+  const showBtns = g.id === _hoverId || _selectedIds.has(g.id);
   const layout = headerButtons(g, showBtns);
 
   // Running indicator (folded only): is a hidden member executing right now? The
@@ -431,7 +432,22 @@ function clearNativeSelection() {
   try { if (c.selected_nodes) for (const k of Object.keys(c.selected_nodes)) delete c.selected_nodes[k]; } catch (_e) {}
   try { c.selected_group = null; } catch (_e) {}
 }
-function selectGroup(g) { _selectedId = g.id; clearNativeSelection(); }
+function selectGroup(g) { _selectedId = g.id; _selectedIds = new Set([g.id]); clearNativeSelection(); }
+// Shift-click toggles a group in/out of the multi-selection.
+function toggleGroupSelection(g) {
+  if (_selectedIds.has(g.id)) {
+    _selectedIds.delete(g.id);
+    if (_selectedId === g.id) _selectedId = _selectedIds.size ? [..._selectedIds][_selectedIds.size - 1] : null;
+  } else {
+    _selectedIds.add(g.id);
+    _selectedId = g.id;
+  }
+  clearNativeSelection();
+}
+function getSelectedGroups() {
+  const gs = ensureGroups();
+  return [..._selectedIds].map((id) => gs.find((g) => g.id === id)).filter(Boolean);
+}
 
 function startWin() {
   window.addEventListener("pointermove", onMove, true);
@@ -473,31 +489,40 @@ function onDown(e) {
       selectGroup(g); e.preventDefault(); e.stopImmediatePropagation(); startWin(); repaint(); return;
     }
     if (inHeader(g, p)) {
-      // groupMemberNodes (not containedNodes) so a folded bar drags its hidden members.
-      const members = groupMemberNodes(g).map((n) => ({ n, dx: n.pos[0] - g.x, dy: n.pos[1] - g.y }));
-      // nested Pixaroma groups ride along too (their frames; nodes move via `members`).
-      const subGroups = groupMemberGroups(g).map((sg) => ({ sg, dx: sg.x - g.x, dy: sg.y - g.y }));
-      _drag = { mode: "move", g, ox: p[0], oy: p[1], gx: g.x, gy: g.y, members, subGroups };
-      selectGroup(g); e.preventDefault(); e.stopImmediatePropagation(); startWin(); repaint(); return;
+      e.preventDefault(); e.stopImmediatePropagation();
+      if (e.shiftKey) { toggleGroupSelection(g); repaint(); return; } // shift = add/remove, no drag
+      if (!_selectedIds.has(g.id)) selectGroup(g);              // plain click on an unselected group → select only it
+      else { _selectedId = g.id; clearNativeSelection(); }      // already in the selection → keep it, drag them all
+      // Move EVERY selected group + its members + nested frames (deduped) by one delta.
+      const movedGroups = new Set(), movedNodes = new Map();
+      for (const sgrp of getSelectedGroups()) {
+        movedGroups.add(sgrp);
+        for (const n of groupMemberNodes(sgrp)) movedNodes.set(String(n.id), n);
+        for (const ng of groupMemberGroups(sgrp)) movedGroups.add(ng);
+      }
+      const groupStarts = [...movedGroups].map((gr) => ({ gr, x: gr.x, y: gr.y }));
+      const nodeStarts = [...movedNodes.values()].map((n) => ({ n, x: n.pos[0], y: n.pos[1] }));
+      _drag = { mode: "move", ox: p[0], oy: p[1], groupStarts, nodeStarts };
+      startWin(); repaint(); return;
     }
   }
   // Clicked the body (likely a node) or empty canvas → deselect, do NOT
   // consume so node-drag / marquee / pan all work normally.
-  if (_selectedId != null) { _selectedId = null; repaint(); }
+  if (_selectedIds.size) { _selectedId = null; _selectedIds.clear(); repaint(); }
 }
 
 function onMove(e) {
   if (!_drag) return;
   const p = screenToGraph(e.clientX, e.clientY);
   if (!p) return;
-  const g = _drag.g;
   if (_drag.mode === "move") {
-    g.x = _drag.gx + (p[0] - _drag.ox);
-    g.y = _drag.gy + (p[1] - _drag.oy);
-    for (const m of _drag.members) { m.n.pos[0] = g.x + m.dx; m.n.pos[1] = g.y + m.dy; }
-    if (_drag.subGroups) for (const s of _drag.subGroups) { s.sg.x = g.x + s.dx; s.sg.y = g.y + s.dy; }
+    // one cursor delta moves every captured group frame + node (handles multi-select)
+    const ddx = p[0] - _drag.ox, ddy = p[1] - _drag.oy;
+    for (const s of _drag.groupStarts) { s.gr.x = s.x + ddx; s.gr.y = s.y + ddy; }
+    for (const s of _drag.nodeStarts) { s.n.pos[0] = s.x + ddx; s.n.pos[1] = s.y + ddy; }
   } else {
-    // resize from any corner: grow from the fixed anchor toward the cursor
+    // resize from any corner: grow from the fixed anchor toward the cursor (single group)
+    const g = _drag.g;
     const c = _drag.corner, ax = _drag.ax, ay = _drag.ay;
     const w = Math.max(MIN_W, c.includes("l") ? ax - p[0] : p[0] - ax);
     const h = Math.max(MIN_H, c.includes("t") ? ay - p[1] : p[1] - ay);
@@ -577,10 +602,10 @@ function onKeyDown(e) {
   if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
   if (e.key === "Delete" || e.key === "Backspace") {
     if (document.querySelector(".pix-nc-pal, .pix-pg-rename")) return; // editing → don't delete
-    const g = getSelected();
-    if (!g) return;
+    const sel = getSelectedGroups();
+    if (!sel.length) return;
     e.preventDefault(); e.stopImmediatePropagation();
-    deleteGroup(g);
+    for (const grp of sel) deleteGroup(grp);   // delete ALL selected
   }
 }
 
@@ -638,6 +663,7 @@ function deleteGroup(g) {
   const gs = ensureGroups();
   const i = gs.indexOf(g);
   if (i >= 0) gs.splice(i, 1);
+  _selectedIds.delete(g.id);
   if (_selectedId === g.id) _selectedId = null;
   invalidateHidden(); updateFoldNodeHideCSS(); // a folded group deleted → un-hide its nodes
   markChanged();
@@ -936,7 +962,7 @@ function installMenu() {
     if (over) {
       opts.push({ content: "👑 Edit Pixaroma Group", callback: () => { if (window.PixaromaNodeColors?.openPixGroup) window.PixaromaNodeColors.openPixGroup(over); else inlineRename(over); } });
       opts.push({ content: "👑 Copy Group Colors", callback: () => { window.PixaromaNodeColors?.setColorClipboard?.({ title: gTitleColor(over), body: gBodyColor(over) }); } });
-      if (window.PixaromaNodeColors?.getColorClipboard?.()) opts.push({ content: "👑 Paste Group Colors", callback: () => { const c = window.PixaromaNodeColors?.getColorClipboard?.(); if (c) { over.titleColor = c.title; over.bodyColor = c.body; markChanged(); } } });
+      if (window.PixaromaNodeColors?.getColorClipboard?.()) opts.push({ content: "👑 Paste Group Colors", callback: () => { const c = window.PixaromaNodeColors?.getColorClipboard?.(); if (!c) return; const sel = getSelectedGroups(); const tgts = (sel.length && sel.includes(over)) ? sel : [over]; for (const t of tgts) { t.titleColor = c.title; t.bodyColor = c.body; } markChanged(); } });
       opts.push({ content: over.folded ? "👑 Unfold Group" : "👑 Fold Group", callback: () => toggleFold(over) });
       if (over.folded) opts.push({ content: (over.showLinks !== false) ? "👑 Hide links while folded" : "👑 Show links while folded", callback: () => { over.showLinks = (over.showLinks === false); invalidateHidden(); markChanged(); } });
       opts.push({ content: "👑 Group Help", callback: () => openHelpPopup(GROUP_HELP) });
@@ -1030,6 +1056,7 @@ app.registerExtension({
     try {
       window.PixaromaPixGroup = {
         getSelected,
+        getSelectedGroups,
         groupAt,
         repaint: () => repaint(),
       };
