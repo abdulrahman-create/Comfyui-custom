@@ -48,6 +48,7 @@ const state = {
   // Group-move tracking (separate from dragInfo so the carefully-tuned node
   // path is untouched). Captured on the first tick of a group drag.
   groupDrag: null,      // { ref, gx0, gy0, w, h, cursorX, cursorY, contained, ... } or null
+  groupResize: null,    // { ref, x0, y0, cornerX0, cornerY0, cursorX, cursorY } or null (native group BR-resize)
 };
 
 const ICON_URL = "/pixaroma/assets/icons/ui/align-center-v.svg";
@@ -364,6 +365,13 @@ function setGroupPos(g, x, y) {
   if (arrLike(g._bounding, 4)) { g._bounding[0] = x; g._bounding[1] = y; }
   if (!g._pos && arrLike(g.pos, 2)) { g.pos[0] = x; g.pos[1] = y; }
 }
+// Write a group's size (LiteGraph groups resize from the bottom-right, so the
+// top-left _pos is unchanged). _size is usually a subarray of _bounding; set both.
+function setGroupSize(g, w, h) {
+  if (arrLike(g._size, 2)) { g._size[0] = w; g._size[1] = h; }
+  if (arrLike(g._bounding, 4)) { g._bounding[2] = w; g._bounding[3] = h; }
+  if (!g._size && arrLike(g.size, 2)) { g.size[0] = w; g.size[1] = h; }
+}
 function graphGroups(c) {
   return c?.graph?._groups || c?.graph?.groups || [];
 }
@@ -501,6 +509,8 @@ function pushAlignedGuides(rect, targets, skip) {
 function resetDrag() {
   state.dragInfo = null;
   state.groupDrag = null;
+  state.groupResize = null;
+  state._extStickyX = null; state._extStickyY = null;
   state._multiGroupDrag = false;
   state._prevNodeStates = null;
   state._vueResizing = false;
@@ -629,6 +639,20 @@ function countMovedGroups(c) {
   return n;
 }
 
+// A native group whose SIZE changed since last tick = being resized (LiteGraph
+// groups resize from the bottom-right, top-left fixed). Distinct from a move.
+function findResizedGroup(c) {
+  const prev = state._prevGroupRects;
+  if (!prev) return null;
+  for (const g of graphGroups(c)) {
+    if (isFoldedGroup(g)) continue;
+    const r = groupRect(g), p = prev.get(g);
+    if (!r || !p) continue;
+    if (Math.abs(r.w - p.w) > 0.01 || Math.abs(r.h - p.h) > 0.01) return g;
+  }
+  return null;
+}
+
 // Nodes that move rigidly with the group. Prefer LiteGraph's own _nodes (it
 // recomputes them when the group grab starts); fall back to geometry (node
 // center inside the group rect) for any build that doesn't populate it.
@@ -754,6 +778,30 @@ function handleGroupDrag(c, group, e) {
   c.setDirty?.(true, true);
 }
 
+// Snap a native group RESIZE: the bottom-right corner follows the cursor (absolute
+// model from resize start, so it never feeds back from its own snapped output);
+// snap that corner to nearby edges + write the new size. Top-left stays put.
+function handleGroupResize(c, group, e) {
+  const gRect = groupRect(group);
+  if (!gRect) { state.groupResize = null; return; }
+  if (!state.groupResize || state.groupResize.ref !== group) {
+    state.groupResize = {
+      ref: group, x0: gRect.x, y0: gRect.y,
+      cornerX0: gRect.x + gRect.w, cornerY0: gRect.y + gRect.h,
+      cursorX: e.clientX, cursorY: e.clientY,
+    };
+    state._extStickyX = null; state._extStickyY = null;
+    return; // baseline tick: no correction, so the group never jumps on grab
+  }
+  const ri = state.groupResize;
+  const scale = c.ds?.scale || 1;
+  const desiredX = ri.cornerX0 + (e.clientX - ri.cursorX) / scale;
+  const desiredY = ri.cornerY0 + (e.clientY - ri.cursorY) / scale;
+  const snap = snapResizeCorner(desiredX, desiredY, { excludeGroupId: group.id, bypass: e.shiftKey });
+  setGroupSize(group, Math.max(10, snap.x - ri.x0), Math.max(10, snap.y - ri.y0));
+  c.setDirty?.(true, true);
+}
+
 // ── External-drag snap API (used by Group Pixaroma's own pixgroup drag) ──────
 // A Pixaroma group is moved by its OWN module (frame + contained nodes), so Align
 // can't drive it via node.pos like a node/native group. Instead that module hands
@@ -830,6 +878,7 @@ function snapResizeCorner(x, y, opts) {
   let bx = null, by = null; // { delta, target, rect }
   for (const t of targets) {
     if (t.kind === "pixgroup" && exPix.has(t.id)) continue;
+    if (t.kind === "group" && opts.excludeGroupId != null && t.id === opts.excludeGroupId) continue;
     if (t.kind === "node" && groupedNodes.has(t.ref)) continue;
     if (t.collapsed) continue;
     const oE = rectEdges(t.rect);
@@ -880,6 +929,7 @@ function onWindowPointerMove(e) {
   // The button-held + shift + marquee/pan gates above already cleared groupDrag
   // when appropriate; pointerup/cancel clears it via resetDrag.
   const draggedGroup = findDraggedGroup(c) || state.groupDrag?.ref || null;
+  const resizedGroupRaw = findResizedGroup(c); // detect BEFORE refreshGroupCache overwrites prev
   // Latch a multi-group drag (2+ groups moving together). Once latched, Align
   // stays out of group snapping for the rest of the gesture so the selected
   // groups move rigidly via LiteGraph instead of creeping into each other.
@@ -892,6 +942,12 @@ function onWindowPointerMove(e) {
       return;
     }
     handleGroupDrag(c, draggedGroup, e);
+    return;
+  }
+  // Native group RESIZE (bottom-right corner moved, top-left fixed) — snap the corner.
+  const resizedGroup = resizedGroupRaw || state.groupResize?.ref || null;
+  if (resizedGroup && !state._multiGroupDrag) {
+    handleGroupResize(c, resizedGroup, e);
     return;
   }
 
