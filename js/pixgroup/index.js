@@ -574,7 +574,15 @@ function onMove(e) {
       if (snap) { sdx = snap.dx || 0; sdy = snap.dy || 0; }
     }
     for (const s of starts) { s.gr.x = s.x + ddx + sdx; s.gr.y = s.y + ddy + sdy; }
-    for (const s of _drag.nodeStarts) { s.n.pos[0] = s.x + ddx + sdx; s.n.pos[1] = s.y + ddy + sdy; }
+    const vue = !!window.LiteGraph?.vueNodesMode;
+    for (const s of _drag.nodeStarts) {
+      const nx = s.x + ddx + sdx, ny = s.y + ddy + sdy;
+      // Nodes 2.0 renders node positions from a reactive layout store, so a silent
+      // index write (pos[0]=) doesn't move the node — assign a NEW pos array through
+      // the setter so the reactive update fires. Legacy reads node.pos directly.
+      if (vue) s.n.pos = [nx, ny];
+      else { s.n.pos[0] = nx; s.n.pos[1] = ny; }
+    }
   } else {
     // resize from any corner: grow from the fixed anchor toward the cursor (single
     // group). Align Pixaroma: snap the dragged CORNER to nearby node/group edges.
