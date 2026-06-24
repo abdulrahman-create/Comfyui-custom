@@ -1510,8 +1510,11 @@ function openPixGroupPalette(g) {
   foot.appendChild(hint);
   foot.appendChild(makeHelpBtn());
   foot.appendChild(palToolBtn("Reset", () => {
-    for (const t of targets) { t.titleColor = GROUP_DEFAULT_COLOR; t.bodyColor = GROUP_DEFAULT_COLOR; t.titleAlpha = 0.92; t.bodyAlpha = 0.12; t.fontSize = 14; }
-    titleHex = GROUP_DEFAULT_COLOR; bodyHex = GROUP_DEFAULT_COLOR;
+    // Reset to a NEW Pixaroma group's neutral default look — KEEP IN SYNC with the
+    // DEF_* constants in js/pixgroup/index.js (was the old blue group default).
+    const DT = "#4a4a4e", DB = "#2a2a2a";
+    for (const t of targets) { t.titleColor = DT; t.bodyColor = DB; t.titleAlpha = 0.92; t.bodyAlpha = 0.5; t.fontSize = 18; }
+    titleHex = DT; bodyHex = DB;
     picker.setColor(target === "title" ? titleHex : bodyHex);
     refreshHex(); refreshSliders(); pixRepaint();
   }));
