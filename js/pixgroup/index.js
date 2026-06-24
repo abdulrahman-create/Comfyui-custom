@@ -1066,7 +1066,7 @@ function installMenu() {
     opts.push(null);
     opts.push({ content: "👑 Add Pixaroma Group", callback: () => addGroup(p) });
     if (over) {
-      opts.push({ content: "👑 Edit Pixaroma Group", callback: () => { if (window.PixaromaNodeColors?.openPixGroup) window.PixaromaNodeColors.openPixGroup(over); else inlineRename(over); } });
+      opts.push({ content: "👑 Pixaroma Group Colors (\\)", callback: () => { if (window.PixaromaNodeColors?.openPixGroup) window.PixaromaNodeColors.openPixGroup(over); else inlineRename(over); } });
       opts.push({ content: "👑 Duplicate Pixaroma Group", callback: () => { const c = cloneGroupFrame(over, 40, 40); ensureGroups().push(c); _selectedIds = new Set([c.id]); _selectedId = c.id; clearNativeSelection(); markChanged(); } });
       opts.push({ content: "👑 Copy Group Colors", callback: () => { window.PixaromaNodeColors?.setColorClipboard?.({ title: gTitleColor(over), body: gBodyColor(over) }); } });
       if (window.PixaromaNodeColors?.getColorClipboard?.()) opts.push({ content: "👑 Paste Group Colors", callback: () => { const c = window.PixaromaNodeColors?.getColorClipboard?.(); if (!c) return; const sel = getSelectedGroups(); const tgts = (sel.length && sel.includes(over)) ? sel : [over]; for (const t of tgts) { t.titleColor = c.title; t.bodyColor = c.body; } markChanged(); } });

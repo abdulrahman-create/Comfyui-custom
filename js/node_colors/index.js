@@ -1372,7 +1372,7 @@ function pixRepaint() { try { app.canvas?.setDirty(true, true); } catch (_e) {} 
 
 function openPixGroupPalette(g) {
   if (!g) return;
-  const { modal, place, onClose } = makePalShell("Pixaroma Group");
+  const { modal, place, onClose } = makePalShell("Pixaroma Group Colors");
   // Apply to ALL selected Pixaroma groups when g is part of a multi-selection; the
   // displayed values come from g (the primary). Falls back to just [g].
   const sel = window.PixaromaPixGroup?.getSelectedGroups?.() || [];
@@ -1650,7 +1650,7 @@ app.registerExtension({
         const suffix = targets.length > 1 ? ` (${targets.length} groups)` : "";
         options.push(null);
         options.push({
-          content: `👑 Pixaroma Group Colors (\\)${suffix}`,
+          content: `👑 ComfyUI Group Color (\\)${suffix}`,
           callback: () => openGroupColorsPalette(targets, group),
         });
         options.push({
