@@ -1,5 +1,6 @@
 import { app } from "/scripts/app.js";
 import { createPixaromaColorPicker } from "../shared/color_picker.mjs";
+import { openHelpPopup } from "../shared/help.mjs";
 
 // ── Pixaroma node + group colors: right-click menu + presets + favorites ─
 // NODES — right-click any node:
@@ -782,7 +783,7 @@ function injectCSS() {
 }
 .pix-nc-presetgrid { display: grid; grid-template-columns: repeat(15, 1fr); gap: 4px; }
 .pix-nc-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 12px; }
-.pix-nc-hint { font: 11px system-ui, sans-serif; color: #8a8a90; }
+.pix-nc-hint { font: 11px system-ui, sans-serif; color: #8a8a90; flex: 1 1 auto; }
 .pix-nc-hint b { color: #f66744; font-weight: 400; }
   `;
   document.head.appendChild(s);
@@ -867,6 +868,34 @@ function buildHexBar(label, getVal, onCommit) {
 // stays visible and the node recolors live as you pick. Opens beside the
 // target node/group (via place()), is draggable by its header, and closes
 // on ✕, Escape, or a pointerdown anywhere outside it.
+// Help content for the color tool (shown by the round "?" next to Reset).
+const COLOR_HELP = {
+  title: "Pixaroma Color Tool",
+  tagline: "Color nodes, ComfyUI groups, and Pixaroma groups, with a few hidden tricks.",
+  sections: [
+    { heading: "Pick a color", bullets: [
+      "Drag in the square + the hue strip, or type a hex code in the Title / Body field.",
+      "Title / Body toggle (nodes & Pixaroma groups): the one picker edits whichever is selected.",
+      "Click the little color swatch in front of Title / Body to COPY its hex code.",
+    ] },
+    { heading: "Link Title & Body", body: "The chain button between the Title and Body fields links them so Body follows Title (a node's Body becomes a darker tint; a Pixaroma group's Body matches the Title, kept faint by its low opacity). Editing Body breaks the link; click the chain again to re-link." },
+    { heading: "Favourites (FAVS)", defs: [
+      ["+", "Save the current look to a free slot."],
+      ["Click", "Apply a saved favourite."],
+      ["Right-click", "Remove a favourite."],
+    ] },
+    { heading: "Sliders (Pixaroma group)", body: "Title / Body opacity and Font size: drag the slider, click the up / down arrows, or type a number and press Enter." },
+    { heading: "Presets & Reset", body: "The color grid at the bottom holds one-click presets. Reset returns to the default colors. Everything applies live to whatever is selected (one or many)." },
+  ],
+};
+function makeHelpBtn() {
+  const b = document.createElement("button");
+  b.type = "button"; b.title = "What do these do?"; b.textContent = "?";
+  b.style.cssText = "width:26px;height:26px;flex:0 0 auto;border-radius:50%;background:#f66744;color:#fff;border:none;font:700 14px system-ui,sans-serif;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;";
+  b.addEventListener("click", (e) => { e.stopPropagation(); openHelpPopup(COLOR_HELP); });
+  return b;
+}
+
 function makePalShell(titleText) {
   injectCSS();
   const modal = document.createElement("div");
@@ -905,8 +934,9 @@ function makePalShell(titleText) {
     if (modal.parentNode) modal.remove();
   }
   closeX.addEventListener("click", close);
-  function onDocDown(e) { if (!modal.contains(e.target)) close(); }
+  function onDocDown(e) { if (!modal.contains(e.target) && !e.target.closest(".pix-help-backdrop")) close(); }
   function onKey(e) {
+    if (document.querySelector(".pix-help-backdrop")) return; // help popup open → it handles Esc
     if (e.key === "Escape") { e.stopImmediatePropagation(); e.preventDefault(); close(); }
   }
   // Defer the outside-pointerdown listener so the click that opened the
@@ -1163,6 +1193,7 @@ function openNodeColorsPalette(targets, node, groups = []) {
   const hint = document.createElement("span"); hint.className = "pix-nc-hint";
   hint.innerHTML = "<b>+</b> save current · click = apply";
   foot.appendChild(hint);
+  foot.appendChild(makeHelpBtn());
   foot.appendChild(palToolBtn("Reset colors", () => {
     resetColors(targets);
     if (groups.length) resetGroupColor(groups);
@@ -1311,6 +1342,7 @@ function openGroupColorsPalette(targets, group) {
   const hint = document.createElement("span"); hint.className = "pix-nc-hint";
   hint.innerHTML = "<b>+</b> save current · click = apply";
   foot.appendChild(hint);
+  foot.appendChild(makeHelpBtn());
   foot.appendChild(palToolBtn("Reset color", () => {
     resetGroupColor(targets);
     hex = captureGroupColor(group);
@@ -1517,6 +1549,7 @@ function openPixGroupPalette(g) {
   const hint = document.createElement("span"); hint.className = "pix-nc-hint";
   hint.innerHTML = "<b>+</b> save current · click = apply";
   foot.appendChild(hint);
+  foot.appendChild(makeHelpBtn());
   foot.appendChild(palToolBtn("Reset", () => {
     for (const t of targets) { t.titleColor = GROUP_DEFAULT_COLOR; t.bodyColor = GROUP_DEFAULT_COLOR; t.titleAlpha = 0.92; t.bodyAlpha = 0.12; t.fontSize = 14; }
     titleHex = GROUP_DEFAULT_COLOR; bodyHex = GROUP_DEFAULT_COLOR;
