@@ -193,6 +193,27 @@ function containedGroups(g) {
   return out;
 }
 
+// ── Native ComfyUI groups (LGraphGroup) ───────────────────────────────────
+// We never OWN them, but we wrap them (G) and carry our groups when they move.
+function nativeGroups() {
+  return app.graph?._groups || app.graph?.groups || [];
+}
+// A native group's box in graph coords. Its geometry is a Float32Array _pos/_size
+// (views of _bounding); fall back to .pos/.size. NEVER Array.isArray a typed array.
+function natGrpBox(grp) {
+  const pos = grp._pos || grp.pos, size = grp._size || grp.size;
+  if (!pos || pos.length < 2 || !size || size.length < 2) return null;
+  return { x: pos[0], y: pos[1], w: size[0], h: size[1] };
+}
+// Boxes of the SELECTED native ComfyUI groups (selectedItems mixes nodes+groups).
+function selectedNativeGroupBoxes() {
+  const sel = app.canvas?.selectedItems;
+  if (!sel || typeof sel.has !== "function") return [];
+  const out = [];
+  for (const grp of nativeGroups()) if (sel.has(grp)) { const b = natGrpBox(grp); if (b) out.push(b); }
+  return out;
+}
+
 // Set of all node ids hidden by folded groups + whether each owner shows wires.
 // Cached; invalidated on fold / unfold / delete / configure (the id set only
 // changes then — node moves don't change it).
@@ -561,6 +582,7 @@ function onUp(e) {
 // not ours, so on release we ADD any Pixaroma group the marquee rect touched to our
 // selection (non-exclusive — ComfyUI's node/group selection stays).
 function onWinPointerUp() {
+  _natGrpDrag = null; // end any native-group carry
   if (!_marqueeRect) return;
   const [mx, my, mw, mh] = _marqueeRect;
   _marqueeRect = null;
@@ -580,6 +602,35 @@ function onWinPointerUp() {
   repaint();
 }
 
+// While a NATIVE ComfyUI group is dragged, ComfyUI moves it + its nodes but NOT
+// our Pixaroma groups sitting inside it — so carry them. Detect the drag by the
+// group's own position change (selected_group goes stale; a size change = resize).
+const _natGrpPrev = new WeakMap();  // native group → last {x,y,w,h}
+let _natGrpDrag = null;             // { grp, pix: [our groups snapshotted inside] }
+function trackNativeGroupDrag(e) {
+  const dragging = (e.buttons & 1) === 1;
+  if (!dragging) _natGrpDrag = null;
+  for (const grp of nativeGroups()) {
+    const box = natGrpBox(grp); if (!box) continue;
+    const prev = _natGrpPrev.get(grp);
+    _natGrpPrev.set(grp, box);
+    if (!prev || !dragging) continue;
+    const dx = box.x - prev.x, dy = box.y - prev.y;
+    if ((dx === 0 && dy === 0) || box.w !== prev.w || box.h !== prev.h) continue; // still / resized
+    // First move tick → snapshot our groups whose whole box was inside its PREVIOUS
+    // box; then translate that fixed set by each tick's delta (their member nodes are
+    // inside the native group too, so ComfyUI moves them — we move only the frames).
+    if (!_natGrpDrag || _natGrpDrag.grp !== grp) {
+      _natGrpDrag = { grp, pix: ensureGroups().filter((o) =>
+        o.x >= prev.x && o.y >= prev.y && o.x + o.w <= prev.x + prev.w && o.y + o.h <= prev.y + prev.h) };
+    }
+    if (_natGrpDrag.pix.length) {
+      for (const o of _natGrpDrag.pix) { o.x += dx; o.y += dy; }
+      markChanged();
+    }
+  }
+}
+
 // Cursor hint so the grab zones are discoverable: a resize arrow over the
 // bottom-right handle, a move cursor over the header. Bubble phase so it wins
 // over ComfyUI's own per-move cursor; only clears what WE set (no flicker
@@ -587,6 +638,7 @@ function onWinPointerUp() {
 let _cursorOverride = false;
 function onHover(e) {
   if (_drag) return;
+  trackNativeGroupDrag(e);
   const el = app.canvas?.canvas;
   if (!el) return;
   // Track ComfyUI's marquee rect while it drags, so onWinPointerUp can add our
@@ -697,11 +749,17 @@ function onDblClick(e) {
 function addGroup(p) {
   const gs = ensureGroups();
   const sel = app.canvas?.selected_nodes ? Object.values(app.canvas.selected_nodes) : [];
+  // Wrap EVERYTHING selected: loose nodes + selected native ComfyUI groups + selected
+  // Pixaroma groups (each box covers its own contents). "Group these together" ⊇ groups.
+  const wrappedPix = getSelectedGroups();
+  const boxes = [];
+  for (const n of sel) boxes.push(nodeVisualBounds(n));
+  for (const b of selectedNativeGroupBoxes()) boxes.push(b);
+  for (const sg of wrappedPix) boxes.push({ x: sg.x, y: sg.y, w: sg.w, h: sg.h });
   let x, y, w, h;
-  if (sel.length) {
+  if (boxes.length) {
     let minx = Infinity, miny = Infinity, maxx = -Infinity, maxy = -Infinity;
-    for (const n of sel) {
-      const b = nodeVisualBounds(n);
+    for (const b of boxes) {
       minx = Math.min(minx, b.x); miny = Math.min(miny, b.y);
       maxx = Math.max(maxx, b.x + b.w); maxy = Math.max(maxy, b.y + b.h);
     }
@@ -717,8 +775,16 @@ function addGroup(p) {
     titleColor: DEF_TITLE, bodyColor: DEF_BODY,
     titleAlpha: DEF_TITLE_A, bodyAlpha: DEF_BODY_A, fontSize: DEF_FONT,
   };
-  gs.push(g);
-  selectGroup(g);   // exclusive: the new group is selected, the wrapped nodes are not
+  if (wrappedPix.length) {
+    // Insert BEHIND the wrapped Pixaroma groups so they stay on top + interactive
+    // (z-order: an outer wrapper must draw first). Else push on top (nodes draw above).
+    let minIdx = gs.length;
+    for (const wp of wrappedPix) { const idx = gs.indexOf(wp); if (idx >= 0) minIdx = Math.min(minIdx, idx); }
+    gs.splice(minIdx, 0, g);
+  } else {
+    gs.push(g);
+  }
+  selectGroup(g);   // exclusive: the new group is selected, the wrapped items are not
   markChanged();
 }
 function deleteGroup(g) {
