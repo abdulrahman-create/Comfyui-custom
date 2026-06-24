@@ -90,6 +90,9 @@ export class LabelEditor {
     this._build();
     document.body.appendChild(this._el);
     this._updatePreview();
+    // After layout settles, match the color picker's height to the swatch grid
+    // so their bottoms (and the hex bar / Transparent button below them) line up.
+    requestAnimationFrame(() => requestAnimationFrame(() => this._alignColorColumns()));
     // Block ComfyUI's canvas shortcuts while the editor is open, but LET keys
     // through when a form control is focused so typing + Enter / Arrow in the
     // editor's inputs (slider number fields, hex, textarea) work normally. Esc
@@ -531,6 +534,27 @@ export class LabelEditor {
     row.appendChild(s);
     row.appendChild(vWrap);
     return row;
+  }
+
+  // Match the color picker's height to the swatch grid so the picker's bottom
+  // lines up with the grid's last row, and the hex bar / Transparent button
+  // below them sit on the same line. Measures the whole picker (incl. any
+  // internal gaps) vs the grid and nudges the SV plane height by the diff, so
+  // it's exact regardless of browser scrollbar width or palette count.
+  _alignColorColumns() {
+    if (!this._el) return;
+    const grid = this._el.querySelector(".pix-lbl-swgrid");
+    const sv = this._el.querySelector(".pix-cp-sv");
+    const picker = this._el.querySelector(".pix-cp");
+    if (!grid || !sv || !picker) return;
+    // Measure border-box bottoms; nudge the SV plane height by the gap so the
+    // whole picker's bottom meets the grid's bottom. SV is box-sizing:border-box
+    // (CSS), so the height we set equals the measured height — exact.
+    const gridBottom = grid.getBoundingClientRect().bottom;
+    const pickerBottom = picker.getBoundingClientRect().bottom;
+    const svH = sv.getBoundingClientRect().height;
+    const newSvH = svH + (gridBottom - pickerBottom);
+    if (newSvH > 40) sv.style.height = Math.round(newSvH) + "px";
   }
 
   // ── Help (shared themed popup, same style as the Group help) ──

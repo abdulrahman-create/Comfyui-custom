@@ -280,8 +280,10 @@ export function injectCSS() {
 .pix-lbl-btn:hover { border-color: #555; color: #bbb; }
 .pix-lbl-btn.active { background: ${BRAND}22; border-color: ${BRAND}; color: ${BRAND}; }
 .pix-lbl-bold { font-weight: bold; min-width: 26px; text-align: center; }
-/* Divider inside button row */
-.pix-lbl-vsep { width: 1px; height: 16px; background: #333; margin: 0 3px; flex-shrink: 0; }
+/* Divider inside button row — align-self:center so the short line sits in the
+   middle of the row instead of dropping to the top (a fixed-height flex item in
+   an align-items:stretch row defaults to flex-start). */
+.pix-lbl-vsep { width: 1px; height: 20px; background: #333; margin: 0 3px; flex-shrink: 0; align-self: center; }
 /* Spacing & Style — 2-col grid of slider fields */
 .pix-lbl-spacing-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 14px; }
 /* Footer */
@@ -418,16 +420,16 @@ export function injectCSS() {
 /* Transparent — Background only, a labelled control below the grid (so it is
    never a half-empty grid cell). Hidden for Text via inline display:none in JS. */
 .pix-lbl-transbtn {
-    margin-top: 6px; width: 100%; box-sizing: border-box;
+    margin-top: 8px; width: 100%; box-sizing: border-box;
     display: flex; align-items: center; gap: 8px;
-    padding: 6px 9px; border-radius: 6px; cursor: pointer; font-size: 12px;
+    padding: 7px 9px; border-radius: 6px; cursor: pointer; font-size: 12px;
     background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12); color: #aaa;
     transition: all 0.12s;
 }
 .pix-lbl-transbtn:hover { border-color: ${BRAND}; color: #ddd; }
 .pix-lbl-transbtn.active { border-color: ${BRAND}; color: ${BRAND}; }
 .pix-lbl-transbtn-sw {
-    width: 16px; height: 16px; border-radius: 3px; flex: 0 0 auto; box-sizing: border-box;
+    width: 18px; height: 18px; border-radius: 3px; flex: 0 0 auto; box-sizing: border-box;
     border: 1px solid rgba(255,255,255,0.2);
     background-color: #3a3a3a;
     background-image:
@@ -443,7 +445,10 @@ export function injectCSS() {
    it may shrink, which otherwise pushed the hue strip out over the swatches. */
 .pix-lbl-panel .pix-cp { width: 100%; max-width: none; margin: 0; min-width: 0; }
 .pix-lbl-panel .pix-cp-sv-row { min-width: 0; }
-.pix-lbl-panel .pix-cp-sv { height: 170px; min-width: 0; }
+/* Height is a close default; _alignColorColumns() refines it at open so the
+   picker's bottom lines up exactly with the swatch grid's bottom row.
+   border-box so the JS height set == the measured height (exact alignment). */
+.pix-lbl-panel .pix-cp-sv { height: 146px; min-width: 0; box-sizing: border-box; }
 /* Hide the picker's own hex field — our labelled .pix-lbl-hexbar replaces it
    (it shows the selected target's name + code and changes with the buttons). */
 .pix-lbl-panel .pix-cp-hexrow { display: none; }
