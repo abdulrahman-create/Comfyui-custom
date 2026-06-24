@@ -111,6 +111,17 @@ function openLabelEditor(node) {
 app.registerExtension({
   name: "Pixaroma.Label",
 
+  // "Edit Label" in the node right-click menu — new context-menu API (replaces the
+  // deprecated getNodeMenuOptions monkey-patch). A reliable edit path in both
+  // renderers (the label body is pointer-events:none, so its own dblclick can't fire
+  // in Nodes 2.0; a document-level dblclick listener below covers that separately).
+  getNodeMenuItems(node) {
+    if (node && (node.type === "PixaromaLabel" || node.comfyClass === "PixaromaLabel")) {
+      return [null, { content: "✏️ Edit Label", callback: () => openLabelEditor(node) }];
+    }
+    return [];
+  },
+
   async beforeRegisterNodeDef(nodeType, nodeData) {
     if (nodeData.name !== "PixaromaLabel") return;
 
@@ -217,27 +228,8 @@ app.registerExtension({
   },
 });
 
-// ── Right-click menu: "Edit Label" ──────────────────────────────
-// A reliable edit path in BOTH renderers (double-click via onDblClick is not
-// guaranteed to fire in Nodes 2.0, and the label body is pointer-events:none so
-// it can't host its own dblclick). Patches LGraphCanvas.getNodeMenuOptions once
-// (same pattern as Mute Switch); the _patched flag guards extension hot-reload.
-if (typeof LGraphCanvas !== "undefined"
-    && LGraphCanvas?.prototype?.getNodeMenuOptions
-    && !LGraphCanvas.prototype._pixLblMenuPatched) {
-  LGraphCanvas.prototype._pixLblMenuPatched = true;
-  const _origGetNodeMenu = LGraphCanvas.prototype.getNodeMenuOptions;
-  LGraphCanvas.prototype.getNodeMenuOptions = function (node) {
-    const options = _origGetNodeMenu.apply(this, arguments);
-    if (node && (node.type === "PixaromaLabel" || node.comfyClass === "PixaromaLabel")) {
-      options.push(null, {
-        content: "✏️ Edit Label",
-        callback: () => openLabelEditor(node),
-      });
-    }
-    return options;
-  };
-}
+// ("Edit Label" in the right-click menu is now the getNodeMenuItems hook on the
+// extension above — no getNodeMenuOptions monkey-patch.)
 
 // ── Double-click to edit, restored for Nodes 2.0 ────────────────
 // The label body is pointer-events:none (so the node can be placed/dragged), so

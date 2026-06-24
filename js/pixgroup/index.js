@@ -1175,47 +1175,11 @@ const GROUP_HELP = {
   ],
 };
 
-function installMenu() {
-  // Retry until LGraphCanvas exists (load-order varies across ComfyUI builds), same as
-  // installDraw / installFoldHooks — else the right-click group menu silently never
-  // installs for the whole session (the 700ms self-heal interval doesn't re-run this).
-  const C = (window.LiteGraph?.LGraphCanvas || window.LGraphCanvas)?.prototype;
-  if (!C) { setTimeout(installMenu, 200); return; }
-  // NODE right-click menu: "Add Pixaroma Group (G)" wraps the selected node(s) —
-  // same as pressing G. (Right-clicking a node selects it, so the selection is set.)
-  if (C.getNodeMenuOptions && !C._pixGroupNodeMenuWrapped) {
-    const origN = C.getNodeMenuOptions;
-    C.getNodeMenuOptions = function () {
-      const opts = origN.apply(this, arguments) || [];
-      opts.push(null);
-      opts.push({ content: "👑 Add Pixaroma Group (G)", callback: () => addGroup(null) });
-      return opts;
-    };
-    C._pixGroupNodeMenuWrapped = true;
-  }
-  if (!C.getCanvasMenuOptions || C._pixGroupMenuWrapped) return;
-  const orig = C.getCanvasMenuOptions;
-  C.getCanvasMenuOptions = function () {
-    const opts = orig.apply(this, arguments) || [];
-    const gm = this.graph_mouse || app.canvas?.graph_mouse;
-    const p = gm ? [gm[0], gm[1]] : null;
-    const over = p ? groupAt(p) : null;
-    opts.push(null);
-    opts.push({ content: "👑 Add Pixaroma Group", callback: () => addGroup(p) });
-    if (over) {
-      opts.push({ content: "👑 Pixaroma Group Colors (\\)", callback: () => { if (window.PixaromaNodeColors?.openPixGroup) window.PixaromaNodeColors.openPixGroup(over); else inlineRename(over); } });
-      opts.push({ content: "👑 Duplicate Pixaroma Group", callback: () => { const c = cloneGroupFrame(over, 40, 40); ensureGroups().push(c); _selectedIds = new Set([c.id]); _selectedId = c.id; clearNativeSelection(); markChanged(); } });
-      opts.push({ content: "👑 Copy Group Colors", callback: () => { window.PixaromaNodeColors?.setColorClipboard?.({ title: gTitleColor(over), body: gBodyColor(over) }); } });
-      if (window.PixaromaNodeColors?.getColorClipboard?.()) opts.push({ content: "👑 Paste Group Colors", callback: () => { const c = window.PixaromaNodeColors?.getColorClipboard?.(); if (!c) return; const sel = getSelectedGroups(); const tgts = (sel.length && sel.includes(over)) ? sel : [over]; for (const t of tgts) { t.titleColor = c.title; t.bodyColor = c.body; } markChanged(); } });
-      opts.push({ content: over.folded ? "👑 Unfold Group" : "👑 Fold Group", callback: () => toggleFold(over) });
-      if (over.folded) opts.push({ content: (over.showLinks !== false) ? "👑 Hide links while folded" : "👑 Show links while folded", callback: () => { over.showLinks = (over.showLinks === false); invalidateHidden(); markChanged(); } });
-      opts.push({ content: "👑 Group Help", callback: () => openHelpPopup(GROUP_HELP) });
-      opts.push({ content: "👑 Delete Pixaroma Group", callback: () => deleteGroup(over) });
-    }
-    return opts;
-  };
-  C._pixGroupMenuWrapped = true;
-}
+// Right-click group menus use the new context-menu API (the getNodeMenuItems /
+// getCanvasMenuItems hooks on the registerExtension config below), NOT a monkey-patch
+// of getNodeMenuOptions / getCanvasMenuOptions (which ComfyUI deprecated). The hooks
+// are part of the extension registration, so there is no install timing / retry to get
+// right and no double-wrap flag needed.
 
 // Ride ComfyUI's own save / undo / change-tracker cycle. graph.serialize() is
 // what the change-tracker snapshots AND what a workflow save writes, so
@@ -1281,9 +1245,44 @@ app.registerExtension({
     },
   ],
   keybindings: [{ combo: { key: "g" }, commandId: "Pixaroma.GroupSelected" }],
+
+  // NODE right-click menu — new context-menu API (replaces the deprecated
+  // getNodeMenuOptions monkey-patch). "Add Pixaroma Group (G)" wraps the selected
+  // node(s), same as pressing G (right-clicking a node selects it).
+  getNodeMenuItems(node) {
+    return [
+      null,
+      { content: "👑 Add Pixaroma Group (G)", callback: () => addGroup(null) },
+    ];
+  },
+
+  // CANVAS right-click menu — new context-menu API (replaces the deprecated
+  // getCanvasMenuOptions monkey-patch). `canvas` is a parameter (no `this`); read
+  // canvas.graph_mouse for the right-click point and add the per-group entries only
+  // when a Pixaroma group is under the cursor.
+  getCanvasMenuItems(canvas) {
+    const gm = canvas?.graph_mouse || app.canvas?.graph_mouse;
+    const p = gm ? [gm[0], gm[1]] : null;
+    const over = p ? groupAt(p) : null;
+    const items = [
+      null,
+      { content: "👑 Add Pixaroma Group", callback: () => addGroup(p) },
+    ];
+    if (over) {
+      items.push({ content: "👑 Pixaroma Group Colors (\\)", callback: () => { if (window.PixaromaNodeColors?.openPixGroup) window.PixaromaNodeColors.openPixGroup(over); else inlineRename(over); } });
+      items.push({ content: "👑 Duplicate Pixaroma Group", callback: () => { const c = cloneGroupFrame(over, 40, 40); ensureGroups().push(c); _selectedIds = new Set([c.id]); _selectedId = c.id; clearNativeSelection(); markChanged(); } });
+      items.push({ content: "👑 Copy Group Colors", callback: () => { window.PixaromaNodeColors?.setColorClipboard?.({ title: gTitleColor(over), body: gBodyColor(over) }); } });
+      if (window.PixaromaNodeColors?.getColorClipboard?.()) items.push({ content: "👑 Paste Group Colors", callback: () => { const c = window.PixaromaNodeColors?.getColorClipboard?.(); if (!c) return; const sel = getSelectedGroups(); const tgts = (sel.length && sel.includes(over)) ? sel : [over]; for (const t of tgts) { t.titleColor = c.title; t.bodyColor = c.body; } markChanged(); } });
+      items.push({ content: over.folded ? "👑 Unfold Group" : "👑 Fold Group", callback: () => toggleFold(over) });
+      if (over.folded) items.push({ content: (over.showLinks !== false) ? "👑 Hide links while folded" : "👑 Show links while folded", callback: () => { over.showLinks = (over.showLinks === false); invalidateHidden(); markChanged(); } });
+      items.push({ content: "👑 Group Help", callback: () => openHelpPopup(GROUP_HELP) });
+      items.push({ content: "👑 Delete Pixaroma Group", callback: () => deleteGroup(over) });
+    }
+    return items;
+  },
+
   setup() {
     installDraw();
-    installMenu();
     installPersistence();
     installFoldHooks();
     installExecListeners();

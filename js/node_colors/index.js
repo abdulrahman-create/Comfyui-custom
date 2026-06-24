@@ -1555,97 +1555,90 @@ app.registerExtension({
     { combo: { key: "\\" }, commandId: "Pixaroma.OpenColors" },
   ],
 
+  // Node right-click menu — new context-menu API (replaces the deprecated
+  // getNodeMenuOptions monkey-patch). `node` is passed as a parameter; we return
+  // our entries and ComfyUI merges them. Both renderers open the swatch-palette
+  // popup (the Vue menu can't render a nested submenu; the popup is the unified UI).
+  getNodeMenuItems(node) {
+    const targets = getTargetNodes(node);
+    const count   = targets.length;
+    const suffix  = count > 1 ? ` (${count} nodes)` : "";
+    const items = [
+      null, // separator
+      {
+        content: `👑 Pixaroma Node Colors (\\)${suffix}`,
+        // Mirror the "\" shortcut: also colour any co-selected native + Pixaroma
+        // groups in the same pick (was nodes-only), so right-click matches the
+        // shortcut and ComfyUI's own node+group colouring.
+        callback: () => openNodeColorsPalette(
+          targets, node, getSelectedGroups(),
+          window.PixaromaPixGroup?.getSelectedGroups?.() || [],
+        ),
+      },
+      {
+        content: `👑 Copy Node Colors`,
+        callback: () => { colorClipboard = captureColors(node); },
+      },
+    ];
+    // Paste only appears once colors have been copied this session.
+    if (colorClipboard) {
+      items.push({
+        content: `👑 Paste Node Colors${suffix}`,
+        callback: () => applyColors(targets, colorClipboard.title, colorClipboard.body),
+      });
+    }
+    items.push({
+      content: `👑 Reset Node Colors${suffix}`,
+      callback: () => resetColors(targets),
+    });
+    return items;
+  },
+
+  // Canvas right-click menu — new context-menu API (replaces the deprecated
+  // getCanvasMenuOptions monkey-patch). `canvas` is passed as a parameter (no more
+  // `this`); we read canvas.graph_mouse (graph space) for the group under the cursor
+  // and add the group-colour entries only when one is there — node right-clicks go
+  // through getNodeMenuItems, so there's no double-add. Groups have one fill color;
+  // the clipboard + favorites are SHARED with nodes (cross-type) via pickGroupColor.
+  getCanvasMenuItems(canvas) {
+    const graph = canvas?.graph || app.graph;
+    const gm = canvas?.graph_mouse || app.canvas?.graph_mouse;
+    let group = null;
+    if (graph && typeof graph.getGroupOnPos === "function" && gm) {
+      group = graph.getGroupOnPos(gm[0], gm[1]) || null;
+    }
+    if (!group) return []; // empty canvas → no Pixaroma entries
+    const targets = getTargetGroups(group);
+    const suffix = targets.length > 1 ? ` (${targets.length} groups)` : "";
+    const items = [
+      null,
+      {
+        content: `👑 ComfyUI Group Color (\\)${suffix}`,
+        callback: () => openGroupColorsPalette(targets, group),
+      },
+      {
+        content: `👑 Copy Group Color`,
+        callback: () => {
+          const c = captureGroupColor(group);
+          colorClipboard = { title: c, body: c };
+        },
+      },
+    ];
+    if (colorClipboard) {
+      items.push({
+        content: `👑 Paste Group Color${suffix}`,
+        callback: () => applyGroupColor(targets, pickGroupColor(colorClipboard)),
+      });
+    }
+    items.push({
+      content: `👑 Reset Group Color${suffix}`,
+      callback: () => resetGroupColor(targets),
+    });
+    return items;
+  },
+
   async setup() {
-    // ── Node right-click menu ──────────────────────────────────────────
-    if (typeof LGraphCanvas !== "undefined" && LGraphCanvas?.prototype?.getNodeMenuOptions) {
-      const origGetNodeMenuOptions = LGraphCanvas.prototype.getNodeMenuOptions;
-      LGraphCanvas.prototype.getNodeMenuOptions = function (node) {
-        const options = origGetNodeMenuOptions.apply(this, arguments);
-        const targets = getTargetNodes(node);
-        const count   = targets.length;
-        const suffix  = count > 1 ? ` (${count} nodes)` : "";
-        // Both renderers open the swatch-palette popup (the Vue menu can't
-        // render the old nested submenu, and the popup is the unified UI).
-        options.push(null, {
-          content: `👑 Pixaroma Node Colors (\\)${suffix}`,
-          // Mirror the "\" shortcut: also colour any co-selected native + Pixaroma
-          // groups in the same pick (was nodes-only), so right-click matches the
-          // shortcut and ComfyUI's own node+group colouring.
-          callback: () => openNodeColorsPalette(
-            targets, node, getSelectedGroups(),
-            window.PixaromaPixGroup?.getSelectedGroups?.() || [],
-          ),
-        });
-        options.push({
-          content: `👑 Copy Node Colors`,
-          callback: () => { colorClipboard = captureColors(node); },
-        });
-        // Paste only appears once colors have been copied this session.
-        if (colorClipboard) {
-          options.push({
-            content: `👑 Paste Node Colors${suffix}`,
-            callback: () => applyColors(targets, colorClipboard.title, colorClipboard.body),
-          });
-        }
-        options.push({
-          content: `👑 Reset Node Colors${suffix}`,
-          callback: () => resetColors(targets),
-        });
-        return options;
-      };
-    }
-
-    // ── Group colors at the TOP LEVEL of the canvas right-click menu ────
-    // (like the node entries — NOT buried under "Edit Group"). The canvas
-    // menu is built by getCanvasMenuOptions; processContextMenu appends
-    // "Edit Group" right after when a group is under the cursor, so our
-    // entries sit just above it. getCanvasMenuOptions receives no event, so
-    // we read the right-click position from this.graph_mouse (graph space)
-    // and gate on a group being under it — node right-clicks go through
-    // getNodeMenuOptions instead, so there's no double-add. Groups have one
-    // fill color; the clipboard + favorites are SHARED with nodes
-    // (cross-type) via pickGroupColor.
-    if (typeof LGraphCanvas !== "undefined" && LGraphCanvas?.prototype?.getCanvasMenuOptions) {
-      const origGetCanvasMenuOptions = LGraphCanvas.prototype.getCanvasMenuOptions;
-      LGraphCanvas.prototype.getCanvasMenuOptions = function () {
-        const options = origGetCanvasMenuOptions.apply(this, arguments) || [];
-        const graph = this.graph || app.graph;
-        const gm = this.graph_mouse || app.canvas?.graph_mouse;
-        let group = null;
-        if (graph && typeof graph.getGroupOnPos === "function" && gm) {
-          group = graph.getGroupOnPos(gm[0], gm[1]) || null;
-        }
-        if (!group) return options; // empty canvas → leave the menu alone
-
-        const targets = getTargetGroups(group);
-        const suffix = targets.length > 1 ? ` (${targets.length} groups)` : "";
-        options.push(null);
-        options.push({
-          content: `👑 ComfyUI Group Color (\\)${suffix}`,
-          callback: () => openGroupColorsPalette(targets, group),
-        });
-        options.push({
-          content: `👑 Copy Group Color`,
-          callback: () => {
-            const c = captureGroupColor(group);
-            colorClipboard = { title: c, body: c };
-          },
-        });
-        if (colorClipboard) {
-          options.push({
-            content: `👑 Paste Group Color${suffix}`,
-            callback: () => applyGroupColor(targets, pickGroupColor(colorClipboard)),
-          });
-        }
-        options.push({
-          content: `👑 Reset Group Color${suffix}`,
-          callback: () => resetGroupColor(targets),
-        });
-        return options;
-      };
-    }
-
-    // (The "\" shortcut is now registered via commands/keybindings above, so it
+    // (The "\" shortcut is registered via commands/keybindings above, so it
     // shows in Settings → Keybindings and is rebindable — no raw listener here.)
 
     // The custom Pixaroma group (js/pixgroup) opens its styling through this
