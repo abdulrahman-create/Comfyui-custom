@@ -295,6 +295,14 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
+### **June 24, 2026 · v1.4.0**
+- **Groups, reimagined.** Last update's group styling has grown into a full **Pixaroma Group**: a group you add yourself (select some nodes and press **G**, or right-click and choose Add Pixaroma Group) that's entirely ours, so other extensions can't fight over it. It has a coloured header showing the group name and node count, one-click header buttons to **run / mute / bypass / fold** everything inside, and you can **fold** a whole group down to a slim bar to tidy your canvas (the nodes and wires inside tuck away, with a little running indicator while it works). Select several at once, move or resize them, duplicate one, nest them, and they snap into line with the Align tool. Heads-up for existing users: regular ComfyUI groups go back to their plain look, and the styling now lives in this new Pixaroma Group.
+- **Group Mute and Bypass now reach inside subgraphs.** Muting or bypassing a group correctly turns off nodes nested in a subgraph, not just the subgraph box, so branching workflows behave the way you expect.
+- **Run a single group.** The group header has a Run button that queues just that group's output nodes, so you can run one section of your workflow without running everything.
+- **The colour menu colours your whole selection at once.** Right-click a node with a group also selected, pick a colour, and both get coloured together, matching how ComfyUI does it.
+- **Load Image no longer grows out of its group.** Folding then unfolding a group could make a Load Image inside stretch taller and spill past the edge. Fixed, it keeps its size now.
+- **Quieter and tidier under the hood.** Removed some leftover console messages and moved every right-click menu onto ComfyUI's current menu system, so Pixaroma no longer logs "deprecated" warnings.
+
 ### **June 22, 2026 · v1.3.101–v1.3.102**
 - **Align tool now works with groups.** Drag a group and it snaps into line with nearby nodes and other groups, with the orange guide lines showing as it goes, and the nodes inside the group move along with it. Dragging a node now snaps to a group's edges too. (Turn on the Align button in the top toolbar to use it.)
 - **Node and group colour favourites are now separate.** Saving a colour to a favourite from the group colour menu no longer overwrites the node colours you saved - each keeps its own set of favourites.
