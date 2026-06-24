@@ -1569,11 +1569,14 @@ function openColorsForSelection() {
   if (document.querySelector(".pix-nc-pal")) return;
   const c = app.canvas;
   if (!c) return;
+  // A selected Pixaroma group wins: if one is selected, color the GROUP, even
+  // when a node is also selected (nodes have ComfyUI's own colour picker in the
+  // floating toolbar, so the group would otherwise be unreachable here).
+  const pix = window.PixaromaPixGroup?.getSelected?.();
+  if (pix) { openPixGroupPalette(pix); return; }
   const nodes = c.selected_nodes ? Object.values(c.selected_nodes) : [];
   const groups = getSelectedGroups();
   if (nodes.length) { openNodeColorsPalette(getTargetNodes(nodes[0]), nodes[0], groups); return; }
-  const pix = window.PixaromaPixGroup?.getSelected?.();
-  if (pix) { openPixGroupPalette(pix); return; }
   if (groups.length) openGroupColorsPalette(groups, groups[0]);
 }
 
