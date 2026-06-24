@@ -76,7 +76,6 @@ app.registerExtension({
     }
     installClassic();
     installVuePoll();
-    console.log("[Pixaroma.NodeTitles] setup: enabled =", state.enabled);
   },
 });
 

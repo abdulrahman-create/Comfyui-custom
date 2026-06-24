@@ -162,7 +162,6 @@ app.registerExtension({
       onChange: (v) => {
         state.enabled = !!v;
         updateToolbarTint();
-        console.log("[Pixaroma.Align] enabled =", state.enabled);
       },
     },
     {
@@ -188,7 +187,6 @@ app.registerExtension({
       const d = Number(s.getSettingValue(SETTING_SNAP_DIST));
       if (Number.isFinite(d) && d >= 4 && d <= 16) state.snapDistPx = d;
     }
-    console.log("[Pixaroma.Align] setup: enabled=", state.enabled, "snapDist=", state.snapDistPx);
     mountToolbarButton();
     installPointerHook();
     installDrawHook();
@@ -219,7 +217,6 @@ function installPointerHook() {
   window.addEventListener("pointerup", resetDrag, false);
   window.addEventListener("pointercancel", resetDrag, false);
   _hookInstalled = true;
-  console.log("[Pixaroma.Align] pointer hook installed");
 }
 
 // =============================================================================
@@ -276,7 +273,6 @@ function installDrawHook() {
     return ret;
   };
   _drawHookInstalled = true;
-  console.log("[Pixaroma.Align] drawFrontCanvas hooked for guide rendering");
 }
 
 // Build the 6 reference lines for a graph-space rect.
