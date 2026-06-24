@@ -191,6 +191,8 @@ app.registerExtension({
     mountToolbarButton();
     installPointerHook();
     installDrawHook();
+    // Group Pixaroma's pixgroup drag calls this for its snap (it owns its own move).
+    try { window.PixaromaAlign = { snapMovingRect, endExternalDrag: clearExternalGuides }; } catch (_e) {}
   },
 });
 
@@ -387,6 +389,13 @@ function alignTargets(c) {
     const r = groupRect(g);
     if (r) out.push({ ref: g, kind: "group", id: g.id, rect: r, collapsed: false });
   }
+  // Pixaroma groups (js/pixgroup) — read-only snap targets, so dragging a node or a
+  // native group aligns to their edges too. kind "pixgroup" so the node/group skips
+  // (keyed on kind/ref) never touch them; ref null (no LiteGraph object behind them).
+  try {
+    const rects = window.PixaromaPixGroup?.allRects?.() || [];
+    for (const r of rects) out.push({ ref: null, kind: "pixgroup", id: r.id, rect: { x: r.x, y: r.y, w: r.w, h: r.h }, collapsed: false });
+  } catch (_e) {}
   return out;
 }
 
@@ -738,6 +747,62 @@ function handleGroupDrag(c, group, e) {
   c.setDirty?.(true, true);
 }
 
+// ── External-drag snap API (used by Group Pixaroma's own pixgroup drag) ──────
+// A Pixaroma group is moved by its OWN module (frame + contained nodes), so Align
+// can't drive it via node.pos like a node/native group. Instead that module hands
+// us the dragged frames' bounding rect here; we set the guides (the draw hook
+// renders them) and return the snap delta to apply to the frames + their contents.
+function clearExternalGuides() {
+  state._extStickyX = null; state._extStickyY = null;
+  if (state.activeGuides.length) { state.activeGuides = []; app.canvas?.setDirty?.(true, true); }
+}
+function snapMovingRect(rect, opts) {
+  opts = opts || {};
+  const c = app.canvas;
+  if (!state.enabled || !c || opts.bypass || !rect) { clearExternalGuides(); return { dx: 0, dy: 0 }; }
+  const scale = c.ds?.scale || 1;
+  const snapGraph = state.snapDistPx / scale;
+  const stickyG = snapGraph * 1.5;
+  const exPix = new Set(opts.excludePixIds || []);   // dragged pixgroup ids — don't snap to them
+  const exNodes = new Set(opts.excludeNodes || []);  // their member nodes — nor to own children
+  const targets = alignTargets(c);
+  // Like handleGroupDrag: don't snap to nodes nested inside a native group (their
+  // edges differ from the frame and would hijack the snap).
+  const groupedNodes = new Set();
+  for (const t of targets) {
+    if (t.kind !== "group") continue;
+    for (const n of groupContainedNodes(c, t.ref, t.rect)) groupedNodes.add(n);
+  }
+  const me = rectEdges(rect);
+  const movingX = [me.left, me.right, me.centerX];
+  const movingY = [me.top, me.bottom, me.centerY];
+  let bestX = null, bestY = null;
+  for (const t of targets) {
+    if (t.kind === "pixgroup" && exPix.has(t.id)) continue;
+    if (t.kind === "node" && (exNodes.has(t.ref) || groupedNodes.has(t.ref))) continue;
+    if (t.collapsed) continue;
+    const oRect = t.rect;
+    const dxc = Math.max(0, Math.max(oRect.x - (rect.x + rect.w), rect.x - (oRect.x + oRect.w)));
+    const dyc = Math.max(0, Math.max(oRect.y - (rect.y + rect.h), rect.y - (oRect.y + oRect.h)));
+    if (dxc > 2 * stickyG && dyc > 2 * stickyG) continue;
+    const oE = rectEdges(oRect);
+    const mx = findClosestSnap(movingX, [oE.left, oE.right, oE.centerX], snapGraph, state._extStickyX, stickyG);
+    if (mx && (!bestX || Math.abs(mx.delta) < Math.abs(bestX.delta))) bestX = mx;
+    const my = findClosestSnap(movingY, [oE.top, oE.bottom, oE.centerY], snapGraph, state._extStickyY, stickyG);
+    if (my && (!bestY || Math.abs(my.delta) < Math.abs(bestY.delta))) bestY = my;
+  }
+  state._extStickyX = bestX ? bestX.target : null;
+  state._extStickyY = bestY ? bestY.target : null;
+  const dx = bestX ? bestX.delta : 0, dy = bestY ? bestY.delta : 0;
+  const finalRect = { x: rect.x + dx, y: rect.y + dy, w: rect.w, h: rect.h };
+  const guideTargets = targets.filter((t) => !(t.kind === "pixgroup" && exPix.has(t.id)));
+  const skip = (ref) => !!(ref && (exNodes.has(ref) || groupedNodes.has(ref)));
+  state.activeGuides = [];
+  pushAlignedGuides(finalRect, guideTargets, skip);
+  c.setDirty?.(true, true);
+  return { dx, dy };
+}
+
 function onWindowPointerMove(e) {
   if (!state.enabled) { resetDrag(); return; }
   // Shift bypasses snap (Alt is taken by ComfyUI for "duplicate during drag").
@@ -750,6 +815,12 @@ function onWindowPointerMove(e) {
   // them since neither moves a node.)
   if (c.dragging_rectangle != null) { resetDrag(); return; }
   if (c.dragging_canvas) { resetDrag(); return; }
+
+  // A Pixaroma group (js/pixgroup) drag is owned by that module — it moves the
+  // frame + its contained nodes itself and calls snapMovingRect for the snap. Bail
+  // here WITHOUT clearing guides (snapMovingRect just set them); else our node
+  // detector below would misread the moving contained nodes as a node drag.
+  if (window.PixaromaPixGroup?.isDragging?.()) { state.dragInfo = null; state.groupDrag = null; return; }
 
   // ── Group drag takes precedence over node logic. Detect it first (and keep an
   // in-progress session alive even on a still tick, so guides don't flicker when

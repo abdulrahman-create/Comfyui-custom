@@ -557,8 +557,24 @@ function onMove(e) {
   if (_drag.mode === "move") {
     // one cursor delta moves every captured group frame + node (handles multi-select)
     const ddx = p[0] - _drag.ox, ddy = p[1] - _drag.oy;
-    for (const s of _drag.groupStarts) { s.gr.x = s.x + ddx; s.gr.y = s.y + ddy; }
-    for (const s of _drag.nodeStarts) { s.n.pos[0] = s.x + ddx; s.n.pos[1] = s.y + ddy; }
+    // Align Pixaroma snap: ask Align for a snap on the dragged frames' bounding box,
+    // then apply the SAME extra delta to every frame + node so they move rigidly.
+    let sdx = 0, sdy = 0;
+    const starts = _drag.groupStarts;
+    if (starts.length && window.PixaromaAlign?.snapMovingRect) {
+      let bx0 = Infinity, by0 = Infinity, bx1 = -Infinity, by1 = -Infinity;
+      for (const s of starts) {
+        const nx = s.x + ddx, ny = s.y + ddy;
+        bx0 = Math.min(bx0, nx); by0 = Math.min(by0, ny);
+        bx1 = Math.max(bx1, nx + s.gr.w); by1 = Math.max(by1, ny + s.gr.h);
+      }
+      const snap = window.PixaromaAlign.snapMovingRect(
+        { x: bx0, y: by0, w: bx1 - bx0, h: by1 - by0 },
+        { excludePixIds: starts.map((s) => s.gr.id), excludeNodes: _drag.nodeStarts.map((s) => s.n), bypass: e.shiftKey });
+      if (snap) { sdx = snap.dx || 0; sdy = snap.dy || 0; }
+    }
+    for (const s of starts) { s.gr.x = s.x + ddx + sdx; s.gr.y = s.y + ddy + sdy; }
+    for (const s of _drag.nodeStarts) { s.n.pos[0] = s.x + ddx + sdx; s.n.pos[1] = s.y + ddy + sdy; }
   } else {
     // resize from any corner: grow from the fixed anchor toward the cursor (single group)
     const g = _drag.g;
@@ -575,8 +591,10 @@ function onMove(e) {
 
 function onUp(e) {
   if (!_drag) return;
+  const wasMove = _drag.mode === "move";
   _drag = null;
   stopWin();
+  if (wasMove) { try { window.PixaromaAlign?.endExternalDrag?.(); } catch (_e) {} }
   markChanged();
 }
 
@@ -1237,6 +1255,10 @@ app.registerExtension({
         getSelectedGroups,
         groupAt,
         repaint: () => repaint(),
+        // For Align Pixaroma: every visible group's rect (snap TARGETS) + whether a
+        // group is being dragged (so Align bails its node detector while we own the drag).
+        allRects: () => ensureGroups().filter((g) => !isHiddenGroup(g)).map((g) => ({ id: g.id, x: g.x, y: g.y, w: g.w, h: g.h })),
+        isDragging: () => !!(_drag && _drag.mode === "move"),
       };
     } catch (_e) {}
   },
