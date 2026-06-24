@@ -252,6 +252,7 @@ let _selectedId = null;            // the PRIMARY selected group (last clicked) 
 let _selectedIds = new Set();      // ALL selected groups (multi-select via shift-click)
 let _groupClipboard = null;        // copied group frames (Ctrl+C); frame/style only, not nodes
 let _groupClipActive = false;      // true when OUR groups were the last Ctrl+C (so Ctrl+V is ours)
+let _marqueeRect = null;           // last seen ComfyUI marquee rect [x,y,w,h]; add our groups on release
 let _hoverId = null;        // group whose buttons are revealed (cursor inside it)
 let _hotBtn = null;         // { gid, key } of the button under the cursor
 let _hoverPt = null;        // last cursor pos in graph coords
@@ -551,6 +552,27 @@ function onUp(e) {
   markChanged();
 }
 
+// Marquee finalize: ComfyUI's Ctrl-drag marquee selects nodes + native groups but
+// not ours, so on release we ADD any Pixaroma group the marquee rect touched to our
+// selection (non-exclusive — ComfyUI's node/group selection stays).
+function onWinPointerUp() {
+  if (!_marqueeRect) return;
+  const [mx, my, mw, mh] = _marqueeRect;
+  _marqueeRect = null;
+  const x0 = Math.min(mx, mx + mw), x1 = Math.max(mx, mx + mw);
+  const y0 = Math.min(my, my + mh), y1 = Math.max(my, my + mh);
+  if (x1 - x0 < 4 && y1 - y0 < 4) return; // ignore a click-sized rect
+  const hit = [];
+  for (const g of ensureGroups()) {
+    if (isHiddenGroup(g)) continue;
+    if (g.x < x1 && g.x + g.w > x0 && g.y < y1 && g.y + g.h > y0) hit.push(g); // rect intersection
+  }
+  if (!hit.length) return;
+  for (const g of hit) _selectedIds.add(g.id); // additive (matches Ctrl-drag)
+  _selectedId = hit[hit.length - 1].id;
+  repaint();
+}
+
 // Cursor hint so the grab zones are discoverable: a resize arrow over the
 // bottom-right handle, a move cursor over the header. Bubble phase so it wins
 // over ComfyUI's own per-move cursor; only clears what WE set (no flicker
@@ -560,6 +582,10 @@ function onHover(e) {
   if (_drag) return;
   const el = app.canvas?.canvas;
   if (!el) return;
+  // Track ComfyUI's marquee rect while it drags, so onWinPointerUp can add our
+  // groups to the selection (the marquee already grabs nodes + native groups).
+  const dr = app.canvas?.dragging_rectangle;
+  if (dr && dr.length >= 4) _marqueeRect = [dr[0], dr[1], dr[2], dr[3]];
   if (e.target !== el) {
     if (_cursorOverride) { el.style.cursor = ""; _cursorOverride = false; }
     if (_hoverId !== null || _hotBtn !== null) { _hoverId = null; _hotBtn = null; repaint(); }
@@ -631,7 +657,9 @@ function onKeyDown(e) {
     if (document.querySelector(".pix-nc-pal, .pix-pg-rename")) return; // editing → don't delete
     const sel = getSelectedGroups();
     if (!sel.length) return;
-    e.preventDefault(); e.stopImmediatePropagation();
+    const nativeNodes = app.canvas?.selected_nodes ? Object.keys(app.canvas.selected_nodes).length : 0;
+    e.preventDefault();
+    if (!nativeNodes) e.stopImmediatePropagation(); // pure-group delete → consume; mixed → let ComfyUI delete its nodes too
     for (const grp of sel) deleteGroup(grp);   // delete ALL selected
   }
 }
@@ -1110,6 +1138,7 @@ app.registerExtension({
     setInterval(() => { try { updateFoldNodeHideCSS(); } catch (_e) {} }, 700);
     window.addEventListener("pointerdown", onDown, true);
     window.addEventListener("pointermove", onHover, false);
+    window.addEventListener("pointerup", onWinPointerUp, true);
     window.addEventListener("dblclick", onDblClick, true);
     window.addEventListener("keydown", onKeyDown, true);
     // Expose to the color tool (js/node_colors): the "\" shortcut opens the
