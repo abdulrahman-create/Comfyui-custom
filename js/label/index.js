@@ -113,11 +113,18 @@ function setupVueLabel(node) {
 function openLabelEditor(node) {
   if (node._pixLblEditorOpen) return;
   node._pixLblEditorOpen = true;
-  const ed = new LabelEditor(node);
-  node._pixLblEditor = ed;
-  const origClose = ed.close.bind(ed);
-  ed.close = () => { node._pixLblEditorOpen = false; node._pixLblEditor = null; origClose(); };
-  ed.open();
+  try {
+    const ed = new LabelEditor(node);
+    node._pixLblEditor = ed;
+    const origClose = ed.close.bind(ed);
+    ed.close = () => { node._pixLblEditorOpen = false; node._pixLblEditor = null; origClose(); };
+    ed.open();
+  } catch (e) {
+    // If open() throws, clear the guard so the node isn't locked out of editing.
+    node._pixLblEditorOpen = false;
+    node._pixLblEditor = null;
+    console.error("[Pixaroma.Label] failed to open editor", e);
+  }
 }
 
 // Legacy only: in current ComfyUI the node BODY paints our transparent bgcolor

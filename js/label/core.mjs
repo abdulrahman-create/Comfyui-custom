@@ -63,7 +63,10 @@ export function saveCfg(node, cfg) {
   // see setupLabel in index.js - so this is the place that keeps the box
   // fitted to the text).
   const m = measureLabel(cfg);
-  const nw = Math.max(m.w, 60), nh = Math.max(m.h, 30);
+  // Guard against a corrupted label_json (non-numeric fontSize/padding/etc.)
+  // producing NaN dims, which would corrupt node.setSize.
+  const nw = Number.isFinite(m.w) ? Math.max(m.w, 60) : 60;
+  const nh = Number.isFinite(m.h) ? Math.max(m.h, 30) : 30;
   // setSize goes through the official resize path so the new size sticks in
   // Nodes 2.0 too (a bare node.size[] write can be reverted there); falls back
   // to a direct write on older builds without setSize.
@@ -102,6 +105,10 @@ export class LabelEditor {
     // form-heavy editor (Vue Frontend Compatibility #7). The capture handlers below
     // are enough to isolate ComfyUI's canvas shortcuts.
     this._keyBlock = (e) => {
+      // Self-heal: if the overlay was torn down without close() running (a host
+      // path that bypasses our teardown), close out so these capture listeners
+      // can't linger and swallow every keypress globally.
+      if (!this._el || !this._el.isConnected) { this.close(); return; }
       if (e.type === "keydown" && e.key === "Escape") {
         e.stopImmediatePropagation();
         e.preventDefault();
@@ -141,6 +148,8 @@ export class LabelEditor {
   // place so every control reflects the defaults; the change only reaches the
   // node when the user clicks Save (Cancel still discards everything).
   _resetAll() {
+    closeHelpPopup();              // don't leave the Help card floating over the rebuilt editor
+    this._rafPending = false;      // drop any queued preview render aimed at the old canvas
     const keepText = this.cfg.text;
     this.cfg = { ...DEFAULTS, text: keepText };
     const old = this._el;
@@ -577,7 +586,14 @@ export class LabelEditor {
     const pickerBottom = picker.getBoundingClientRect().bottom;
     const svH = sv.getBoundingClientRect().height;
     const newSvH = svH + (gridBottom - pickerBottom);
-    if (newSvH > 40) sv.style.height = Math.round(newSvH) + "px";
+    if (newSvH > 40 && newSvH < 400) {
+      sv.style.height = Math.round(newSvH) + "px";
+      // Re-render so the SV plane AND the hue strip (which stretches to the row
+      // height) redraw their bitmaps crisp at the new height. setColor does not
+      // fire onChange, so this can't loop or re-apply the colour.
+      const cc = this._picker?.getColor?.();
+      if (cc) this._picker.setColor(cc);
+    }
   }
 
   // ── Help (shared themed popup, same style as the Group help) ──

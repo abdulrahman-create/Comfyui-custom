@@ -318,19 +318,24 @@ export function injectCSS() {
     help-overlay CSS needed.) */
 /* Round help button (matches the Group Colors / toolbar look) */
 .pix-lbl-help-btn {
-    width: 24px; height: 24px; border-radius: 50%;
+    width: 28px; height: 28px; border-radius: 50%;
     border: none; background: ${BRAND}; color: #fff; font-size: 13px; font-weight: 700;
     cursor: pointer; line-height: 1; padding: 0; flex-shrink: 0;
     display: flex; align-items: center; justify-content: center;
 }
 .pix-lbl-help-btn:hover { filter: brightness(1.12); }
-/* Reset button sits next to Help on the left; spacer pushes Cancel/Save right. */
+/* Reset sits next to Help on the left (the spacer pushes Cancel/Save right).
+   Ghost style so it reads as a low-emphasis utility action, clearly distinct
+   from the bordered-gray Cancel button at the other end of the footer. */
 .pix-lbl-footer-spacer { flex: 1 1 auto; }
-.pix-lbl-btn-reset { background: #252527; color: #aaa; border: 1px solid #333; }
-.pix-lbl-btn-reset:hover { background: #2e2e30; color: #ddd; }
+.pix-lbl-btn-reset { background: transparent; color: #888; border: 1px solid transparent; }
+.pix-lbl-btn-reset:hover { background: rgba(255,255,255,0.06); color: #ddd; }
 /* Slider + editable number + spinner arrows (matches .pix-nc-slider) */
 /* inline label (left of the slider) so the row is one line - saves height */
-.pix-lbl-slbl { flex: 0 0 auto; min-width: 58px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: #777; white-space: nowrap; }
+/* min-width fits the longest label ("Line Height") so all four sliders in the
+   2-col Spacing grid stay the SAME length (a shorter min let that one row's
+   nowrap label steal width from its slider). */
+.pix-lbl-slbl { flex: 0 0 auto; min-width: 68px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: #777; white-space: nowrap; }
 .pix-lbl-sliderrow { display: flex; align-items: center; gap: 8px; }
 .pix-lbl-slider {
     -webkit-appearance: none; appearance: none;
@@ -433,7 +438,7 @@ export function injectCSS() {
 .pix-lbl-transbtn:hover { border-color: ${BRAND}; color: #ddd; }
 .pix-lbl-transbtn.active { border-color: ${BRAND}; color: ${BRAND}; }
 .pix-lbl-transbtn-sw {
-    width: 18px; height: 18px; border-radius: 3px; flex: 0 0 auto; box-sizing: border-box;
+    width: 18px; height: 18px; border-radius: 4px; flex: 0 0 auto; box-sizing: border-box;
     border: 1px solid rgba(255,255,255,0.2);
     background-color: #3a3a3a;
     background-image:
@@ -453,6 +458,9 @@ export function injectCSS() {
    picker's bottom lines up exactly with the swatch grid's bottom row.
    border-box so the JS height set == the measured height (exact alignment). */
 .pix-lbl-panel .pix-cp-sv { height: 146px; min-width: 0; box-sizing: border-box; }
+/* Match the picker's SV/hue outlines to the surrounding wells; the shared
+   picker's default #444 reads lighter than everything else in this section. */
+.pix-lbl-panel .pix-cp-sv, .pix-lbl-panel .pix-cp-hue { border-color: #3a3a40; }
 /* Hide the picker's own hex field — our labelled .pix-lbl-hexbar replaces it
    (it shows the selected target's name + code and changes with the buttons). */
 .pix-lbl-panel .pix-cp-hexrow { display: none; }
