@@ -148,14 +148,17 @@ function bodyHeight(node) {
 }
 // Legacy: size the node to fit content EXACTLY and SYNCHRONOUSLY (no rAF), so
 // there is no over-allocated space and no 1-frame overflow when a row appears.
-// computeSize() is exact + cheap here because getMinHeight is now deterministic
-// (bodyHeight has no DOM measurement), so it needs no layout pass. Vue sizes via
+// We size from titleH + bodyHeight DIRECTLY instead of node.computeSize(),
+// because computeSize() pads in a phantom slot row (NODE_SLOT_HEIGHT) for a node
+// with zero input/output dots — that was the dead space under the last switch.
+// bodyHeight has no DOM measurement, so this is exact + cheap. Vue sizes via
 // computeLayoutSize / getMinHeight. Never on the load path (dirty-on-load).
 function refreshNodeSize(node) {
   if (isVueNodes() || isGraphLoading()) return;
   try {
-    if (typeof node.computeSize !== "function" || typeof node.setSize !== "function") return;
-    const target = node.computeSize()[1];
+    if (typeof node.setSize !== "function") return;
+    const titleH = (window.LiteGraph && window.LiteGraph.NODE_TITLE_HEIGHT) || 30;
+    const target = titleH + bodyHeight(node) + 6; // +6 = tiny slack so a row never clips
     if (Math.abs((node.size[1] || 0) - target) > 1) node.setSize([node.size[0], target]);
   } catch (_e) {}
 }
@@ -213,6 +216,11 @@ function renderNode(node) {
   }
   root.appendChild(list);
   refreshNodeSize(node);
+  // The settings panel is a DOM overlay, so changes made in it never reach the
+  // LiteGraph canvas — without an explicit repaint the node frame stays on its
+  // last-painted (stale) size until a key press or canvas mouse-move. Mark the
+  // canvas dirty so the frame redraws to match the new body right away.
+  try { node.setDirtyCanvas(true, true); } catch (_e) {}
 }
 
 // ── settings panel (floating, draggable) ───────────────────────────────────
@@ -404,7 +412,7 @@ function openPanel(node, ev) {
   const panel = el("div", "pix-gs-panel");
   _panel = panel; _panelNode = node;
   const head = el("div", "pix-gs-phead");
-  const ttl = el("span"); ttl.textContent = "Group Switch — settings";
+  const ttl = el("span"); ttl.textContent = "Group Switch settings";
   const x = el("button", "pix-gs-px"); x.textContent = "✕"; x.onclick = closePanel;
   head.appendChild(ttl); head.appendChild(x);
   panel.appendChild(head);
