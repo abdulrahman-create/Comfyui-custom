@@ -1535,6 +1535,7 @@ app.registerExtension({
     window.addEventListener("blur", () => {
       if (_drag) { _drag = null; stopWin(); try { window.PixaromaAlign?.endExternalDrag?.(); } catch (_e) {} }
       _natGrpDrag = null; _carry = null;
+      _marqueeRect = null; _marqueeShift = false; // a marquee abandoned by alt-tab must not apply on the return release
     });
     // Expose to the color tool (js/node_colors): the "\" shortcut opens the
     // styling palette for the selected group; repaint after it edits fields.
