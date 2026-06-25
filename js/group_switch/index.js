@@ -1,6 +1,6 @@
 import { app } from "/scripts/app.js";
 import { isVueNodes, applyAdaptiveCanvasOnly } from "../shared/nodes2.mjs";
-import { installResizeFloor, measureRootContent } from "../shared/resize_floor.mjs";
+import { installResizeFloor } from "../shared/resize_floor.mjs";
 import { isGraphLoading } from "../shared/graph_loading.mjs";
 import { registerNodeHelp } from "../shared/help.mjs";
 
@@ -24,7 +24,19 @@ const BRAND = "#f66744";
 const NODE_NAME = "PixaromaGroupSwitch";
 const STATE_PROP = "groupSwitchState";
 const NODE_W = 250;        // default body width (resizable; long names ellipsis-clip)
-const MIN_BODY = 44;       // floor so an unmeasured/empty body never collapses
+const MIN_BODY = 44;       // floor so an empty body never collapses
+
+// Deterministic body-height constants — MUST match the CSS row metrics below.
+// Computing the height from the ROW COUNT (known synchronously) instead of
+// measuring the DOM keeps the node TIGHT (no extra space), byte-stable across
+// save/load (no dirty-on-load), and free of the 1-frame "a row overflows the
+// node" lag that a measure-then-rAF snap has.
+const ROW_H = 30;          // .pix-gs-row total height
+const ROW_GAP = 1;         // .pix-gs-list row gap
+const TOP_H = 34;          // .pix-gs-top strip (mute tag + gear)
+const LIST_PAD = 6;        // .pix-gs-list bottom padding + a hair
+const ROOT_PAD = 4;        // .pix-gs-root vertical padding (2 + 2)
+const HINT_H = 42;         // empty / "no groups" hint height
 
 const DEFAULT_STATE = {
   version: 1,
@@ -126,15 +138,26 @@ function enforceRestriction(node) {
 }
 
 // ── node body render (just the switches) ───────────────────────────────────
-function measureGsHeight(root) {
-  return Math.max(MIN_BODY, Math.round(measureRootContent(root) / 4) * 4);
+function bodyHeight(node) {
+  const hasBridge = !!(bridge() && bridge().listGroups);
+  const rows = hasBridge ? visibleGroups(node).length : 0;
+  let h = ROOT_PAD + TOP_H;
+  if (!hasBridge || rows === 0) h += HINT_H;
+  else h += rows * ROW_H + Math.max(0, rows - 1) * ROW_GAP + LIST_PAD;
+  return Math.max(MIN_BODY, h);
 }
+// Legacy: size the node to fit content EXACTLY and SYNCHRONOUSLY (no rAF), so
+// there is no over-allocated space and no 1-frame overflow when a row appears.
+// computeSize() is exact + cheap here because getMinHeight is now deterministic
+// (bodyHeight has no DOM measurement), so it needs no layout pass. Vue sizes via
+// computeLayoutSize / getMinHeight. Never on the load path (dirty-on-load).
 function refreshNodeSize(node) {
-  if (isVueNodes()) return;       // Vue sizes via computeLayoutSize
-  if (isGraphLoading()) return;   // never resize on the load path (dirty-on-load, Vue Compat #18)
-  requestAnimationFrame(() => {
-    try { if (!isGraphLoading() && typeof node.setSize === "function") node.setSize([node.size[0], node.computeSize()[1]]); } catch (_e) {}
-  });
+  if (isVueNodes() || isGraphLoading()) return;
+  try {
+    if (typeof node.computeSize !== "function" || typeof node.setSize !== "function") return;
+    const target = node.computeSize()[1];
+    if (Math.abs((node.size[1] || 0) - target) > 1) node.setSize([node.size[0], target]);
+  } catch (_e) {}
 }
 
 function rowEl(node, g) {
@@ -322,6 +345,8 @@ function renderPanelBody(node, body) {
     }));
   }
   body.appendChild(sSec);
+  // Keep the (possibly taller) panel fully on-screen after a structural change.
+  requestAnimationFrame(reclampPanel);
 }
 
 function positionPanel(panel, ev) {
@@ -332,6 +357,18 @@ function positionPanel(panel, ev) {
   y = Math.max(pad, Math.min(y, window.innerHeight - h - pad));
   panel.style.left = x + "px";
   panel.style.top = y + "px";
+}
+// Re-clamp the panel's TOP after its body grows (switching to Pick adds the
+// search + list) so the bottom never runs off-screen — no more dragging it up.
+// Taller than the viewport: pin to the top and let the body scroll.
+function reclampPanel() {
+  if (!_panel) return;
+  const pad = 10;
+  const h = _panel.offsetHeight;
+  let top = parseFloat(_panel.style.top) || pad;
+  if (top + h > window.innerHeight - pad) top = window.innerHeight - h - pad;
+  if (top < pad) top = pad;
+  _panel.style.top = top + "px";
 }
 function makeDraggable(panel, handle) {
   handle.addEventListener("pointerdown", (e) => {
@@ -467,13 +504,14 @@ function setupNode(node) {
   const widget = node.addDOMWidget("group_switch_ui", "pixaroma_group_switch", root, {
     getValue: () => readState(node),
     setValue: () => {},
-    getMinHeight: () => measureGsHeight(root),
+    getMinHeight: () => bodyHeight(node),
+    margin: 2,
     serialize: false, // state lives on node.properties
   });
   applyAdaptiveCanvasOnly(widget);
-  widget.computeLayoutSize = () => ({ minHeight: measureGsHeight(root), minWidth: 1 });
+  widget.computeLayoutSize = () => ({ minHeight: bodyHeight(node), minWidth: 1 });
   node._pixGsRoot = root;
-  node._pixGsFloorOff = installResizeFloor(root, (r) => measureRootContent(r));
+  node._pixGsFloorOff = installResizeFloor(root, () => bodyHeight(node));
   if (Array.isArray(node.size)) { if (node.size[0] < NODE_W) node.size[0] = NODE_W; }
   else node.size = [NODE_W, 120];
   // nodeCreated fires BEFORE configure() restores node.properties (Vue Compat #8) —

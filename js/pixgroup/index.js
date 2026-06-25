@@ -963,37 +963,84 @@ function toggleMode(g, mode) {
 }
 
 // ── Group Switch bridge helpers (js/group_switch) ──────────────────────────
-// The Group Switch node controls groups through these. State is READ from the
-// member nodes' live modes — so a switch reflects the group's own header
-// Mute/Bypass button and every other switch (one shared source of truth) — and
-// a flip reuses applyModeDeep so it reaches into subgraphs.
-function groupState(g) {
-  const ns = groupMemberNodes(g);
+// The Group Switch node controls BOTH our Pixaroma groups AND native ComfyUI
+// groups through these, so it fully replaces rgthree's Fast Groups Muter/
+// Bypasser. State is READ from the member nodes' live modes (so a switch
+// reflects the group's own header Mute/Bypass button and every other switch —
+// one shared source of truth), and a flip reuses applyModeDeep so it reaches
+// into subgraphs. Native groups are keyed "ng:<id>" so they never collide with
+// our "pg_…" ids; their members are the nodes whose visual center sits inside
+// the native group's box (renderer-agnostic, no native internals needed).
+function nodesInBox(box) {
+  const out = [];
+  for (const n of (app.graph?._nodes || [])) {
+    const b = nodeVisualBounds(n);
+    const cx = b.x + b.w / 2, cy = b.y + b.h / 2;
+    if (cx >= box.x && cx <= box.x + box.w && cy >= box.y && cy <= box.y + box.h) out.push(n);
+  }
+  return out;
+}
+function nativeKey(grp, idx) { return grp.id != null ? String(grp.id) : ("idx" + idx); }
+function nativeGroupByKey(key) {
+  const arr = nativeGroups();
+  for (let i = 0; i < arr.length; i++) if (nativeKey(arr[i], i) === key) return arr[i];
+  return null;
+}
+// Resolve a switch id (Pixaroma "pg_…" or native "ng:<id>") to its member nodes.
+function switchMemberNodes(id) {
+  if (typeof id === "string" && id.indexOf("ng:") === 0) {
+    const grp = nativeGroupByKey(id.slice(3));
+    const box = grp ? natGrpBox(grp) : null;
+    return box ? nodesInBox(box) : [];
+  }
+  const g = ensureGroups().find((x) => x.id === id);
+  return g ? groupMemberNodes(g) : [];
+}
+function switchGroupBox(id) {
+  if (typeof id === "string" && id.indexOf("ng:") === 0) {
+    const grp = nativeGroupByKey(id.slice(3));
+    return grp ? natGrpBox(grp) : null;
+  }
+  const g = ensureGroups().find((x) => x.id === id);
+  if (g) { selectGroup(g); return { x: g.x, y: g.y, w: g.w, h: g.h }; }
+  return null;
+}
+// Every group (Pixaroma + native) the switch can list, in a stable order
+// (Pixaroma first, then native — both in canvas/array order = "position").
+function listSwitchGroups() {
+  const out = [];
+  for (const g of ensureGroups()) out.push({ id: g.id, title: g.title || "Group", color: gTitleColor(g), kind: "pix" });
+  const arr = nativeGroups();
+  for (let i = 0; i < arr.length; i++) {
+    const grp = arr[i]; const box = natGrpBox(grp); if (!box) continue;
+    out.push({ id: "ng:" + nativeKey(grp, i), title: grp.title || "Group", color: grp.color || DEFAULT_COLOR, kind: "native" });
+  }
+  return out;
+}
+function switchGroupState(id) {
+  const ns = switchMemberNodes(id);
   if (!ns.length) return { muted: false, bypassed: false, count: 0 };
   return { muted: ns.every((n) => n.mode === 2), bypassed: ns.every((n) => n.mode === 4), count: ns.length };
 }
-function setGroupSwitch(id, on, action) {
-  const g = ensureGroups().find((x) => x.id === id);
-  if (!g) return;
-  const ns = groupMemberNodes(g);
+function setSwitchGroup(id, on, action) {
+  const ns = switchMemberNodes(id);
   if (!ns.length) return;
   const mode = on ? 0 : (action === "bypass" ? 4 : 2);
   for (const n of ns) applyModeDeep(n, mode);
   markChanged();
 }
-// Center the viewport on a group + select it — the "locate" affordance the
-// switch's pick list uses to tell same-named groups apart.
-function revealGroup(id) {
-  const g = ensureGroups().find((x) => x.id === id);
-  if (!g) return;
-  selectGroup(g);
+// Center the viewport on a group (Pixaroma or native) — the "locate" affordance
+// the switch's pick list uses to tell same-named groups apart.
+function revealSwitchGroup(id) {
+  const box = switchGroupBox(id);
+  if (!box) return;
   try {
     const c = app.canvas, ds = c?.ds, el = c?.canvas;
     if (ds && el && ds.offset) {
       const r = el.getBoundingClientRect();
       const s = ds.scale || 1;
-      ds.offset[0] = (r.width / 2) / s - (g.x + g.w / 2);
-      ds.offset[1] = (r.height / 2) / s - (g.y + g.h / 2);
+      ds.offset[0] = (r.width / 2) / s - (box.x + box.w / 2);
+      ds.offset[1] = (r.height / 2) / s - (box.y + box.h / 2);
     }
   } catch (_e) {}
   repaint();
@@ -1398,12 +1445,13 @@ app.registerExtension({
         // group is being dragged (so Align bails its node detector while we own the drag).
         allRects: () => ensureGroups().filter((g) => !isHiddenGroup(g)).map((g) => ({ id: g.id, x: g.x, y: g.y, w: g.w, h: g.h })),
         isDragging: () => !!_drag, // move OR resize — Align bails its node detector + keeps our guides
-        // For the Group Switch node (js/group_switch): list groups, read a group's
-        // live mute/bypass state, flip it, and center the view on one to locate it.
-        listGroups: () => ensureGroups().map((g) => ({ id: g.id, title: g.title || "Group", color: gTitleColor(g) })),
-        getGroupState: (id) => { const g = ensureGroups().find((x) => x.id === id); return g ? groupState(g) : null; },
-        setGroupSwitch,
-        revealGroup,
+        // For the Group Switch node (js/group_switch): list groups (Pixaroma AND
+        // native ComfyUI groups), read a group's live mute/bypass state, flip it,
+        // and center the view on one to locate it.
+        listGroups: listSwitchGroups,
+        getGroupState: switchGroupState,
+        setGroupSwitch: setSwitchGroup,
+        revealGroup: revealSwitchGroup,
       };
     } catch (_e) {}
   },
