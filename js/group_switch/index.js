@@ -33,8 +33,8 @@ const MIN_BODY = 44;       // floor so an empty body never collapses
 // node" lag that a measure-then-rAF snap has.
 const ROW_H = 30;          // .pix-gs-row total height
 const ROW_GAP = 1;         // .pix-gs-list row gap
-const TOP_H = 34;          // .pix-gs-top strip (mute tag + gear)
-const LIST_PAD = 6;        // .pix-gs-list bottom padding + a hair
+const TOP_H = 32;          // .pix-gs-top strip (mute tag + gear) — measured
+const LIST_PAD = 6;        // .pix-gs-list bottom padding + a 2px hair
 const ROOT_PAD = 4;        // .pix-gs-root vertical padding (2 + 2)
 const HINT_H = 42;         // empty / "no groups" hint height
 
@@ -146,19 +146,17 @@ function bodyHeight(node) {
   else h += rows * ROW_H + Math.max(0, rows - 1) * ROW_GAP + LIST_PAD;
   return Math.max(MIN_BODY, h);
 }
-// Legacy: size the node to fit content EXACTLY and SYNCHRONOUSLY (no rAF), so
-// there is no over-allocated space and no 1-frame overflow when a row appears.
-// We size from titleH + bodyHeight DIRECTLY instead of node.computeSize(),
-// because computeSize() pads in a phantom slot row (NODE_SLOT_HEIGHT) for a node
-// with zero input/output dots — that was the dead space under the last switch.
-// bodyHeight has no DOM measurement, so this is exact + cheap. Vue sizes via
-// computeLayoutSize / getMinHeight. Never on the load path (dirty-on-load).
+// Legacy: snap the node to hug the body EXACTLY and SYNCHRONOUSLY (no rAF).
+// node.computeSize is overridden in setupNode to return the exact body height —
+// the stock computeSize reserves a phantom input/output slot row (a = max(in,
+// out, 1) * NODE_SLOT_HEIGHT) plus per-widget spacing, ~38px of dead space under
+// the switches on this dot-less node. Vue sizes via computeLayoutSize /
+// getMinHeight instead. Never on the load path (dirty-on-load).
 function refreshNodeSize(node) {
   if (isVueNodes() || isGraphLoading()) return;
   try {
     if (typeof node.setSize !== "function") return;
-    const titleH = (window.LiteGraph && window.LiteGraph.NODE_TITLE_HEIGHT) || 30;
-    const target = titleH + bodyHeight(node) + 6; // +6 = tiny slack so a row never clips
+    const target = typeof node.computeSize === "function" ? node.computeSize()[1] : bodyHeight(node);
     if (Math.abs((node.size[1] || 0) - target) > 1) node.setSize([node.size[0], target]);
   } catch (_e) {}
 }
@@ -520,6 +518,15 @@ function setupNode(node) {
   widget.computeLayoutSize = () => ({ minHeight: bodyHeight(node), minWidth: 1 });
   node._pixGsRoot = root;
   node._pixGsFloorOff = installResizeFloor(root, () => bodyHeight(node));
+  // Classic: hug the body. The stock node.computeSize reserves a phantom slot
+  // row (a = max(inputs, outputs, 1) * NODE_SLOT_HEIGHT) plus per-widget spacing,
+  // which left ~38px of dead space under the switches on this dot-less node.
+  // Return the exact body height so the frame matches the switches. The DOM
+  // widget is positioned at y=2 (NOT after a phantom row), so dropping the row
+  // from sizing never pushes content out of the frame. Vue uses computeLayoutSize.
+  if (!isVueNodes()) {
+    node.computeSize = function () { return [this.size[0], bodyHeight(this)]; };
+  }
   if (Array.isArray(node.size)) { if (node.size[0] < NODE_W) node.size[0] = NODE_W; }
   else node.size = [NODE_W, 120];
   // nodeCreated fires BEFORE configure() restores node.properties (Vue Compat #8) —
