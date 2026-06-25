@@ -102,7 +102,8 @@ function visibleGroups(node) {
 // Is a group "on" for this switch's action? (on = NOT muted, or NOT bypassed).
 function isOn(node, g) {
   const st = readState(node);
-  const state = bridge() && bridge().getGroupState ? bridge().getGroupState(g.id) : null;
+  const b = bridge();
+  const state = b && typeof b.getGroupState === "function" ? b.getGroupState(g.id) : null;
   if (!state) return true;
   return st.action === "bypass" ? !state.bypassed : !state.muted;
 }
@@ -299,7 +300,7 @@ function buildPickArea(node, body) {
       ck.appendChild(box); ck.appendChild(nm);
       if (g.num) { const num = el("span", "pix-gs-num"); num.textContent = String(g.num); ck.appendChild(num); }
       const loc = el("span", "pix-gs-loc"); loc.innerHTML = LOC_SVG; loc.title = "Show on canvas";
-      loc.onclick = (e) => { e.preventDefault(); e.stopPropagation(); if (bridge() && bridge().revealGroup) bridge().revealGroup(g.id); };
+      loc.onclick = (e) => { e.preventDefault(); e.stopPropagation(); const b = bridge(); if (b && typeof b.revealGroup === "function") b.revealGroup(g.id); };
       ck.appendChild(loc);
       const dot = el("span", "pix-gs-dot"); dot.style.background = g.color || "#888";
       ck.appendChild(dot);
@@ -427,6 +428,9 @@ function openPanel(node, ev) {
   renderPanelBody(node, body);
   document.body.appendChild(panel);
   positionPanel(panel, ev);
+  // offsetHeight can be 0 before the first layout flush, so re-clamp once the
+  // panel has a real height (otherwise a tall panel can open off the bottom edge).
+  requestAnimationFrame(reclampPanel);
   setTimeout(() => {
     document.addEventListener("pointerdown", outsideClose, true);
     document.addEventListener("keydown", escClose, true);
@@ -502,7 +506,7 @@ function startPoll() {
   _pollStarted = true;
   setInterval(() => {
     try {
-      const nodes = app.graph && app.graph._nodes ? app.graph._nodes : [];
+      const nodes = (app.graph && (app.graph._nodes || app.graph.nodes)) || [];
       for (const n of nodes) {
         if ((n.comfyClass === NODE_NAME || n.type === NODE_NAME) && n._pixGsRoot) renderNode(n);
       }
@@ -567,6 +571,8 @@ app.registerExtension({
 
   beforeRegisterNodeDef(nodeType, nodeData) {
     if (nodeData.name !== NODE_NAME) return;
+    if (nodeType.prototype._pixGsPatched) return; // hot-reload: don't double-wrap
+    nodeType.prototype._pixGsPatched = true;
 
     const _origConfigure = nodeType.prototype.onConfigure;
     nodeType.prototype.onConfigure = function (info) {

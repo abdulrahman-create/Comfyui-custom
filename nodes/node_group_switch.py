@@ -34,7 +34,7 @@ class PixaromaGroupSwitch:
     CATEGORY = "👑 Pixaroma/🔀 Logic & Flow"
 
     def noop(self):
-        return {}
+        return ()
 
 
 NODE_CLASS_MAPPINGS = {
