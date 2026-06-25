@@ -614,7 +614,10 @@ function onDown(e) {
   // and NOT when grabbing a node that's part of the current node+group selection
   // (the user is dragging the whole multi-selection — keep the groups selected).
   // Never consume, so node-drag / marquee / pan all work normally.
-  if (!(e.shiftKey || e.ctrlKey || e.metaKey) && _selectedIds.size && !clickIsOnSelectedNode(p)) { _selectedId = null; _selectedIds.clear(); repaint(); }
+  if (!(e.shiftKey || e.ctrlKey || e.metaKey) && _selectedIds.size) {
+    if (clickIsOnSelectedNode(p)) _carry = snapshotCarry(p); // grabbing the node+group unit → carry it as one (Align stands down via isDragging)
+    else { _selectedId = null; _selectedIds.clear(); repaint(); } // empty canvas / unselected node → deselect our groups
+  }
 }
 
 function onMove(e) {
@@ -680,7 +683,7 @@ function onUp(e) {
 // not ours, so on release we ADD any Pixaroma group the marquee rect touched to our
 // selection (non-exclusive — ComfyUI's node/group selection stays).
 function onWinPointerUp() {
-  _natGrpDrag = null; // end any native-group carry
+  _natGrpDrag = null; _carry = null; // end any native-group / node-drag carry
   if (!_marqueeRect) return;
   const [mx, my, mw, mh] = _marqueeRect;
   _marqueeRect = null;
@@ -729,6 +732,67 @@ function trackNativeGroupDrag(e) {
   }
 }
 
+// ── Carry co-selected groups while a NODE is dragged ──────────────────────
+// Move a node + group multi-selection as ONE unit, with the SAME snap-alignment a
+// group drag uses. We do NOT intercept the pointerdown (wire-drags from a slot stay
+// untouched): ComfyUI moves the selected nodes, and here we move the carried group
+// frames + their non-selected members + the selected nodes to (start + cursorDelta +
+// unitSnap). Keyed off the CURSOR delta (so there's no feedback from us overwriting
+// node positions) but GATED on the selected node having actually moved — a wire-drag /
+// pan / marquee moves the cursor without moving a node, and is left alone. Align
+// stands down for the node (isDragging() reports the carry) so it can't snap the node
+// and make the group jump; pixgroup snaps the unit's frame bbox via snapMovingRect.
+let _carry = null; // active node-drag carry snapshot, or null
+function snapshotCarry(cursor) {
+  if (!_selectedIds.size) return null;
+  const selNodes = app.canvas?.selected_nodes ? Object.values(app.canvas.selected_nodes) : [];
+  if (!selNodes.length) return null;
+  const ref = selNodes.find((n) => n && n.pos);
+  if (!ref) return null;
+  const selIds = new Set(selNodes.map((n) => String(n.id)));
+  const frames = [], members = [], fSet = new Set();
+  for (const g of getSelectedGroups()) {
+    if (!fSet.has(g)) { fSet.add(g); frames.push({ g, x: g.x, y: g.y, w: g.w, h: g.h }); }
+    for (const ng of groupMemberGroups(g)) if (!fSet.has(ng)) { fSet.add(ng); frames.push({ g: ng, x: ng.x, y: ng.y, w: ng.w, h: ng.h }); }
+    for (const n of groupMemberNodes(g)) if (!selIds.has(String(n.id)) && n.pos) members.push({ n, x: n.pos[0], y: n.pos[1] });
+  }
+  if (!frames.length) return null; // a node is selected but no group → nothing to carry
+  const nodes = selNodes.filter((n) => n && n.pos).map((n) => ({ n, x: n.pos[0], y: n.pos[1] }));
+  return { ref, rx: ref.pos[0], ry: ref.pos[1], cx: cursor[0], cy: cursor[1], frames, members, nodes,
+           excludeIds: frames.map((f) => f.g.id),
+           excludeNodes: [...members.map((m) => m.n), ...nodes.map((nn) => nn.n)] };
+}
+function trackSelectedNodeDrag(e) {
+  const dragging = (e.buttons & 1) === 1;
+  if (!dragging) { _carry = null; return; }
+  const p = screenToGraph(e.clientX, e.clientY);
+  if (!p) return;
+  if (!_carry) {
+    // Nodes 2.0: a node click's target isn't the canvas, so onDown can't snapshot
+    // pre-move — snapshot on the first dragging tick instead (a ~1-tick offset).
+    if (_selectedIds.size) _carry = snapshotCarry(p);
+    return;
+  }
+  if (!_carry.ref || !_carry.ref.pos) { _carry = null; return; }
+  // Only carry while a SELECTED NODE is actually moving (ComfyUI moved it): a
+  // wire-drag / pan / marquee moves the cursor but no node — leave those alone.
+  const nodeMoved = Math.abs(_carry.ref.pos[0] - _carry.rx) > 0.01 || Math.abs(_carry.ref.pos[1] - _carry.ry) > 0.01;
+  if (!nodeMoved) return;
+  const ddx = p[0] - _carry.cx, ddy = p[1] - _carry.cy; // cursor delta (no feedback from our own node writes)
+  let sdx = 0, sdy = 0;
+  if (window.PixaromaAlign?.snapMovingRect && _carry.frames.length) {
+    let bx0 = Infinity, by0 = Infinity, bx1 = -Infinity, by1 = -Infinity;
+    for (const f of _carry.frames) { const x = f.x + ddx, y = f.y + ddy; if (x < bx0) bx0 = x; if (y < by0) by0 = y; if (x + f.w > bx1) bx1 = x + f.w; if (y + f.h > by1) by1 = y + f.h; }
+    const snap = window.PixaromaAlign.snapMovingRect({ x: bx0, y: by0, w: bx1 - bx0, h: by1 - by0 }, { excludePixIds: _carry.excludeIds, excludeNodes: _carry.excludeNodes, bypass: e.shiftKey });
+    if (snap) { sdx = snap.dx || 0; sdy = snap.dy || 0; }
+  }
+  const dx = ddx + sdx, dy = ddy + sdy, vue = isVueNodes();
+  for (const f of _carry.frames) { f.g.x = f.x + dx; f.g.y = f.y + dy; }
+  for (const m of _carry.members) { if (vue) m.n.pos = [m.x + dx, m.y + dy]; else { m.n.pos[0] = m.x + dx; m.n.pos[1] = m.y + dy; } }
+  for (const nn of _carry.nodes) { if (vue) nn.n.pos = [nn.x + dx, nn.y + dy]; else { nn.n.pos[0] = nn.x + dx; nn.n.pos[1] = nn.y + dy; } }
+  markChanged();
+}
+
 // Cursor hint so the grab zones are discoverable: a resize arrow over the
 // bottom-right handle, a move cursor over the header. Bubble phase so it wins
 // over ComfyUI's own per-move cursor; only clears what WE set (no flicker
@@ -745,6 +809,7 @@ function onHover(e) {
     return;
   }
   trackNativeGroupDrag(e);
+  trackSelectedNodeDrag(e);
   if (!el) return;
   // Track ComfyUI's marquee rect while it drags, so onWinPointerUp can add our
   // groups to the selection (the marquee already grabs nodes + native groups).
@@ -1455,7 +1520,7 @@ app.registerExtension({
     // it on blur so the next interaction is clean.
     window.addEventListener("blur", () => {
       if (_drag) { _drag = null; stopWin(); try { window.PixaromaAlign?.endExternalDrag?.(); } catch (_e) {} }
-      _natGrpDrag = null;
+      _natGrpDrag = null; _carry = null;
     });
     // Expose to the color tool (js/node_colors): the "\" shortcut opens the
     // styling palette for the selected group; repaint after it edits fields.
@@ -1468,7 +1533,7 @@ app.registerExtension({
         // For Align Pixaroma: every visible group's rect (snap TARGETS) + whether a
         // group is being dragged (so Align bails its node detector while we own the drag).
         allRects: () => ensureGroups().filter((g) => !isHiddenGroup(g)).map((g) => ({ id: g.id, x: g.x, y: g.y, w: g.w, h: g.h })),
-        isDragging: () => !!_drag, // move OR resize — Align bails its node detector + keeps our guides
+        isDragging: () => !!_drag || !!_carry, // group drag/resize OR a node-drag carrying co-selected groups — Align bails its node detector + keeps our guides
         // For the Group Switch node (js/group_switch): list groups (Pixaroma AND
         // native ComfyUI groups), read a group's live mute/bypass state, flip it,
         // and center the view on one to locate it.
