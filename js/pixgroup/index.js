@@ -511,7 +511,10 @@ function toggleGroupSelection(g) {
     _selectedIds.add(g.id);
     _selectedId = g.id;
   }
-  clearNativeSelection();
+  // Additive (shift/ctrl): do NOT clear the native node selection — keep any
+  // selected nodes so a node + a group multi-select together. Mirrors the
+  // node-click path in onDown, which keeps groups on a shift/ctrl click. (A
+  // PLAIN group click still clears native via selectGroup, which is exclusive.)
 }
 function getSelectedGroups() {
   const gs = ensureGroups();
