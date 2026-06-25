@@ -780,13 +780,20 @@ function trackSelectedNodeDrag(e) {
   if (!nodeMoved) return;
   const ddx = p[0] - _carry.cx, ddy = p[1] - _carry.cy; // cursor delta (no feedback from our own node writes)
   let sdx = 0, sdy = 0;
-  if (window.PixaromaAlign?.snapMovingRect && _carry.frames.length) {
+  const vue = isVueNodes();
+  // Snap-align the unit in the Classic renderer ONLY. In Nodes 2.0 the dragged
+  // nodes are driven by Vue's reactive layout, which re-sets them to the
+  // un-snapped cursor position AFTER our write, so a snapped frame would
+  // oscillate against the un-snapped nodes (the "wiggle"), and the guides would
+  // draw without the group actually snapping. Move by the pure cursor delta
+  // there so the frames track the nodes exactly.
+  if (!vue && window.PixaromaAlign?.snapMovingRect && _carry.frames.length) {
     let bx0 = Infinity, by0 = Infinity, bx1 = -Infinity, by1 = -Infinity;
     for (const f of _carry.frames) { const x = f.x + ddx, y = f.y + ddy; if (x < bx0) bx0 = x; if (y < by0) by0 = y; if (x + f.w > bx1) bx1 = x + f.w; if (y + f.h > by1) by1 = y + f.h; }
     const snap = window.PixaromaAlign.snapMovingRect({ x: bx0, y: by0, w: bx1 - bx0, h: by1 - by0 }, { excludePixIds: _carry.excludeIds, excludeNodes: _carry.excludeNodes, bypass: e.shiftKey });
     if (snap) { sdx = snap.dx || 0; sdy = snap.dy || 0; }
   }
-  const dx = ddx + sdx, dy = ddy + sdy, vue = isVueNodes();
+  const dx = ddx + sdx, dy = ddy + sdy;
   for (const f of _carry.frames) { f.g.x = f.x + dx; f.g.y = f.y + dy; }
   for (const m of _carry.members) { if (vue) m.n.pos = [m.x + dx, m.y + dy]; else { m.n.pos[0] = m.x + dx; m.n.pos[1] = m.y + dy; } }
   for (const nn of _carry.nodes) { if (vue) nn.n.pos = [nn.x + dx, nn.y + dy]; else { nn.n.pos[0] = nn.x + dx; nn.n.pos[1] = nn.y + dy; } }
