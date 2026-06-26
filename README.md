@@ -298,7 +298,12 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
-### **June 26, 2026 · v1.4.3**
+### **June 26, 2026 · v1.4.3–v1.4.4**
+- **Copy and paste a Pixaroma group.** Ctrl+C / Ctrl+V (and Duplicate) now carry the group frame itself, not just the nodes inside it. Copying a group together with a node keeps their layout when you paste.
+- **Cleaner right-click menu.** When a Pixaroma group sits inside a regular ComfyUI group, right-clicking it no longer piles the regular group's menu options on top - you get just the Pixaroma group's own menu. And in the new node interface, opening a group menu no longer leaves an old node menu hanging open behind it.
+- **Smoother group dragging in the new node interface.** Select a node, a Pixaroma group, and a regular ComfyUI group together and drag any of them: they now stay locked in step instead of one lagging behind the others.
+- **Colour your whole selection from the group palette.** With a node, a regular group, and a Pixaroma group selected together, opening Pixaroma Group Colors now colours all of them at once (the regular group takes the title colour so it matches, instead of going dark).
+- **Select all includes Pixaroma groups.** Pressing Ctrl+A now selects your Pixaroma groups too, so you can move, colour, or delete everything in one go.
 - **Version Check now warns you about an out-of-date browser cache.** After an update, browsers sometimes keep running the old version of the nodes even though the files are already new, which can make workflows act up or fail for no obvious reason. The Version Check node now spots this: if your browser is running older code than what is installed, the Pixaroma line turns orange with a clear warning to press Ctrl+Shift+R, and the Copy button includes it so it shows up when you paste your versions into a bug report. The built-in help also explains a stronger refresh trick for browsers that hold on to the old version too tightly.
 
 ### **June 25, 2026 · v1.4.2**
