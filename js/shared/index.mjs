@@ -2,6 +2,16 @@
 // ║  Pixaroma Shared — Barrel Export                             ║
 // ╚═══════════════════════════════════════════════════════════════╝
 
+// ── Pixaroma JS bundle version ────────────────────────────────────────────
+// MUST stay in lockstep with `version` in pyproject.toml — bump BOTH together
+// on every release. The Version Check node compares this (the version baked
+// into the JS the BROWSER actually loaded) against the Python files version;
+// a mismatch means the browser is running STALE cached code and the user needs
+// a hard refresh (Ctrl+Shift+R). It lives in this existing, widely-imported
+// module on purpose: a brand-new file is never in anyone's cache, so it could
+// never reveal a stale bundle.
+export const PIXAROMA_JS_VERSION = "1.4.2";
+
 export {
   allow_debug,
   PIXAROMA_LOGO,

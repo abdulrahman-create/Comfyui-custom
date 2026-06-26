@@ -15,6 +15,11 @@
 
 import { app } from "/scripts/app.js";
 import { BRAND, applyAdaptiveCanvasOnly } from "../shared/index.mjs";
+// Namespace import (NOT a named import) so a STALE cached shared module that
+// predates PIXAROMA_JS_VERSION yields `undefined` instead of a hard module link
+// error — `undefined` IS the stale-cache signal we want to surface, not crash on.
+import * as PixShared from "../shared/index.mjs";
+const PIXAROMA_JS_VERSION = PixShared?.PIXAROMA_JS_VERSION ?? null;
 
 const MIN_W = 240;
 const MIN_H = 188;
@@ -43,6 +48,14 @@ function injectCSS() {
     .pix-vc-value { color: #fff; font-weight: 700; font-variant-numeric: tabular-nums; }
     .pix-vc-value.is-v2 { color: #4cd07d; }
     .pix-vc-value.is-legacy { color: #6f9be0; }
+    .pix-vc-value.is-warn { color: #ffb347; }
+    .pix-vc-warn {
+      display: none;
+      padding: 7px 9px; border-radius: 6px; line-height: 1.35;
+      background: rgba(246,103,68,0.15); border: 1px solid ${BRAND};
+      color: #ffd9cc;
+    }
+    .pix-vc-warn b { color: #fff; font-weight: 700; }
     /* Node UI value doubles as a one-click renderer switch. */
     .pix-vc-value.pix-vc-toggle {
       cursor: pointer; padding: 2px 9px; border-radius: 6px;
@@ -92,6 +105,7 @@ app.registerExtension({
     nodeType.prototype.onNodeCreated = function () {
       origCreated?.apply(this, arguments);
       injectCSS();
+      const node = this;
 
       const wrap = document.createElement("div");
       wrap.className = "pix-vc-wrap";
@@ -138,7 +152,11 @@ app.registerExtension({
       btnRow.className = "pix-vc-btnrow";
       btnRow.append(copyBtn, refreshBtn);
 
-      wrap.append(rows, btnRow);
+      // Hidden until a stale-cache mismatch is detected (see the Pixaroma fetch).
+      const warn = document.createElement("div");
+      warn.className = "pix-vc-warn";
+
+      wrap.append(rows, warn, btnRow);
 
       // --- Node UI row: live, color-coded ---
       let lastV2 = null;
@@ -192,11 +210,31 @@ app.registerExtension({
           rComfy.value.textContent = "unknown";
         });
 
-      // --- Pixaroma plugin version ---
+      // --- Pixaroma plugin version (files) + stale-cache check ---
+      // rPix shows the version of the files on disk (read from Python).
+      // PIXAROMA_JS_VERSION is the version baked into the JS the browser actually
+      // loaded. If they differ, the browser is running STALE cached code -> tell
+      // the user to hard-refresh. (This node's own number comes from Python, so
+      // without this check a stale browser still shows the new number and hides
+      // the problem - the exact trap this catches.)
       fetch("/pixaroma/api/version")
         .then((r) => r.json())
         .then((j) => {
-          rPix.value.textContent = j?.version || "unknown";
+          const pyVer = j?.version || "unknown";
+          node._pixVcPyVersion = pyVer;
+          rPix.value.textContent = pyVer;
+          if (pyVer !== "unknown" && PIXAROMA_JS_VERSION !== pyVer) {
+            rPix.value.textContent = pyVer + "  ⚠️";
+            rPix.value.classList.add("is-warn");
+            warn.style.display = "block";
+            warn.innerHTML =
+              `⚠️ <b>Browser cache outdated.</b> Running <b>` +
+              `${PIXAROMA_JS_VERSION || "unknown"}</b>, files are <b>${pyVer}</b>. ` +
+              `Press <b>Ctrl+Shift+R</b> to update.`;
+            // Grow so the banner is fully visible (only in this error state).
+            const want = MIN_H + 58;
+            if (node.size[1] < want) node.setSize?.([node.size[0], want]);
+          }
         })
         .catch(() => {
           rPix.value.textContent = "unknown";
@@ -208,11 +246,17 @@ app.registerExtension({
         // Compute the Node UI value cleanly (the displayed text carries a
         // trailing "⇄" switch glyph that must NOT end up in the copied text).
         const nodeUi = window.LiteGraph?.vueNodesMode ? "Nodes 2.0" : "Legacy";
+        const pyVer = node._pixVcPyVersion || "unknown";
+        const jsVer = PIXAROMA_JS_VERSION || "unknown";
+        const stale = pyVer !== "unknown" && jsVer !== pyVer;
+        const pixLine = stale
+          ? `Pixaroma: ${pyVer} (browser ${jsVer})  ⚠️ CACHE OUTDATED - press Ctrl+Shift+R`
+          : `Pixaroma: ${pyVer}`;
         const text =
           `ComfyUI:  ${rComfy.value.textContent}\n` +
           `Frontend: ${rFront.value.textContent}\n` +
           `Node UI:  ${nodeUi}\n` +
-          `Pixaroma: ${rPix.value.textContent}`;
+          pixLine;
         try {
           if (navigator.clipboard?.writeText) {
             await navigator.clipboard.writeText(text);
@@ -244,7 +288,9 @@ app.registerExtension({
         {
           getValue: () => null,
           setValue: () => {},
-          getMinHeight: () => MIN_H - 16,
+          // Grow when the stale-cache banner is showing (Nodes 2.0 sizes the
+          // body from this; legacy grows via setSize in the fetch handler).
+          getMinHeight: () => (MIN_H - 16) + (warn.style.display === "block" ? 58 : 0),
           serialize: false,
         }
       );
