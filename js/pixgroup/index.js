@@ -592,22 +592,17 @@ function nodeAtPoint(p) {
   }
   return null;
 }
-// Does this press GRAB the current multi-selection (so we should KEEP our group
-// selection + let the node-carry move it), vs is it a plain click that should DESELECT
-// our groups? It grabs the unit when the press is on: a selected node, OR a node that
-// is a MEMBER of a selected Pixaroma group, OR — when NOT on any node — a selected
-// native ComfyUI group's area (grabbing the native group itself, e.g. its title). A
-// press on a node that is NOT part of the selection deselects (so clicking a node behind
-// a group can't keep a stale selection that then silently carries — bugs B2/B3).
+// Does this press GRAB the current multi-selection (KEEP our group selection + let the
+// node-carry move it), or is it a plain click that should DESELECT our groups? It grabs
+// the unit ONLY when the press is on a SELECTED node (the user deliberately co-selected
+// it with the group, so dragging it moves the unit) OR — when NOT on any node — a selected
+// native ComfyUI group's own area. A press on ANY node that is NOT selected deselects and
+// drags that node alone, even if it sits geometrically INSIDE a selected Pixaroma group
+// (clicking a node inside a group should move just the node / select just it, like ComfyUI).
 function clickGrabsTheUnit(p) {
-  if (clickIsOnSelectedNode(p)) return true;
-  const n = nodeAtPoint(p);
-  if (n) {
-    const id = String(n.id);
-    for (const g of getSelectedGroups()) if (groupMemberNodes(g).some((m) => String(m.id) === id)) return true;
-    return false; // a node, but not part of the selection → deselect
-  }
-  return clickIsOnSelectedNativeGroup(p); // no node under the cursor → grabbing the native group itself
+  if (clickIsOnSelectedNode(p)) return true;   // a co-selected node → drag the whole unit
+  if (nodeAtPoint(p)) return false;            // a node that ISN'T selected → deselect + drag it alone
+  return clickIsOnSelectedNativeGroup(p);      // no node under the cursor → grabbing the native group itself
 }
 
 function onDown(e) {
@@ -968,18 +963,19 @@ function trackSelectedNodeDrag(e) {
     _carry = snapshotCarry(p);
     return;
   }
-  // NODES 2.0 only: drive the carry from the cursor in pointermove (CLASSIC uses the draw pass).
+  // NODES 2.0 only: apply the carry HERE in pointermove (CLASSIC uses the draw pass). Drive
+  // it from the NODE's own delta (node.pos - start), NOT the cursor. Measurement proved
+  // node.pos is accurate (it equals the on-screen node) AND pan-independent. The cursor via
+  // screenToGraph jumps whenever ComfyUI auto-pans during a fast drag, which made the frame
+  // go erratic (frame -52 while cursor +142). No threshold-anchor needed — node.pos is
+  // already post-threshold. Redraw SYNCHRONOUSLY (not setDirty, which defers to the next rAF
+  // ~16ms later) so the canvas frame keeps up with the GPU-rendered node on a fast drag.
   if (isVueNodes() && _carry.ref && _carry.ref.pos) {
-    const ndx = _carry.ref.pos[0] - _carry.rx, ndy = _carry.ref.pos[1] - _carry.ry;
-    if (Math.abs(ndx) < 0.01 && Math.abs(ndy) < 0.01) return; // under ComfyUI's drag threshold
-    if (!_carry.anchored) { _carry.acx = p[0] - ndx; _carry.acy = p[1] - ndy; _carry.anchored = true; }
-    const dx = p[0] - _carry.acx, dy = p[1] - _carry.acy;
+    const dx = _carry.ref.pos[0] - _carry.rx, dy = _carry.ref.pos[1] - _carry.ry;
+    if (Math.abs(dx) < 0.01 && Math.abs(dy) < 0.01) return; // under ComfyUI's drag threshold / not moving
     _clickDeselectPending = false; // a real drag
     for (const f of _carry.frames) { f.g.x = f.x + dx; f.g.y = f.y + dy; }
     for (const m of _carry.members) { m.n.pos = [m.x + dx, m.y + dy]; }
-    // Redraw SYNCHRONOUSLY now (not setDirty, which defers to the next rAF ~16ms later) so
-    // the canvas-drawn frame keeps up with the GPU-rendered Vue node on a FAST drag instead
-    // of trailing it by a frame. Fall back to setDirty if a direct draw isn't available.
     try { app.canvas.draw(true, true); } catch (_e) { repaint(); }
   }
 }
