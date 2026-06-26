@@ -143,9 +143,10 @@ function injectCSS() {
 }
 injectCSS();
 
-// Locked node WIDTH; the layout is fixed (no reason to resize), which also
-// sidesteps the Nodes 2.0 resize-floor handling a draggable DOM node needs.
+// Default node WIDTH on a fresh drop. The node is horizontally resizable; the
+// height stays content-driven (see onResize + the post-layout snap below).
 const NODE_W = 226;
+const MIN_W = 170; // resize floor — width shrinks to here, keeping the buttons usable
 // Body height is MEASURED from the actual content (see measureSeedHeight), not a
 // hand-guessed constant — guessing the constant is what caused the gap-then-clip
 // oscillation. This fallback is used ONLY before the body is laid out (a fresh
@@ -436,11 +437,12 @@ function setupSeedNode(node) {
   // Defensive: hide any SeedState widget (none exists with the hidden input).
   hideJsonWidget(node.widgets, HIDDEN_INPUT_NAME);
 
-  node.resizable = false;
-  // Lock WIDTH only; do NOT force the height. getMinHeight (measured) is the
-  // floor and there is no getMaxHeight, so LiteGraph sizes the node to exactly
-  // chrome + content — no gap, no clip. Forcing a height is what produced the
-  // gap-then-clip oscillation. (The replace branch needs a starting height; the
+  node.resizable = true; // horizontal resize allowed (issue #10); height stays content-driven
+  // Do NOT force the height. getMinHeight (measured) is the floor and there is no
+  // getMaxHeight, so LiteGraph sizes the node to exactly chrome + content — no gap,
+  // no clip. Forcing a height is what produced the gap-then-clip oscillation. Width
+  // starts at NODE_W; onResize lets the user change it (floored at MIN_W) and locks
+  // the height to the content. (The replace branch needs a starting height; the
   // post-layout snap below corrects it immediately.)
   if (Array.isArray(node.size)) { node.size[0] = NODE_W; }
   else { node.size = [NODE_W, NODE_H_HINT]; }
@@ -481,7 +483,9 @@ function setupSeedNode(node) {
     // attempts cover whichever frame the body finishes laying out on.
     const snap = () => {
       if (!isVueNodes() && typeof node.setSize === "function") {
-        node.setSize([NODE_W, node.computeSize()[1]]);
+        // Preserve the user's (possibly resized) width — only re-fit the height.
+        const w = Math.max(MIN_W, node.size[0] || NODE_W);
+        node.setSize([w, node.computeSize()[1]]);
       }
     };
     requestAnimationFrame(snap);
@@ -503,13 +507,26 @@ app.registerExtension({
       return r;
     };
 
-    // Lock WIDTH only, and only in LEGACY — in Nodes 2.0 the rendered size lives
-    // in the Vue layout store, so writing node.size there desyncs it. Height is
-    // governed by the measured getMinHeight / computeLayoutSize.
+    // Classic only: free HORIZONTAL resize (floored at MIN_W); lock the height to
+    // the content so a corner-drag stays horizontal (issue #10). In Nodes 2.0 the
+    // rendered size lives in the Vue layout store, so writing node.size there
+    // desyncs it — Vue uses computeLayoutSize (minWidth:1 + measured height).
     const _origResize = nodeType.prototype.onResize;
     nodeType.prototype.onResize = function (size) {
-      if (!isVueNodes()) this.size[0] = NODE_W;
+      if (!isVueNodes()) {
+        if (this.size[0] < MIN_W) this.size[0] = MIN_W;
+        this.size[1] = this.computeSize()[1];
+      }
       if (_origResize) return _origResize.call(this, size);
+    };
+
+    // Belt-and-braces width floor (Vue Compat #13: onResize is unreliable for DOM
+    // widgets, and Align can write node.size directly). Width ONLY — never write the
+    // height here (a per-paint height write risks dirty-on-load, Compat #18).
+    const _origDraw = nodeType.prototype.onDrawForeground;
+    nodeType.prototype.onDrawForeground = function (ctx) {
+      if (!isVueNodes() && this.size[0] < MIN_W) this.size[0] = MIN_W;
+      if (_origDraw) return _origDraw.apply(this, arguments);
     };
   },
 

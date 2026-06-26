@@ -23,7 +23,8 @@ import { registerNodeHelp } from "../shared/help.mjs";
 const BRAND = "#f66744";
 const NODE_NAME = "PixaromaGroupSwitch";
 const STATE_PROP = "groupSwitchState";
-const NODE_W = 250;        // default body width (resizable; long names ellipsis-clip)
+const NODE_W = 250;        // default body width on a fresh drop
+const MIN_W = 120;         // resize floor — width shrinks to here (names then ellipsis-clip)
 const MIN_BODY = 44;       // floor so an empty body never collapses
 
 // Deterministic body-height constants — MUST match the CSS row metrics below.
@@ -538,8 +539,12 @@ function setupNode(node) {
   // Return the exact body height so the frame matches the switches. The DOM
   // widget is positioned at y=2 (NOT after a phantom row), so dropping the row
   // from sizing never pushes content out of the frame. Vue uses computeLayoutSize.
+  // WIDTH = MIN_W (NOT this.size[0]): computeSize()[0] is the corner-drag MINIMUM,
+  // so returning the current width pinned the floor at the current width => the
+  // node could only GROW, never shrink (issue #10). MIN_W lets it shrink; the live
+  // width stays node.size[0] (computeSize is only the floor, not the actual size).
   if (!isVueNodes()) {
-    node.computeSize = function () { return [this.size[0], bodyHeight(this)]; };
+    node.computeSize = function () { return [MIN_W, bodyHeight(this)]; };
   }
   if (Array.isArray(node.size)) { if (node.size[0] < NODE_W) node.size[0] = NODE_W; }
   else node.size = [NODE_W, 120];
@@ -591,8 +596,18 @@ app.registerExtension({
       if (_panelNode === this) closePanel();
       if (_origRemoved) return _origRemoved.apply(this, arguments);
     };
-    // No onResize override: the body height is content-driven via getMinHeight /
-    // computeLayoutSize, and width is freely resizable for long group names.
+    // Classic only: keep resize HORIZONTAL. Width is free (floored at MIN_W by the
+    // computeSize override); lock the height to the content so a corner-drag can't
+    // grow it and leave a gap below the switches (the vertical size is the row
+    // count, not draggable). Vue sizes via computeLayoutSize — leave it alone.
+    const _origResize = nodeType.prototype.onResize;
+    nodeType.prototype.onResize = function (size) {
+      if (!isVueNodes()) {
+        if (this.size[0] < MIN_W) this.size[0] = MIN_W;
+        this.size[1] = bodyHeight(this);
+      }
+      if (_origResize) return _origResize.apply(this, arguments);
+    };
   },
 
   nodeCreated(node) {
