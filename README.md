@@ -298,7 +298,12 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
-### **June 26, 2026 · v1.4.3–v1.4.5**
+### **June 26, 2026 · v1.4.3–v1.4.6**
+- **Pixaroma Group snaps to the grid.** When ComfyUI's "Always snap to grid" setting is on, dragging or resizing a Pixaroma Group now lines up to the grid like everything else.
+- **Pixaroma Group pastes where your mouse is.** Copy a group with Ctrl+C and paste with Ctrl+V and it lands at your cursor, instead of stacking on top of the original (where dragging the copy used to grab the original's nodes).
+- **A folded group's button stops dodging.** With header buttons set to "Hover only", hovering a folded group no longer makes its unfold button jump aside.
+- **Group Switch is friendlier.** Click anywhere on a row to flip it (not just the little switch), enabled rows are now bright while switched-off rows are dimmed so the state is clear at a glance, and new switches default to Bypass.
+- **Switch is safer to click.** Click a row to make it active, and double-click its name to rename, so a near-miss on the toggle no longer drops you into editing the wrong label.
 - **"Use last seed" is now instant.** On the Seed node, clicking Use last seed brings back the previous image straight from the cache instead of regenerating it once before it settles. This matches how other popular seed nodes behave.
 - **Seed and Group Switch can be resized.** Both nodes are now resizable in width - drag a corner to make them wider or narrower, and the height keeps fitting their contents on its own. Before, Group Switch could only be made wider and the Seed node could not be resized at all.
 - **No more false "browser cache outdated" warning.** The Version Check node sometimes warned that your browser was out of date right after an update even when your files were already current. The version number it reads now refreshes on its own, so that false alarm is gone.
