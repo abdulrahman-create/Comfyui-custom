@@ -1055,6 +1055,15 @@ function onKeyDown(e) {
   // over Ctrl+V when OUR groups were the last thing copied (else ComfyUI handles it).
   if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey) {
     const k = (e.key || "").toLowerCase();
+    if (k === "a") {
+      // Select-all: ComfyUI selects every node + native group, but doesn't know about our
+      // Pixaroma groups — so ALSO add them all to our selection (Ctrl+A → drag / color /
+      // delete then includes them). Don't preventDefault: ComfyUI runs its own select-all,
+      // and ours is independent. (Typing in a field is already excluded by the guard above.)
+      const all = ensureGroups();
+      if (all.length) { _selectedIds = new Set(all.map((g) => g.id)); _selectedId = all[all.length - 1].id; repaint(); }
+      return;
+    }
     if (k === "c") {
       const sel = getSelectedGroups();
       const nativeNodes = app.canvas?.selected_nodes ? Object.keys(app.canvas.selected_nodes).length : 0;
