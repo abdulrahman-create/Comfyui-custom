@@ -490,6 +490,12 @@ function installDraw() {
   const prev = (typeof c.onDrawBackground === "function") ? c.onDrawBackground.bind(c) : null;
   c.onDrawBackground = function (ctx, area) {
     if (prev) { try { prev(ctx, area); } catch (_e) {} }
+    // Sync a node-drag carry HERE, inside the draw pass, reading the dragged node's
+    // LIVE position — so the carried frame + members are positioned from the exact same
+    // data the nodes are about to be drawn with. Doing it in a separate rAF left the
+    // frame one frame behind ("lazy brush"); this draws them locked. Runs before the
+    // groups are drawn below, and before ComfyUI draws the foreground nodes.
+    try { applyNodeCarry(); } catch (_e) {}
     try {
       const gs = ensureGroups();
       if (gs.length) {
@@ -797,15 +803,14 @@ function carryNativeGroupDrags() {
 }
 function _carryTick() {
   if (!_lmbDown) { _carryRaf = 0; return; }   // drag ended -> stop the loop
-  let dirty = false;
-  if (carryNativeGroupDrags()) dirty = true;       // a NATIVE group dragged -> carry our frames
-  else if (carrySelectedNodeDrag()) dirty = true;  // a co-selected NODE dragged -> carry our frames (native takes precedence)
-  // setDirty(true, true): force BOTH canvases to redraw THIS frame. The group frame
-  // lives on the background canvas and the nodes on the foreground; redrawing only the
-  // bg (false, true) let the frame trail the nodes by a frame. Redrawing both together
-  // locks them. We READ node._pos / the dragged node.pos here in the rAF (latest
-  // committed position) so the frame follows the node EXACTLY — no cursor-vs-node jitter.
-  if (dirty) { try { app.canvas?.setDirty(true, true); } catch (_e) {} }
+  // A NATIVE group drag carries our frames here (reading the group's _pos). A co-selected
+  // NODE drag is applied in the DRAW pass (applyNodeCarry, in onDrawBackground) so it
+  // reads the node's live position at draw time and can't trail; here we only need to
+  // keep forcing the redraw while such a drag is in progress so onDrawBackground keeps
+  // running. setDirty(true, true) redraws BOTH canvases together (the frame lives on the
+  // background, the nodes on the foreground) so the frame can't lag the nodes by a frame.
+  const carried = carryNativeGroupDrags();
+  if (carried || _carry) { try { app.canvas?.setDirty(true, true); } catch (_e) {} }
   _carryRaf = requestAnimationFrame(_carryTick);
 }
 function startCarryLoop() {
@@ -846,11 +851,12 @@ function snapshotCarry(cursor) {
            excludeIds: frames.map((f) => f.g.id),
            excludeNodes: [...members.map((m) => m.n), ...nodes.map((nn) => nn.n)] };
 }
-// pointermove (onHover) only SNAPSHOTS the carry and clears it on button-up. The
-// actual movement happens in the rAF loop (carrySelectedNodeDrag) so it can read the
-// dragged node's LATEST committed position once per frame, right before paint — which
-// is exact (no drag-threshold offset, since node.pos IS post-threshold) and jitter-free
-// (no separate cursor read racing ComfyUI's node update).
+// pointermove (onHover) only SNAPSHOTS the carry and clears it on button-up. The actual
+// movement happens in the DRAW pass (applyNodeCarry, called from onDrawBackground) so it
+// reads the dragged node's LATEST position at the moment of drawing — exact (no drag-
+// threshold offset, since node.pos IS post-threshold), jitter-free (no separate cursor
+// read racing ComfyUI), and locked (drawn from the same data as the nodes, not a frame
+// behind). _carryTick just keeps forcing the redraw while the drag is in progress.
 function trackSelectedNodeDrag(e) {
   const dragging = (e.buttons & 1) === 1;
   if (!dragging) { _carry = null; return; }
@@ -861,12 +867,15 @@ function trackSelectedNodeDrag(e) {
   if (!p) return;
   _carry = snapshotCarry(p);
 }
-// rAF-driven (called from _carryTick). Move the carried frames + non-selected members
-// by the dragged node's EXACT delta (node.pos - start). node.pos is post-threshold and
-// is the single source of truth, so the frame is locked to the node with no offset and
-// no cursor-vs-node jitter. ComfyUI owns the selected node; we never write it.
-function carrySelectedNodeDrag() {
+// Called from onDrawBackground (the draw pass), NOT a separate rAF — so it reads the
+// dragged node's LATEST position at the moment of drawing and positions the carried
+// frames + non-selected members by that exact delta (node.pos - start). node.pos is the
+// single source of truth (post-threshold, no cursor jitter), and reading it in the draw
+// pass means the frame is drawn locked to the node, not a frame behind. ComfyUI owns the
+// selected node; we never write it.
+function applyNodeCarry() {
   if (!_carry) return false;
+  if (!_lmbDown) { _carry = null; return false; } // safety: no drag in progress
   if (!_carry.ref || !_carry.ref.pos) { _carry = null; return false; }
   const dx = _carry.ref.pos[0] - _carry.rx, dy = _carry.ref.pos[1] - _carry.ry;
   if (Math.abs(dx) < 0.01 && Math.abs(dy) < 0.01) return false; // under the drag threshold / not moving
