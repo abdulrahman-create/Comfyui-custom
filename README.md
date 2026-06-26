@@ -298,7 +298,8 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
-### **June 26, 2026 · v1.4.3–v1.4.7**
+### **June 26, 2026 · v1.4.3–v1.4.8**
+- **Pixaroma Groups stay with their workflow.** Fixed a bug where, with more than one workflow open, groups could appear on the wrong workflow tab or disappear. Each workflow (and each subgraph) now keeps its own groups, and groups placed inside a subgraph save correctly.
 - **Set / Get nodes fixed.** Fixed a bug where a Set node could grow a second, duplicate input that stopped the value from passing through, which made paired Get nodes come up empty (sometimes with "missing input" errors). New workflows never get the duplicate, and older workflows that already hit it repair themselves when you open them.
 - **Pixaroma Group snaps to the grid.** When ComfyUI's "Always snap to grid" setting is on, dragging or resizing a Pixaroma Group now lines up to the grid like everything else.
 - **Pixaroma Group pastes where your mouse is.** Copy a group with Ctrl+C and paste with Ctrl+V and it lands at your cursor, instead of stacking on top of the original (where dragging the copy used to grab the original's nodes).
