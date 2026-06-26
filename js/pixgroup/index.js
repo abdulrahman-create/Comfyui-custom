@@ -44,19 +44,19 @@ let _idc = 0;
 // ms-granular) — avoids a fresh group colliding with a saved group's id.
 function newId() { return "pg_" + Date.now().toString(36) + "_" + (_idc++) + "_" + Math.random().toString(36).slice(2, 6); }
 
-// Authoritative in-memory list of our groups for the current graph. We keep
-// graph.extra.pixaromaGroups pointed at it AND (via installPersistence) inject
-// it into every graph.serialize() + re-read it on every graph.configure(), so
-// ComfyUI's change-tracker snapshots always carry our groups — an undo or a
-// native-group delete that reconciles the graph state can no longer wipe them.
-let _mirror = [];
+// Our groups are stored PER-GRAPH on graph.extra.pixaromaGroups — each workflow
+// tab (and each subgraph) has its OWN array. ensureGroups() returns the CURRENT
+// graph's array, creating it if absent. (Earlier this was a single module-global
+// array shared by every graph AND aliased into each graph's extra; switching
+// workflow tabs then leaked one workflow's groups onto another, and because the
+// array identity was shared, mutating it for one tab overwrote another tab's
+// saved groups. Per-graph storage fixes both — groups stay with their workflow.)
 function ensureGroups() {
   const g = app.graph;
-  if (g) {
-    if (!g.extra) g.extra = {};
-    if (g.extra.pixaromaGroups !== _mirror) g.extra.pixaromaGroups = _mirror;
-  }
-  return _mirror;
+  if (!g) return [];
+  if (!g.extra) g.extra = {};
+  if (!Array.isArray(g.extra.pixaromaGroups)) g.extra.pixaromaGroups = [];
+  return g.extra.pixaromaGroups;
 }
 
 // ── color helpers ───────────────────────────────────────────────────────
@@ -1687,11 +1687,15 @@ const GROUP_HELP = {
 // right and no double-wrap flag needed.
 
 // Ride ComfyUI's own save / undo / change-tracker cycle. graph.serialize() is
-// what the change-tracker snapshots AND what a workflow save writes, so
-// injecting our live list there means every snapshot carries our groups;
-// graph.configure() is what load / undo / a graph reconcile calls, so we re-read
-// our list from the restored data. Net effect: deleting a native group (which
-// triggers a reconcile) can no longer wipe our groups, and undo/redo carry them.
+// what the change-tracker snapshots AND what a workflow save writes, so each
+// graph's OWN groups (graph.extra.pixaromaGroups) ride every snapshot;
+// graph.configure() is what load / undo / a graph reconcile calls, so we
+// normalize our key back to a fresh PER-GRAPH array. Net effect: deleting a
+// native group (which triggers a reconcile) can no longer wipe our groups, and
+// undo/redo carry them. Both wraps operate on `this` (the graph being
+// (de)serialized), NOT only app.graph, so background tabs AND subgraphs persist
+// their OWN groups (the old app.graph-only guard never saved subgraph groups and
+// let the active graph's groups bleed across tabs).
 function installPersistence() {
   const G = app.graph?.constructor?.prototype || window.LGraph?.prototype;
   if (!G || G._pixGroupPersistWrapped) return;
@@ -1699,10 +1703,11 @@ function installPersistence() {
   G.serialize = function () {
     const data = origSerialize.apply(this, arguments);
     try {
-      if (this === app.graph && data) {
-        if (_mirror.length) {
+      if (data) {
+        const groups = this.extra && this.extra.pixaromaGroups;
+        if (Array.isArray(groups) && groups.length) {
           if (!data.extra) data.extra = {};
-          data.extra.pixaromaGroups = JSON.parse(JSON.stringify(_mirror));
+          data.extra.pixaromaGroups = JSON.parse(JSON.stringify(groups));
         } else if (data.extra && "pixaromaGroups" in data.extra) {
           // No groups → OMIT the key entirely (deterministic: matches a workflow
           // that never had groups, instead of leaving a stale empty array).
@@ -1716,11 +1721,13 @@ function installPersistence() {
   G.configure = function (data) {
     const r = origConfigure.apply(this, arguments);
     try {
+      // Normalize OUR key to a fresh per-graph array, decoupled from the saved
+      // data object (so editing live groups never mutates the loaded JSON) — and a
+      // graph with NO saved groups gets an EMPTY array, never another tab's groups.
+      if (!this.extra) this.extra = {};
+      const arr = data && data.extra && data.extra.pixaromaGroups;
+      this.extra.pixaromaGroups = Array.isArray(arr) ? arr.map((x) => ({ ...x })) : [];
       if (this === app.graph) {
-        const arr = data && data.extra && data.extra.pixaromaGroups;
-        _mirror.length = 0;
-        if (Array.isArray(arr)) for (const x of arr) _mirror.push({ ...x });
-        if (this.extra) this.extra.pixaromaGroups = _mirror;
         invalidateHidden();
         // a group loaded already folded must re-hide its members (Nodes 2.0 CSS;
         // legacy is handled by the computeVisibleNodes wrap on the next paint).
@@ -1863,11 +1870,8 @@ app.registerExtension({
     // onChange only fires when the user changes the setting — read the saved value
     // once at startup so a non-default choice applies on load.
     try { const v = app.ui?.settings?.getSettingValue?.("Pixaroma.PixGroup.ButtonVisibility"); if (v) _btnVis = mapBtnVis(v); } catch (_e) {}
-    // Pick up groups from a workflow that was already loaded before this ran.
-    try {
-      const init = app.graph?.extra?.pixaromaGroups;
-      if (Array.isArray(init)) { _mirror.length = 0; for (const x of init) _mirror.push({ ...x }); }
-    } catch (_e) {}
+    // Groups load per-graph from graph.extra.pixaromaGroups (ensureGroups reads it
+    // fresh), so a workflow already open before this ran is picked up automatically.
     invalidateHidden();
     try { updateFoldNodeHideCSS(); } catch (_e) {}
     // Nodes 2.0: re-assert the hide CSS for groups loaded already folded (a node
