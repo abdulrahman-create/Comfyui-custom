@@ -617,7 +617,22 @@ function onDown(e) {
   _clickDeselectPending = false; // set when we KEEP selection for a possible drag; a plain click (no drag) deselects on release
   _pendingPixSelect = null;      // set on an already-selected pixgroup header press; a plain click (no drag) collapses to just it on release
   const c = app.canvas;
-  if (!c || e.target !== c.canvas) return; // only the graph canvas surface
+  if (!c) return;
+  // Handle presses on the graph canvas surface, AND — in Nodes 2.0 — presses on a Vue node
+  // DOM element (its clicks don't target the canvas, so our selection-sync / deselect logic
+  // never saw them: clicking a node left our Pixaroma group selected). Ignore the toolbar /
+  // side panels / anything outside the graph. The node/deselect path below never consumes
+  // the event, so ComfyUI's own node interaction is unaffected.
+  const onVueNode = isVueNodes() && e.target?.closest?.("[data-node-id]");
+  if (e.target !== c.canvas && !onVueNode) return;
+  // On a Vue node, a press on an interactive WIDGET (input / combo / button / slider) is a
+  // value edit, not a node-select — don't run our selection logic (it would deselect the
+  // pixgroup mid-edit). Only node-body / title presses fall through.
+  if (onVueNode) {
+    const t = e.target, tag = t && t.tagName;
+    if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA" || tag === "BUTTON" ||
+        (t && t.isContentEditable) || (t && t.closest && t.closest("input,select,textarea,button,[role='slider'],[contenteditable='true']"))) return;
+  }
   const p = screenToGraph(e.clientX, e.clientY);
   if (!p) return;
   const gs = ensureGroups();
