@@ -298,7 +298,10 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
-### **June 26, 2026 · v1.4.3–v1.4.4**
+### **June 26, 2026 · v1.4.3–v1.4.5**
+- **"Use last seed" is now instant.** On the Seed node, clicking Use last seed brings back the previous image straight from the cache instead of regenerating it once before it settles. This matches how other popular seed nodes behave.
+- **Seed and Group Switch can be resized.** Both nodes are now resizable in width - drag a corner to make them wider or narrower, and the height keeps fitting their contents on its own. Before, Group Switch could only be made wider and the Seed node could not be resized at all.
+- **No more false "browser cache outdated" warning.** The Version Check node sometimes warned that your browser was out of date right after an update even when your files were already current. The version number it reads now refreshes on its own, so that false alarm is gone.
 - **Copy and paste a Pixaroma group.** Ctrl+C / Ctrl+V (and Duplicate) now carry the group frame itself, not just the nodes inside it. Copying a group together with a node keeps their layout when you paste.
 - **Cleaner right-click menu.** When a Pixaroma group sits inside a regular ComfyUI group, right-clicking it no longer piles the regular group's menu options on top - you get just the Pixaroma group's own menu. And in the new node interface, opening a group menu no longer leaves an old node menu hanging open behind it.
 - **Smoother group dragging in the new node interface.** Select a node, a Pixaroma group, and a regular ComfyUI group together and drag any of them: they now stay locked in step instead of one lagging behind the others.
