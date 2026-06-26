@@ -298,6 +298,7 @@ let _selectedId = null;            // the PRIMARY selected group (last clicked) 
 let _selectedIds = new Set();      // ALL selected groups (multi-select via shift-click)
 let _groupClipboard = null;        // copied group frames (Ctrl+C); frame/style only, not nodes
 let _groupClipActive = false;      // true when OUR groups were the last Ctrl+C (so Ctrl+V is ours)
+let _groupClipMixed = false;       // true when that Ctrl+C ALSO had native nodes selected (so Ctrl+V pastes our frame AND lets ComfyUI paste the nodes)
 let _pasteSeq = 0;                 // cascades repeated Ctrl+V offsets WITHOUT mutating the clipboard
 let _marqueeRect = null;           // last seen ComfyUI marquee rect [x,y,w,h]; add our groups on release
 let _marqueeShift = false;         // was Shift held during the marquee (Shift = add to selection, plain = replace)
@@ -905,12 +906,34 @@ function onKeyDown(e) {
     if (k === "c") {
       const sel = getSelectedGroups();
       const nativeNodes = app.canvas?.selected_nodes ? Object.keys(app.canvas.selected_nodes).length : 0;
-      if (sel.length && !nativeNodes) { _groupClipboard = sel.map((gr) => cloneGroupFrame(gr, 0, 0)); _groupClipActive = true; _pasteSeq = 0; }
-      else { _groupClipActive = false; } // nodes selected OR nothing of ours → relinquish so Ctrl+V defers to ComfyUI
+      if (sel.length) {
+        // Copy OUR frame(s). If nodes are ALSO selected it's a MIXED copy: Ctrl+V then
+        // pastes our frame(s) AND lets ComfyUI paste the nodes (instead of dropping the
+        // group entirely, the old "nodes selected → relinquish" bug). Never preventDefault
+        // on C, so ComfyUI still copies any selected nodes into its own clipboard.
+        _groupClipboard = sel.map((gr) => cloneGroupFrame(gr, 0, 0));
+        _groupClipActive = true;
+        _groupClipMixed = nativeNodes > 0;
+        _pasteSeq = 0;
+      } else { _groupClipActive = false; } // no group of ours → relinquish so Ctrl+V defers to ComfyUI
       return;
     }
     if (k === "v") {
-      if (_groupClipActive && _groupClipboard && _groupClipboard.length) { e.preventDefault(); e.stopImmediatePropagation(); pasteGroups(); }
+      if (_groupClipActive && _groupClipboard && _groupClipboard.length) {
+        if (_groupClipMixed) {
+          // Mixed: paste our frame(s) but let the event flow through to ComfyUI so it
+          // pastes the nodes too. pasteGroups(true) keeps the native node selection
+          // (ComfyUI then replaces it with the freshly pasted nodes).
+          pasteGroups(true);
+        } else {
+          // Groups-only: consume the event so ComfyUI doesn't paste stale nodes.
+          e.preventDefault(); e.stopImmediatePropagation(); pasteGroups(false);
+        }
+      } else if (_selectedIds.size) {
+        // Relinquishing to ComfyUI's node paste → drop our group selection so a
+        // still-selected old group isn't dragged along with the pasted nodes.
+        _selectedIds = new Set(); _selectedId = null; repaint();
+      }
       return;
     }
     return;
@@ -1023,7 +1046,10 @@ function duplicateSelectedFrames() {
   _selectedIds = newSel; _selectedId = [...newSel].pop() || null;
   markChanged();
 }
-function pasteGroups() {
+// keepNative: in a MIXED paste, leave the native node selection alone so ComfyUI
+// can paste its nodes and select them (clearing it here would wipe that). In a
+// groups-only paste we clear native so only the new frame(s) are selected.
+function pasteGroups(keepNative) {
   if (!_groupClipboard || !_groupClipboard.length) return;
   const gs = ensureGroups();
   const newSel = new Set();
@@ -1034,8 +1060,11 @@ function pasteGroups() {
     const c = cloneGroupFrame(data, off, off);
     gs.push(c); newSel.add(c.id);
   }
+  // Reset selection to ONLY the new frame(s) — drops the old group so it isn't
+  // dragged along with whatever was just pasted.
   _selectedIds = newSel; _selectedId = [...newSel].pop() || null;
-  clearNativeSelection(); markChanged();
+  if (!keepNative) clearNativeSelection();
+  markChanged();
 }
 
 // ── header-button actions ─────────────────────────────────────────────────
