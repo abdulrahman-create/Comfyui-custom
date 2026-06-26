@@ -582,6 +582,33 @@ function clickIsOnSelectedNativeGroup(p) {
   }
   return false;
 }
+// The topmost node whose visual bounds contain p, else null.
+function nodeAtPoint(p) {
+  const ns = app.graph?._nodes || [];
+  for (let i = ns.length - 1; i >= 0; i--) {
+    const n = ns[i]; if (!n || !n.pos) continue;
+    const b = nodeVisualBounds(n);
+    if (p[0] >= b.x && p[0] <= b.x + b.w && p[1] >= b.y && p[1] <= b.y + b.h) return n;
+  }
+  return null;
+}
+// Does this press GRAB the current multi-selection (so we should KEEP our group
+// selection + let the node-carry move it), vs is it a plain click that should DESELECT
+// our groups? It grabs the unit when the press is on: a selected node, OR a node that
+// is a MEMBER of a selected Pixaroma group, OR — when NOT on any node — a selected
+// native ComfyUI group's area (grabbing the native group itself, e.g. its title). A
+// press on a node that is NOT part of the selection deselects (so clicking a node behind
+// a group can't keep a stale selection that then silently carries — bugs B2/B3).
+function clickGrabsTheUnit(p) {
+  if (clickIsOnSelectedNode(p)) return true;
+  const n = nodeAtPoint(p);
+  if (n) {
+    const id = String(n.id);
+    for (const g of getSelectedGroups()) if (groupMemberNodes(g).some((m) => String(m.id) === id)) return true;
+    return false; // a node, but not part of the selection → deselect
+  }
+  return clickIsOnSelectedNativeGroup(p); // no node under the cursor → grabbing the native group itself
+}
 
 function onDown(e) {
   if (e.button !== 0) return;
@@ -662,9 +689,13 @@ function onDown(e) {
   // (the user is dragging the whole multi-selection — keep the groups selected).
   // Never consume, so node-drag / marquee / pan all work normally.
   if (!(e.shiftKey || e.ctrlKey || e.metaKey) && _selectedIds.size) {
-    if (clickIsOnSelectedNode(p)) _carry = snapshotCarry(p); // grabbing the node+group unit → carry it as one (Align stands down via isDragging)
-    else if (clickIsOnSelectedNativeGroup(p)) { /* dragging a co-selected native group → keep our groups selected; the carry loop moves the contained frames */ }
-    else { _selectedId = null; _selectedIds.clear(); repaint(); } // empty canvas / unselected node → deselect our groups
+    if (clickGrabsTheUnit(p)) {
+      // Grabbing the multi-selection (a selected node, a member node of a selected group,
+      // or the native group itself) → KEEP our group selection. Arm the node-carry now if
+      // the press is on a selected node; otherwise trackSelectedNodeDrag arms it on the
+      // first drag tick (a member node ComfyUI selects on press).
+      if (clickIsOnSelectedNode(p)) _carry = snapshotCarry(p);
+    } else { _selectedId = null; _selectedIds.clear(); repaint(); } // a plain click → deselect our groups
   }
 }
 
@@ -783,11 +814,14 @@ let _carryRaf = 0;                  // active rAF id for the native-group carry 
 // frames are drawn locked to it (the old per-tick incremental apply in the rAF left them
 // one frame behind = the "lazy brush" trail).
 function carryNativeGroupDrags() {
-  // When WE own a drag (a Pixaroma-group header drag) we move the native group + its
-  // contents ourselves in onMove — so do NOT also carry here (double-move = the shake).
-  // Keep the per-group baseline fresh either way so a real native-group drag right after
-  // ours starts from a 0 delta.
-  const ownDrag = !!_drag;
+  // A header drag (ours, _drag) OR an active node-drag carry (_carry) BOTH own the
+  // frames — never ALSO latch a native-group carry on top. Without this, a co-selected
+  // native group that ComfyUI moves together with the dragged node gets detected as a
+  // native drag, applyNativeCarry then re-pins the pixgroup to the group's (near-zero /
+  // opposite) delta AND trackSelectedNodeDrag nulls _carry — so the node carry fights it,
+  // then dies, and the frame drifts the wrong way then STOPS following (bug B1). Keep the
+  // per-group baseline fresh below so a real native-group drag right after starts at 0.
+  const ownDrag = !!_drag || !!_carry;
   for (const grp of nativeGroups()) {
     const box = natGrpBox(grp); if (!box) continue;
     const prev = _natGrpPrev.get(grp);
@@ -811,7 +845,7 @@ function carryNativeGroupDrags() {
 // the group instead of trailing it by a frame. ComfyUI moves the group's member NODES, so
 // we move only the pixgroup frames.
 function applyNativeCarry() {
-  if (!_natGrpDrag || !_lmbDown) return false;
+  if (_carry || !_natGrpDrag || !_lmbDown) return false; // a node-drag carry owns the frames (belt-and-braces vs the rAF/draw cadence race)
   const box = natGrpBox(_natGrpDrag.grp); if (!box) return false;
   const dx = box.x - _natGrpDrag.gx0, dy = box.y - _natGrpDrag.gy0;
   for (const p of _natGrpDrag.pix) { p.o.x = p.x0 + dx; p.o.y = p.y0 + dy; }
