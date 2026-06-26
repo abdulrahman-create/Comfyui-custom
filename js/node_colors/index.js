@@ -1357,11 +1357,22 @@ function openPixGroupPalette(g) {
   // Apply to ALL selected Pixaroma groups when g is part of a multi-selection; the
   // displayed values come from g (the primary). Falls back to just [g].
   const sel = window.PixaromaPixGroup?.getSelectedGroups?.() || [];
-  const targets = (sel.length && sel.includes(g)) ? sel : [g];
+  const multi = !!(sel.length && sel.includes(g));
+  const targets = multi ? sel : [g];
+  // When g is part of a MULTI-selection that also holds nodes / native Comfy groups, color
+  // THEM too (color only — opacity/font are pixgroup-specific), so the Pixaroma-group palette
+  // matches the node / Comfy-group palettes' "colour the whole selection" behaviour. Gathered
+  // once at open (the selection is fixed while the palette is up).
+  const selNodes = multi ? (app.canvas?.selected_nodes ? Object.values(app.canvas.selected_nodes) : []) : [];
+  const selComfyGroups = multi ? getSelectedGroups() : [];
   let titleHex = g.titleColor || g.color || GROUP_DEFAULT_COLOR;
   let bodyHex  = g.bodyColor  || g.color || GROUP_DEFAULT_COLOR;
   let target = "title";
-  const applyNow = () => { for (const t of targets) { t.titleColor = titleHex; t.bodyColor = bodyHex; } pixRepaint(); };
+  const applyExtras = () => {
+    if (selNodes.length) applyColors(selNodes, titleHex, bodyHex);                                // node title bar + body
+    for (const cg of selComfyGroups) { try { cg.color = bodyHex; cg.setDirtyCanvas?.(false, true); } catch (_e) {} } // group fill = body
+  };
+  const applyNow = () => { for (const t of targets) { t.titleColor = titleHex; t.bodyColor = bodyHex; } applyExtras(); pixRepaint(); };
 
   // Link Title & Body color: when ON, Body follows Title (the low body opacity
   // gives the faint "same color" variation). Editing Body breaks the link; click
@@ -1414,6 +1425,7 @@ function openPixGroupPalette(g) {
   const applyFavStyle = (f) => {
     titleHex = f.title; bodyHex = f.body;
     for (const t of targets) { t.titleColor = f.title; t.bodyColor = f.body; t.titleAlpha = f.titleAlpha; t.bodyAlpha = f.bodyAlpha; t.fontSize = f.fontSize; }
+    applyExtras();                                 // also color co-selected nodes / Comfy groups
     linked = false; persistLink(); syncLink();   // a favourite defines title + body → unlink
     picker.setColor(target === "title" ? titleHex : bodyHex);
     refreshHex(); refreshSliders(); pixRepaint();
