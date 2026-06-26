@@ -1714,6 +1714,31 @@ function installGroupMenuGuard() {
   G._pixGroupOnPosWrapped = true;
 }
 
+// ComfyUI Nodes 2.0 mixes TWO context-menu systems: a Vue/PrimeVue menu for NODES
+// (`.p-contextmenu`) and the legacy LiteGraph DOM menu for the CANVAS/GROUPS
+// (`.litecontextmenu`). PrimeVue's outside-close listens for a document 'click' (a LEFT
+// click) — a right-click fires no click event, so right-clicking a group (which opens the
+// legacy menu) leaves the prior Vue NODE menu open underneath → two menus stack (verified by
+// DOM probe + the PrimeVue bundle). A node→node right-click is fine (opening a Vue menu DOES
+// close the legacy one). Fix: on a CANVAS/group right-click, synthesize an outside 'click' so
+// PrimeVue dismisses any stale Vue node menu BEFORE the legacy menu opens. Dispatched on
+// document.body (not the canvas), so it only trips PrimeVue's document-level close listener —
+// our own capture pointerdown handler ignores it (it's a click, not a pointerdown) and
+// ComfyUI's canvas handlers never see it. No-op in Classic (no `.p-contextmenu`) and whenever
+// no Vue menu is open. This also tidies the same stale-menu case for a plain empty-canvas
+// right-click after a node menu (a general ComfyUI quirk, fixed here for free).
+function installVueMenuDismissGuard() {
+  if (window._pixVueMenuDismiss) return;
+  window._pixVueMenuDismiss = true;
+  window.addEventListener("contextmenu", (e) => {
+    try {
+      if (e.target?.closest?.("[data-node-id]")) return;      // node right-click: Vue replaces Vue, leave it
+      if (!document.querySelector(".p-contextmenu")) return;  // no stale Vue node menu open
+      document.body.dispatchEvent(new MouseEvent("click", { bubbles: true })); // PrimeVue closes on this
+    } catch (_e) {}
+  }, true);
+}
+
 app.registerExtension({
   name: "Pixaroma.PixGroup",
   settings: [
@@ -1787,6 +1812,7 @@ app.registerExtension({
     installDraw();
     installPersistence();
     installGroupMenuGuard();
+    installVueMenuDismissGuard();
     installFoldHooks();
     installExecListeners();
     // onChange only fires when the user changes the setting — read the saved value
