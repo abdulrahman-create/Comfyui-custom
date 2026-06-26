@@ -566,9 +566,9 @@ const HELP = {
   tagline: "On/off switches for your Pixaroma Groups, in one small panel.",
   sections: [
     { heading: "What it does", body: "Each switch turns a whole Pixaroma Group on or off by muting or bypassing every node inside it. Flip a switch and that section of your workflow stops running, without unplugging a single wire." },
-    { heading: "The switches", body: "The node body is just the switches. A small tag in the corner shows whether this one mutes or bypasses. The colored dot and name (plus a number when two groups share a name) tell the groups apart." },
+    { heading: "The switches", body: "The node body is just the switches. Click anywhere on a row to flip that group on or off - not only the small switch. An enabled row shows bright white text; a switched-off row is dimmed, so you can read the state at a glance. A small tag in the corner shows whether this one mutes or bypasses, and the colored dot and name (plus a number when two groups share a name) tell the groups apart." },
     { heading: "Settings (the gear, or right-click)", defs: [
-      ["Action", "Make this switch a Mute or a Bypass. For both, drop two switches."],
+      ["Action", "Make this switch a Mute or a Bypass. New switches default to Bypass. For both at once, drop two switches."],
       ["Groups", "Control all groups, or Pick a hand-picked set. Search and sort (by canvas position, name, or color) to find them. The locate icon flashes a group on the canvas."],
       ["Switching", "Any number on, only one on at a time, or always keep one on."],
     ]},

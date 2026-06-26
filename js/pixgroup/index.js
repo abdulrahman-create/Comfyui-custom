@@ -1665,7 +1665,8 @@ const GROUP_HELP = {
   sections: [
     { heading: "Create & move", bullets: [
       "Right-click the canvas and pick \"Add Pixaroma Group\", or select nodes and press G.",
-      "Drag the header to move it (the nodes inside move with it); drag the bottom-right corner to resize.",
+      "Drag the header to move it (the nodes inside move with it); drag the bottom-right corner to resize. Both snap to the grid when ComfyUI's \"Always snap to grid\" setting is on.",
+      "Copy with Ctrl+C and paste with Ctrl+V - the pasted copy lands where your mouse is. Alt-drag the header also duplicates it.",
       "Double-click the title to rename. Select it and press Delete to remove it (the nodes stay).",
     ]},
     { heading: "Header buttons", defs: [

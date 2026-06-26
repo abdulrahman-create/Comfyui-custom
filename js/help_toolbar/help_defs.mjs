@@ -953,18 +953,18 @@ const HELP = {
 
   "PixaromaSwitch": {
     title: "Switch Pixaroma",
-    tagline: "Route one of many wired inputs to a single output by clicking a row toggle.",
+    tagline: "Route one of many wired inputs to a single output by clicking a row.",
     sections: [
       {
         heading: "What it does",
-        body: "Accepts up to 32 wired inputs of any type (MODEL, CLIP, IMAGE, STRING, AUDIO, and so on) and passes exactly one of them through to the output unchanged. You choose which row is active by clicking its toggle on the node. Only the active row's upstream branch runs - the others are skipped.",
+        body: "Accepts up to 32 wired inputs of any type (MODEL, CLIP, IMAGE, STRING, AUDIO, and so on) and passes exactly one of them through to the output unchanged. You choose which row is active by clicking it on the node. Only the active row's upstream branch runs - the others are skipped.",
       },
       {
         heading: "How to use",
         bullets: [
           "Wire upstream nodes into the rows. A new empty row appears as you fill each one.",
-          "Click a row's toggle to make it active (the orange highlight marks it).",
-          "Click a row's label to rename it so you remember what each input is.",
+          "Click anywhere on a row to make it active (the orange highlight marks it).",
+          "Double-click a row's name to rename it, so you remember what each input is. A single click only activates the row, so you will not change a label by accident. (In the new node interface, click into the name field to rename.)",
           "Disconnect a wire to remove its row.",
         ],
       },
