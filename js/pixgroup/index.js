@@ -614,6 +614,7 @@ function onDown(e) {
   if (e.button !== 0) return;
   _lmbDown = true; startCarryLoop(); // left button held: run the native-group-drag carry loop (stopped on pointerup/cancel/blur)
   _marqueeRect = null; _marqueeShift = false; // start fresh: drop any stale marquee from an abandoned drag
+  _clickDeselectPending = false; // set when we KEEP selection for a possible drag; a plain click (no drag) deselects on release
   const c = app.canvas;
   if (!c || e.target !== c.canvas) return; // only the graph canvas surface
   const p = screenToGraph(e.clientX, e.clientY);
@@ -691,9 +692,12 @@ function onDown(e) {
   if (!(e.shiftKey || e.ctrlKey || e.metaKey) && _selectedIds.size) {
     if (clickGrabsTheUnit(p)) {
       // Grabbing the multi-selection (a selected node, a member node of a selected group,
-      // or the native group itself) → KEEP our group selection. Arm the node-carry now if
-      // the press is on a selected node; otherwise trackSelectedNodeDrag arms it on the
-      // first drag tick (a member node ComfyUI selects on press).
+      // or the native group itself) → KEEP our group selection FOR NOW so a drag carries
+      // it. But a plain CLICK (no drag) should select just that node/group like ComfyUI,
+      // so mark a pending deselect that a real drag clears (in applyNodeCarry/Native) and
+      // that onWinPointerUp applies if no drag happened. Arm the node-carry if the press
+      // is on a selected node; else trackSelectedNodeDrag arms it on the first drag tick.
+      _clickDeselectPending = true;
       if (clickIsOnSelectedNode(p)) _carry = snapshotCarry(p);
     } else { _selectedId = null; _selectedIds.clear(); repaint(); } // a plain click → deselect our groups
   }
@@ -771,6 +775,10 @@ function onUp(e) {
 function onWinPointerUp() {
   _lmbDown = false;
   if (_carryRaf) { cancelAnimationFrame(_carryRaf); _carryRaf = 0; } // stop the carry loop promptly
+  // A press that grabbed the unit but never dragged = a plain CLICK on a node / native
+  // group → deselect our groups (ComfyUI selects just that item; we mirror it). A real
+  // drag cleared the flag in applyNodeCarry / applyNativeCarry.
+  if (_clickDeselectPending) { _clickDeselectPending = false; if (_selectedIds.size) { _selectedIds.clear(); _selectedId = null; repaint(); } }
   _natGrpDrag = null; _carry = null; // end any native-group / node-drag carry
   if (!_marqueeRect) return;
   const [mx, my, mw, mh] = _marqueeRect;
@@ -848,6 +856,7 @@ function applyNativeCarry() {
   if (_carry || !_natGrpDrag || !_lmbDown) return false; // a node-drag carry owns the frames (belt-and-braces vs the rAF/draw cadence race)
   const box = natGrpBox(_natGrpDrag.grp); if (!box) return false;
   const dx = box.x - _natGrpDrag.gx0, dy = box.y - _natGrpDrag.gy0;
+  if (Math.abs(dx) > 0.01 || Math.abs(dy) > 0.01) _clickDeselectPending = false; // it's a real drag, not a click
   for (const p of _natGrpDrag.pix) { p.o.x = p.x0 + dx; p.o.y = p.y0 + dy; }
   return _natGrpDrag.pix.length > 0;
 }
@@ -882,6 +891,7 @@ function startCarryLoop() {
 // stands down for the node (isDragging() reports the carry) so it can't snap the node
 // and make the group jump; pixgroup snaps the unit's frame bbox via snapMovingRect.
 let _carry = null; // active node-drag carry snapshot, or null
+let _clickDeselectPending = false; // a press grabbed the unit; a plain click (no drag) deselects our groups on release
 function snapshotCarry(cursor) {
   if (!_selectedIds.size) return null;
   const selNodes = app.canvas?.selected_nodes ? Object.values(app.canvas.selected_nodes) : [];
@@ -929,6 +939,7 @@ function applyNodeCarry() {
   if (!_carry.ref || !_carry.ref.pos) { _carry = null; return false; }
   const dx = _carry.ref.pos[0] - _carry.rx, dy = _carry.ref.pos[1] - _carry.ry;
   if (Math.abs(dx) < 0.01 && Math.abs(dy) < 0.01) return false; // under the drag threshold / not moving
+  _clickDeselectPending = false; // the node actually moved -> it's a drag, keep the selection
   const vue = isVueNodes();
   for (const f of _carry.frames) { f.g.x = f.x + dx; f.g.y = f.y + dy; }
   for (const m of _carry.members) { if (vue) m.n.pos = [m.x + dx, m.y + dy]; else { m.n.pos[0] = m.x + dx; m.n.pos[1] = m.y + dy; } }
@@ -1771,7 +1782,7 @@ app.registerExtension({
     // it on blur so the next interaction is clean.
     window.addEventListener("blur", () => {
       if (_drag) { _drag = null; stopWin(); try { window.PixaromaAlign?.endExternalDrag?.(); } catch (_e) {} }
-      _natGrpDrag = null; _carry = null; _lmbDown = false;
+      _natGrpDrag = null; _carry = null; _lmbDown = false; _clickDeselectPending = false;
       if (_carryRaf) { cancelAnimationFrame(_carryRaf); _carryRaf = 0; }
       _marqueeRect = null; _marqueeShift = false; // a marquee abandoned by alt-tab must not apply on the return release
     });
