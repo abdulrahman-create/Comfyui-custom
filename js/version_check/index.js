@@ -231,9 +231,15 @@ app.registerExtension({
               `⚠️ <b>Browser cache outdated.</b> Running <b>` +
               `${PIXAROMA_JS_VERSION || "unknown"}</b>, files are <b>${pyVer}</b>. ` +
               `Press <b>Ctrl+Shift+R</b> to update.`;
-            // Grow so the banner is fully visible (only in this error state).
-            const want = MIN_H + 58;
-            if (node.size[1] < want) node.setSize?.([node.size[0], want]);
+            // Grow so the banner is fully visible. Legacy doesn't auto-grow on a
+            // late getMinHeight change, so next frame (once the banner has laid
+            // out and its real height - incl. text wrapping - is known) fit the
+            // node to content via computeSize.
+            requestAnimationFrame(() => {
+              const min = node.computeSize?.();
+              if (min && node.size[1] < min[1]) node.setSize?.([node.size[0], min[1]]);
+              node.setDirtyCanvas?.(true, true);
+            });
           }
         })
         .catch(() => {
@@ -288,9 +294,11 @@ app.registerExtension({
         {
           getValue: () => null,
           setValue: () => {},
-          // Grow when the stale-cache banner is showing (Nodes 2.0 sizes the
-          // body from this; legacy grows via setSize in the fetch handler).
-          getMinHeight: () => (MIN_H - 16) + (warn.style.display === "block" ? 58 : 0),
+          // Grow to fit the stale-cache banner when it shows - MEASURED, so it
+          // handles the text wrapping to more lines on a narrow node. Nodes 2.0
+          // sizes the body straight from this; legacy refits via computeSize.
+          getMinHeight: () =>
+            (MIN_H - 16) + (warn.style.display === "block" ? warn.offsetHeight + 6 : 0),
           serialize: false,
         }
       );

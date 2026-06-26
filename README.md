@@ -298,6 +298,9 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
+### **June 26, 2026 · v1.4.3**
+- **Version Check now warns you about an out-of-date browser cache.** After an update, browsers sometimes keep running the old version of the nodes even though the files are already new, which can make workflows act up or fail for no obvious reason. The Version Check node now spots this: if your browser is running older code than what is installed, the Pixaroma line turns orange with a clear warning to press Ctrl+Shift+R, and the Copy button includes it so it shows up when you paste your versions into a bug report. The built-in help also explains a stronger refresh trick for browsers that hold on to the old version too tightly.
+
 ### **June 25, 2026 · v1.4.2**
 - **NEW: Group Switch Pixaroma.** A control panel of on / off switches, one per group, that mutes or bypasses whole groups with a single click - a tidy, built-in way to do it with no extra extension needed. It lists both Pixaroma groups and regular ComfyUI groups, each with its colour dot and name. A gear opens a floating panel where you choose **Mute** or **Bypass**, whether to show all groups or just the ones you pick (with a search box and a button to jump to a group on the canvas), and a switching rule (any number on, only one at a time, or always keep one on). Flip a switch and the group's own header button and any copies of this node stay in sync. Works in both the classic and the new node interface.
 - **Move a node and its group together.** Select a node along with a Pixaroma group and drag either one: the whole selection now moves as a single unit, nothing gets deselected, and it snaps into line with the Align tool.
