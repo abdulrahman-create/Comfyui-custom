@@ -490,13 +490,13 @@ function installDraw() {
   const prev = (typeof c.onDrawBackground === "function") ? c.onDrawBackground.bind(c) : null;
   c.onDrawBackground = function (ctx, area) {
     if (prev) { try { prev(ctx, area); } catch (_e) {} }
-    // Sync a node-drag OR native-group-drag carry HERE, inside the draw pass, reading the
-    // dragged node's / native group's LIVE position — so the carried frames + members are
-    // positioned from the exact same data the nodes are about to be drawn with. Doing it
-    // in a separate rAF left the frames one frame behind ("lazy brush"); this draws them
-    // locked. Runs before the groups are drawn below + before ComfyUI draws the fg nodes.
-    try { applyNodeCarry(); } catch (_e) {}
-    try { applyNativeCarry(); } catch (_e) {}
+    // CLASSIC only: apply a node / native-group carry HERE, inside the draw pass, reading
+    // the dragged node's / group's LIVE position — so the carried frames + members are
+    // positioned from the exact same data the nodes are about to be drawn with (same
+    // canvas, no 1-frame "lazy brush" trail). NODES 2.0 applies the carry in the steady
+    // rAF (_carryTick) instead: there the nodes are Vue DOM and the bg-canvas draw cadence
+    // is irregular, so applying it in the draw pass STUTTERS (the reported Nodes 2.0 lag).
+    if (!isVueNodes()) { try { applyNodeCarry(); } catch (_e) {} try { applyNativeCarry(); } catch (_e) {} }
     try {
       const gs = ensureGroups();
       if (gs.length) {
@@ -862,14 +862,22 @@ function applyNativeCarry() {
 }
 function _carryTick() {
   if (!_lmbDown) { _carryRaf = 0; return; }   // drag ended -> stop the loop
-  // A NATIVE group drag carries our frames here (reading the group's _pos). A co-selected
-  // NODE drag is applied in the DRAW pass (applyNodeCarry, in onDrawBackground) so it
-  // reads the node's live position at draw time and can't trail; here we only need to
-  // keep forcing the redraw while such a drag is in progress so onDrawBackground keeps
-  // running. setDirty(true, true) redraws BOTH canvases together (the frame lives on the
-  // background, the nodes on the foreground) so the frame can't lag the nodes by a frame.
-  const carried = carryNativeGroupDrags();
-  if (carried || _carry) { try { app.canvas?.setDirty(true, true); } catch (_e) {} }
+  const nativeDragging = carryNativeGroupDrags(); // DETECTION only (sets _natGrpDrag); no apply
+  if (nativeDragging || _carry) {
+    if (isVueNodes()) {
+      // NODES 2.0: nodes are Vue DOM and the bg-canvas draw cadence is irregular, so
+      // applying the carry in the draw pass stutters. Apply it in THIS steady rAF and
+      // redraw the bg only (the fg has no canvas nodes to sync with).
+      try { applyNodeCarry(); } catch (_e) {}
+      try { applyNativeCarry(); } catch (_e) {}
+      try { app.canvas?.setDirty(false, true); } catch (_e) {}
+    } else {
+      // CLASSIC: the carry is applied in the DRAW pass (onDrawBackground) so the frame is
+      // drawn from the same data as the fg nodes (no trail). Here just force BOTH canvases
+      // to redraw together each frame so the bg frame can't lag the fg nodes.
+      try { app.canvas?.setDirty(true, true); } catch (_e) {}
+    }
+  }
   _carryRaf = requestAnimationFrame(_carryTick);
 }
 function startCarryLoop() {
