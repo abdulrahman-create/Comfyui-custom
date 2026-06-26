@@ -490,13 +490,16 @@ function installDraw() {
   const prev = (typeof c.onDrawBackground === "function") ? c.onDrawBackground.bind(c) : null;
   c.onDrawBackground = function (ctx, area) {
     if (prev) { try { prev(ctx, area); } catch (_e) {} }
-    // CLASSIC only: apply a node / native-group carry HERE, inside the draw pass, reading
-    // the dragged node's / group's LIVE position — so the carried frames + members are
-    // positioned from the exact same data the nodes are about to be drawn with (same
-    // canvas, no 1-frame "lazy brush" trail). NODES 2.0 applies the carry in the steady
-    // rAF (_carryTick) instead: there the nodes are Vue DOM and the bg-canvas draw cadence
-    // is irregular, so applying it in the draw pass STUTTERS (the reported Nodes 2.0 lag).
-    if (!isVueNodes()) { try { applyNodeCarry(); } catch (_e) {} try { applyNativeCarry(); } catch (_e) {} }
+    // Apply the node / native-group carry HERE, inside the bg draw pass, in BOTH renderers,
+    // reading the dragged node's / Comfy group's LIVE position. Drawing the carried pixgroup
+    // frames in the SAME pass the Comfy group + the nodes are drawn with keeps everything in
+    // sync — the frame can't lead (synchronous-draw bug) nor trail a frame (rAF bug). The
+    // Comfy group is canvas-drawn, so dragging IT redraws the bg here with its current _pos;
+    // a Vue node drag doesn't redraw the bg on its own, so _carryTick just REQUESTS this pass
+    // (the detection + apply read live positions, so wherever the redraw comes from is fine).
+    try { carryNativeGroupDrags(); } catch (_e) {} // detection (sets _natGrpDrag); skips during our own drag
+    try { applyNodeCarry(); } catch (_e) {}
+    try { applyNativeCarry(); } catch (_e) {}
     try {
       const gs = ensureGroups();
       if (gs.length) {
@@ -886,23 +889,13 @@ function applyNativeCarry() {
 }
 function _carryTick() {
   if (!_lmbDown) { _carryRaf = 0; return; }   // drag ended -> stop the loop
-  const nativeDragging = carryNativeGroupDrags(); // DETECTION only (sets _natGrpDrag); no apply
-  if (nativeDragging || _carry) {
-    if (isVueNodes()) {
-      // NODES 2.0: the NODE carry runs in pointermove (trackSelectedNodeDrag, which already
-      // repaints) because node.pos lags through Vue's reactive layout. Here apply ONLY the
-      // NATIVE-group carry (its title drag doesn't reach our pointermove) and redraw only
-      // when it actually moved. Redrawing every rAF for a node drag too — on top of the
-      // pointermove repaint — overloaded Vue and made everything (incl. the Comfy group) lag.
-      let moved = false;
-      try { moved = applyNativeCarry(); } catch (_e) {}
-      if (moved) { try { app.canvas?.setDirty(true, true); } catch (_e) {} }
-    } else {
-      // CLASSIC: the carry is applied in the DRAW pass (onDrawBackground) so the frame is
-      // drawn from the same data as the fg nodes (no trail). Here just force BOTH canvases
-      // to redraw together each frame so the bg frame can't lag the fg nodes.
-      try { app.canvas?.setDirty(true, true); } catch (_e) {}
-    }
+  // Detection + apply BOTH live in the bg draw pass (onDrawBackground) now, reading live
+  // positions. Here we only REQUEST that pass each frame so it fires at ~60Hz during a drag:
+  // a Vue node move doesn't redraw the bg on its own, and a Comfy-group drag's natural redraw
+  // cadence can be irregular. Gate on pixgroups existing (a carry could be in play). Vue:
+  // bg-only (nodes are Vue DOM, wires repaint themselves). Classic: force fg+bg in lockstep.
+  if (_carry || _natGrpDrag || ensureGroups().length) {
+    try { app.canvas?.setDirty(isVueNodes() ? false : true, true); } catch (_e) {}
   }
   _carryRaf = requestAnimationFrame(_carryTick);
 }
@@ -963,21 +956,11 @@ function trackSelectedNodeDrag(e) {
     _carry = snapshotCarry(p);
     return;
   }
-  // NODES 2.0 only: apply the carry HERE in pointermove (CLASSIC uses the draw pass). Drive
-  // it from the NODE's own delta (node.pos - start), NOT the cursor. Measurement proved
-  // node.pos is accurate (it equals the on-screen node) AND pan-independent. The cursor via
-  // screenToGraph jumps whenever ComfyUI auto-pans during a fast drag, which made the frame
-  // go erratic (frame -52 while cursor +142). No threshold-anchor needed — node.pos is
-  // already post-threshold. Redraw SYNCHRONOUSLY (not setDirty, which defers to the next rAF
-  // ~16ms later) so the canvas frame keeps up with the GPU-rendered node on a fast drag.
-  if (isVueNodes() && _carry.ref && _carry.ref.pos) {
-    const dx = _carry.ref.pos[0] - _carry.rx, dy = _carry.ref.pos[1] - _carry.ry;
-    if (Math.abs(dx) < 0.01 && Math.abs(dy) < 0.01) return; // under ComfyUI's drag threshold / not moving
-    _clickDeselectPending = false; // a real drag
-    for (const f of _carry.frames) { f.g.x = f.x + dx; f.g.y = f.y + dy; }
-    for (const m of _carry.members) { m.n.pos = [m.x + dx, m.y + dy]; }
-    try { app.canvas.draw(true, true); } catch (_e) { repaint(); }
-  }
+  // The carry is APPLIED in the bg draw pass (applyNodeCarry, onDrawBackground) for BOTH
+  // renderers now — reading node.pos live so the frame is drawn locked to the node AND in
+  // sync with a co-dragged Comfy group (which is drawn in that same pass). Vue node moves
+  // don't redraw the bg on their own, so _carryTick requests the pass each frame. Here we
+  // only keep the snapshot fresh; nothing to apply.
 }
 // Called from onDrawBackground (the draw pass), NOT a separate rAF — so it reads the
 // dragged node's LATEST position at the moment of drawing and positions the carried
