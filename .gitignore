@@ -211,6 +211,10 @@ cython_debug/
 # Kept on the dev machine + backed up to Dropbox; end users don't need it.
 CLAUDE.md
 
+# Design source files - keep these local; the repo ships the exported assets
+# (e.g. .svg icons), not the editable Illustrator sources.
+*.ai
+
 # Marimo
 marimo/_static/
 marimo/_lsp/
