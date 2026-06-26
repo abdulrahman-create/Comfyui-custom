@@ -299,6 +299,7 @@ let _selectedIds = new Set();      // ALL selected groups (multi-select via shif
 let _groupClipboard = null;        // copied group frames (Ctrl+C); frame/style only, not nodes
 let _groupClipActive = false;      // true when OUR groups were the last Ctrl+C (so Ctrl+V is ours)
 let _groupClipMixed = false;       // true when that Ctrl+C ALSO had native nodes selected (so Ctrl+V pastes our frame AND lets ComfyUI paste the nodes)
+let _mixedCopyAnchor = null;       // top-left of the copied NODES' bbox at Ctrl+C time → align the pasted frame to ComfyUI's node shift
 let _pasteSeq = 0;                 // cascades repeated Ctrl+V offsets WITHOUT mutating the clipboard
 let _marqueeRect = null;           // last seen ComfyUI marquee rect [x,y,w,h]; add our groups on release
 let _marqueeShift = false;         // was Shift held during the marquee (Shift = add to selection, plain = replace)
@@ -914,6 +915,10 @@ function onKeyDown(e) {
         _groupClipboard = sel.map((gr) => cloneGroupFrame(gr, 0, 0));
         _groupClipActive = true;
         _groupClipMixed = nativeNodes > 0;
+        // Anchor = top-left of the copied NODES' bbox. On a mixed paste we shift the
+        // pasted frame by the SAME delta ComfyUI shifts the nodes, so the node-inside-
+        // group layout is preserved instead of the frame and nodes drifting apart.
+        _mixedCopyAnchor = nativeNodes ? selectedNodesBBoxTopLeft() : null;
         _pasteSeq = 0;
       } else { _groupClipActive = false; } // no group of ours → relinquish so Ctrl+V defers to ComfyUI
       return;
@@ -921,13 +926,15 @@ function onKeyDown(e) {
     if (k === "v") {
       if (_groupClipActive && _groupClipboard && _groupClipboard.length) {
         if (_groupClipMixed) {
-          // Mixed: paste our frame(s) but let the event flow through to ComfyUI so it
-          // pastes the nodes too. pasteGroups(true) keeps the native node selection
-          // (ComfyUI then replaces it with the freshly pasted nodes).
-          pasteGroups(true);
+          // Mixed: let the event flow to ComfyUI so it pastes the nodes, but DON'T place
+          // our frame yet. Drop the old selection now (so it can't be dragged), snapshot
+          // the existing node ids, and wait for ComfyUI's pasted nodes to land — then put
+          // the frame at the SAME shift the nodes got, keeping the original layout.
+          _selectedIds = new Set(); _selectedId = null; repaint();
+          schedulePasteFramesAlignedToNewNodes(_groupClipboard, _mixedCopyAnchor, allNodeIds());
         } else {
           // Groups-only: consume the event so ComfyUI doesn't paste stale nodes.
-          e.preventDefault(); e.stopImmediatePropagation(); pasteGroups(false);
+          e.preventDefault(); e.stopImmediatePropagation(); pasteGroups();
         }
       } else if (_selectedIds.size) {
         // Relinquishing to ComfyUI's node paste → drop our group selection so a
@@ -1046,10 +1053,10 @@ function duplicateSelectedFrames() {
   _selectedIds = newSel; _selectedId = [...newSel].pop() || null;
   markChanged();
 }
-// keepNative: in a MIXED paste, leave the native node selection alone so ComfyUI
-// can paste its nodes and select them (clearing it here would wipe that). In a
-// groups-only paste we clear native so only the new frame(s) are selected.
-function pasteGroups(keepNative) {
+// Groups-only paste (no nodes were copied): cascade a fixed offset and select the
+// new frame(s) exclusively. The MIXED case uses schedulePasteFramesAlignedToNewNodes
+// instead, so the frame follows ComfyUI's node-paste shift.
+function pasteGroups() {
   if (!_groupClipboard || !_groupClipboard.length) return;
   const gs = ensureGroups();
   const newSel = new Set();
@@ -1063,8 +1070,54 @@ function pasteGroups(keepNative) {
   // Reset selection to ONLY the new frame(s) — drops the old group so it isn't
   // dragged along with whatever was just pasted.
   _selectedIds = newSel; _selectedId = [...newSel].pop() || null;
-  if (!keepNative) clearNativeSelection();
+  clearNativeSelection();
   markChanged();
+}
+
+// Top-left of the bounding box of the currently-selected native nodes (graph coords),
+// or null. Recorded at copy time so a mixed paste can match ComfyUI's node shift.
+function selectedNodesBBoxTopLeft() {
+  const sel = app.canvas?.selected_nodes ? Object.values(app.canvas.selected_nodes) : [];
+  return bboxTopLeftOfNodes(sel);
+}
+function bboxTopLeftOfNodes(nodes) {
+  let minx = Infinity, miny = Infinity;
+  for (const n of (nodes || [])) { const b = nodeVisualBounds(n); if (b.x < minx) minx = b.x; if (b.y < miny) miny = b.y; }
+  return (minx === Infinity) ? null : { x: minx, y: miny };
+}
+function allNodeIds() {
+  const out = new Set();
+  for (const n of (app.graph?._nodes || [])) out.add(n.id);
+  return out;
+}
+
+// MIXED paste: ComfyUI pastes the nodes (possibly async, e.g. via navigator.clipboard),
+// so we WAIT for the new nodes to appear, then create the frame(s) shifted by the SAME
+// delta ComfyUI applied to the nodes — preserving the node-inside-group layout with no
+// intermediate jump. Falls back to a small offset if no node ever lands (empty clipboard).
+function schedulePasteFramesAlignedToNewNodes(clipboard, anchor, beforeIds) {
+  if (!clipboard || !clipboard.length) return;
+  const place = (dx, dy) => {
+    const gs = ensureGroups();
+    const newSel = new Set();
+    for (const data of clipboard) { const c = cloneGroupFrame(data, dx, dy); gs.push(c); newSel.add(c.id); }
+    _selectedIds = newSel; _selectedId = [...newSel].pop() || null;
+    repaint(); markChanged();
+  };
+  let tries = 0;
+  const MAX = 24; // ~400ms at 60fps — covers an async clipboard paste
+  const tick = () => {
+    const fresh = (app.graph?._nodes || []).filter((n) => !beforeIds.has(n.id));
+    if (fresh.length) {
+      const B = bboxTopLeftOfNodes(fresh);
+      if (B && anchor) place(B.x - anchor.x, B.y - anchor.y);
+      else place(40, 40);
+      return;
+    }
+    if (++tries >= MAX) { place(40, 40); return; } // ComfyUI pasted nothing → just offset
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
 }
 
 // ── header-button actions ─────────────────────────────────────────────────
