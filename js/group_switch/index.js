@@ -44,7 +44,7 @@ const VUE_CHROME = 52;     // Nodes 2.0 only: node.size[1] = bodyHeight + footer
 
 const DEFAULT_STATE = {
   version: 1,
-  action: "mute",          // "mute" | "bypass"
+  action: "bypass",        // "mute" | "bypass" — Bypass default (more common per user feedback)
   scope: "all",            // "all" | "pick"
   picked: [],              // group ids (scope === "pick")
   sort: "position",        // "position" | "name" | "color"
@@ -172,17 +172,23 @@ function refreshNodeSize(node) {
 }
 
 function rowEl(node, g) {
-  const row = el("div", "pix-gs-row");
+  const on = isOn(node, g);
+  // The "on" class drives the name brightness (bright = enabled, dim = off) so the
+  // state reads clearly without relying on the toggle colour alone (user feedback).
+  const row = el("div", "pix-gs-row" + (on ? " on" : ""));
   const dot = el("span", "pix-gs-dot"); dot.style.background = g.color || "#888";
   const name = el("span", "pix-gs-name"); name.textContent = g.title; name.title = g.label;
   row.appendChild(dot); row.appendChild(name);
   if (g.num) { const num = el("span", "pix-gs-num"); num.textContent = String(g.num); row.appendChild(num); }
-  const on = isOn(node, g);
   const tog = el("span", "pix-gs-tog" + (on ? " on" : ""));
   tog.appendChild(el("span", "k"));
   tog.onpointerdown = (e) => e.stopPropagation();
   tog.onclick = (e) => { e.stopPropagation(); toggleGroup(node, g); };
   row.appendChild(tog);
+  // Click ANYWHERE on the row toggles (not just the small switch) — a bigger target,
+  // matches rgthree. The toggle's own onclick stopPropagation prevents a double fire.
+  row.onpointerdown = (e) => e.stopPropagation(); // don't start a node drag from the row
+  row.onclick = () => toggleGroup(node, g);
   return row;
 }
 
@@ -455,10 +461,11 @@ function injectCSS() {
     ".pix-gs-gear{margin-left:auto;display:flex;align-items:center;justify-content:center;width:22px;height:22px;border:0;background:transparent;color:rgba(255,255,255,0.5);cursor:pointer;border-radius:5px;padding:0;}",
     ".pix-gs-gear:hover{color:#f66744;background:rgba(255,255,255,0.06);}",
     ".pix-gs-list{display:flex;flex-direction:column;gap:1px;padding:0 5px 4px;}",
-    ".pix-gs-row{display:flex;align-items:center;gap:9px;padding:6px 7px;border-radius:6px;}",
+    ".pix-gs-row{display:flex;align-items:center;gap:9px;padding:6px 7px;border-radius:6px;cursor:pointer;}",
     ".pix-gs-row:hover{background:rgba(255,255,255,0.04);}",
     ".pix-gs-dot{width:9px;height:9px;border-radius:50%;flex:none;}",
-    ".pix-gs-name{flex:1;font-size:13px;color:#dadada;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}",
+    ".pix-gs-name{flex:1;font-size:13px;color:#8a8a8a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}",
+    ".pix-gs-row.on .pix-gs-name{color:#fff;}",
     ".pix-gs-num{font-size:10.5px;color:rgba(255,255,255,0.5);background:rgba(255,255,255,0.08);border-radius:4px;padding:1px 5px;flex:none;}",
     ".pix-gs-tog{width:34px;height:18px;border-radius:9px;background:rgba(255,255,255,0.16);position:relative;cursor:pointer;flex:none;transition:background .15s;}",
     ".pix-gs-tog .k{position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#c8c8c8;transition:left .15s,background .15s;}",

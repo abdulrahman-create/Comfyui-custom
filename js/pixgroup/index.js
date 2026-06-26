@@ -126,6 +126,14 @@ function screenToGraph(clientX, clientY) {
   return [(clientX - r.left) / scale - off[0], (clientY - r.top) / scale - off[1]];
 }
 
+// ── ComfyUI "Always snap to grid" support ──────────────────────────────────
+// ComfyUI keeps these LiteGraph globals live from its settings: alwaysSnapToGrid
+// (Settings > LiteGraph > Always snap to grid → pysssss.SnapToGrid) and
+// CANVAS_GRID_SIZE (Comfy.SnapToGrid.GridSize). When the setting is on we round
+// a group's moved/resized geometry to the grid, exactly like a dragged node.
+function gridSnapOn() { const LG = window.LiteGraph; return !!(LG && LG.alwaysSnapToGrid); }
+function gridSnap(v) { const LG = window.LiteGraph; const gs = (LG && LG.CANVAS_GRID_SIZE) || 10; return Math.round(v / gs) * gs; }
+
 // ── geometry ────────────────────────────────────────────────────────────
 function inRect(g, p)   { return p[0] >= g.x && p[0] <= g.x + g.w && p[1] >= g.y && p[1] <= g.y + g.h; }
 function inHeader(g, p) { return p[0] >= g.x && p[0] <= g.x + g.w && p[1] >= g.y && p[1] <= g.y + headerH(g); }
@@ -343,7 +351,10 @@ function headerButtons(g, revealed) {
   // ALWAYS flush in the top-right corner (never drifts as buttons appear).
   const showBadge = (_btnVis !== "hover") || revealed;
   const badge = { x: g.x + g.w - BPAD - bw, y: g.y + (hH - bh) / 2, w: bw, h: bh, show: showBadge };
-  let rx = showBadge ? badge.x - 6 : g.x + g.w - BPAD;
+  // RESERVE the badge's slot when folded (even while the badge is hidden) so the
+  // lone Unfold button never shifts when the count badge pops in on hover — that
+  // was the "button dodges" bug on a folded, hover-only group (Discord feedback).
+  let rx = (g.folded || showBadge) ? badge.x - 6 : g.x + g.w - BPAD;
   let keys;
   if (g.folded) {
     keys = ["unfold"]; // a folded bar always keeps its one Unfold affordance
@@ -750,10 +761,19 @@ function onMove(e) {
         { excludePixIds: starts.map((s) => s.gr.id), excludeNodes: _drag.nodeStarts.map((s) => s.n), bypass: e.shiftKey });
       if (snap) { sdx = snap.dx || 0; sdy = snap.dy || 0; }
     }
-    for (const s of starts) { s.gr.x = s.x + ddx + sdx; s.gr.y = s.y + ddy + sdy; }
+    let dx = ddx + sdx, dy = ddy + sdy;
+    // ComfyUI "Always snap to grid": snap the primary frame's top-left to the grid
+    // and move the WHOLE unit (frames + nodes + native groups) by that snapped delta,
+    // so a dragged group lands on the grid just like a dragged node.
+    if (gridSnapOn() && starts.length) {
+      const a = starts[0];
+      dx = gridSnap(a.x + dx) - a.x;
+      dy = gridSnap(a.y + dy) - a.y;
+    }
+    for (const s of starts) { s.gr.x = s.x + dx; s.gr.y = s.y + dy; }
     const vue = isVueNodes();
     for (const s of _drag.nodeStarts) {
-      const nx = s.x + ddx + sdx, ny = s.y + ddy + sdy;
+      const nx = s.x + dx, ny = s.y + dy;
       // Nodes 2.0 renders node positions from a reactive layout store, so a silent
       // index write (pos[0]=) doesn't move the node — assign a NEW pos array through
       // the setter so the reactive update fires. Legacy reads node.pos directly.
@@ -762,7 +782,7 @@ function onMove(e) {
     }
     // Carry co-selected native ComfyUI group frames by the same delta (their contained
     // nodes were folded into nodeStarts above, so they've already moved).
-    for (const s of _drag.natStarts || []) setNativeGroupPos(s.grp, s.x + ddx + sdx, s.y + ddy + sdy);
+    for (const s of _drag.natStarts || []) setNativeGroupPos(s.grp, s.x + dx, s.y + dy);
   } else {
     // resize from any corner: grow from the fixed anchor toward the cursor (single
     // group). Align Pixaroma: snap the dragged CORNER to nearby node/group edges.
@@ -771,6 +791,9 @@ function onMove(e) {
     let cx = p[0], cy = p[1];
     const snap = window.PixaromaAlign?.snapResizeCorner?.(cx, cy, { excludePixIds: [g.id], includeGroupedNodes: true, bypass: e.shiftKey });
     if (snap) { cx = snap.x; cy = snap.y; }
+    // ComfyUI "Always snap to grid": round the dragged corner to the grid so the
+    // resized frame lands on grid lines (matches dragged-node resize).
+    if (gridSnapOn()) { cx = gridSnap(cx); cy = gridSnap(cy); }
     const w = Math.max(MIN_W, c.includes("l") ? ax - cx : cx - ax);
     const h = Math.max(MIN_H, c.includes("t") ? ay - cy : cy - ay);
     g.w = w; g.h = h;
@@ -1220,11 +1243,23 @@ function pasteGroups() {
   if (!_groupClipboard || !_groupClipboard.length) return;
   const gs = ensureGroups();
   const newSel = new Set();
-  // Cascade repeated pastes via a counter, NOT by mutating the clipboard entries
-  // (mutating them made the clipboard drift permanently away from the source).
-  const off = 40 * (++_pasteSeq);
+  // Paste AT THE CURSOR (like ComfyUI's own paste): shift the clipboard so its
+  // bounding-box top-left lands at the live mouse. The old fixed 40px cascade put
+  // the copy directly ON TOP of the source, where dragging it grabbed the source's
+  // nodes (Discord feedback called it "fatal"). Fall back to the cascade only if
+  // the cursor position isn't available.
+  const gm = app.canvas?.graph_mouse;
+  let offx, offy;
+  if (gm && isFinite(gm[0]) && isFinite(gm[1])) {
+    let minx = Infinity, miny = Infinity;
+    for (const d of _groupClipboard) { if (d.x < minx) minx = d.x; if (d.y < miny) miny = d.y; }
+    offx = gm[0] - minx; offy = gm[1] - miny;
+    if (gridSnapOn()) { offx = gridSnap(gm[0]) - minx; offy = gridSnap(gm[1]) - miny; }
+  } else {
+    const off = 40 * (++_pasteSeq); offx = off; offy = off;
+  }
   for (const data of _groupClipboard) {
-    const c = cloneGroupFrame(data, off, off);
+    const c = cloneGroupFrame(data, offx, offy);
     gs.push(c); newSel.add(c.id);
   }
   // Reset selection to ONLY the new frame(s) — drops the old group so it isn't

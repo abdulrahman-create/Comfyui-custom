@@ -167,17 +167,34 @@ app.registerExtension({
             }
           }
 
-          // Label hit-test: click anywhere on the label area opens the inline editor.
+          // Label area: left-click now ACTIVATES the row (routes this input), so the
+          // WHOLE row is one big activate target. Renaming moved to double-click
+          // (below) — a near-miss on the toggle used to drop you into label edit and
+          // could replace the wrong label (user feedback).
           for (let i = 0; i < inputs.length; i++) {
             if (hitLabel(pos, w, i)) {
-              const rect = labelScreenRect(this, i + 1); // 1-based
-              openLabelEditor(this, i + 1, rect);
+              setActiveRow(this, i + 1);
               return true;
             }
           }
         }
       }
       if (_origDown) return _origDown.call(this, e, pos);
+    };
+
+    // Double-click a row's label to RENAME it (left-click activates — see above).
+    const _origDbl = nodeType.prototype.onDblClick;
+    nodeType.prototype.onDblClick = function (e, pos) {
+      if (!this.flags?.collapsed && !isVueNodes() && this.inputs) {
+        const w = this.size[0];
+        for (let i = 0; i < this.inputs.length; i++) {
+          if (hitLabel(pos, w, i)) {
+            openLabelEditor(this, i + 1, labelScreenRect(this, i + 1));
+            return true;
+          }
+        }
+      }
+      if (_origDbl) return _origDbl.call(this, e, pos);
     };
   },
 });
