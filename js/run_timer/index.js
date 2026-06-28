@@ -32,7 +32,7 @@ const VUE_CHROME = 52;  // Nodes 2.0 only: node.size[1] = body + footer chip + b
 const DEFAULT_STATE = {
   version: 1,
   color: BRAND,   // clock digit color
-  decimals: 2,    // 0 = MM:SS, 2 = MM:SS:CC (hundredths), 3 = MM:SS:mmm
+  decimals: 0,    // 0 = m:s (default), 2 = + hundredths, 3 = + milliseconds
   chime: true,    // play a sound on finish
   sound: "",      // "" = use the library default (Vista.mp3 / first file)
   volume: 70,     // 0..100
