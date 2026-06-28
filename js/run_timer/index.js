@@ -4,7 +4,7 @@ import { isVueNodes, applyAdaptiveCanvasOnly } from "../shared/nodes2.mjs";
 import { installResizeFloor } from "../shared/resize_floor.mjs";
 import { isGraphLoading } from "../shared/graph_loading.mjs";
 import { registerNodeHelp } from "../shared/help.mjs";
-import { openPixaromaCompactColorPickerPopup } from "../shared/color_picker.mjs";
+import { createPixaromaColorPicker } from "../shared/color_picker.mjs";
 
 // ╔══════════════════════════════════════════════════════════════════════╗
 // ║  Run Timer Pixaroma — a stopwatch for the whole workflow               ║
@@ -37,12 +37,6 @@ const DEFAULT_STATE = {
   sound: "",      // "" = use the library default (Vista.mp3 / first file)
   volume: 70,     // 0..100
 };
-
-// Preset clock colors shown as quick swatches in the settings panel. Custom
-// colors come from the shared Pixaroma Color Picker ("More colors...").
-const COLOR_PRESETS = [
-  BRAND, "#9b6cff", "#3ec371", "#4aa3ff", "#ffb300", "#2bd4d4", "#ff5c7a", "#f0f0f0",
-];
 
 // ── DOM helper ──────────────────────────────────────────────────────────────
 function el(tag, cls) { const e = document.createElement(tag); if (cls) e.className = cls; return e; }
@@ -124,7 +118,7 @@ function paint(node) {
     node._rtFracEl = null;
     parts.groups.forEach((g, i) => {
       if (i > 0) { const c = el("span", "pix-rt-colon"); c.textContent = ":"; wrap.appendChild(c); }
-      const seg = el("span", "pix-rt-seg");
+      const seg = el("span", "pix-rt-cseg");
       const nw = el("span", "pix-rt-numwrap");
       const num = el("span", "pix-rt-num"); num.textContent = g.num; nw.appendChild(num);
       if (parts.frac && i === parts.groups.length - 1) {
@@ -251,24 +245,44 @@ function row(label) {
   r.appendChild(l);
   return r;
 }
+// Segmented control that updates its own active state in place (so the panel
+// never needs a full rebuild on a click — that would tear down the embedded
+// color picker mid-interaction).
 function segmented(options, current, onPick) {
   const seg = el("div", "pix-rt-seg");
-  for (const o of options) {
-    const b = el("div", "pix-rt-sg" + (o.v === current ? " on" : ""));
+  let cur = current;
+  const btns = options.map((o) => {
+    const b = el("div", "pix-rt-sg" + (o.v === cur ? " on" : ""));
     b.textContent = o.label;
-    b.onclick = () => { if (o.v !== current) onPick(o.v); };
+    b.onclick = () => {
+      if (o.v === cur) return;
+      cur = o.v;
+      btns.forEach((bb, i) => bb.classList.toggle("on", options[i].v === cur));
+      onPick(o.v);
+    };
     seg.appendChild(b);
-  }
+    return b;
+  });
   return seg;
 }
-function toggle(on, onClick) {
+function toggle(on, onChange) {
   const t = el("span", "pix-rt-tog" + (on ? " on" : ""));
   t.appendChild(el("span", "k"));
-  t.onclick = (e) => { e.stopPropagation(); onClick(); };
+  let state = on;
+  t.onclick = (e) => { e.stopPropagation(); state = !state; t.classList.toggle("on", state); onChange(state); };
   return t;
 }
+function destroyPicker(node) {
+  if (node && node._pixRtPicker) {
+    try { node._pixRtPicker.destroy(); } catch (_e) {}
+    node._pixRtPicker = null;
+  }
+}
 
+// The panel is built ONCE (controls self-update) so the embedded color picker
+// survives every interaction. Only opening a fresh panel rebuilds it.
 function renderPanelBody(node, body) {
+  destroyPicker(node);
   body.innerHTML = "";
   const st = readState(node);
 
@@ -276,10 +290,7 @@ function renderPanelBody(node, body) {
   const cSec = section("Chime");
 
   const chRow = row("Chime on finish");
-  chRow.appendChild(toggle(st.chime, () => {
-    writeState(node, { chime: !readState(node).chime });
-    renderPanelBody(node, body);
-  }));
+  chRow.appendChild(toggle(st.chime, (on) => writeState(node, { chime: on })));
   cSec.appendChild(chRow);
 
   const sRow = row("Sound");
@@ -309,10 +320,12 @@ function renderPanelBody(node, body) {
   const vRow = row("Volume");
   const vol = el("input", "pix-rt-vol");
   vol.type = "range"; vol.min = "0"; vol.max = "100"; vol.step = "1"; vol.value = String(st.volume);
+  vol.style.setProperty("--fill", st.volume + "%");
   const vOut = el("span", "pix-rt-volout"); vOut.textContent = st.volume + "%";
   const prev = el("button", "pix-rt-prev"); prev.textContent = "▶ Preview";
   vol.addEventListener("input", () => {
     vOut.textContent = vol.value + "%";
+    vol.style.setProperty("--fill", vol.value + "%");
     writeState(node, { volume: parseInt(vol.value, 10) || 0 });
   });
   prev.onclick = (e) => {
@@ -332,35 +345,21 @@ function renderPanelBody(node, body) {
   dRow.appendChild(segmented(
     [{ v: 0, label: "Off" }, { v: 2, label: "2" }, { v: 3, label: "3" }],
     st.decimals,
-    (v) => { writeState(node, { decimals: v }); applyState(node); renderPanelBody(node, body); }
+    (v) => { writeState(node, { decimals: v }); applyState(node); }
   ));
   dSec.appendChild(dRow);
 
-  const colRow = row("Clock color");
-  const swwrap = el("div", "pix-rt-swatches");
-  for (const c of COLOR_PRESETS) {
-    const sw = el("span", "pix-rt-sw" + (c.toLowerCase() === (st.color || "").toLowerCase() ? " sel" : ""));
-    sw.style.background = c;
-    sw.onclick = () => { writeState(node, { color: c }); applyState(node); renderPanelBody(node, body); };
-    swwrap.appendChild(sw);
-  }
-  const more = el("button", "pix-rt-more"); more.textContent = "More…";
-  more.title = "Pick any color";
-  more.onclick = (e) => {
-    e.stopPropagation();
-    openPixaromaCompactColorPickerPopup(more, {
-      initialColor: readState(node).color || BRAND,
-      resetColor: BRAND,
-      onPick: (hex) => {
-        writeState(node, { color: hex || BRAND });
-        applyState(node);
-        renderPanelBody(node, body);
-      },
-    });
-  };
-  swwrap.appendChild(more);
-  colRow.appendChild(swwrap);
-  dSec.appendChild(colRow);
+  const colLbl = el("div", "pix-rt-sublbl"); colLbl.textContent = "Clock color";
+  dSec.appendChild(colLbl);
+  // Full embedded Pixaroma Color Picker — swatches + SV plane + hue + hex +
+  // Reset, live-recoloring the clock as you drag (no extra clicks, no popup).
+  const picker = createPixaromaColorPicker({
+    initialColor: st.color || BRAND,
+    resetColor: BRAND,
+    onChange: (hex) => { writeState(node, { color: hex || BRAND }); applyState(node); },
+  });
+  node._pixRtPicker = picker;
+  dSec.appendChild(picker.element);
 
   body.appendChild(dSec);
   requestAnimationFrame(reclampPanel);
@@ -439,6 +438,7 @@ function outsideClose(e) {
 }
 function escClose(e) { if (e.key === "Escape" && _panel) { e.stopPropagation(); closePanel(); } }
 function closePanel() {
+  destroyPicker(_panelNode);
   if (_panel) { try { _panel.remove(); } catch (_e) {} }
   _panel = null; _panelNode = null;
   document.removeEventListener("pointerdown", outsideClose, true);
@@ -480,7 +480,7 @@ function injectCSS() {
     ".pix-rt-root{display:flex;padding:6px 8px;box-sizing:border-box;width:100%;height:100%;}",
     ".pix-rt-screen{flex:1;min-width:0;position:relative;display:flex;align-items:center;justify-content:center;background:#0c0c0e;border:1px solid #1d1d20;border-radius:8px;padding:8px;box-sizing:border-box;}",
     ".pix-rt-time{display:flex;align-items:flex-start;justify-content:center;gap:5px;font-family:'Consolas','DejaVu Sans Mono','SF Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums;white-space:nowrap;color:var(--cc,#f66744);}",
-    ".pix-rt-seg{display:flex;flex-direction:column;align-items:center;}",
+    ".pix-rt-cseg{display:flex;flex-direction:column;align-items:center;}",
     ".pix-rt-numwrap{display:flex;align-items:baseline;line-height:1;}",
     ".pix-rt-num{font-size:30px;letter-spacing:1px;}",
     ".pix-rt-frac{font-size:19px;opacity:0.85;letter-spacing:0.5px;}",
@@ -492,35 +492,37 @@ function injectCSS() {
     ".pix-rt-screen.flash{animation:pixRtFlash 0.6s;}",
     "@keyframes pixRtPulse{0%,100%{opacity:1;}50%{opacity:.3;}}",
     "@keyframes pixRtFlash{0%{box-shadow:0 0 0 3px var(--cc,#f66744);}100%{box-shadow:0 0 0 0 rgba(0,0,0,0);}}",
-    // panel
-    ".pix-rt-panel{position:fixed;z-index:10010;width:320px;max-width:94vw;background:#232325;border:1px solid rgba(255,255,255,0.14);border-radius:11px;box-shadow:0 10px 34px rgba(0,0,0,0.5);font-family:'Segoe UI',system-ui,sans-serif;overflow:hidden;}",
-    ".pix-rt-phead{display:flex;align-items:center;justify-content:space-between;padding:11px 13px;border-bottom:1px solid rgba(255,255,255,0.08);color:#fff;font-size:13px;font-weight:500;cursor:move;}",
-    ".pix-rt-px{border:0;background:transparent;color:rgba(255,255,255,0.5);font-size:13px;cursor:pointer;padding:2px 7px;border-radius:5px;}",
-    ".pix-rt-px:hover{color:#fff;background:rgba(255,255,255,0.08);}",
-    ".pix-rt-pbody{max-height:72vh;overflow-y:auto;}",
-    ".pix-rt-sect{padding:12px 13px;border-bottom:1px solid rgba(255,255,255,0.06);}",
+    // panel — palette matches the Pixaroma Color Picker (#1a1a1a / #444) so the
+    // embedded picker blends in seamlessly.
+    ".pix-rt-panel{position:fixed;z-index:10010;width:320px;max-width:94vw;background:#1a1a1a;border:1px solid #444;border-radius:6px;box-shadow:0 8px 24px rgba(0,0,0,0.6);font-family:'Segoe UI',system-ui,sans-serif;overflow:hidden;}",
+    ".pix-rt-phead{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-bottom:1px solid #333;color:#ddd;font-size:13px;font-weight:600;cursor:move;}",
+    ".pix-rt-px{border:0;background:transparent;color:#999;font-size:13px;cursor:pointer;padding:2px 7px;border-radius:4px;}",
+    ".pix-rt-px:hover{color:#fff;}",
+    ".pix-rt-pbody{max-height:74vh;overflow-y:auto;}",
+    ".pix-rt-sect{padding:11px 12px;border-bottom:1px solid #333;}",
     ".pix-rt-sect:last-child{border-bottom:0;}",
-    ".pix-rt-sh{font-size:11px;color:rgba(255,255,255,0.42);margin-bottom:9px;}",
+    ".pix-rt-sh{font-size:11px;color:#888;margin-bottom:9px;}",
     ".pix-rt-row{display:flex;align-items:center;gap:10px;margin-bottom:9px;}",
     ".pix-rt-row:last-child{margin-bottom:0;}",
-    ".pix-rt-lbl{flex:1;font-size:12.5px;color:#cfcfd3;}",
-    ".pix-rt-tog{width:34px;height:18px;border-radius:9px;background:rgba(255,255,255,0.16);position:relative;cursor:pointer;flex:none;transition:background .15s;}",
-    ".pix-rt-tog .k{position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#c8c8c8;transition:left .15s,background .15s;}",
+    ".pix-rt-lbl{flex:1;font-size:12.5px;color:#ccc;}",
+    ".pix-rt-sublbl{font-size:11px;color:#888;margin:2px 0 8px;}",
+    ".pix-rt-tog{width:34px;height:18px;border-radius:9px;background:#3a3a3a;position:relative;cursor:pointer;flex:none;transition:background .15s;}",
+    ".pix-rt-tog .k{position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#bbb;transition:left .15s,background .15s;}",
     ".pix-rt-tog.on{background:#f66744;}",
     ".pix-rt-tog.on .k{left:18px;background:#fff;}",
-    ".pix-rt-select{background:#1d1d20;border:1px solid #4a4a52;color:#e8e8ea;border-radius:6px;font-size:12.5px;padding:5px 7px;font-family:inherit;cursor:pointer;max-width:150px;}",
-    ".pix-rt-vol{flex:1;min-width:0;accent-color:#f66744;}",
-    ".pix-rt-volout{font-size:12px;color:#cfcfd3;width:36px;text-align:right;flex:none;}",
-    ".pix-rt-prev{background:#3a3a40;border:1px solid #565660;color:#fff;border-radius:6px;font-size:12px;padding:5px 9px;cursor:pointer;flex:none;font-family:inherit;}",
-    ".pix-rt-prev:hover{border-color:#f66744;}",
-    ".pix-rt-seg{display:flex;background:rgba(0,0,0,0.3);border-radius:7px;padding:2px;flex:none;}",
-    ".pix-rt-sg{min-width:42px;text-align:center;color:rgba(255,255,255,0.66);font-size:12px;padding:5px 10px;border-radius:5px;cursor:pointer;user-select:none;}",
+    ".pix-rt-select{background:#1a1a1a;border:1px solid #444;color:#ddd;border-radius:4px;font-size:12.5px;padding:5px 7px;font-family:inherit;cursor:pointer;max-width:150px;}",
+    ".pix-rt-select:focus{outline:none;border-color:#f66744;}",
+    // clean filled slider — no track contour, orange fill up to the thumb
+    ".pix-rt-vol{-webkit-appearance:none;appearance:none;flex:1;min-width:0;height:4px;border-radius:2px;outline:none;cursor:pointer;background:linear-gradient(to right,#f66744 var(--fill,70%),#3a3a3a var(--fill,70%));}",
+    ".pix-rt-vol::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:14px;height:14px;border-radius:50%;background:#f66744;border:2px solid #1a1a1a;cursor:pointer;}",
+    ".pix-rt-vol::-moz-range-thumb{width:13px;height:13px;border-radius:50%;background:#f66744;border:2px solid #1a1a1a;cursor:pointer;}",
+    ".pix-rt-vol::-moz-range-track{height:4px;border-radius:2px;background:transparent;}",
+    ".pix-rt-volout{font-size:12px;color:#bbb;width:36px;text-align:right;flex:none;}",
+    ".pix-rt-prev{background:transparent;border:1px solid #444;color:#ccc;border-radius:4px;font-size:12px;padding:5px 9px;cursor:pointer;flex:none;font-family:inherit;}",
+    ".pix-rt-prev:hover{border-color:#f66744;color:#f66744;}",
+    ".pix-rt-seg{display:flex;background:#0e0e0e;border:1px solid #333;border-radius:6px;padding:2px;flex:none;}",
+    ".pix-rt-sg{min-width:42px;text-align:center;color:#aaa;font-size:12px;padding:5px 10px;border-radius:4px;cursor:pointer;user-select:none;}",
     ".pix-rt-sg.on{background:#f66744;color:#fff;}",
-    ".pix-rt-swatches{display:flex;flex-wrap:wrap;gap:7px;align-items:center;flex:1;}",
-    ".pix-rt-sw{width:20px;height:20px;border-radius:50%;cursor:pointer;border:2px solid transparent;box-sizing:border-box;}",
-    ".pix-rt-sw.sel{border-color:#fff;}",
-    ".pix-rt-more{background:#1d1d20;border:1px solid #4a4a52;color:#dcdcdc;border-radius:6px;font-size:11.5px;padding:4px 9px;cursor:pointer;font-family:inherit;}",
-    ".pix-rt-more:hover{border-color:#f66744;}",
   ].join("\n");
   (document.head || document.documentElement).appendChild(s);
 }
