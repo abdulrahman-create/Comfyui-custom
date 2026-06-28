@@ -298,6 +298,11 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
+### **June 28, 2026 · v1.4.9**
+- **The Seed node shows the seed it actually used.** In Random mode the big number now updates on every Run to the seed that made the latest image, so it matches the output instead of looking frozen. Switching to Fixed keeps that same seed (so the number does not jump), and Copy copies whatever is shown.
+- **Find Set Pixaroma by dragging any wire.** Drag a connection out from a node and search, and Set Pixaroma now shows up for any kind of value (numbers, seeds, images, and more), not just text.
+- **Get / Set nodes hold their picked name more reliably.** Added safeguards so a Get node (and occasionally a Set) does not lose the name you chose during long sessions with many of them, something a few users ran into in heavier workflows.
+
 ### **June 26, 2026 · v1.4.3–v1.4.8**
 - **Pixaroma Groups stay with their workflow.** Fixed a bug where, with more than one workflow open, groups could appear on the wrong workflow tab or disappear. Each workflow (and each subgraph) now keeps its own groups, and groups placed inside a subgraph save correctly.
 - **Set / Get nodes fixed.** Fixed a bug where a Set node could grow a second, duplicate input that stopped the value from passing through, which made paired Get nodes come up empty (sometimes with "missing input" errors). New workflows never get the duplicate, and older workflows that already hit it repair themselves when you open them.
