@@ -639,6 +639,23 @@ function nodeAtPoint(p) {
   }
   return null;
 }
+// Is node n a MEMBER of group g (its visual center inside g's box — the same rule
+// containedNodes uses)? Used to decide who wins a press in the header.
+function nodeIsMemberOf(g, n) {
+  const b = nodeVisualBounds(n);
+  const cx = b.x + b.w / 2, cy = b.y + b.h / 2;
+  return cx >= g.x && cx <= g.x + g.w && cy >= g.y && cy <= g.y + g.h;
+}
+// THE single source of truth for "should a press in g's header start a GROUP MOVE,
+// or does a node win?". A node wins ONLY when it is NOT a member of g (i.e. it pokes
+// into the header from OUTSIDE the group). A contained member does NOT win, so a TALL
+// large-font title-bar still drags the group (fixes the bottom-half-of-the-title-bar
+// bug). BOTH the hover cursor (onHover) and the drag-start (onDown) call this, so the
+// "4-arrow move cursor" and the actual drag can never disagree.
+function nonMemberNodeAtHeader(g, p) {
+  const n = nodeAtPoint(p);
+  return !!(n && !nodeIsMemberOf(g, n));
+}
 // Does this press GRAB the current multi-selection (KEEP our group selection + let the
 // node-carry move it), or is it a plain click that should DESELECT our groups? It grabs
 // the unit ONLY when the press is on a SELECTED node (the user deliberately co-selected
@@ -703,11 +720,12 @@ function onDown(e) {
       selectGroup(g); e.preventDefault(); e.stopImmediatePropagation(); startWin(); repaint(); return;
     }
     if (inHeader(g, p)) {
-      // A NODE under the cursor WINS over the group header move: a node whose title bar
-      // sits on/near the group's bar must be draggable on its own, not bonded to the group
-      // (the header buttons above already returned, so they still work). Fall through to the
-      // node/deselect path below instead of starting a group drag.
-      if (nodeAtPoint(p)) break;
+      // A NON-MEMBER node under the cursor WINS over the group header move: a node whose
+      // title bar pokes into the group's bar from OUTSIDE must be draggable on its own.
+      // A CONTAINED MEMBER does NOT win — so a tall (large-font) title-bar still drags the
+      // group even where its bottom overlaps a member's title (the reported bug). Same
+      // predicate the hover cursor uses, so "move cursor ⟹ drag works" always holds.
+      if (nonMemberNodeAtHeader(g, p)) break;
       e.preventDefault(); e.stopImmediatePropagation();
       if (e.shiftKey || e.ctrlKey || e.metaKey) { toggleGroupSelection(g); repaint(); return; } // shift/ctrl/cmd = add or remove from selection, no drag
       if (!_selectedIds.has(g.id)) selectGroup(g);              // plain click on an UNselected group → exclusive select (clears nodes)
@@ -1080,7 +1098,10 @@ function onHover(e) {
     const corner = cornerAt(g, p);
     if (hotBtn) cur = "pointer";
     else if (corner) cur = cornerCursor(corner);
-    else if (inHeader(g, p)) cur = "move";
+    // Show the move cursor on the header EXCEPT where a non-member node wins (same
+    // test onDown uses to start the drag), so the cursor never promises a move the
+    // drag won't perform.
+    else if (inHeader(g, p) && !nonMemberNodeAtHeader(g, p)) cur = "move";
     break; // topmost group only
   }
   if (cur) { el.style.cursor = cur; _cursorOverride = true; }
