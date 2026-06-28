@@ -44,15 +44,26 @@ let _idc = 0;
 // ms-granular) — avoids a fresh group colliding with a saved group's id.
 function newId() { return "pg_" + Date.now().toString(36) + "_" + (_idc++) + "_" + Math.random().toString(36).slice(2, 6); }
 
+// The graph CURRENTLY shown on the canvas: the root, OR the subgraph you've
+// entered. app.graph stays the ROOT even inside a subgraph (only app.canvas.graph
+// follows the navigation), so EVERYTHING here that means "the graph I'm looking
+// at" - the group array, member nodes, native groups - must read this, not
+// app.graph. Reading app.graph was the bug where a parent's Pixaroma groups
+// showed (and deleted) inside a subgraph.
+function curGraph() {
+  return app.canvas?.graph || app.graph;
+}
+
 // Our groups are stored PER-GRAPH on graph.extra.pixaromaGroups — each workflow
-// tab (and each subgraph) has its OWN array. ensureGroups() returns the CURRENT
-// graph's array, creating it if absent. (Earlier this was a single module-global
-// array shared by every graph AND aliased into each graph's extra; switching
-// workflow tabs then leaked one workflow's groups onto another, and because the
-// array identity was shared, mutating it for one tab overwrote another tab's
-// saved groups. Per-graph storage fixes both — groups stay with their workflow.)
+// tab AND each subgraph has its OWN array. ensureGroups() returns the CURRENT
+// graph's array (curGraph(), NOT app.graph), creating it if absent. (Earlier this
+// was a single module-global array shared by every graph AND aliased into each
+// graph's extra; switching workflow tabs then leaked one workflow's groups onto
+// another. Per-graph storage fixed the tab leak; reading curGraph() (v1.4.10)
+// fixes the SUBGRAPH leak - app.graph stays the root inside a subgraph, so the
+// reader drew/deleted the root's groups while you were inside the subgraph.)
 function ensureGroups() {
-  const g = app.graph;
+  const g = curGraph();
   if (!g) return [];
   if (!g.extra) g.extra = {};
   if (!Array.isArray(g.extra.pixaromaGroups)) g.extra.pixaromaGroups = [];
@@ -167,7 +178,7 @@ function nodeVisualBounds(n) {
 // "contains" rule used for group-drag).
 function containedNodes(g) {
   const out = [];
-  for (const n of (app.graph?._nodes || [])) {
+  for (const n of (curGraph()?._nodes || [])) {
     const b = nodeVisualBounds(n);
     const cx = b.x + b.w / 2, cy = b.y + b.h / 2;
     if (cx >= g.x && cx <= g.x + g.w && cy >= g.y && cy <= g.y + g.h) out.push(n);
@@ -181,7 +192,7 @@ function containedNodes(g) {
 function groupMemberNodes(g) {
   if (g.folded && Array.isArray(g.foldNodes)) {
     const byId = {};
-    for (const n of (app.graph?._nodes || [])) byId[String(n.id)] = n;
+    for (const n of (curGraph()?._nodes || [])) byId[String(n.id)] = n;
     const out = [];
     for (const id of g.foldNodes) { const n = byId[String(id)]; if (n) out.push(n); }
     return out;
@@ -224,7 +235,7 @@ function containedGroups(g) {
 // ── Native ComfyUI groups (LGraphGroup) ───────────────────────────────────
 // We never OWN them, but we wrap them (G) and carry our groups when they move.
 function nativeGroups() {
-  return app.graph?._groups || app.graph?.groups || [];
+  return curGraph()?._groups || curGraph()?.groups || [];
 }
 // A native group's box in graph coords. Its geometry is a Float32Array _pos/_size
 // (views of _bounding); fall back to .pos/.size. NEVER Array.isArray a typed array.
@@ -246,6 +257,28 @@ function selectedNativeGroups() {
   const sel = app.canvas?.selectedItems;
   if (!sel || typeof sel.has !== "function") return [];
   return nativeGroups().filter((grp) => sel.has(grp));
+}
+// Topmost native ComfyUI group whose box contains the graph-space point p, or null.
+// Iterate last-to-first so the most-recently-drawn (top) group wins, matching what
+// the user clicks. Used by the "Convert to Pixaroma Group" menu item.
+function nativeGroupAt(p) {
+  if (!p) return null;
+  const groups = nativeGroups();
+  for (let i = groups.length - 1; i >= 0; i--) {
+    const grp = groups[i];
+    const b = natGrpBox(grp);
+    if (b && p[0] >= b.x && p[0] <= b.x + b.w && p[1] >= b.y && p[1] <= b.y + b.h) return grp;
+  }
+  return null;
+}
+// Remove a native ComfyUI group from the current graph (used by Convert). Prefer the
+// graph's own remove() so any internal bookkeeping runs; fall back to splicing the
+// _groups/groups array. NEVER Array.isArray a typed array, but _groups IS a plain array.
+function removeNativeGroup(graph, grp) {
+  if (!graph || !grp) return;
+  try { if (typeof graph.remove === "function") { graph.remove(grp); return; } } catch (_e) { /* fall through */ }
+  const arr = graph._groups || graph.groups;
+  if (Array.isArray(arr)) { const i = arr.indexOf(grp); if (i >= 0) arr.splice(i, 1); }
 }
 // (nodesInBox — nodes whose visual center sits in a box — is defined once below,
 // near the Group Switch helpers; reused here to carry a native group's contents.)
@@ -409,7 +442,7 @@ function drawOne(ctx, g) {
     for (const id of g.foldNodes) { const s = String(id); if (rid === s || rid.startsWith(s + ":")) { matchedId = s; break; } }
     if (matchedId != null) {
       running = true;
-      const nodes = app.graph?._nodes || [];
+      const nodes = curGraph()?._nodes || [];
       const rn = nodes.find((n) => String(n.id) === rid) || nodes.find((n) => String(n.id) === matchedId);
       runTitle = (rn && (rn.title || rn.type)) || "running";
       if (_progress && _progress.max > 0 && String(_progress.node) === rid) {
@@ -598,7 +631,7 @@ function clickIsOnSelectedNativeGroup(p) {
 }
 // The topmost node whose visual bounds contain p, else null.
 function nodeAtPoint(p) {
-  const ns = app.graph?._nodes || [];
+  const ns = curGraph()?._nodes || [];
   for (let i = ns.length - 1; i >= 0; i--) {
     const n = ns[i]; if (!n || !n.pos) continue;
     const b = nodeVisualBounds(n);
@@ -1216,6 +1249,34 @@ function deleteGroup(g) {
   markChanged();
 }
 
+// Convert a standard ComfyUI group into a Pixaroma group in the SAME spot: a new
+// Pixaroma group with the native group's exact box, title, and colour, then the
+// native group is removed. The nodes are not moved, so the new frame geometrically
+// contains the same nodes (Pixaroma membership is by full-containment) — drag it and
+// they ride along. Eases migrating existing layouts to the new group style.
+function convertNativeGroup(grp) {
+  const graph = curGraph();
+  const box = grp ? natGrpBox(grp) : null;
+  if (!graph || !box) return;
+  // The native group has ONE colour; use it for BOTH the header and the body tint so
+  // the look carries over (body stays a tint via bodyAlpha). Fall back to the neutral
+  // Pixaroma defaults when the group has no colour.
+  const color = (typeof grp.color === "string" && grp.color) ? grp.color : null;
+  const g = {
+    id: newId(),
+    title: grp.title || "Group",
+    x: box.x, y: box.y, w: Math.max(MIN_W, box.w), h: Math.max(MIN_H, box.h),
+    titleColor: color || DEF_TITLE,
+    bodyColor: color || DEF_BODY,
+    titleAlpha: DEF_TITLE_A, bodyAlpha: DEF_BODY_A, fontSize: DEF_FONT,
+  };
+  ensureGroups().push(g);
+  removeNativeGroup(graph, grp);
+  selectGroup(g); // select the new Pixaroma group (clears native selection)
+  markChanged();
+  try { graph.setDirtyCanvas?.(true, true); } catch (_e) { /* ignore */ }
+}
+
 // ── duplicate / copy / paste (FRAME ONLY — the styled container, not the nodes) ──
 // A duplicated group is a fresh frame (new id, offset, unfolded) carrying the same
 // title / size / colors / opacity / font. The nodes inside stay with the original.
@@ -1282,7 +1343,7 @@ function bboxTopLeftOfNodes(nodes) {
 }
 function allNodeIds() {
   const out = new Set();
-  for (const n of (app.graph?._nodes || [])) out.add(n.id);
+  for (const n of (curGraph()?._nodes || [])) out.add(n.id);
   return out;
 }
 
@@ -1302,7 +1363,7 @@ function schedulePasteFramesAlignedToNewNodes(clipboard, anchor, beforeIds) {
   let tries = 0;
   const MAX = 24; // ~400ms at 60fps — covers an async clipboard paste
   const tick = () => {
-    const fresh = (app.graph?._nodes || []).filter((n) => !beforeIds.has(n.id));
+    const fresh = (curGraph()?._nodes || []).filter((n) => !beforeIds.has(n.id));
     if (fresh.length) {
       const B = bboxTopLeftOfNodes(fresh);
       if (B && anchor) place(B.x - anchor.x, B.y - anchor.y);
@@ -1373,7 +1434,7 @@ function toggleMode(g, mode) {
 // the native group's box (renderer-agnostic, no native internals needed).
 function nodesInBox(box) {
   const out = [];
-  for (const n of (app.graph?._nodes || [])) {
+  for (const n of (curGraph()?._nodes || [])) {
     if (!n || !n.pos) continue;
     const b = nodeVisualBounds(n);
     const cx = b.x + b.w / 2, cy = b.y + b.h / 2;
@@ -1727,7 +1788,7 @@ function installPersistence() {
       if (!this.extra) this.extra = {};
       const arr = data && data.extra && data.extra.pixaromaGroups;
       this.extra.pixaromaGroups = Array.isArray(arr) ? arr.map((x) => ({ ...x })) : [];
-      if (this === app.graph) {
+      if (this === curGraph()) {
         invalidateHidden();
         // a group loaded already folded must re-hide its members (Nodes 2.0 CSS;
         // legacy is handled by the computeVisibleNodes wrap on the next paint).
@@ -1759,7 +1820,7 @@ function installGroupMenuGuard() {
     try {
       // Only on the graph where our (top-level) Pixaroma groups live; inside a
       // subgraph defer entirely so its native groups behave normally.
-      if (this === app.graph && groupAt([x, y])) return undefined;
+      if (this === curGraph() && groupAt([x, y])) return undefined;
     } catch (_e) {}
     return orig.apply(this, arguments);
   };
@@ -1856,6 +1917,14 @@ app.registerExtension({
       if (over.folded) items.push({ content: (over.showLinks !== false) ? "👑 Hide links while folded" : "👑 Show links while folded", callback: () => { over.showLinks = (over.showLinks === false); invalidateHidden(); markChanged(); } });
       items.push({ content: "👑 Group Help", callback: () => openHelpPopup(GROUP_HELP) });
       items.push({ content: "👑 Delete Pixaroma Group", callback: () => deleteGroup(over) });
+    } else {
+      // No Pixaroma group here, but maybe a standard ComfyUI group is — offer to
+      // convert it into a Pixaroma group (same size, title, and colour) so existing
+      // layouts move to the new group style without rebuilding them by hand.
+      const natGrp = p ? nativeGroupAt(p) : null;
+      if (natGrp) {
+        items.push({ content: "👑 Convert to Pixaroma Group", callback: () => convertNativeGroup(natGrp) });
+      }
     }
     return items;
   },
