@@ -744,6 +744,10 @@ const HELP = {
           "Installed with your own Python (venv or conda): activate that environment and run `pip install imageio-ffmpeg`.",
         ],
       },
+      {
+        heading: "Workflow inside the video",
+        body: "The full workflow is saved inside the mp4 (in its comment metadata), the same way it is saved inside a PNG. So you can drag a saved mp4 back into ComfyUI later to rebuild the whole graph. Reading it back needs a video pack such as Video Helper Suite installed (it adds the drag-a-video support). The frame width and height must be even numbers.",
+      },
     ],
     footer: "This is a terminal save node, it has no outputs.",
   },

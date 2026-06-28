@@ -1,5 +1,6 @@
 import os
 import sys
+import json
 import uuid
 import wave
 import shutil
@@ -11,6 +12,58 @@ import torch
 
 import folder_paths
 import comfy.model_management
+
+# Honour ComfyUI's global --disable-metadata flag (same as SaveImage). Wrapped so
+# the node still imports on a build that lacks it.
+try:
+    from comfy.cli_args import args as _comfy_cli_args
+except Exception:
+    _comfy_cli_args = None
+
+
+def _escape_ffmetadata(value):
+    """Escape a value for an ffmpeg FFMETADATA file: backslash-escape = ; # \\
+    and newline (per the ffmetadata spec). Done in one pass so the backslashes we
+    add are never themselves re-escaped."""
+    out = []
+    for ch in value:
+        if ch in ("=", ";", "#", "\\"):
+            out.append("\\")
+            out.append(ch)
+        elif ch == "\n":
+            out.append("\\\n")
+        else:
+            out.append(ch)
+    return "".join(out)
+
+
+def _build_video_meta_json(prompt, extra_pnginfo):
+    """JSON string {"workflow":..., "prompt":...} to embed in the mp4's comment
+    atom, or None if neither is available. This is the exact shape the
+    VideoHelperSuite frontend parses out of an mp4's comment when you drag the
+    video back into ComfyUI, so the workflow is restored."""
+    meta = {}
+    if isinstance(extra_pnginfo, dict):
+        wf = extra_pnginfo.get("workflow")
+        if wf is not None:
+            meta["workflow"] = wf
+    if prompt is not None:
+        meta["prompt"] = prompt
+    if not meta:
+        return None
+    try:
+        return json.dumps(meta)
+    except Exception:
+        return None
+
+
+def _write_ffmetadata_comment(path, comment_json):
+    """Write an FFMETADATA file with a single `comment` key. ffmpeg's mov muxer
+    maps `comment` to the standard ©cmt atom (NO -movflags use_metadata_tags, so
+    it stays the ilst form the VHS reader scans for)."""
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(";FFMETADATA1\n")
+        f.write("comment=" + _escape_ffmetadata(comment_json) + "\n")
 
 
 def _resolve_ffmpeg():
@@ -101,6 +154,9 @@ class PixaromaSaveMp4:
         "Frames stream straight to ffmpeg's stdin (no temp PNG files); audio "
         "is muxed in as AAC 192k. Pairs with AudioReact Pixaroma but works "
         "with any source that produces frames + AUDIO.\n\n"
+        "The workflow is embedded in the saved mp4 (its comment metadata), so "
+        "you can drag the video back into ComfyUI to restore the graph - reading "
+        "it back needs a video pack like VideoHelperSuite installed.\n\n"
         "ffmpeg binary is auto-located: imageio-ffmpeg's bundled exe is "
         "preferred (no system install needed - 'pip install imageio-ffmpeg'), "
         "with ffmpeg on PATH as a fallback. yuv420p requires even width and "
@@ -132,6 +188,9 @@ class PixaromaSaveMp4:
             "optional": {
                 "audio": ("AUDIO", {"tooltip": "Optional audio track to mux into the mp4 as AAC 192k. Connect Audio React Pixaroma's audio output here."}),
             },
+            # The workflow + prompt, embedded into the mp4 so dragging it back into
+            # ComfyUI restores the graph (read by VideoHelperSuite's video loader).
+            "hidden": {"prompt": "PROMPT", "extra_pnginfo": "EXTRA_PNGINFO"},
         }
 
     RETURN_TYPES = ()
@@ -139,7 +198,8 @@ class PixaromaSaveMp4:
     OUTPUT_NODE = True
     CATEGORY = "👑 Pixaroma/🖼️ Image"
 
-    def save(self, video_frames, fps, filename_prefix, save_mode, trim_to_audio, audio=None):
+    def save(self, video_frames, fps, filename_prefix, save_mode, trim_to_audio, audio=None,
+             prompt=None, extra_pnginfo=None):
         if video_frames is None or video_frames.shape[0] == 0:
             raise ValueError("[Pixaroma] Save Mp4 — input video_frames batch is empty.")
 
@@ -224,6 +284,33 @@ class PixaromaSaveMp4:
                         pass
                 temp_audio_path = None
 
+        # Embed the workflow (+ prompt) as the mp4's comment atom, so dragging the
+        # video back into ComfyUI restores the graph. Via an FFMETADATA file (not a
+        # command-line arg) so a big workflow can't blow the Windows command-line
+        # length limit. Skipped when metadata is globally disabled (--disable-metadata)
+        # or when there's nothing to embed (e.g. a pure-API run).
+        metadata_path = None
+        disable_meta = bool(getattr(_comfy_cli_args, "disable_metadata", False))
+        if not disable_meta:
+            meta_json = _build_video_meta_json(prompt, extra_pnginfo)
+            if meta_json:
+                try:
+                    metadata_path = os.path.join(
+                        folder_paths.get_temp_directory(),
+                        f"pixaroma_save_mp4_meta_{uuid.uuid4().hex}.txt",
+                    )
+                    os.makedirs(os.path.dirname(metadata_path), exist_ok=True)
+                    _write_ffmetadata_comment(metadata_path, meta_json)
+                except Exception as e:
+                    print(f"[Pixaroma] Save Mp4 — could not prepare metadata ({e}); "
+                          f"saving without it.")
+                    if metadata_path is not None and os.path.exists(metadata_path):
+                        try:
+                            os.remove(metadata_path)
+                        except OSError:
+                            pass
+                    metadata_path = None
+
         # Build ffmpeg command. Frames piped on stdin as raw RGB24.
         cmd = [
             ffmpeg_path, "-y",
@@ -237,6 +324,13 @@ class PixaromaSaveMp4:
         ]
         if temp_audio_path is not None:
             cmd += ["-i", temp_audio_path]
+        # The FFMETADATA input has no A/V streams, so it never disturbs ffmpeg's
+        # video/audio auto-selection or -shortest; it's added last and pulled in via
+        # -map_metadata <its input index>.
+        meta_input_index = None
+        if metadata_path is not None:
+            meta_input_index = 1 + (1 if temp_audio_path is not None else 0)
+            cmd += ["-i", metadata_path]
         cmd += [
             "-c:v", "libx264",
             "-preset", "medium",
@@ -247,6 +341,8 @@ class PixaromaSaveMp4:
             cmd += ["-c:a", "aac", "-b:a", "192k"]
             if trim_to_audio:
                 cmd += ["-shortest"]
+        if meta_input_index is not None:
+            cmd += ["-map_metadata", str(meta_input_index)]
         cmd += [out_path]
 
         print(f"[Pixaroma] Save Mp4 [{save_mode}] — writing {n_frames} frames @ {fps_int}fps "
@@ -267,6 +363,11 @@ class PixaromaSaveMp4:
             if temp_audio_path is not None and os.path.exists(temp_audio_path):
                 try:
                     os.remove(temp_audio_path)
+                except OSError:
+                    pass
+            if metadata_path is not None and os.path.exists(metadata_path):
+                try:
+                    os.remove(metadata_path)
                 except OSError:
                     pass
             if os.path.exists(out_path):
@@ -340,6 +441,11 @@ class PixaromaSaveMp4:
             if temp_audio_path is not None and os.path.exists(temp_audio_path):
                 try:
                     os.remove(temp_audio_path)
+                except OSError:
+                    pass
+            if metadata_path is not None and os.path.exists(metadata_path):
+                try:
+                    os.remove(metadata_path)
                 except OSError:
                     pass
             # If the encode didn't finish cleanly (error / interrupt / non-zero
