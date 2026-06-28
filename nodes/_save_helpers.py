@@ -39,33 +39,26 @@ def _json_safe(obj):
 # later by folder_paths.get_save_image_path.
 _DATE_TOKEN_RE = re.compile(r"%date:([^%]+)%")
 
-# Java-style format codes (the same ones VHS / VideoHelperSuite accepts)
-# mapped to Python strftime codes. Order matters: longer codes first so
-# 'yyyy' is matched before 'yy' during the two-pass replacement.
-_DATE_FMT_PAIRS = (
-    ("yyyy", "%Y"),
-    ("yy",   "%y"),
-    ("MM",   "%m"),
-    ("dd",   "%d"),
-    ("HH",   "%H"),
-    ("mm",   "%M"),
-    ("ss",   "%S"),
-)
+# Date field codes, matching ComfyUI's NATIVE %date:...% (its frontend
+# formatUtil.formatDate) EXACTLY, so the same filename pattern behaves identically
+# here and in the built-in Save Image. Tokens are CASE-SENSITIVE, single OR
+# doubled, and zero-padded to the token length:
+#     d/dd  day        M/MM  month       h/hh  HOUR (24-hour, like getHours)
+#     m/mm  minute     s/ss  second      yy    2-digit year   yyyy  4-digit year
+# H/HH is ALSO accepted as an hour alias - Pixaroma used HH before native lower-
+# case hh was supported, so keep it working. Anything else (incl. a lone 'yyy')
+# passes through literally, again matching native ComfyUI. (The earlier code used
+# UPPERCASE HH only, so a native 'hh' came out literal - GitHub-style report.)
+_DATE_FIELD_RE = re.compile(r"dd?|MM?|hh?|HH?|mm?|ss?|yyy?y?")
 
 
 def _expand_date_tokens(s):
-    """Expand %date:FMT% tokens using Java-style codes.
-
-    Supported codes (any other characters pass through literally):
-        yyyy  4-digit year     yy   2-digit year
-        MM    zero-padded mo   dd   zero-padded day
-        HH    zero-padded hr   mm   zero-padded min
-        ss    zero-padded sec
+    """Expand %date:FMT% tokens using ComfyUI-native codes (see _DATE_FIELD_RE).
 
     Examples (assuming 2026-05-10 14:32:07):
-        %date:yyyy-MM-dd%        -> 2026-05-10
-        %date:yyyy/MM/dd%        -> 2026/05/10  (3 nested folders)
-        %date:yyyy-MM-dd_HH-mm%  -> 2026-05-10_14-32
+        %date:yyyy-MM-dd%          -> 2026-05-10
+        %date:yyyy/MM/dd%          -> 2026/05/10  (3 nested folders)
+        %date:yyyy-MM-dd hh-mm-ss% -> 2026-05-10 14-32-07
 
     Native ComfyUI tokens (%year%, %month%, etc.) are left alone for
     folder_paths.get_save_image_path to handle. Returns the input
@@ -74,24 +67,32 @@ def _expand_date_tokens(s):
     if not isinstance(s, str) or "%date:" not in s:
         return s
     now = time.localtime()
+    fields = {
+        "d": now.tm_mday,
+        "M": now.tm_mon,
+        "h": now.tm_hour,   # 24-hour, matching ComfyUI's getHours()
+        "H": now.tm_hour,   # alias so an older HH pattern still works
+        "m": now.tm_min,
+        "s": now.tm_sec,
+    }
+
+    def _field(m):
+        tok = m.group(0)
+        if tok == "yy":
+            return ("%04d" % now.tm_year)[-2:]
+        if tok == "yyyy":
+            return "%04d" % now.tm_year
+        c = tok[0]
+        if c in fields:
+            return str(fields[c]).zfill(len(tok))
+        return tok  # e.g. a lone 'yyy' -> literal, like native ComfyUI
 
     def _sub(match):
-        fmt = match.group(1)
-        # Two-pass swap via sentinels prevents 'yyyy' being mis-rewritten as
-        # 'YY' after 'yy' would otherwise have already substituted into '%Y'.
-        sentinels = []
-        out = fmt
-        for i, (java, py) in enumerate(_DATE_FMT_PAIRS):
-            sent = f"\x00{i}\x01"
-            out = out.replace(java, sent)
-            sentinels.append((sent, py))
-        for sent, py in sentinels:
-            out = out.replace(sent, py)
         try:
-            return time.strftime(out, now)
+            return _DATE_FIELD_RE.sub(_field, match.group(1))
         except Exception:
-            # Bad format string - leave the token untouched so the user
-            # sees their input verbatim and can fix it.
+            # Leave the token untouched on any error so the user sees their
+            # input verbatim and can fix it.
             return match.group(0)
 
     return _DATE_TOKEN_RE.sub(_sub, s)

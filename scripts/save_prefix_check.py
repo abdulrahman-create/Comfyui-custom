@@ -22,6 +22,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(
 from _save_helpers import _safe_prefix  # noqa: E402
 
 _today = time.strftime("%Y-%m-%d")
+_hour = time.strftime("%H")  # 24-hour, zero-padded (what hh / HH must expand to)
 
 # (input, expected) - expected None means "unrecoverable, caller falls back"
 CASES = [
@@ -60,6 +61,11 @@ CASES = [
     # ── Tokens ────────────────────────────────────────────────────────────
     ("%date:yyyy-MM-dd%/img", _today + "/img"),
     ("%year%-%month%/img", "%year%-%month%/img"),  # native tokens preserved
+    # Hour token: native ComfyUI uses lowercase hh (24-hour). It must expand,
+    # not come out literal. HH is kept as a backward-compat alias.
+    ("%date:hh%/x", _hour + "/x"),
+    ("%date:HH%/x", _hour + "/x"),
+    ("%date:yyyy-MM-dd hh%", _today + " " + _hour),
 
     # ── Traversal / absolute / garbage rejection (must stay rejected) ─────
     ("../evil", None),
