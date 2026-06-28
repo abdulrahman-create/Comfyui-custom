@@ -71,7 +71,10 @@ export function registerPixaromaSetNode() {
         {}
       );
 
-      this.addInput("*", "*");
+      // Name the input "value" (stable) to MATCH the Python def, so ComfyUI's
+      // def-reconciliation never re-adds a duplicate "phantom" slot. The wired
+      // type is shown via the slot LABEL (set in setAdoptedType), not the name.
+      this.addInput("value", "*");
       this.addOutput("*", "*"); // passthrough: emits whatever is wired in
       this.refreshTitle();
     }
@@ -92,7 +95,11 @@ export function registerPixaromaSetNode() {
       const t = type || "*";
       if (this.inputs?.[0]) {
         this.inputs[0].type = t;
-        this.inputs[0].name = t;
+        // Keep the NAME stable ("value") so it matches the Python def and
+        // ComfyUI never re-adds a phantom duplicate; show the wired type via the
+        // slot LABEL instead (LiteGraph draws label when set, else name).
+        this.inputs[0].name = "value";
+        this.inputs[0].label = t;
       }
       if (this.outputs?.[0]) {
         this.outputs[0].type = t;

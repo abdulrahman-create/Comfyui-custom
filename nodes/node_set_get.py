@@ -33,13 +33,18 @@ class PixaromaSetNode:
 
     @classmethod
     def INPUT_TYPES(cls):
-        # Declare NO 'value' input here on purpose. The frontend (js/set_get) adds
-        # the real input and renames it to the wired type. If a 'value' input were
-        # declared, ComfyUI's def-reconciliation would RE-ADD it to already-loaded
-        # Set nodes (it no longer matches the renamed input by name), creating a
-        # duplicate "phantom" input that broke value passthrough - the wire stopped
-        # transmitting until you moved it to the new slot. Keeping only the name
-        # widget here means there is no input slot for ComfyUI to re-add.
+        # The 'value' input is declared as ANY so ComfyUI's node-search type
+        # filter offers Set Pixaroma when you drag ANY output (int / float /
+        # image / latent / ...), not just a STRING. Without it the only thing the
+        # search could match was the STRING 'name' widget, so dragging a non-
+        # string link found nothing.
+        #
+        # The earlier "phantom input" bug came from the frontend RENAMING this
+        # input to the wired type, so def-reconciliation saw 'value' as missing
+        # and re-added a duplicate slot. The frontend now keeps the live input's
+        # NAME stable as "value" (it shows the type via the slot LABEL instead),
+        # so reconciliation always matches and never re-adds it. firstWiredInput()
+        # + the onConfigure heal remain as belt-and-braces.
         return {
             "required": {
                 "name": (
@@ -47,6 +52,14 @@ class PixaromaSetNode:
                     {
                         "default": "",
                         "tooltip": "The variable name. A Get Pixaroma node reads this value by picking this name.",
+                    },
+                ),
+            },
+            "optional": {
+                "value": (
+                    ANY,
+                    {
+                        "tooltip": "Wire anything here to store it under the name. A Get Pixaroma node (or this node's own passthrough output) reads it back.",
                     },
                 ),
             },
