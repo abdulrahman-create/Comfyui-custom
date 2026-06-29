@@ -301,6 +301,12 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
+### **June 29, 2026 · v1.4.12**
+- **Pin a Pixaroma Group to lock it in place.** Right-click a Pixaroma group and pick "Pin Group" and it stays put: you can no longer move or resize it by accident, and a pin shows in its title. It works with a whole selection too, so pinning several things at once (or pressing ComfyUI's own Pin button) now locks your Pixaroma groups along with the nodes. Unpin from the same menu, and the locked state saves with your workflow.
+- **Pinned nodes stay locked when Align is on.** If you pinned a few nodes and had Pixaroma's Align feature switched on, dragging the selection used to drag the pinned ones along too. Now pinned nodes stay anchored whether one or several are selected.
+- **Draw inpaint masks with a pen or tablet.** The mask brush in Inpaint Crop now works with a drawing tablet, pen, or touch, not just a mouse (the same fix we made earlier for Paint).
+- **Prompt Multi and Prompt Stack keep their text rows the right size.** Rows holding several lines no longer shrink back to two lines after you switch workflows or tabs, the Add / Clear / Reset buttons stay inside the node as you type, and empty rows and a fresh node now sit at a tidy, compact height instead of leaving extra empty space.
+
 ### **June 28, 2026 · v1.4.9–v1.4.11**
 - **NEW: Run Timer Pixaroma.** A clock that times your whole workflow: it resets when you press Run, counts up live, and freezes on the total the moment the run finishes, then plays a chime so you know it's done even when you're in another tab. The face shows just the time (with small m / s / h markers next to the digits, and it rolls over to hours on long runs). Right-click for the settings - chime on or off, the sound and volume with a Preview (the same sound library as Notify), how much detail to show (just minutes and seconds, or add hundredths or milliseconds), and the clock colour with a full colour picker built right into the panel. A master mute for every Run Timer lives in Settings. Just drop it on the canvas; it needs no wiring. Works in both the classic and the new node interface.
 - **Turn a regular group into a Pixaroma Group.** Right-click a standard ComfyUI group and pick "Convert to Pixaroma Group": it becomes a Pixaroma group of the same size, name, and colour, so moving an existing layout to the new style is one click instead of rebuilding it by hand.
