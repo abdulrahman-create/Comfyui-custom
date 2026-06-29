@@ -27,9 +27,9 @@ const BRAND = "#f66744";
 // the convention used by Text Pixaroma + Show Text Pixaroma. Values
 // verified empirically with the sizer console snippet.
 const DEFAULT_W = 380;
-const DEFAULT_H = 292;
+const DEFAULT_H = 295;
 const MIN_W = 380;
-const MIN_H = 292;
+const MIN_H = 295;
 // Chrome the node height must budget for ABOVE the DOM body, which
 // measureContentHeight does NOT include: the title bar PLUS one row per output
 // slot. Prompt Multi has two outputs (text + prompts), so the body starts ~40px
@@ -42,7 +42,7 @@ function chromeAllowance(node) {
   const titleH = LG.NODE_TITLE_HEIGHT || 30;
   const slotH = LG.NODE_SLOT_HEIGHT || 20;
   const slots = Math.max(node.outputs?.length || 0, node.inputs?.length || 0);
-  return titleH + slots * slotH + 12; // title + slot rows + a little breathing room
+  return titleH + slots * slotH; // title + slot rows; the body's own bottom padding is the margin
 }
 
 // Commit a new node height. A bare `node.size[1] = h` array-index write can
