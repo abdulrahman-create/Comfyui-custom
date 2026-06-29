@@ -33,26 +33,41 @@ proto._displayPos = function (e) {
 };
 
 proto._bindMouse = function (cvs) {
+  // POINTER events (not mouse) + touch-action:none so PENS/TABLETS and touch can
+  // draw - otherwise the browser eats the pen/touch gesture and many pens emit no
+  // mouse events at all, so the mask brush never starts. Mirrors js/paint/events.mjs.
+  cvs.style.touchAction = "none";
+  if (this.el.canvasWrap) this.el.canvasWrap.style.touchAction = "none";
+
   let winMove = null, winUp = null;
   const detach = () => {
-    if (winMove) window.removeEventListener("mousemove", winMove), (winMove = null);
-    if (winUp) window.removeEventListener("mouseup", winUp), (winUp = null);
+    if (winMove) window.removeEventListener("pointermove", winMove), (winMove = null);
+    if (winUp) {
+      window.removeEventListener("pointerup", winUp);
+      window.removeEventListener("pointercancel", winUp);
+      winUp = null;
+    }
   };
-  // expose so a close mid-stroke (editor torn down before mouseup) detaches the
+  // expose so a close mid-stroke (editor torn down before pointerup) detaches the
   // window listeners instead of leaking them for the page lifetime.
   this._detachStroke = detach;
 
   let panMove = null, panUp = null;
   const detachPan = () => {
-    if (panMove) window.removeEventListener("mousemove", panMove), (panMove = null);
-    if (panUp) window.removeEventListener("mouseup", panUp), (panUp = null);
+    if (panMove) window.removeEventListener("pointermove", panMove), (panMove = null);
+    if (panUp) {
+      window.removeEventListener("pointerup", panUp);
+      window.removeEventListener("pointercancel", panUp);
+      panUp = null;
+    }
   };
   this._detachPan = detachPan;
 
-  cvs.addEventListener("mousedown", (e) => {
-    // PAN the zoomed view: middle button, or Space held + left button.
+  cvs.addEventListener("pointerdown", (e) => {
+    // PAN the zoomed view: middle button, or Space held + left/pen tip.
     if (e.button === 1 || (e.button === 0 && this._spaceHeld)) {
       e.preventDefault();
+      try { cvs.setPointerCapture(e.pointerId); } catch {}
       const x0 = e.clientX, y0 = e.clientY, px0 = this._panX, py0 = this._panY;
       this._panning = true;
       cvs.style.cursor = "grabbing";
@@ -66,21 +81,31 @@ proto._bindMouse = function (cvs) {
         this._requestRedraw();
       };
       panUp = () => { this._panning = false; detachPan(); cvs.style.cursor = this._spaceHeld ? "grab" : "none"; };
-      window.addEventListener("mousemove", panMove);
-      window.addEventListener("mouseup", panUp);
+      window.addEventListener("pointermove", panMove);
+      window.addEventListener("pointerup", panUp);
+      window.addEventListener("pointercancel", panUp);
       return;
     }
     if (!this.img || e.button !== 0) return;
     e.preventDefault();
+    try { cvs.setPointerCapture(e.pointerId); } catch {}
     this._beginStroke(e);
     detach();
-    winMove = (ev) => this._strokeMove(ev);
+    winMove = (ev) => {
+      // coalesced events = higher-resolution input for smoother fast strokes (pens especially)
+      if (ev.getCoalescedEvents) {
+        const co = ev.getCoalescedEvents();
+        if (co.length > 1) { for (const ce of co) this._strokeMove(ce); return; }
+      }
+      this._strokeMove(ev);
+    };
     winUp = () => { this._endStroke(); detach(); };
-    window.addEventListener("mousemove", winMove);
-    window.addEventListener("mouseup", winUp);
+    window.addEventListener("pointermove", winMove);
+    window.addEventListener("pointerup", winUp);
+    window.addEventListener("pointercancel", winUp);
   });
-  cvs.addEventListener("mousemove", (e) => { if (!this._painting && !this._panning && !this._spaceHeld) this._drawCursor(this._displayPos(e)); });
-  cvs.addEventListener("mouseleave", () => { if (!this._painting && this._dispW) { this.el.curCtx?.clearRect(0, 0, this._dispW, this._dispH); this._lastCursorPos = null; } });
+  cvs.addEventListener("pointermove", (e) => { if (!this._painting && !this._panning && !this._spaceHeld) this._drawCursor(this._displayPos(e)); });
+  cvs.addEventListener("pointerleave", () => { if (!this._painting && this._dispW) { this.el.curCtx?.clearRect(0, 0, this._dispW, this._dispH); this._lastCursorPos = null; } });
   // wheel = zoom toward the cursor (brush size moved to [ / ] + the Size slider)
   cvs.addEventListener("wheel", (e) => {
     e.preventDefault();
