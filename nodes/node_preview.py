@@ -25,6 +25,8 @@ class PixaromaPreview:
     Modes:
       preview (default): all batch frames are written to ComfyUI's temp/
         directory and shown in the node strip; nothing is saved permanently.
+        The temp PNGs embed the workflow (like native PreviewImage), so a
+        preview can be dragged back onto the canvas to restore the workflow.
       save:              all batch frames are saved to output/ with embedded
         workflow metadata, exactly like the native SaveImage node, AND still
         shown in the strip preview.
@@ -63,7 +65,7 @@ class PixaromaPreview:
                     "and native ComfyUI tokens like %year%, %month%, %day%. "
                     "See the node's Info panel (right sidebar) for the full token reference and examples."
                 )}),
-                "save_mode": (["preview", "save"], {"default": "preview", "tooltip": "preview: write each batch frame to ComfyUI's temp/ folder, auto-cleared on restart. Use this while iterating so you don't clutter output/. save: write every batch frame to output/ with embedded workflow metadata, exactly like the native SaveImage node. The on-node preview strip works the same in both modes; the manual Save to Disk / Save to Output buttons are independent of save_mode."}),
+                "save_mode": (["preview", "save"], {"default": "preview", "tooltip": "preview: write each batch frame to ComfyUI's temp/ folder, auto-cleared on restart. Use this while iterating so you don't clutter output/. The temp PNGs embed the workflow, so you can drag a preview back onto the canvas to restore the graph (just like the native Preview node). save: write every batch frame to output/ with embedded workflow metadata, exactly like the native SaveImage node. The on-node preview strip works the same in both modes; the manual Save to Disk / Save to Output buttons are independent of save_mode."}),
             },
             "hidden": {
                 "prompt": "PROMPT",
@@ -114,12 +116,17 @@ class PixaromaPreview:
                     "type": "output",
                 })
         else:  # preview mode
+            # Embed the workflow/prompt into the temp PNG too (same helper save
+            # mode uses, and the same thing native PreviewImage does), so a temp
+            # preview can be dragged back onto the canvas to restore the workflow
+            # without having to switch to save mode and clean up output/ after.
             temp_dir = folder_paths.get_temp_directory()
             os.makedirs(temp_dir, exist_ok=True)
+            pnginfo = _build_pnginfo(prompt=prompt, extra_pnginfo=extra_pnginfo)
             for tensor in image:
                 pil = _tensor_to_pil(tensor)
                 fname = f"pixaroma_preview_{uuid.uuid4().hex}.png"
-                pil.save(os.path.join(temp_dir, fname), "PNG")
+                pil.save(os.path.join(temp_dir, fname), "PNG", pnginfo=pnginfo)
                 results.append({
                     "filename": fname,
                     "subfolder": "",
