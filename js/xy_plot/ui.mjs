@@ -131,11 +131,10 @@ export function injectCSS() {
 .pix-xy-seg{display:inline-flex;background:rgba(0,0,0,.3);border-radius:6px;padding:2px;gap:2px;margin-bottom:8px;}
 .pix-xy-moderow{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;}
 .pix-xy-moderow .pix-xy-seg{margin-bottom:0;}
-.pix-xy-seg span{font-size:11.5px;padding:4px 11px;border-radius:4px;color:#9a9a9a;cursor:pointer;user-select:none;display:inline-flex;flex-direction:column;align-items:center;}
-.pix-xy-seg span.on{background:${BRAND};color:#fff;font-weight:600;}
-/* Reserve the BOLD width for every segment (a hidden 600-weight ghost of the
-   label) so selecting one can't widen it and shift the dark bar side to side. */
-.pix-xy-seg span[data-label]::after{content:attr(data-label);height:0;overflow:hidden;visibility:hidden;font-weight:600;pointer-events:none;}
+.pix-xy-seg span{font-size:11.5px;padding:4px 11px;border-radius:4px;color:#9a9a9a;cursor:pointer;user-select:none;}
+/* Selected = orange pill + white text at the SAME weight as unselected. Bumping
+   the weight would widen the label and shift the whole dark bar as you switch. */
+.pix-xy-seg span.on{background:${BRAND};color:#fff;}
 .pix-xy-range{display:flex;gap:7px;margin-bottom:7px;}
 .pix-xy-field{flex:1;background:#1d1d1d;border:1px solid rgba(255,255,255,.14);border-radius:5px;padding:4px 6px;min-width:0;cursor:text;}
 .pix-xy-field:focus-within{border-color:${BRAND};}
@@ -466,7 +465,6 @@ function renderValueArea(node, axisKey, mount, refreshCounter, rerender) {
     if (nmeta && typeof nmeta.realStep === "number") axis.realStep = nmeta.realStep;
     const seg = el("div", "pix-xy-seg");
     const sRange = el("span", null, "Range"); const sList = el("span", null, "List");
-    sRange.dataset.label = "Range"; sList.dataset.label = "List";
     (axis.mode === "list" ? sList : sRange).classList.add("on");
     sRange.addEventListener("click", () => { axis.mode = "range"; save(); rerender(); });
     sList.addEventListener("click", () => { axis.mode = "list"; save(); rerender(); });
@@ -547,7 +545,6 @@ function renderValueArea(node, axisKey, mount, refreshCounter, rerender) {
   } else if (axis.widgetType === "text") {
     const seg = el("div", "pix-xy-seg");
     const sFull = el("span", null, "Full list"); const sSr = el("span", null, "Find & replace");
-    sFull.dataset.label = "Full list"; sSr.dataset.label = "Find & replace";
     (axis.mode === "sr" ? sSr : sFull).classList.add("on");
     sFull.addEventListener("click", () => { axis.mode = "fulllist"; save(); rerender(); });
     sSr.addEventListener("click", () => { axis.mode = "sr"; save(); rerender(); });
@@ -605,7 +602,6 @@ function buildThemeControl(node, state) {
   const cur = state.theme || "dark";
   for (const [val, label] of THEMES) {
     const s = el("span", null, label);
-    s.dataset.label = label;
     if (cur === val) s.classList.add("on");
     s.title = `Grid background + label style: ${label}`;
     s.addEventListener("click", async () => {
@@ -669,7 +665,6 @@ function buildSaveResControl(node, state) {
   const cur = state.saveMaxSize || "4096";
   for (const [val, label] of SAVE_SIZES) {
     const s = el("span", null, label);
-    s.dataset.label = label;
     if (cur === val) s.classList.add("on");
     s.title = val === "full"
       ? "Export at native (full) resolution - largest file."
