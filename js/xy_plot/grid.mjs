@@ -187,7 +187,7 @@ async function doSaveOutput(node) {
     const data = await resp.json().catch(() => ({}));
     if (!resp.ok || data.error) { toast("XY Plot", data.error || "Save to output failed.", "error"); return; }
     const extra = data.saved_cells ? ` (+${data.saved_cells} cells)` : "";
-    const dims = (data.width && data.height) ? ` — ${data.width}×${data.height}` : "";
+    const dims = (data.width && data.height) ? ` - ${data.width}×${data.height}` : "";
     toast("XY Plot", `Saved to output/${data.subfolder ? data.subfolder + "/" : ""}${data.filename}${extra}${dims}`);
     // If cells were requested but none were written (session expired), say so.
     if (wantCells && !data.saved_cells) {
