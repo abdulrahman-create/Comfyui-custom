@@ -11,6 +11,7 @@ import time. The node only surfaces a clear, actionable error when it actually
 runs and no backend is available.
 """
 
+import math
 import os
 import shutil
 import subprocess
@@ -337,6 +338,238 @@ def decode(path, *, max_frames=0, force_fps=0.0, skip_first=0,
         "duration": float(duration),
         "frame_count": frame_count,
     }
+
+
+# ── Single-frame picker (Load Video Frame Pixaroma) ──────────────────────────
+#
+# probe_meta() reads fps / frame_count / size WITHOUT decoding every frame, so
+# the picker UI can map its slider to frame numbers (the browser <video> exposes
+# neither fps nor frame count). decode_one() seeks to a target frame and decodes
+# just that one, so grabbing frame 5000 of a long clip stays fast.
+
+def _av_video_meta(v, container):
+    """fps / frame_count / duration from a PyAV video stream (no full decode)."""
+    rate = v.average_rate or v.guessed_rate or getattr(v, "base_rate", None)
+    fps = float(rate) if rate else 30.0
+    if not (fps > 0):
+        fps = 30.0
+    w = int(getattr(v.codec_context, "width", 0) or getattr(v, "width", 0) or 0)
+    h = int(getattr(v.codec_context, "height", 0) or getattr(v, "height", 0) or 0)
+
+    duration = 0.0
+    try:
+        if v.duration is not None and v.time_base is not None:
+            duration = float(v.duration * v.time_base)
+    except Exception:
+        duration = 0.0
+    if duration <= 0 and getattr(container, "duration", None):
+        try:
+            duration = float(container.duration) / 1_000_000.0  # AV_TIME_BASE
+        except Exception:
+            duration = 0.0
+
+    frame_count = 0
+    try:
+        frame_count = int(v.frames or 0)
+    except Exception:
+        frame_count = 0
+    if frame_count <= 0 and duration > 0 and fps > 0:
+        frame_count = int(round(duration * fps))  # close estimate
+    if frame_count < 0:
+        frame_count = 0
+    return fps, frame_count, w, h, duration
+
+
+def _probe_av(path):
+    container = av.open(path)
+    try:
+        vstreams = container.streams.video
+        if not vstreams:
+            raise RuntimeError(
+                f"[Pixaroma] Load Video Frame — no video stream in "
+                f"{os.path.basename(path)}."
+            )
+        fps, frame_count, w, h, duration = _av_video_meta(vstreams[0], container)
+        return {"fps": float(fps), "frame_count": int(frame_count),
+                "width": int(w), "height": int(h), "duration": float(duration)}
+    finally:
+        container.close()
+
+
+def _probe_imageio(path):
+    reader = imageio.get_reader(path, "ffmpeg")
+    try:
+        meta = reader.get_meta_data() or {}
+        fps = float(meta.get("fps") or 0.0)
+        if not (fps > 0):
+            fps = 30.0
+        size = meta.get("size") or (0, 0)
+        w, h = int(size[0]), int(size[1])
+        duration = float(meta.get("duration") or 0.0)
+        n = meta.get("nframes")
+        frame_count = 0
+        if isinstance(n, (int, float)) and math.isfinite(n) and n > 0:
+            frame_count = int(n)
+        if frame_count <= 0 and duration > 0 and fps > 0:
+            frame_count = int(round(duration * fps))
+        return {"fps": float(fps), "frame_count": int(frame_count),
+                "width": int(w), "height": int(h), "duration": float(duration)}
+    finally:
+        reader.close()
+
+
+def probe_meta(path) -> dict:
+    """Read {fps, frame_count, width, height, duration} WITHOUT decoding every
+    frame. frame_count may be a close estimate (duration x fps) when the
+    container does not store an exact count."""
+    _need_backend()
+    if _AV_OK:
+        try:
+            return _probe_av(path)
+        except Exception:
+            if _IMAGEIO_OK:
+                return _probe_imageio(path)
+            raise
+    return _probe_imageio(path)
+
+
+def _decode_one_av(path, frame_index):
+    container = av.open(path)
+    try:
+        vstreams = container.streams.video
+        if not vstreams:
+            raise RuntimeError(
+                f"[Pixaroma] Load Video Frame — no video stream in "
+                f"{os.path.basename(path)}."
+            )
+        v = vstreams[0]
+        try:
+            v.thread_type = "AUTO"
+        except Exception:
+            pass
+        fps, frame_count, _w, _h, duration = _av_video_meta(v, container)
+
+        idx = max(0, int(frame_index))
+        if frame_count > 0:
+            idx = min(idx, frame_count - 1)
+        target_t = idx / fps if fps > 0 else 0.0
+
+        # Seek to the keyframe at/just before the target time, then decode
+        # forward and keep the frame closest in time to the target (robust to
+        # fps rounding + sparse keyframes).
+        try:
+            tb = v.time_base
+            if tb:
+                container.seek(max(0, int(target_t / float(tb))),
+                               stream=v, any_frame=False, backward=True)
+            else:
+                container.seek(max(0, int(target_t * 1_000_000)),
+                               any_frame=False, backward=True)
+        except Exception:
+            try:
+                container.seek(0)
+            except Exception:
+                pass
+
+        chosen = None
+        best_dt = None
+        for frame in container.decode(v):
+            _interrupt_check()
+            try:
+                ft = float(frame.time) if frame.time is not None else target_t
+            except Exception:
+                ft = target_t
+            arr = frame.to_ndarray(format="rgb24")
+            dt = abs(ft - target_t)
+            if best_dt is None or dt <= best_dt:
+                best_dt = dt
+                chosen = arr
+            if ft > target_t + (0.5 / fps):
+                break
+        if chosen is None:
+            raise RuntimeError(
+                f"[Pixaroma] Load Video Frame — could not decode frame {idx} of "
+                f"{os.path.basename(path)}."
+            )
+        h, w = chosen.shape[0], chosen.shape[1]
+        return {"frame": np.ascontiguousarray(chosen[..., :3]),
+                "fps": float(fps), "frame_count": int(frame_count),
+                "width": int(w), "height": int(h),
+                "duration": float(duration), "index": int(idx)}
+    finally:
+        container.close()
+
+
+def _decode_one_imageio(path, frame_index):
+    reader = imageio.get_reader(path, "ffmpeg")
+    try:
+        meta = reader.get_meta_data() or {}
+        fps = float(meta.get("fps") or 0.0)
+        if not (fps > 0):
+            fps = 30.0
+        size = meta.get("size") or (0, 0)
+        duration = float(meta.get("duration") or 0.0)
+        n = meta.get("nframes")
+        frame_count = 0
+        if isinstance(n, (int, float)) and math.isfinite(n) and n > 0:
+            frame_count = int(n)
+        if frame_count <= 0 and duration > 0 and fps > 0:
+            frame_count = int(round(duration * fps))
+
+        idx = max(0, int(frame_index))
+        if frame_count > 0:
+            idx = min(idx, frame_count - 1)
+
+        # imageio can over-report the frame count, so a get_data at the very end
+        # may raise; step down to the nearest readable frame.
+        fr = None
+        for cand in (idx, idx - 1, max(0, idx - 2), 0):
+            if cand < 0:
+                continue
+            try:
+                fr = reader.get_data(cand)
+                idx = cand
+                break
+            except Exception:
+                continue
+        if fr is None:
+            raise RuntimeError(
+                f"[Pixaroma] Load Video Frame — could not read frame "
+                f"{frame_index} of {os.path.basename(path)}."
+            )
+        a = np.asarray(fr)
+        if a.ndim == 2:  # grayscale -> RGB
+            a = np.stack([a, a, a], axis=-1)
+        elif a.shape[-1] == 1:
+            a = np.repeat(a, 3, axis=-1)
+        elif a.shape[-1] == 2:  # gray + alpha -> replicate gray
+            a = np.repeat(a[..., :1], 3, axis=-1)
+        a = np.ascontiguousarray(a[..., :3])
+        h, w = a.shape[0], a.shape[1]
+        return {"frame": a, "fps": float(fps), "frame_count": int(frame_count),
+                "width": int(w), "height": int(h),
+                "duration": float(duration), "index": int(idx)}
+    finally:
+        reader.close()
+
+
+def decode_one(path, frame_index=0) -> dict:
+    """Decode ONE frame at a 0-based index, seeking so it's fast even deep in a
+    long clip. Returns {frame: HxWx3 uint8, fps, frame_count, width, height,
+    duration, index}. Raises a clear error when no backend is available or the
+    frame can't be read."""
+    _need_backend()
+    frame_index = max(0, int(frame_index))
+    if _AV_OK:
+        try:
+            return _decode_one_av(path, frame_index)
+        except Exception as e:
+            if _IMAGEIO_OK:
+                print(f"[Pixaroma] Load Video Frame — PyAV could not read this "
+                      f"file ({e}); falling back to imageio.")
+                return _decode_one_imageio(path, frame_index)
+            raise
+    return _decode_one_imageio(path, frame_index)
 
 
 def extract_audio(path):

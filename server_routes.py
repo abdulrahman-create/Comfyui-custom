@@ -896,6 +896,32 @@ async def load_video_upload(request):
     })
 
 
+@PromptServer.instance.routes.get("/pixaroma/api/load_video_frame/meta")
+async def load_video_frame_meta(request):
+    """Read a video's fps / frame_count / size WITHOUT decoding it, so the Load
+    Video Frame picker can map its slider to frame numbers (the browser <video>
+    exposes neither fps nor frame count). ?video=<annotated input path>."""
+    video = request.query.get("video", "")
+    if not video:
+        return web.json_response({"error": "no video specified"}, status=400)
+    try:
+        path = folder_paths.get_annotated_filepath(video)
+    except Exception:
+        path = None
+    if not path or not os.path.exists(path):
+        return web.json_response({"error": "video not found"}, status=404)
+    try:
+        from .nodes._video_helpers import probe_meta
+        import asyncio
+        loop = asyncio.get_running_loop()
+        # Opening the container + reading headers is usually fast, but keep it off
+        # the aiohttp event loop so a slow/huge file can't stall other requests.
+        meta = await loop.run_in_executor(None, probe_meta, path)
+        return web.json_response(meta)
+    except Exception as e:
+        return web.json_response({"error": str(e)}, status=500)
+
+
 # Canonical list of bg-removal models shown in the Image Composer
 # dropdown. Each entry carries:
 #   id      — rembg session name (also dropdown `value`)
