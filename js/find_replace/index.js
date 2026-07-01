@@ -20,7 +20,9 @@ import {
   measureMinHeight,
 } from "./render.mjs";
 import { pixConfirm, autoGrowAllFields } from "./interaction.mjs";
-import { applyAdaptiveCanvasOnly, installResizeFloor, isVueNodes, closeHelpPopup } from "../shared/index.mjs";
+import { applyAdaptiveCanvasOnly, installResizeFloor, isVueNodes, closeHelpPopup,
+  installCanvasZoomPassthrough,
+} from "../shared/index.mjs";
 
 const DEFAULT_W = 380;
 const DEFAULT_H = 320;
@@ -162,6 +164,7 @@ app.registerExtension({
         node._pixFrRefreshReset = () => refreshResetState(node, root);
         node._pixFrRefit = () => { refitNode(node); node.setDirtyCanvas(true, true); };
 
+        installCanvasZoomPassthrough(root);
         const widget = node.addDOMWidget("findreplace", "pixaroma_find_replace", root, {
           serialize: false,
           getMinHeight: () => measureMinHeight(root),

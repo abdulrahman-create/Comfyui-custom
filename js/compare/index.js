@@ -1,5 +1,7 @@
 import { app } from "/scripts/app.js";
-import { BRAND, registerNodeHelp } from "../shared/index.mjs";
+import { BRAND, registerNodeHelp,
+  installCanvasZoomPassthrough,
+} from "../shared/index.mjs";
 import { applyAdaptiveCanvasOnly, isVueNodes } from "../shared/nodes2.mjs";
 
 // Help shown by the selection-toolbar Help button (js/help_toolbar) when an
@@ -952,6 +954,7 @@ function createCompareDOMWidget(node) {
   canvas.style.cssText = "position:absolute;inset:0;width:100%;height:100%;display:block;";
   root.appendChild(canvas);
 
+  installCanvasZoomPassthrough(root);
   const widget = node.addDOMWidget("pixaroma_compare", "pixaroma_compare", root, {
     serialize: false,
     hideOnZoom: false,

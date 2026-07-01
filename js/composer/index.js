@@ -12,6 +12,7 @@ import {
   activateNodePreview,
   downloadDataURL,
   applyAdaptiveCanvasOnly,
+  installCanvasZoomPassthrough,
 } from "../shared/index.mjs";
 
 // Import core class first, then mixins as side-effects
@@ -174,6 +175,7 @@ app.registerExtension({
     });
 
     // ── DOM widget ──
+    installCanvasZoomPassthrough(parts.container);
     let widget = node.addDOMWidget(
       "ComposerWidget",
       "custom",

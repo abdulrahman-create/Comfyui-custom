@@ -1,5 +1,7 @@
 import { app } from "/scripts/app.js";
-import { hideJsonWidget, BRAND, installResizeFloor } from "../shared/index.mjs";
+import { hideJsonWidget, BRAND, installResizeFloor,
+  installCanvasZoomPassthrough,
+} from "../shared/index.mjs";
 import { isGraphLoading } from "../shared/graph_loading.mjs";
 import { applyAdaptiveCanvasOnly, isVueNodes, canvasBackingScale, installZoomRepaint } from "../shared/nodes2.mjs";
 import {
@@ -664,6 +666,7 @@ function setupLoadImageNode(node) {
   const measureFloorHeight = () => measureH(LI_PREVIEW_FLOOR_MIN);
   node._pixLiMeasureHeight = measureContentHeight;
 
+  installCanvasZoomPassthrough(root);
   const widget = node.addDOMWidget("pixaroma_load_image_ui", "custom", root, {
     // canvasOnly made adaptive below (applyAdaptiveCanvasOnly): true in legacy
     // (hide from Parameters tab, Vue Compat #15), false in Nodes 2.0 (else the

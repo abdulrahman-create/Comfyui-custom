@@ -14,7 +14,9 @@
 // renders correctly in BOTH renderers.
 
 import { app } from "/scripts/app.js";
-import { BRAND, applyAdaptiveCanvasOnly } from "../shared/index.mjs";
+import { BRAND, applyAdaptiveCanvasOnly,
+  installCanvasZoomPassthrough,
+} from "../shared/index.mjs";
 // Namespace import (NOT a named import) so a STALE cached shared module that
 // predates PIXAROMA_JS_VERSION yields `undefined` instead of a hard module link
 // error — `undefined` IS the stale-cache signal we want to surface, not crash on.
@@ -286,6 +288,7 @@ app.registerExtension({
         }
       });
 
+      installCanvasZoomPassthrough(wrap);
       const widget = this.addDOMWidget(
         "pixaroma_version_check",
         // UNIQUE type so Nodes 2.0 keeps OUR element (no native-widget hijack).

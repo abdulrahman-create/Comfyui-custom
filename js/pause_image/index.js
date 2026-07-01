@@ -1,4 +1,5 @@
 import { app } from "/scripts/app.js";
+import { installCanvasZoomPassthrough } from "../shared/canvas_zoom.mjs";
 import { api } from "/scripts/api.js";
 import { applyAdaptiveCanvasOnly, isVueNodes } from "../shared/nodes2.mjs";
 import { isGraphLoading } from "../shared/graph_loading.mjs";
@@ -198,6 +199,7 @@ function setupNode(node) {
     onSaveOutput: () => saveToOutput(node),
     onOpen: () => openSnapshot(node),
   });
+  installCanvasZoomPassthrough(root);
   const widget = node.addDOMWidget(WIDGET_TYPE, WIDGET_TYPE, root, {
     serialize: false,
     getMinHeight: () => NODE_MIN_H,  // constant (Vue Compat #18)

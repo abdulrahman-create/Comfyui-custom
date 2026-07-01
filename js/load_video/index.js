@@ -1,5 +1,7 @@
 import { app } from "/scripts/app.js";
-import { applyAdaptiveCanvasOnly } from "../shared/index.mjs";
+import { applyAdaptiveCanvasOnly,
+  installCanvasZoomPassthrough,
+} from "../shared/index.mjs";
 
 // Load Video Pixaroma — upload/pick a video and preview the SOURCE clip right
 // on the node body (it plays immediately, no run needed). The control bar
@@ -401,6 +403,7 @@ app.registerExtension({
 
       refreshBar(node); // initial grayed state
 
+      installCanvasZoomPassthrough(wrap);
       const widget = this.addDOMWidget(
         "pixaroma_video_source",
         "video_preview",

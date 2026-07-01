@@ -15,7 +15,9 @@ import {
   MODE_LIST,
 } from "./core.mjs";
 import { injectCSS, buildRoot, renderRows, measureContentHeight } from "./render.mjs";
-import { installResizeFloor, isVueNodes } from "../shared/index.mjs";
+import { installResizeFloor, isVueNodes,
+  installCanvasZoomPassthrough,
+} from "../shared/index.mjs";
 import { pixConfirm, autoGrowTextareas } from "./interaction.mjs";
 import { isQueueLoopActive, runQueueLoop, feedsOnlyInactiveSwitch } from "../shared/queue_drivers.mjs";
 import { applyAdaptiveCanvasOnly } from "../shared/index.mjs";
@@ -203,6 +205,7 @@ app.registerExtension({
         // (add/delete/toggle/mode pill) where a size change is legitimate.
         node._pixPmRenderOnly = () => renderRows(node, root, handlers);
 
+        installCanvasZoomPassthrough(root);
         const _pmWidget = node.addDOMWidget("promptmulti", "div", root, {
           serialize: false,
           // canvasOnly set adaptively (CLAUDE.md Nodes 2.0): true in legacy

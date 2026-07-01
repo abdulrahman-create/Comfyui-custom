@@ -1,4 +1,5 @@
 import { app } from "/scripts/app.js";
+import { installCanvasZoomPassthrough } from "../shared/canvas_zoom.mjs";
 import { api } from "/scripts/api.js";
 import { BRAND } from "../shared/utils.mjs";
 import { applyAdaptiveCanvasOnly, isVueNodes, canvasBackingScale, installZoomRepaint } from "../shared/nodes2.mjs";
@@ -1191,6 +1192,7 @@ function createButtonsDOMWidget(node) {
   root.appendChild(toast);
 
   const BTN_BAND = BTN_H + STRIP_V_PAD * 2;
+  installCanvasZoomPassthrough(root);
   const widget = node.addDOMWidget("pixaroma_buttons", "pixaroma_preview_buttons", root, {
     serialize: false,
     hideOnZoom: false,
@@ -1246,6 +1248,7 @@ function createStripDOMWidget(node) {
   canvas.style.cssText = "position:absolute;inset:0;width:100%;height:100%;display:block;";
   root.appendChild(canvas);
 
+  installCanvasZoomPassthrough(root);
   const widget = node.addDOMWidget("pixaroma_strip", "pixaroma_preview_strip", root, {
     serialize: false,
     hideOnZoom: false,

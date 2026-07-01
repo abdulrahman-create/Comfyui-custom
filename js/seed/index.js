@@ -1,5 +1,7 @@
 import { app } from "/scripts/app.js";
-import { BRAND, hideJsonWidget, applyAdaptiveCanvasOnly, isVueNodes, measureRootContent } from "../shared/index.mjs";
+import { BRAND, hideJsonWidget, applyAdaptiveCanvasOnly, isVueNodes, measureRootContent,
+  installCanvasZoomPassthrough,
+} from "../shared/index.mjs";
 
 // ─────────────────────────────────────────────────────────────────────────
 // Seed Pixaroma — a seed source with Random / Fixed modes + buttons.
@@ -481,6 +483,7 @@ function setupSeedNode(node) {
 
   const root = document.createElement("div");
   root.className = "pix-seed-root";
+  installCanvasZoomPassthrough(root);
   const _widget = node.addDOMWidget("seed_ui", "pixaroma_seed", root, {
     getValue: () => readState(node),
     setValue: () => {},

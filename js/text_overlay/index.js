@@ -7,7 +7,9 @@
 import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
 import { isGraphLoading } from "../shared/graph_loading.mjs";
-import { applyAdaptiveCanvasOnly } from "../shared/index.mjs";
+import { applyAdaptiveCanvasOnly,
+  installCanvasZoomPassthrough,
+} from "../shared/index.mjs";
 import { TextOverlayEditor } from "./core.mjs";
 import { createTextEditorPanel } from "../framework/text_editor.mjs";
 import { loadFontForLayer, canvasFontString } from "../framework/fonts.mjs";
@@ -179,6 +181,7 @@ function setupTextOverlayNode(node) {
   }
   node._textOverlayPanelHeight = panelHeight;
 
+  installCanvasZoomPassthrough(root);
   const _toWidget = node.addDOMWidget("pix_text_overlay_ui", "div", root, {
     // canvasOnly set adaptively below (CLAUDE.md Nodes 2.0): true in legacy
     // (out of the Parameters tab), false in Nodes 2.0 (renders in Vue body).

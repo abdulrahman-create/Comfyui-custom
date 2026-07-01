@@ -1,5 +1,7 @@
 import { app } from "/scripts/app.js";
-import { BRAND, hideJsonWidget, applyAdaptiveCanvasOnly } from "../shared/index.mjs";
+import { BRAND, hideJsonWidget, applyAdaptiveCanvasOnly,
+  installCanvasZoomPassthrough,
+} from "../shared/index.mjs";
 
 function injectCSS() {
   if (document.getElementById("pixaroma-resolution-css")) return;
@@ -1260,6 +1262,7 @@ function setupResolutionNode(node) {
   // margins) takes the rest. Both callbacks return the same value so the
   // widget exactly fills the area between titlebar and node bottom.
   const WIDGET_H = NODE_H - 46; // 358 — keep in sync with the chrome estimate in NODE_H comment
+  installCanvasZoomPassthrough(root);
   const _widget = node.addDOMWidget("resolution_ui", "custom", root, {
     // canvasOnly set adaptively below (CLAUDE.md Nodes 2.0): true in legacy
     // (out of the Parameters tab), false in Nodes 2.0 (renders in Vue body).

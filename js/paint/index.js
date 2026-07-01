@@ -21,6 +21,7 @@ import {
   activateNodePreview,
   downloadDataURL,
   applyAdaptiveCanvasOnly,
+  installCanvasZoomPassthrough,
 } from "../shared/index.mjs";
 
 app.registerExtension({
@@ -89,6 +90,7 @@ app.registerExtension({
     });
 
     // ── DOM widget ──
+    installCanvasZoomPassthrough(parts.container);
     let widget = node.addDOMWidget("PaintWidget", "custom", parts.container, {
       // canvasOnly set adaptively below (CLAUDE.md Nodes 2.0)
       getValue: () => ({ paint_json: paintJson }),

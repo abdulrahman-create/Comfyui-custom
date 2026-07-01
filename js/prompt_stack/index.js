@@ -10,7 +10,9 @@ import {
   resetToDefault,
 } from "./core.mjs";
 import { injectCSS, buildRoot, renderRows, measureContentHeight } from "./render.mjs";
-import { applyAdaptiveCanvasOnly, installResizeFloor, isVueNodes } from "../shared/index.mjs";
+import { applyAdaptiveCanvasOnly, installResizeFloor, isVueNodes,
+  installCanvasZoomPassthrough,
+} from "../shared/index.mjs";
 import { pixConfirm, autoGrowTextareas } from "./interaction.mjs";
 
 const DEFAULT_W = 400;
@@ -220,6 +222,7 @@ app.registerExtension({
         // handlers (add/delete/text) where a size change is legitimate.
         node._pixPsRenderOnly = () => renderRows(node, root, handlers);
 
+        installCanvasZoomPassthrough(root);
         const _psWidget = node.addDOMWidget("promptstack", "div", root, {
           serialize: false,
           // canvasOnly set adaptively below (CLAUDE.md Nodes 2.0): true in

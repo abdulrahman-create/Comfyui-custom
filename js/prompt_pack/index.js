@@ -13,7 +13,9 @@ import {
 import { injectCSS, buildRoot, applyState, updateCounter } from "./render.mjs";
 import { wireEvents, showNoPromptsToast } from "./interaction.mjs";
 import { isQueueLoopActive, beginQueueLoop, endQueueLoop } from "../shared/queue_drivers.mjs";
-import { applyAdaptiveCanvasOnly, installResizeFloor, measureRootContent, isVueNodes } from "../shared/index.mjs";
+import { applyAdaptiveCanvasOnly, installResizeFloor, measureRootContent, isVueNodes,
+  installCanvasZoomPassthrough,
+} from "../shared/index.mjs";
 
 const BRAND = "#f66744";
 
@@ -75,6 +77,7 @@ app.registerExtension({
         // Parameters panel (Vue Compat #15). Without it, the textarea +
         // pills would render in the panel AND its draw call would corrupt
         // node-body layout.
+        installCanvasZoomPassthrough(root);
         const _ppWidget = node.addDOMWidget("promptpack", "div", root, {
           serialize: false,
           // canvasOnly set adaptively (CLAUDE.md Nodes 2.0): true in legacy

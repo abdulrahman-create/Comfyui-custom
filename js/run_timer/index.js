@@ -1,4 +1,5 @@
 import { app } from "/scripts/app.js";
+import { installCanvasZoomPassthrough } from "../shared/canvas_zoom.mjs";
 import { api } from "/scripts/api.js";
 import { isVueNodes, applyAdaptiveCanvasOnly } from "../shared/nodes2.mjs";
 import { installResizeFloor } from "../shared/resize_floor.mjs";
@@ -558,6 +559,7 @@ function setupNode(node) {
   node._pixRtDecimals = DEFAULT_STATE.decimals;
   paint(node); // render the initial 00:00 so the screen is not blank pre-microtask
 
+  installCanvasZoomPassthrough(root);
   const widget = node.addDOMWidget("run_timer_ui", "pixaroma_run_timer", root, {
     getValue: () => readState(node),
     setValue: () => {},

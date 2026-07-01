@@ -1,6 +1,8 @@
 import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
-import { applyAdaptiveCanvasOnly } from "../shared/index.mjs";
+import { applyAdaptiveCanvasOnly,
+  installCanvasZoomPassthrough,
+} from "../shared/index.mjs";
 
 // Nodes 2.0 renders its own native .image-preview panel because this node
 // emits ui.images (for the Media Assets refresh, Preview Image Pattern #14).
@@ -384,6 +386,7 @@ app.registerExtension({
 
       refreshBar(node); // initial grayed state
 
+      installCanvasZoomPassthrough(wrap);
       const widget = this.addDOMWidget(
         "pixaroma_video_preview",
         "video_preview",

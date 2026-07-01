@@ -16,6 +16,7 @@ import {
   activateNodePreview,
   downloadDataURL,
   applyAdaptiveCanvasOnly,
+  installCanvasZoomPassthrough,
 } from "../shared/index.mjs";
 
 // ─── Upstream-image resolver ──────────────────────────────────────────────
@@ -430,6 +431,7 @@ app.registerExtension({
     });
     // Resolution Pixaroma pattern — set BOTH min and max to the same constant
     // so ComfyUI doesn't stretch the widget to fill leftover node height.
+    installCanvasZoomPassthrough(panel.el);
     const _cropPanelWidget = node.addDOMWidget("CropPanel", "custom", panel.el, {
       // canvasOnly set adaptively below (CLAUDE.md Nodes 2.0)
       serialize: false,
@@ -440,6 +442,7 @@ app.registerExtension({
     applyAdaptiveCanvasOnly(_cropPanelWidget);
 
     // ── DOM widget (mini-preview) ──
+    installCanvasZoomPassthrough(parts.container);
     widget = node.addDOMWidget("CropWidget", "custom", parts.container, {
       // canvasOnly set adaptively below (CLAUDE.md Nodes 2.0)
       getValue: () => ({ crop_json: cropJson }),

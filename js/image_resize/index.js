@@ -1,6 +1,8 @@
 import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
-import { hideJsonWidget, BRAND } from "../shared/index.mjs";
+import { hideJsonWidget, BRAND,
+  installCanvasZoomPassthrough,
+} from "../shared/index.mjs";
 import { isVueNodes, applyAdaptiveCanvasOnly, canvasBackingScale } from "../shared/nodes2.mjs";
 import { buildModePanel, previewResize, injectResizePanelCSS } from "../shared/resize_panel.mjs";
 import {
@@ -767,6 +769,7 @@ app.registerExtension({
       hideJsonWidget(this.widgets, HIDDEN_INPUT);
       const root = document.createElement("div");
       root.className = "pix-ir-root";
+      installCanvasZoomPassthrough(root);
       const w = this.addDOMWidget("image_resize_ui", "custom", root, {
         serialize: false,
         getMinHeight: () => measureContentHeight(root),

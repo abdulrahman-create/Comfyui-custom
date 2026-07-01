@@ -1,5 +1,7 @@
 import { app } from "/scripts/app.js";
-import { BRAND, applyAdaptiveCanvasOnly } from "../shared/index.mjs";
+import { BRAND, applyAdaptiveCanvasOnly,
+  installCanvasZoomPassthrough,
+} from "../shared/index.mjs";
 
 // Resize clamp - user verified 210 x 118 as the smallest comfortable
 // size for a compact label/readout. WIDGET_MIN_H is kept smaller than
@@ -149,6 +151,7 @@ app.registerExtension({
       // render ITS OWN Vue widget and orphan our DOM element off-screen (our
       // value lands on a detached node). A unique type falls through to
       // WidgetDOM.vue, which re-parents OUR element. See CLAUDE.md Nodes 2.0.
+      installCanvasZoomPassthrough(wrap);
       const widget = this.addDOMWidget("text", "pixaroma_showtext", wrap, {
         // canvasOnly is set ADAPTIVELY below (applyAdaptiveCanvasOnly):
         // true in legacy (hide from Parameters tab, Vue Compat #15), false

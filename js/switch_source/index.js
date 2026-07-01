@@ -1,4 +1,5 @@
 import { app } from "/scripts/app.js";
+import { installCanvasZoomPassthrough } from "../shared/canvas_zoom.mjs";
 import {
   STATE_PROP, MAX_ROWS, CONTROL_BAND,
   readState, writeState,
@@ -222,6 +223,7 @@ app.registerExtension({
       setupNode(node);        // strip raw Python slots -> initial rows
       const { root, refresh } = buildControls(node);
       node._pixSsRefresh = refresh;
+      installCanvasZoomPassthrough(root);
       const ssWidget = node.addDOMWidget("pixaroma_switch_source_ui", "custom", root, {
         serialize: false,
         getMinHeight: () => CONTROL_BAND,

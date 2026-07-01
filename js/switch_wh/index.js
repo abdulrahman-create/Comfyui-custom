@@ -1,5 +1,7 @@
 import { app } from "/scripts/app.js";
-import { applyAdaptiveCanvasOnly } from "../shared/index.mjs";
+import { applyAdaptiveCanvasOnly,
+  installCanvasZoomPassthrough,
+} from "../shared/index.mjs";
 
 // Switch WH Pixaroma - two big A/B buttons that pick which width/height
 // pair flows through. State lives on node.properties.switchWhState and is
@@ -122,6 +124,7 @@ function setupNode(node) {
 
   const measureHeight = () => WIDGET_H;
 
+  installCanvasZoomPassthrough(root);
   const _swhWidget = node.addDOMWidget("pixaroma_switch_wh_ui", "custom", root, {
     // canvasOnly set adaptively below (CLAUDE.md Nodes 2.0): true in legacy
     // (out of the Parameters tab), false in Nodes 2.0 (renders in Vue body).

@@ -8,6 +8,7 @@ import {
   isVueNodes,
   installResizeFloor,
   hideJsonWidget,
+  installCanvasZoomPassthrough,
 } from "../shared/index.mjs";
 import { isGraphLoading } from "../shared/graph_loading.mjs";
 import {
@@ -229,6 +230,7 @@ function setupNode(node) {
   const ui = buildRoot();
   node._pixLifUI = ui;
 
+  installCanvasZoomPassthrough(ui.root);
   const widget = node.addDOMWidget("pixaroma_lif_ui", "custom", ui.root, {
     getValue: () => null,
     setValue: () => {},

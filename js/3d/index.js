@@ -21,6 +21,7 @@ import {
   activateNodePreview,
   downloadDataURL,
   applyAdaptiveCanvasOnly,
+  installCanvasZoomPassthrough,
 } from "../shared/index.mjs";
 
 app.registerExtension({
@@ -126,6 +127,7 @@ app.registerExtension({
     });
 
     // ── DOM widget (sent to Python as kwargs["SceneWidget"]) ──
+    installCanvasZoomPassthrough(parts.container);
     let widget = node.addDOMWidget("SceneWidget", "custom", parts.container, {
       // canvasOnly set adaptively below (CLAUDE.md Nodes 2.0): true in legacy
       // (out of the Parameters tab), false in Nodes 2.0 (renders in Vue body).

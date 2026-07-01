@@ -1,5 +1,7 @@
 import { app } from "/scripts/app.js";
-import { BRAND, applyAdaptiveCanvasOnly, registerNodeHelp, closeHelpPopup, isVueNodes, installResizeFloor } from "../shared/index.mjs";
+import { BRAND, applyAdaptiveCanvasOnly, registerNodeHelp, closeHelpPopup, isVueNodes, installResizeFloor,
+  installCanvasZoomPassthrough,
+} from "../shared/index.mjs";
 import { resolveDynamicPrompt } from "./dynamic_prompts.mjs";
 
 // Text Pixaroma: multi-line text field with a STRING output. The native
@@ -538,6 +540,7 @@ function setupNode(node) {
   if (nativeWidget?.value) root._pixText.ta.value = nativeWidget.value;
   updateClearEnabled(root);
 
+  installCanvasZoomPassthrough(root);
   const _textWidget = node.addDOMWidget("pix_text_ui", "custom", root, {
     // canvasOnly set adaptively (true in legacy → out of Parameters tab;
     // false in Nodes 2.0 → renders in the Vue body). See CLAUDE.md Nodes 2.0.

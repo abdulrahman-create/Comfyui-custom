@@ -1,5 +1,7 @@
 import { app } from "/scripts/app.js";
-import { allow_debug } from "../shared/index.mjs";
+import { allow_debug,
+  installCanvasZoomPassthrough,
+} from "../shared/index.mjs";
 import { applyAdaptiveCanvasOnly } from "../shared/nodes2.mjs";
 
 app.registerExtension({
@@ -16,6 +18,7 @@ app.registerExtension({
 
       const elements = create_widget_elements();
 
+      installCanvasZoomPassthrough(elements.container);
       let widget = this.addDOMWidget(
         "CounterWidget",
         "custom",

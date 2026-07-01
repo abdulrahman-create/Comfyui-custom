@@ -1,5 +1,7 @@
 import { app } from "/scripts/app.js";
-import { allow_debug, hideJsonWidget } from "../shared/index.mjs";
+import { allow_debug, hideJsonWidget,
+  installCanvasZoomPassthrough,
+} from "../shared/index.mjs";
 import { isVueNodes, applyAdaptiveCanvasOnly } from "../shared/nodes2.mjs";
 import { isGraphLoading } from "../shared/graph_loading.mjs";
 import { DEFAULTS, fontStr, measureLabel, applyLabelToDom, injectVueLabelCSS } from "./render.mjs";
@@ -95,6 +97,7 @@ function setupVueLabel(node) {
     });
   };
 
+  installCanvasZoomPassthrough(div);
   const w = node.addDOMWidget("label_dom", "pixaroma_label", div, {
     serialize: false,
     getMinHeight: () => Math.max(measureLabel(node._labelCfg || DEFAULTS).h, 16),

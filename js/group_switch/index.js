@@ -1,4 +1,5 @@
 import { app } from "/scripts/app.js";
+import { installCanvasZoomPassthrough } from "../shared/canvas_zoom.mjs";
 import { isVueNodes, applyAdaptiveCanvasOnly } from "../shared/nodes2.mjs";
 import { installResizeFloor } from "../shared/resize_floor.mjs";
 import { isGraphLoading } from "../shared/graph_loading.mjs";
@@ -529,6 +530,7 @@ function startPoll() {
 function setupNode(node) {
   injectCSS();
   const root = el("div", "pix-gs-root");
+  installCanvasZoomPassthrough(root);
   const widget = node.addDOMWidget("group_switch_ui", "pixaroma_group_switch", root, {
     getValue: () => readState(node),
     setValue: () => {},

@@ -10,6 +10,7 @@ import "./render.mjs";  // mixin: canvas render + save
 import {
   createNodePreview, showNodePreview, restoreNodePreview, activateNodePreview,
   downloadDataURL, applyAdaptiveCanvasOnly,
+  installCanvasZoomPassthrough,
 } from "../shared/index.mjs";
 
 const SIZE_MODE_MAP = {
@@ -270,6 +271,7 @@ app.registerExtension({
     });
 
     // ── mini-preview DOM widget (also carries the hidden state) ──
+    installCanvasZoomPassthrough(parts.container);
     widget = node.addDOMWidget("InpaintCropWidget", "custom", parts.container, {
       getValue: () => ({ state_json: stateJson }),
       setValue: (v) => {

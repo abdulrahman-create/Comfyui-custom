@@ -1,5 +1,7 @@
 import { app } from "/scripts/app.js";
-import { applyAdaptiveCanvasOnly } from "../shared/index.mjs";
+import { applyAdaptiveCanvasOnly,
+  installCanvasZoomPassthrough,
+} from "../shared/index.mjs";
 
 // Load Video Frame Pixaroma — pick ONE exact frame out of a video and output it
 // as an image (a "Load Image, but for video"). The node body shows a preview of
@@ -413,6 +415,7 @@ app.registerExtension({
 
       updateBar(node); // initial grayed state
 
+      installCanvasZoomPassthrough(wrap);
       const widget = this.addDOMWidget(
         "pixaroma_video_frame_source", "pixaroma_video_frame", wrap,
         { serialize: false, hideOnZoom: false, getMinHeight: () => PREVIEW_MIN_H }

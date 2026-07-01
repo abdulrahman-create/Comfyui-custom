@@ -17,7 +17,9 @@
 //   - Nodes 2.0 (Vue): a DOM element row (the grid lays it out tightly).
 
 import { app } from "/scripts/app.js";
-import { applyAdaptiveCanvasOnly } from "../shared/index.mjs";
+import { applyAdaptiveCanvasOnly,
+  installCanvasZoomPassthrough,
+} from "../shared/index.mjs";
 import { isGraphLoading } from "../shared/graph_loading.mjs";
 import { SET_TYPE, GET_TYPE, getLink, findSetterByName } from "./scope.mjs";
 import { inheritSetColor } from "./colors.mjs";
@@ -182,6 +184,7 @@ export function ensureValueWidget(node) {
     const el = document.createElement("div");
     el.className = "pix-sg-val";
     el.style.display = "none";
+    installCanvasZoomPassthrough(el);
     const w = node.addDOMWidget("pix_setget_value", "pixaroma_setget_value", el, {
       serialize: false,
       getMinHeight: () => (node._pixSgValShown ? ROW_H : 0),
