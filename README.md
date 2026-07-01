@@ -130,6 +130,9 @@ A no-editor sibling of Text Overlay built for stamping a watermark onto an image
 ### 🎞️ Load Video Pixaroma
 Bring a video into ComfyUI and turn it into frames. Upload one from your computer or pick from the dropdown, and it **plays right on the node** so you can check it before running (click the picture to play / pause). It hands you the **frames, the audio, and the details** (frame count, fps, width, height, length) all at once, so you rarely need a separate info node. Control how much to load: cap the number of frames for long clips, skip frames off the start, force a steady frame rate, or resize each frame (**crop-to-fill** an exact size with no stretching). Pairs with **Save Mp4** - send the frames and audio straight across to rebuild the video.
 
+### 🎯 Load Video Frame Pixaroma
+Grab one exact frame out of a video and use it as an image - like a Load Image node, but for video. Load a clip and a preview appears on the node with a slider: **drag** it to any spot, **step one frame** back or forward with the arrow buttons for a pinpoint pick, or **type** the exact frame number. It reads the frame count for you and shows where you are (**"frame 76 · 117 frames"**), then hands you the picked frame plus its mask and the video's frame count, fps, width and height. Perfect for pulling a still, a start frame, or a reference out of a video without exporting it in another program first. Works in both the classic and the new node interface.
+
 ### 🎬 Save Mp4 Pixaroma
 Encode video frames + optional audio straight to MP4. Built-in `<video>` preview right on the node so you can watch the result without leaving ComfyUI (click the picture to play / pause). Pairs with AudioReact and Load Video, but works with any source that produces frames + AUDIO.
 
@@ -300,6 +303,9 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 ---
 
 ## 🛠 Changelog
+
+### **July 1, 2026 · v1.4.14**
+- **NEW: Load Video Frame Pixaroma.** Grab one exact frame out of a video and use it as an image, like a Load Image node but for video. Load a clip and a preview shows on the node with a slider: drag it to any spot, step one frame back or forward with the arrow buttons, or type the exact frame number. It reads the frame count for you and shows where you are ("frame 76 · 117 frames"), and hands you the picked frame plus its mask and the video's frame count, fps, width and height. Great for pulling a still, a start frame, or a reference out of a video without exporting it somewhere else first. Works in both the classic and the new node interface.
 
 ### **June 30, 2026 · v1.4.13**
 - **Drag a quick preview back onto the canvas.** The Preview Image node now saves the full workflow inside its temporary preview images (the ones made in Preview mode while you iterate), so you can drag one straight back into ComfyUI to rebuild the graph, just like a saved image. Before this, only the Save modes did that, so you had to save to your output folder and tidy up afterwards.
