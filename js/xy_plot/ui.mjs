@@ -59,8 +59,20 @@ const XY_HELP = {
         ["Grid: Dark / Light / Mono", "The grid background and label style. Switching re-skins the grid you already have, instantly."],
         ["Reset X / Reset Y", "Clear just that one axis."],
         ["Reset XY", "Clear both axes and all selections, back to a fresh node."],
-        ["Save resolution", "The size the Save buttons export at (grid long side, in px): 2048, 4096, 8192, or Full (native). Bigger = larger file, built only when you Save. The picture sent out the node's image output stays 4096 for speed."],
-        ["Save Disk / Save Output / Copy / Open", "Act on the finished grid: save it to your computer or to ComfyUI's output (at the Save resolution above), copy it, or open it in a new tab. Copy and Open use the on-screen preview size."],
+        ["Save Disk / Save Output / Copy / Open", "Act on the finished grid: save it to your computer or to ComfyUI's output, copy it, or open it in a new tab."],
+      ],
+    },
+    {
+      heading: "Saving and image size",
+      body: "The grid shown on the node is a preview, capped at 4096 pixels on its long side so it stays light. The Save row picks how big the SAVED file is:",
+      defs: [
+        ["2048 / 4096 / 8192", "Cap the exported grid to that many pixels on its long side."],
+        ["Full", "Export at native resolution, every cell at its real size. This makes the largest file."],
+      ],
+      bullets: [
+        "The full-size grid is built only when you click Save, so choosing a bigger size never slows your runs down.",
+        "Save Disk saves to your computer and Save Output goes to ComfyUI's output folder, both at the Save size. Copy and Open use the smaller on-screen preview.",
+        "The grid sent out of the node's image dot (top right) always stays 4096, to keep anything wired after it fast.",
       ],
     },
   ],
@@ -119,8 +131,11 @@ export function injectCSS() {
 .pix-xy-seg{display:inline-flex;background:rgba(0,0,0,.3);border-radius:6px;padding:2px;gap:2px;margin-bottom:8px;}
 .pix-xy-moderow{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;}
 .pix-xy-moderow .pix-xy-seg{margin-bottom:0;}
-.pix-xy-seg span{font-size:11.5px;padding:4px 11px;border-radius:4px;color:#9a9a9a;cursor:pointer;user-select:none;}
+.pix-xy-seg span{font-size:11.5px;padding:4px 11px;border-radius:4px;color:#9a9a9a;cursor:pointer;user-select:none;display:inline-flex;flex-direction:column;align-items:center;}
 .pix-xy-seg span.on{background:${BRAND};color:#fff;font-weight:600;}
+/* Reserve the BOLD width for every segment (a hidden 600-weight ghost of the
+   label) so selecting one can't widen it and shift the dark bar side to side. */
+.pix-xy-seg span[data-label]::after{content:attr(data-label);height:0;overflow:hidden;visibility:hidden;font-weight:600;pointer-events:none;}
 .pix-xy-range{display:flex;gap:7px;margin-bottom:7px;}
 .pix-xy-field{flex:1;background:#1d1d1d;border:1px solid rgba(255,255,255,.14);border-radius:5px;padding:4px 6px;min-width:0;cursor:text;}
 .pix-xy-field:focus-within{border-color:${BRAND};}
@@ -451,6 +466,7 @@ function renderValueArea(node, axisKey, mount, refreshCounter, rerender) {
     if (nmeta && typeof nmeta.realStep === "number") axis.realStep = nmeta.realStep;
     const seg = el("div", "pix-xy-seg");
     const sRange = el("span", null, "Range"); const sList = el("span", null, "List");
+    sRange.dataset.label = "Range"; sList.dataset.label = "List";
     (axis.mode === "list" ? sList : sRange).classList.add("on");
     sRange.addEventListener("click", () => { axis.mode = "range"; save(); rerender(); });
     sList.addEventListener("click", () => { axis.mode = "list"; save(); rerender(); });
@@ -531,6 +547,7 @@ function renderValueArea(node, axisKey, mount, refreshCounter, rerender) {
   } else if (axis.widgetType === "text") {
     const seg = el("div", "pix-xy-seg");
     const sFull = el("span", null, "Full list"); const sSr = el("span", null, "Find & replace");
+    sFull.dataset.label = "Full list"; sSr.dataset.label = "Find & replace";
     (axis.mode === "sr" ? sSr : sFull).classList.add("on");
     sFull.addEventListener("click", () => { axis.mode = "fulllist"; save(); rerender(); });
     sSr.addEventListener("click", () => { axis.mode = "sr"; save(); rerender(); });
@@ -588,6 +605,7 @@ function buildThemeControl(node, state) {
   const cur = state.theme || "dark";
   for (const [val, label] of THEMES) {
     const s = el("span", null, label);
+    s.dataset.label = label;
     if (cur === val) s.classList.add("on");
     s.title = `Grid background + label style: ${label}`;
     s.addEventListener("click", async () => {
@@ -651,6 +669,7 @@ function buildSaveResControl(node, state) {
   const cur = state.saveMaxSize || "4096";
   for (const [val, label] of SAVE_SIZES) {
     const s = el("span", null, label);
+    s.dataset.label = label;
     if (cur === val) s.classList.add("on");
     s.title = val === "full"
       ? "Export at native (full) resolution - largest file."
