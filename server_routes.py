@@ -1235,15 +1235,31 @@ async def api_xy_plot_save(request):
     prompt = data.get("prompt")
     prefix = _safe_prefix(data.get("filename_prefix", "xy_plot")) or "xy_plot"
 
-    temp_dir = folder_paths.get_temp_directory()
-    safe_name = os.path.basename(grid_filename)
-    grid_path = os.path.join(temp_dir, safe_name)
-    if not safe_name or not os.path.isfile(grid_path) or not _is_path_under(grid_path, temp_dir):
-        return web.json_response({"error": "grid image not found - re-run the plot, then Save"}, status=400)
-    try:
-        grid_pil = Image.open(grid_path).convert("RGB")
-    except Exception as e:
-        return web.json_response({"error": f"could not read grid: {e}"}, status=500)
+    valid_sid = isinstance(session_id, str) and bool(_SAFE_ID_RE.match(session_id)) and len(session_id) <= _MAX_ID_LEN
+
+    # Prefer a grid re-assembled from the live session's cached cells at the user's
+    # chosen Save resolution (built once, only on Save - the preview + the IMAGE
+    # output stay capped at 4096). Falls back to the pre-rendered (4096-capped)
+    # temp PNG when the session has been evicted or on any error.
+    grid_pil = None
+    if valid_sid:
+        try:
+            from .nodes.node_xy_plot import render_session_full, resolve_save_cap
+            grid_pil = render_session_full(session_id, resolve_save_cap(data.get("save_max_size")))
+        except Exception as e:
+            print(f"[Pixaroma] XY Plot: full-res re-assembly failed, using preview: {e}")
+            grid_pil = None
+
+    if grid_pil is None:
+        temp_dir = folder_paths.get_temp_directory()
+        safe_name = os.path.basename(grid_filename)
+        grid_path = os.path.join(temp_dir, safe_name)
+        if not safe_name or not os.path.isfile(grid_path) or not _is_path_under(grid_path, temp_dir):
+            return web.json_response({"error": "grid image not found - re-run the plot, then Save"}, status=400)
+        try:
+            grid_pil = Image.open(grid_path).convert("RGB")
+        except Exception as e:
+            return web.json_response({"error": f"could not read grid: {e}"}, status=500)
 
     try:
         output_dir = folder_paths.get_output_directory()
@@ -1259,8 +1275,7 @@ async def api_xy_plot_save(request):
 
     saved_cells = 0
     # Only attempt cells when explicitly requested AND the session id is a valid,
-    # bounded token (it keys an in-memory dict; reject oversized/odd input).
-    valid_sid = isinstance(session_id, str) and bool(_SAFE_ID_RE.match(session_id)) and len(session_id) <= _MAX_ID_LEN
+    # bounded token (valid_sid computed above; it keys an in-memory dict).
     if save_cells and valid_sid:
         try:
             from .nodes.node_xy_plot import snapshot_session_cells
@@ -1287,7 +1302,48 @@ async def api_xy_plot_save(request):
         "filename": fname,
         "subfolder": subfolder,
         "saved_cells": saved_cells,
+        "width": grid_pil.width,
+        "height": grid_pil.height,
     })
+
+
+@PromptServer.instance.routes.post("/pixaroma/api/xy_plot/render_full")
+async def api_xy_plot_render_full(request):
+    """Return the XY Plot grid re-assembled at the requested resolution as PNG
+    bytes, for the browser's Save Disk button (which downloads to the user's
+    computer). Built once, on demand, from the cells cached server-side - the
+    workflow/prompt are embedded so the downloaded PNG can be dragged back in.
+
+    Request JSON: {
+        session_id:    plot session id (required),
+        save_max_size: "2048"|"4096"|"8192"|"full" (default 4096),
+        workflow/prompt: optional metadata to embed,
+    }
+    Response: image/png bytes, or JSON { error } (404 when the session expired, so
+    the browser can fall back to the capped preview file).
+    """
+    try:
+        data = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid JSON"}, status=400)
+    session_id = data.get("session_id")
+    if not isinstance(session_id, str) or not _SAFE_ID_RE.match(session_id) or len(session_id) > _MAX_ID_LEN:
+        return web.json_response({"error": "invalid session id"}, status=400)
+    workflow = data.get("workflow")
+    prompt = data.get("prompt")
+    try:
+        from .nodes.node_xy_plot import render_session_full, resolve_save_cap
+        grid_pil = render_session_full(session_id, resolve_save_cap(data.get("save_max_size")))
+    except Exception as e:
+        return web.json_response({"error": f"render failed: {e}"}, status=500)
+    if grid_pil is None:
+        return web.json_response({"error": "session expired - run the plot again"}, status=404)
+    try:
+        buf = io.BytesIO()
+        grid_pil.save(buf, "PNG", pnginfo=_build_pnginfo(prompt=prompt, workflow=workflow))
+    except Exception as e:
+        return web.json_response({"error": f"encode failed: {e}"}, status=500)
+    return web.Response(body=buf.getvalue(), content_type="image/png")
 
 
 @PromptServer.instance.routes.post("/pixaroma/api/xy_plot/restyle")

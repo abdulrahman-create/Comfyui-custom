@@ -73,26 +73,83 @@ function doOpen(node) {
   a.remove();
 }
 
-async function doSaveDisk(node) {
-  const blob = await fetchGridBlob(node);
-  if (!blob) { toast("XY Plot", "No grid to save yet.", "warn"); return; }
-  const name = prefixOf(node).split("/").pop() + "_grid.png";
+// Ask the server to re-assemble the grid at the chosen Save resolution and
+// return the PNG bytes (with the run's workflow embedded), for Save Disk. Returns
+// a Blob, or null when there's no live session (caller falls back to the capped
+// preview file). The size is built on demand, so it costs nothing until you Save.
+async function fetchFullResBlob(node) {
+  const last = node._pixXyLastGrid;
+  if (!last || !last.sessionId) return null;
+  const state = readState(node);
+  // Prefer the EXECUTION-time prompt/workflow (locked seed) - same as Save Output.
+  let prompt = node._pixXyExecPrompt || null;
+  let workflow = node._pixXyExecWorkflow || null;
+  if (!workflow && !prompt) {
+    try { const gp = await app.graphToPrompt(); prompt = gp?.output || null; workflow = gp?.workflow || null; } catch (_e) {}
+  }
   try {
-    if (window.showSaveFilePicker) {
-      const handle = await window.showSaveFilePicker({
+    const resp = await fetch("/pixaroma/api/xy_plot/render_full", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        session_id: last.sessionId,
+        save_max_size: state.saveMaxSize || "4096",
+        prompt, workflow,
+      }),
+    });
+    if (!resp.ok) return null;   // 404 = session evicted -> caller uses the preview
+    const blob = await resp.blob();
+    return blob && blob.size ? blob : null;
+  } catch (_e) { return null; }
+}
+
+async function doSaveDisk(node) {
+  const last = node._pixXyLastGrid;
+  if (!last || !last.url) { toast("XY Plot", "No grid to save yet.", "warn"); return; }
+  const name = prefixOf(node).split("/").pop() + "_grid.png";
+
+  if (window.showSaveFilePicker) {
+    // Open the picker FIRST, while the user-gesture activation is still valid - a
+    // slow full-res encode could otherwise outlast it and the picker would throw.
+    let handle;
+    try {
+      handle = await window.showSaveFilePicker({
         suggestedName: name,
         types: [{ description: "PNG image", accept: { "image/png": [".png"] } }],
       });
+    } catch (e) {
+      if (e && e.name === "AbortError") return;   // user cancelled the dialog
+      toast("XY Plot", "Save to disk failed.", "error"); return;
+    }
+    let blob = await fetchFullResBlob(node);
+    let capped = false;
+    if (!blob) { blob = await fetchGridBlob(node); capped = true; }   // session expired
+    if (!blob) { toast("XY Plot", "No grid to save.", "error"); return; }
+    try {
       const ws = await handle.createWritable();
       await ws.write(blob); await ws.close();
-      toast("XY Plot", "Grid saved to disk.");
-    } else {
-      const url = URL.createObjectURL(blob);
-      const a = el("a"); a.href = url; a.download = name; document.body.appendChild(a); a.click();
-      a.remove(); URL.revokeObjectURL(url);
+      toast("XY Plot", capped
+        ? "Grid saved to disk (preview size - re-run the plot for full resolution)."
+        : "Grid saved to disk.", capped ? "warn" : "info");
+    } catch (_e) {
+      toast("XY Plot", "Save to disk failed.", "error");
     }
-  } catch (e) {
-    if (e && e.name === "AbortError") return; // user cancelled
+    return;
+  }
+
+  // Fallback (no File System Access API): fetch then anchor-download.
+  let blob = await fetchFullResBlob(node);
+  let capped = false;
+  if (!blob) { blob = await fetchGridBlob(node); capped = true; }
+  if (!blob) { toast("XY Plot", "No grid to save yet.", "warn"); return; }
+  try {
+    const url = URL.createObjectURL(blob);
+    const a = el("a"); a.href = url; a.download = name; document.body.appendChild(a); a.click();
+    a.remove(); URL.revokeObjectURL(url);
+    toast("XY Plot", capped
+      ? "Saved at preview size (session expired - re-run for full resolution)."
+      : "Grid saved to disk.", capped ? "warn" : "info");
+  } catch (_e) {
     toast("XY Plot", "Save to disk failed.", "error");
   }
 }
@@ -123,13 +180,15 @@ async function doSaveOutput(node) {
         session_id: last.sessionId || null,
         filename_prefix: prefixOf(node),
         save_cells: wantCells,
+        save_max_size: state.saveMaxSize || "4096",
         prompt, workflow,
       }),
     });
     const data = await resp.json().catch(() => ({}));
     if (!resp.ok || data.error) { toast("XY Plot", data.error || "Save to output failed.", "error"); return; }
     const extra = data.saved_cells ? ` (+${data.saved_cells} cells)` : "";
-    toast("XY Plot", `Saved to output/${data.subfolder ? data.subfolder + "/" : ""}${data.filename}${extra}`);
+    const dims = (data.width && data.height) ? ` — ${data.width}×${data.height}` : "";
+    toast("XY Plot", `Saved to output/${data.subfolder ? data.subfolder + "/" : ""}${data.filename}${extra}${dims}`);
     // If cells were requested but none were written (session expired), say so.
     if (wantCells && !data.saved_cells) {
       toast("XY Plot", "Grid saved, but cells couldn't be saved (session expired) - re-run the plot to save cells.", "warn");

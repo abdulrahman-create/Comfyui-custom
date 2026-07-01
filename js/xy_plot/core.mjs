@@ -37,6 +37,7 @@ export function defaultState() {
     drawLabels: true,
     saveCells: false,
     theme: "dark",          // grid color theme: "dark" | "light" | "mono"
+    saveMaxSize: "4096",    // Save-button export size: "2048"|"4096"|"8192"|"full"
   };
 }
 

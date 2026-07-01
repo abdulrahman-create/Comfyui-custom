@@ -54,7 +54,18 @@ _SESSION_ORDER = []      # LRU order of sessionIds
 _MAX_SESSIONS = 8        # cap stored plots so memory can't grow unbounded
 
 # Grid layout constants (px). Labels + gaps scale with cell size at render time.
-_GRID_LONG_SIDE_CAP = 4096   # scale the whole grid down if it exceeds this
+_GRID_LONG_SIDE_CAP = 4096   # preview + IMAGE-output long-side cap (keeps them light)
+
+# Save-resolution presets for the Save Disk / Save Output buttons (px on the
+# grid's long side). The Save buttons re-assemble the grid at SAVE time from the
+# cached cells, so a bigger export costs nothing on a normal run. "full" is native
+# resolution, but hard-capped on the long side so a pathological huge plot (e.g.
+# 20+ columns of 1024px cells) exports a bounded PNG instead of a ~100000px
+# monster. (The transient native-canvas size is already bounded by _MAX_DIM x the
+# cell size - the very canvas the preview assembles every run - so this governs
+# the exported file's dimensions + encode, not the peak assembly allocation.)
+_GRID_FULL_SAFETY = 16384
+_SAVE_SIZE_CAPS = {"2048": 2048, "4096": 4096, "8192": 8192, "full": _GRID_FULL_SAFETY}
 
 # Grid color themes. The cells are the user's images (unchanged); these colors
 # style the background, the empty-cell tiles, the value labels, and the orange
@@ -204,9 +215,13 @@ def restyle_session(session_id, theme):
     return grid_name
 
 
-def _assemble_grid(sess):
+def _assemble_grid(sess, max_long_side=_GRID_LONG_SIDE_CAP):
     """Build the labeled grid PIL.Image from whatever cells `sess` has so far.
-    Missing cells render as empty tiles. Pure function of the session state."""
+    Missing cells render as empty tiles. Pure function of the session state.
+
+    max_long_side caps the grid's long side (default 4096 for the preview + the
+    IMAGE tensor). Pass None/0 to skip the cap and assemble at native resolution
+    (used by the Save buttons for full-resolution exports)."""
     cells = sess["cells"]
     cols = max(1, int(sess["cols"]))
     rows = max(1, int(sess["rows"]))
@@ -317,13 +332,38 @@ def _assemble_grid(sess):
             draw.text((4, ty), line, font=lf, fill=pal["axis"])
             ty += _measure(draw, line, lf)[1] + 2
 
-    # Cap the long side so a big grid can't explode memory / the preview.
+    # Cap the long side so a big grid can't explode memory / the preview. The
+    # Save buttons pass a larger cap (or None) to export at full resolution.
     long_side = max(grid_w, grid_h)
-    if long_side > _GRID_LONG_SIDE_CAP:
-        scale = _GRID_LONG_SIDE_CAP / long_side
+    if max_long_side and long_side > max_long_side:
+        scale = max_long_side / long_side
         img = img.resize((max(1, round(grid_w * scale)), max(1, round(grid_h * scale))), Image.LANCZOS)
 
     return img
+
+
+def resolve_save_cap(value):
+    """Map a Save-resolution choice ('2048'|'4096'|'8192'|'full') to a long-side
+    px cap for the Save buttons. Unknown/None -> the default preview cap (4096 =
+    today's behavior), so an old client or a bad value saves exactly as before."""
+    return _SAVE_SIZE_CAPS.get(str(value or "").lower(), _GRID_LONG_SIDE_CAP)
+
+
+def render_session_full(session_id, max_long_side=None):
+    """Re-assemble an existing plot's grid at a chosen resolution WITHOUT
+    re-running the workflow (the cells are still cached). max_long_side None/0 =
+    native resolution; otherwise cap the long side to that many px. Returns the
+    PIL.Image, or None if the session has been evicted. Built on demand by the
+    Save routes so a full-resolution export costs nothing on a normal run.
+
+    Assembly runs under the lock (execute() on the worker thread must not mutate
+    `cells` mid-read); the returned image is a fresh, independent buffer, so the
+    caller encodes/saves it OUTSIDE the lock (mirrors restyle_session)."""
+    with _LOCK:
+        sess = _SESSIONS.get(session_id)
+        if not sess:
+            return None
+        return _assemble_grid(sess, max_long_side=max_long_side)
 
 
 class PixaromaXYPlot:

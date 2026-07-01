@@ -59,7 +59,8 @@ const XY_HELP = {
         ["Grid: Dark / Light / Mono", "The grid background and label style. Switching re-skins the grid you already have, instantly."],
         ["Reset X / Reset Y", "Clear just that one axis."],
         ["Reset XY", "Clear both axes and all selections, back to a fresh node."],
-        ["Save Disk / Save Output / Copy / Open", "Act on the finished grid: save it to your computer or to ComfyUI's output, copy it, or open it in a new tab."],
+        ["Save resolution", "The size the Save buttons export at (grid long side, in px): 2048, 4096, 8192, or Full (native). Bigger = larger file, built only when you Save. The picture sent out the node's image output stays 4096 for speed."],
+        ["Save Disk / Save Output / Copy / Open", "Act on the finished grid: save it to your computer or to ComfyUI's output (at the Save resolution above), copy it, or open it in a new tab. Copy and Open use the on-screen preview size."],
       ],
     },
   ],
@@ -142,6 +143,7 @@ textarea.pix-xy-input{resize:vertical;min-height:46px;white-space:pre;}
 .pix-xy-counter.muted{background:rgba(255,255,255,.06);color:#9a9a9a;font-weight:500;}
 .pix-xy-opts{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;}
 .pix-xy-opts2{display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap;}
+.pix-xy-opts3{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
 .pix-xy-themewrap{display:flex;align-items:center;flex-wrap:wrap;gap:7px;}
 .pix-xy-themelbl{font-size:11.5px;color:#9a9a9a;}
 .pix-xy-themeseg{margin-bottom:0;}
@@ -195,6 +197,7 @@ export function buildRoot() {
     <div class="pix-xy-counter-wrap"></div>
     <div class="pix-xy-opts"></div>
     <div class="pix-xy-opts2"></div>
+    <div class="pix-xy-opts3"></div>
     <div class="pix-xy-gridmount"></div>`;
   return root;
 }
@@ -631,6 +634,41 @@ function buildThemeControl(node, state) {
   return wrap;
 }
 
+const SAVE_SIZES = [["2048", "2048"], ["4096", "4096"], ["8192", "8192"], ["full", "Full"]];
+
+// Save-resolution picker: the size the Save Disk / Save Output buttons export at
+// (grid long side, in px). "Full" = native resolution, so a big grid saves large
+// instead of being shrunk to the 4096 preview. Default 4096 (matches today). The
+// grid is re-assembled at this size only when you click Save, so picking a bigger
+// size costs nothing on a normal run. Does NOT change the node's IMAGE output,
+// which stays 4096 for downstream speed. Purely a stored choice - no server call.
+function buildSaveResControl(node, state) {
+  const wrap = el("div", "pix-xy-themewrap");
+  const lbl = el("span", "pix-xy-themelbl", "Save");
+  lbl.title = "Resolution the Save Disk / Save Output buttons export at (grid long side, in px). Full = native. The node's own image output stays 4096 for downstream speed.";
+  wrap.appendChild(lbl);
+  const seg = el("div", "pix-xy-seg pix-xy-themeseg");
+  const cur = state.saveMaxSize || "4096";
+  for (const [val, label] of SAVE_SIZES) {
+    const s = el("span", null, label);
+    if (cur === val) s.classList.add("on");
+    s.title = val === "full"
+      ? "Export at native (full) resolution - largest file."
+      : `Export capped to ${val} px on the long side.`;
+    s.addEventListener("click", () => {
+      const st = readState(node);
+      if ((st.saveMaxSize || "4096") === val) return;
+      st.saveMaxSize = val;
+      writeState(node, st);
+      seg.querySelectorAll("span").forEach((x) => x.classList.remove("on"));
+      s.classList.add("on");
+    });
+    seg.appendChild(s);
+  }
+  wrap.appendChild(seg);
+  return wrap;
+}
+
 // ── top-level render ─────────────────────────────────────────────────────────
 
 // handlers: { rerender(): full rebuild, growth(): re-measure node height }
@@ -707,6 +745,11 @@ export function renderBody(node, root, handlers) {
     reset.addEventListener("click", () => handlers.reset());
     opts2.appendChild(reset);
   }
+
+  // Third row: the Save-resolution picker, right above the Save buttons.
+  const opts3 = root.querySelector(".pix-xy-opts3");
+  opts3.innerHTML = "";
+  opts3.appendChild(buildSaveResControl(node, state));
 
   if (handlers.growth) handlers.growth();
 }
