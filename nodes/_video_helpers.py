@@ -11,6 +11,7 @@ import time. The node only surfaces a clear, actionable error when it actually
 runs and no backend is available.
 """
 
+import io
 import math
 import os
 import shutil
@@ -443,8 +444,16 @@ def _decode_one_av(path, frame_index):
                 f"{os.path.basename(path)}."
             )
         v = vstreams[0]
+        # IMPORTANT: decode a single frame SINGLE-THREADED. Multi-threaded PyAV
+        # decoding (thread_type "AUTO") combined with a seek can DEADLOCK inside a
+        # busy multi-threaded process like the ComfyUI server (it ran fine in an
+        # isolated process but hung for minutes in ComfyUI). Threading buys almost
+        # nothing here — we only decode a handful of frames from the keyframe — so
+        # we leave the stream single-threaded, which is deadlock-proof. (Load Video
+        # keeps AUTO because it streams hundreds of frames sequentially and never
+        # seeks.)
         try:
-            v.thread_type = "AUTO"
+            v.thread_type = "NONE"
         except Exception:
             pass
         fps, frame_count, _w, _h, duration = _av_video_meta(v, container)
@@ -473,8 +482,10 @@ def _decode_one_av(path, frame_index):
 
         chosen = None
         best_dt = None
+        seen = 0
         for frame in container.decode(v):
             _interrupt_check()
+            seen += 1
             try:
                 ft = float(frame.time) if frame.time is not None else target_t
             except Exception:
@@ -485,6 +496,11 @@ def _decode_one_av(path, frame_index):
                 best_dt = dt
                 chosen = arr
             if ft > target_t + (0.5 / fps):
+                break
+            # Hard safety cap: even a file with no frame timestamps (every ft ==
+            # target_t, so the break above never fires) can only walk a bounded
+            # number of frames from the keyframe, never the whole stream.
+            if seen >= 4096:
                 break
         if chosen is None:
             raise RuntimeError(
@@ -553,23 +569,86 @@ def _decode_one_imageio(path, frame_index):
         reader.close()
 
 
+def _grab_frame_ffmpeg(path, fps, idx):
+    """Grab ONE exact frame via an ffmpeg SUBPROCESS. This is process-isolated,
+    so it CANNOT deadlock the ComfyUI server the way in-process libav frame
+    decoding can (that hang was the whole reason this path exists — the same
+    decode ran in milliseconds in a standalone process but froze for minutes
+    inside the running ComfyUI process), and subprocess.run's timeout is a real
+    safety net (a blocked in-process C decode call cannot be interrupted).
+
+    Accurate + fast seek: `-ss t` BEFORE `-i` fast-seeks to the keyframe then
+    decodes forward to t; t = idx / fps lands on exactly frame idx (verified
+    frame-accurate against a sequential decode). Output is a self-describing PNG
+    on the pipe (no width/height reshape guesswork). Returns HxWx3 uint8, or None
+    if ffmpeg is unavailable or the grab fails (the caller then falls back to an
+    in-process decode)."""
+    if not (fps and fps > 0):
+        return None
+    ffmpeg = resolve_ffmpeg()
+    if not ffmpeg:
+        return None
+    t = max(0.0, idx / float(fps))
+    cmd = [
+        ffmpeg, "-nostdin", "-loglevel", "error",
+        "-ss", f"{t:.6f}", "-i", path,
+        "-frames:v", "1", "-an",
+        "-f", "image2pipe", "-c:v", "png", "-",
+    ]
+    try:
+        proc = subprocess.run(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=120,
+        )
+    except Exception:
+        return None
+    if proc.returncode != 0 or not proc.stdout:
+        return None
+    try:
+        from PIL import Image
+        img = Image.open(io.BytesIO(proc.stdout)).convert("RGB")
+        return np.ascontiguousarray(np.asarray(img)[..., :3])
+    except Exception:
+        return None
+
+
 def decode_one(path, frame_index=0) -> dict:
-    """Decode ONE frame at a 0-based index, seeking so it's fast even deep in a
-    long clip. Returns {frame: HxWx3 uint8, fps, frame_count, width, height,
-    duration, index}. Raises a clear error when no backend is available or the
-    frame can't be read."""
+    """Decode ONE frame at a 0-based index. Returns {frame: HxWx3 uint8, fps,
+    frame_count, width, height, duration, index}. Raises a clear error when no
+    backend is available or the frame can't be read.
+
+    Primary path is an ffmpeg subprocess (`_grab_frame_ffmpeg`) so a run inside
+    the ComfyUI server can never deadlock. Only when ffmpeg is genuinely missing
+    does it fall back to an in-process (single-threaded) libav decode."""
     _need_backend()
     frame_index = max(0, int(frame_index))
+    # Header-only metadata read — proven safe in-process (the /meta route runs
+    # this inside ComfyUI and returns fine). Only frame DECODING was the hazard.
+    meta = probe_meta(path)
+    fps = float(meta.get("fps") or 0.0) or 30.0
+    fc = int(meta.get("frame_count") or 0)
+    idx = frame_index
+    if fc > 0:
+        idx = min(idx, fc - 1)
+
+    arr = _grab_frame_ffmpeg(path, fps, idx)
+    if arr is not None:
+        return {
+            "frame": arr, "fps": float(fps), "frame_count": fc,
+            "width": int(arr.shape[1]), "height": int(arr.shape[0]),
+            "duration": float(meta.get("duration") or 0.0), "index": int(idx),
+        }
+
+    # ffmpeg unavailable / failed -> in-process fallback (rare).
     if _AV_OK:
         try:
-            return _decode_one_av(path, frame_index)
+            return _decode_one_av(path, idx)
         except Exception as e:
             if _IMAGEIO_OK:
                 print(f"[Pixaroma] Load Video Frame — PyAV could not read this "
                       f"file ({e}); falling back to imageio.")
-                return _decode_one_imageio(path, frame_index)
+                return _decode_one_imageio(path, idx)
             raise
-    return _decode_one_imageio(path, frame_index)
+    return _decode_one_imageio(path, idx)
 
 
 def extract_audio(path):
