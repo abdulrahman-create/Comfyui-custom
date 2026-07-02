@@ -622,13 +622,18 @@ const HELP = {
   sections: [
     { heading: "What it does", body: "The clock resets to zero the moment you press Run, counts up while the workflow is working, and freezes on the total time when it finishes. A chime plays on finish, so you know it is done even when you are in another browser tab or app." },
     { heading: "Reading the clock", body: "The time shows as minutes : seconds : hundredths (for example 02:47:38). If a run goes past an hour the clock switches to hours : minutes : seconds. A small dot in the corner is green while running and orange the moment it finishes." },
+    { heading: "Comparing workflows across tabs", body: "Each workflow remembers its own last time, so you can run several workflows in different tabs and switch between them to compare how long each one took. The time you see always belongs to the workflow you are looking at, and it only resets when you run that same workflow again.", bullets: [
+      "The time is saved with the workflow, so it is still there after you switch tabs, reload the page, or restart ComfyUI.",
+      "Because it is saved with the workflow, a small 'unsaved changes' dot shows on the tab after a run. Switching between tabs never asks you to save; only closing a tab asks, the same as always.",
+      "If you switch tabs while a run is still going, that run's time is not captured, and you will see the previous finished time when you come back. Let a run finish before switching if you want its time kept.",
+    ]},
     { heading: "Settings (right-click the node)", defs: [
       ["Chime on finish", "Turn the finish sound on or off."],
       ["Sound and Volume", "Pick the chime from the sound library and set how loud it is. The Preview button plays it right now."],
       ["Decimals", "Show hundredths (2), milliseconds (3), or just minutes and seconds (Off)."],
       ["Clock color", "Pick the digit color right in the panel: tap a swatch, drag the color square, or type a hex code. Reset returns it to Pixaroma orange."],
     ]},
-    { heading: "Good to know", body: "The node only shows the clock - all the controls are in the right-click menu. It does not need to be wired to anything; just drop it on the canvas. Each workflow remembers its own last time, so you can switch between workflow tabs to compare how long each one took; the time only resets when you run that workflow again. Add your own chimes by dropping .mp3, .wav, or .ogg files (use simple names - letters, numbers, dashes) into the assets/sounds folder. A master mute for every Run Timer lives in Settings, under Pixaroma, Run Timer." },
+    { heading: "Good to know", body: "The node only shows the clock - all the controls are in the right-click menu. It does not need to be wired to anything; just drop it on the canvas. Add your own chimes by dropping .mp3, .wav, or .ogg files (use simple names - letters, numbers, dashes) into the assets/sounds folder. A master mute for every Run Timer lives in Settings, under Pixaroma, Run Timer." },
   ],
 };
 
