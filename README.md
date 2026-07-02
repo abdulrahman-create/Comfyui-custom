@@ -304,6 +304,9 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
+### **July 2, 2026 · v1.4.17**
+- **Run Timer keeps each workflow's time when you switch tabs.** Before, switching to another workflow tab reset the clock to zero, so you lost the time you had just measured. Now every workflow remembers its own last time, and it only resets when you run that workflow again, so you can keep a few workflows in separate tabs and switch between them to compare how long each one takes. The time stays after a page reload too.
+
 ### **July 1, 2026 · v1.4.14–v1.4.16**
 - **The mouse wheel zooms the canvas over Pixaroma nodes now.** Before, hovering your cursor over one of our nodes' controls could swallow the mouse wheel, so zooming the canvas in and out did nothing until you moved to an empty spot. Now the wheel zooms the canvas wherever you hover, while text boxes and lists still scroll normally when your cursor is over them. This applies to the classic node view; the new node view already worked this way.
 - **XY Plot saves at full resolution now.** The comparison grid you export is no longer shrunk down to the on-screen preview size. A new Save row on the node lets you choose how big the Save buttons write out: 2048, 4096, 8192, or Full for the original size, so a big grid finally comes out big. It's built only when you press Save, so your runs stay just as fast as before, and both Save Disk (to your computer) and Save Output (to ComfyUI's output folder) use your chosen size. The node's Help has a short "Saving and image size" section explaining it.
