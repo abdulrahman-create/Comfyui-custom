@@ -11,11 +11,11 @@ export const DEFAULT_STATE = {
   folder: "",
   pattern: "image_%date:yyyy-MM-dd%_%counter%",
   format: "png",
-  quality: 90,
+  quality: 100,
   embedWorkflow: true,
   saveOnRun: true,
   dateStyle: "yyyy-MM-dd", // what the + Date chip inserts (regional order)
-  counterDigits: 5, // %counter% zero-padding (00001 = 5)
+  counterDigits: 3, // %counter% zero-padding (001 = 3)
 };
 
 export function readState(node) {

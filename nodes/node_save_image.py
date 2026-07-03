@@ -35,11 +35,11 @@ DEFAULT_STATE = {
     "folder": "",
     "pattern": "image_%date:yyyy-MM-dd%_%counter%",
     "format": "png",
-    "quality": 90,
+    "quality": 100,
     "embedWorkflow": True,
     "saveOnRun": True,
     "dateStyle": "yyyy-MM-dd",  # JS-only (what the + Date chip inserts)
-    "counterDigits": 5,         # %counter% zero-padding (00001 = 5)
+    "counterDigits": 3,         # %counter% zero-padding (001 = 3)
 }
 
 # Extensions stripped off a wired `name` value so "cat.png" doesn't become
@@ -179,15 +179,15 @@ class PixaromaSaveImage:
         fmt = "jpg" if str(state.get("format", "png")).lower() in ("jpg", "jpeg") else "png"
         ext = ".jpg" if fmt == "jpg" else ".png"
         try:
-            quality = max(1, min(100, int(state.get("quality", 90))))
+            quality = max(1, min(100, int(state.get("quality", 100))))
         except Exception:
-            quality = 90
+            quality = 100
         embed = bool(state.get("embedWorkflow", True))
         save_on = bool(state.get("saveOnRun", True))
         try:
-            digits = max(1, min(8, int(state.get("counterDigits", 5))))
+            digits = max(1, min(8, int(state.get("counterDigits", 3))))
         except Exception:
-            digits = 5
+            digits = 3
 
         h = int(images.shape[1])
         w = int(images.shape[2])

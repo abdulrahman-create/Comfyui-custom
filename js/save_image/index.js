@@ -424,7 +424,7 @@ function updatePreview(node) {
   // light display mirror of the Python sanitizer
   s = s.replace(/\\/g, "/").replace(/[<>:"|?*]/g, "_").replace(/_{2,}/g, "_");
   const ext = st.format === "jpg" ? ".jpg" : ".png";
-  const digits = Math.max(1, Math.min(8, parseInt(st.counterDigits, 10) || 5));
+  const digits = Math.max(1, Math.min(8, parseInt(st.counterDigits, 10) || 3));
   const padded = String(node._pixSiCounterNum || 1).padStart(digits, "0");
   const resolved = s.replace(/%counter%/g, padded);
   const folder = st.folder ? normalizePath(st.folder) : "";
@@ -448,7 +448,7 @@ function syncFace(node) {
   ui.fmtPng.classList.toggle("on", !jpg);
   ui.fmtJpg.classList.toggle("on", jpg);
   ui.fmtJpg.title =
-    "Smaller JPG files, quality " + (st.quality ?? 90) +
+    "Smaller JPG files, quality " + (st.quality ?? 100) +
     " (right-click to change). No transparency. Workflows reload from PNG only.";
   const preview = !st.saveOnRun;
   ui.modeSave.classList.toggle("on", !preview);

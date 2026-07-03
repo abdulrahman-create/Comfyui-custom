@@ -90,7 +90,7 @@ export function injectCSS() {
     ".pix-si-plab{font-size:12px;color:#ddd;}",
     ".pix-si-psub{font-size:10px;color:#8f8f8f;margin-top:2px;line-height:1.4;}",
     ".pix-si-qval{font-size:12px;color:#f66744;min-width:24px;text-align:right;}",
-    ".pix-si-qsl{flex:1;min-width:0;}",
+    ".pix-si-qsl{flex:1;min-width:0;accent-color:#f66744;}",
     '.pix-si-sw{width:30px;height:16px;border-radius:8px;background:#555;position:relative;display:inline-block;cursor:pointer;flex:0 0 auto;transition:background .15s;}',
     '.pix-si-sw::after{content:"";position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;background:#ccc;transition:left .15s;}',
     ".pix-si-sw.on{background:#f66744;}",

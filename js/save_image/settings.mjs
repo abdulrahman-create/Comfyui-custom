@@ -194,11 +194,11 @@ export function openSettingsPanel(node, onChange) {
   cSl.min = "1";
   cSl.max = "8";
   cSl.step = "1";
-  cSl.value = String(readState(node).counterDigits ?? 5);
-  const cVal = el("span", "pix-si-qval", "0".repeat(parseInt(cSl.value, 10) || 5) );
+  cSl.value = String(readState(node).counterDigits ?? 3);
+  const cVal = el("span", "pix-si-qval", "0".repeat(parseInt(cSl.value, 10) || 3) );
   cVal.style.minWidth = "58px";
   cSl.addEventListener("input", () => {
-    const n = Math.max(1, Math.min(8, parseInt(cSl.value, 10) || 5));
+    const n = Math.max(1, Math.min(8, parseInt(cSl.value, 10) || 3));
     cVal.textContent = "0".repeat(n);
     const st = readState(node);
     st.counterDigits = n;
@@ -208,7 +208,7 @@ export function openSettingsPanel(node, onChange) {
   cRow.appendChild(cSl);
   cRow.appendChild(cVal);
   cWrap.appendChild(cRow);
-  cWrap.appendChild(el("div", "pix-si-psub", "How many digits %counter% uses (00001 = 5)"));
+  cWrap.appendChild(el("div", "pix-si-psub", "How many digits %counter% uses (001 = 3)"));
   body.appendChild(cWrap);
 
   // JPG quality
@@ -220,12 +220,12 @@ export function openSettingsPanel(node, onChange) {
   qSl.min = "1";
   qSl.max = "100";
   qSl.step = "1";
-  qSl.value = String(readState(node).quality ?? 90);
+  qSl.value = String(readState(node).quality ?? 100);
   const qVal = el("span", "pix-si-qval", qSl.value);
   qSl.addEventListener("input", () => {
     qVal.textContent = qSl.value;
     const st = readState(node);
-    st.quality = Math.max(1, Math.min(100, parseInt(qSl.value, 10) || 90));
+    st.quality = Math.max(1, Math.min(100, parseInt(qSl.value, 10) || 100));
     writeState(node, st);
     if (_onChange) _onChange();
   });
