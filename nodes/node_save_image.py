@@ -188,13 +188,30 @@ class PixaromaSaveImage:
 
         out_real = os.path.realpath(folder_paths.get_output_directory())
         results = []
-        counters = {}  # per target dir: next %counter% to try
+        counters = {}      # per target dir: next FILE %counter% to try
+        dir_counters = {}  # per (parent, segment): resolved FOLDER %counter%
         saved = 0
         for i, tensor in enumerate(images):
             rel_frame = rel.replace("%batch_num%", str(i))
             parts = [p for p in rel_frame.split("/") if p]
             base_tpl = parts[-1] if parts else "image_%counter%"
             sub_dirs = parts[:-1]
+            # %counter% in a FOLDER segment: resolve it ONCE per run (whole
+            # batch shares the folder), scanning existing sibling dirs so
+            # e.g. take_%counter%/frame makes take_00001, take_00002, ...
+            # per run instead of a folder literally named take_%counter%.
+            if sub_dirs and any("%counter%" in d for d in sub_dirs):
+                resolved_dirs = []
+                parent = folder_abs
+                for d in sub_dirs:
+                    if "%counter%" in d:
+                        ck = (parent.lower(), d)
+                        if ck not in dir_counters:
+                            dir_counters[ck] = _next_counter(parent, d)
+                        d = d.replace("%counter%", f"{dir_counters[ck]:05}")
+                    resolved_dirs.append(d)
+                    parent = os.path.join(parent, d)
+                sub_dirs = resolved_dirs
             target_dir = os.path.join(folder_abs, *sub_dirs) if sub_dirs else folder_abs
             try:
                 os.makedirs(target_dir, exist_ok=True)
