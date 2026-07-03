@@ -179,7 +179,7 @@ class PixaromaSaveMp4:
                 "fps": ("FLOAT", {"default": 24.0, "min": 1.0, "max": 120.0, "step": 1.0,
                     "tooltip": "Output frame rate. Wire Audio React Pixaroma's fps output here so it always matches what produced the frames."}),
                 "filename_prefix": ("STRING", {"default": "Video",
-                    "tooltip": "Filename stem. The node appends a 5-digit counter and .mp4 (e.g. Video_00001.mp4)."}),
+                    "tooltip": "Filename stem. The node appends a 5-digit counter and .mp4 (e.g. Video_00001.mp4). Use '/' for subfolders, date tokens like %date:yyyy-MM-dd%, and node references like %Seed Pixaroma.seed% that print another node's field value into the name."}),
                 "save_mode": (["save", "preview"], {"default": "save",
                     "tooltip": "save: write to ComfyUI's output/ folder, kept across restarts. preview: write to ComfyUI's temp/ folder, auto-cleared on restart — use while iterating so you don't clutter output/. The in-node video preview works the same in both modes."}),
                 "trim_to_audio": ("BOOLEAN", {"default": False,

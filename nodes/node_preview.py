@@ -50,7 +50,9 @@ class PixaromaPreview:
         "The filename_prefix field supports subfolder syntax with '/' (e.g. 'SDXL/portrait'), date tokens like "
         "VHS / VideoHelperSuite (e.g. '%date:yyyy-MM-dd%/img' -> 'output/2026-05-10/img_00001_.png'), and native "
         "ComfyUI tokens (%year%, %month%, %day%, %hour%, %minute%, %second%, %width%, %height%). Date format codes "
-        "are yyyy yy MM dd HH mm ss. See the project README for the full token reference."
+        "are yyyy yy MM dd HH mm ss. It also supports node-reference tokens like %Seed Pixaroma.seed% (or "
+        "%KSampler.seed%) that insert another node's field value into the name, just like the native Save Image "
+        "node. See the project README for the full token reference."
     )
 
     @classmethod
@@ -61,8 +63,9 @@ class PixaromaPreview:
                 "filename_prefix": ("STRING", {"default": "img", "tooltip": (
                     "Filename stem written to output/. The node adds a 5-digit counter and .png. "
                     "Use '/' for subfolders (e.g. 'SDXL/portrait'). "
-                    "Supports date tokens like %date:yyyy-MM-dd% (same syntax as VHS / VideoHelperSuite) "
-                    "and native ComfyUI tokens like %year%, %month%, %day%. "
+                    "Supports date tokens like %date:yyyy-MM-dd% (same syntax as VHS / VideoHelperSuite), "
+                    "native ComfyUI tokens like %year%, %month%, %day%, and node references like "
+                    "%Seed Pixaroma.seed% that print another node's field value into the name. "
                     "See the node's Info panel (right sidebar) for the full token reference and examples."
                 )}),
                 "save_mode": (["preview", "save"], {"default": "preview", "tooltip": "preview: write each batch frame to ComfyUI's temp/ folder, auto-cleared on restart. Use this while iterating so you don't clutter output/. The temp PNGs embed the workflow, so you can drag a preview back onto the canvas to restore the graph (just like the native Preview node). save: write every batch frame to output/ with embedded workflow metadata, exactly like the native SaveImage node. The on-node preview strip works the same in both modes; the manual Save to Disk / Save to Output buttons are independent of save_mode."}),

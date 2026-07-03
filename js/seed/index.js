@@ -268,6 +268,18 @@ function refreshLastRun(node) {
   if (useLast) useLast.disabled = lastSeed == null;
 }
 
+// Keep a hidden widget named "seed" in sync with the current run seed. ComfyUI's
+// %NodeName.seed% filename token (native Save Image) and our own save nodes'
+// resolver both read a VISIBLE widget by name; Seed Pixaroma keeps its value on
+// node.properties, so this mirror is what makes `%Seed Pixaroma.seed%` resolvable
+// in a filename. serialize:false + hidden, so it never renders or dirties a saved
+// workflow. Its value is written by the graphToPrompt pre-pass BEFORE ComfyUI
+// serializes, so the filename matches the seed that actually runs (Random mode).
+function setSeedMirror(node, seed) {
+  const w = (node.widgets || []).find((x) => x.name === "seed");
+  if (w) w.value = String(clampSeed(seed));
+}
+
 // Toggle the Random|Fixed pill's active segment in place (no DOM rebuild), so
 // committing the number field by clicking a pill/button never destroys that
 // control mid-click.
@@ -501,6 +513,21 @@ function setupSeedNode(node) {
   _widget.computeLayoutSize = () => ({ minHeight: measureSeedHeight(root), minWidth: 1 });
   node._pixSeedRoot = root;
 
+  // Hidden mirror widget named "seed" so ComfyUI's %Node.seed% filename token
+  // (and our save nodes) can read the current seed (see setSeedMirror). Added
+  // once; serialize:false keeps it out of the saved workflow (no dirty-on-load)
+  // and out of the XY-plot / Parameters surfaces; hideJsonWidget hides it in both
+  // renderers. The value is refreshed by the graphToPrompt pre-pass each run.
+  if (!(node.widgets || []).some((w) => w.name === "seed")) {
+    const mirror = node.addWidget(
+      "text", "seed", String(clampSeed(readState(node).seed)), () => {}, {}
+    );
+    mirror.serialize = false;             // LiteGraph top-level flag (the one serialize checks)
+    mirror.options = mirror.options || {};
+    mirror.options.serialize = false;     // belt-and-braces for any path that reads options.serialize
+    hideJsonWidget(node.widgets, "seed");
+  }
+
   // Deferred initial render — nodeCreated fires BEFORE configure() restores a
   // saved workflow's properties (Vue Compat #8). A fresh node (no saved state)
   // gets a random starting seed so the big number isn't a lonely 0; a restored
@@ -610,24 +637,46 @@ function findSeedNode(index, promptId) {
 
 const _origGraphToPrompt = app.graphToPrompt.bind(app);
 app.graphToPrompt = async function (...args) {
+  // PRE-PASS (runs BEFORE ComfyUI serializes): decide each live Seed node's run
+  // seed and write it to the hidden "seed" mirror widget. This is what lets
+  // ComfyUI's own %Node.seed% filename token (native Save Image) AND our save
+  // nodes' resolver read the SAME seed that actually runs this frame - essential
+  // in Random mode, where the seed changes every run. The rolled values are
+  // cached so the post-pass injects the exact same numbers (no second roll, so
+  // the filename and the generated image always agree).
+  const seedIndex = buildSeedNodeIndex();
+  const rolled = new Map();
+  for (const [nid, node] of seedIndex) {
+    if (!node) continue;
+    const st = readState(node);
+    const runSeed = st.mode === "random" ? rollSeed() : clampSeed(st.seed);
+    rolled.set(nid, runSeed);
+    setSeedMirror(node, runSeed);
+  }
+
   const result = await _origGraphToPrompt(...args);
+
   try {
     const out = result?.output;
     if (out) {
-      let index = null;
       for (const id in out) {
         const entry = out[id];
         if (!entry || entry.class_type !== "PixaromaSeed") continue;
-        if (!index) index = buildSeedNodeIndex();
-        const node = findSeedNode(index, id);
+        const node = findSeedNode(seedIndex, id);
+        // Every node in seedIndex was pre-rolled into `rolled`, and findSeedNode
+        // only ever returns a seedIndex node, so rolled.get is defined whenever
+        // node is non-null (using the SAME seed the pre-pass wrote to the mirror -
+        // so the filename and the injected seed always agree). If a PixaromaSeed
+        // entry can't be matched to a live node (deleted mid-queue, or a deep
+        // nested-subgraph id collision - the pre-existing findSeedNode limit),
+        // runSeed stays 0, same as before this change.
         let runSeed = 0;
-        let isRandom = false;
         if (node) {
-          const st = readState(node);
-          isRandom = st.mode === "random";
-          runSeed = isRandom ? rollSeed() : clampSeed(st.seed);
+          runSeed = rolled.get(String(node.id)) ?? 0;
           // Record the last-run seed on a RUNTIME field only (never
-          // node.properties) so a run can't dirty a saved workflow (Vue Compat #18).
+          // node.properties) so a run can't dirty a saved workflow (Vue Compat
+          // #18). Only nodes that actually run (are in `out`) update the readout,
+          // so a dangling Seed node's display doesn't flicker each frame.
           node._pixSeedLastRun = runSeed;
           refreshLastRun(node);
         }

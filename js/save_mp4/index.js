@@ -3,6 +3,7 @@ import { api } from "/scripts/api.js";
 import { applyAdaptiveCanvasOnly,
   installCanvasZoomPassthrough,
 } from "../shared/index.mjs";
+import { installFilenameTokenResolver } from "../shared/filename_tokens.mjs";
 
 // Nodes 2.0 renders its own native .image-preview panel because this node
 // emits ui.images (for the Media Assets refresh, Preview Image Pattern #14).
@@ -197,6 +198,11 @@ app.registerExtension({
       // while ui.images still fires for Assets. Legacy is unaffected (the
       // mp4 entry simply fails to load as an image and is skipped).
       this.hideOutputImages = true;
+
+      // Opt filename_prefix into ComfyUI's %NodeName.widget% token resolution
+      // (ComfyUI only does it for its OWN save nodes). Lets the user write e.g.
+      // clip_%Seed Pixaroma.seed% and get the seed baked into the mp4 filename.
+      installFilenameTokenResolver(this);
 
       const node = this;
 

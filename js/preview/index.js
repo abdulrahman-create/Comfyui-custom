@@ -3,6 +3,7 @@ import { installCanvasZoomPassthrough } from "../shared/canvas_zoom.mjs";
 import { api } from "/scripts/api.js";
 import { BRAND } from "../shared/utils.mjs";
 import { applyAdaptiveCanvasOnly, isVueNodes, canvasBackingScale, installZoomRepaint } from "../shared/nodes2.mjs";
+import { applyFilenameTokenRefs, installFilenameTokenResolver } from "../shared/filename_tokens.mjs";
 
 // ---- Nodes 2.0 helpers ----
 // The Vue "WidgetLegacy" bridge repaints a custom widget's canvas only via
@@ -438,10 +439,20 @@ function tryResolveWiredString(node, inputName) {
 
 function readFilenamePrefix(node) {
   const wired = tryResolveWiredString(node, "filename_prefix");
-  if (wired) return wired;
-  const w = node.widgets?.find((x) => x.name === "filename_prefix");
-  const v = (w?.value ?? "img").toString().trim();
-  return v || "img";
+  let v;
+  if (wired) {
+    v = wired;
+  } else {
+    const w = node.widgets?.find((x) => x.name === "filename_prefix");
+    v = (w?.value ?? "img").toString().trim() || "img";
+  }
+  // Resolve %NodeName.widget% references (e.g. %Seed Pixaroma.seed%) for the
+  // manual Save Disk / Save Output buttons, matching the auto-save path (which
+  // gets them for free via the filename_prefix serializeValue override). In
+  // Random mode this reads the seed from the last run's mirror value, which is
+  // the seed that generated the previewed frame (resolveSaveMeta reuses the
+  // captured run meta and doesn't re-roll, so the mirror isn't disturbed).
+  return applyFilenameTokenRefs(v);
 }
 
 // ---- copy / open handlers ----
@@ -530,7 +541,13 @@ async function saveToDisk(node) {
     return;
   }
   let preparedBlob;
-  let suggestedName = `${readFilenamePrefix(node)}.png`;
+  // Resolve the filename prefix ONCE and reuse it. readFilenamePrefix resolves
+  // %Node.widget% tokens against the live graph, and resolveSaveMeta() below can
+  // (only in the no-run-this-session fallback) call app.graphToPrompt, which
+  // re-rolls a Random-mode Seed node's mirror. Reading the prefix twice around
+  // that await would make the suggested name and the request's prefix disagree.
+  const prefix = readFilenamePrefix(node);
+  let suggestedName = `${prefix}.png`;
   try {
     const blob = await getPreviewBlob(node);
     if (!blob) throw new Error("no preview blob");
@@ -541,7 +558,7 @@ async function saveToDisk(node) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         image_b64: dataURL,
-        filename_prefix: readFilenamePrefix(node),
+        filename_prefix: prefix,
         workflow,
         prompt,
       }),
@@ -1375,6 +1392,11 @@ app.registerExtension({
       // imports). We render our own strip; the native one would duplicate it
       // and, in Nodes 2.0, grow the node on every run.
       this.hideOutputImages = true;
+      // Opt this node's filename_prefix into ComfyUI's %NodeName.widget% token
+      // resolution (ComfyUI only does it for its OWN save nodes). Lets the user
+      // write e.g. seed_%Seed Pixaroma.seed% in the field and get seed_2137 in
+      // the saved filename, in the auto save_mode="save" path.
+      installFilenameTokenResolver(this);
       // applyAdaptiveCanvasOnly: keep these out of the legacy Parameters tab
       // (canvasOnly true) while still rendering them in the Nodes 2.0 Vue body
       // (canvasOnly false). addCustomWidget returns the widget it added.

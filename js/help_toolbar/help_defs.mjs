@@ -42,6 +42,10 @@ const HELP = {
         ],
       },
       {
+        heading: "Put the seed in your file names",
+        body: "You can print the seed into a saved file name. In a Save Image, Save Mp4 Pixaroma, or Preview Image Pixaroma node's filename field, type `%Seed Pixaroma.seed%` where you want the number, for example `portrait_%Seed Pixaroma.seed%`. On save it becomes `portrait_2137`.\n\nAlways point at THIS node, not the sampler: `%Seed Pixaroma.seed%`, not `%KSampler.seed%` (once wired, the sampler no longer holds the number, this node does). If you rename this node on the canvas, use the new name in the token. With more than one Seed node, rename them so each token points at the right one.",
+      },
+      {
         heading: "Tips",
         bullets: [
           "Type a number in the big field to set an exact seed (it switches to Fixed).",
@@ -703,7 +707,7 @@ const HELP = {
         bullets: [
           "Wire any IMAGE source into `image`.",
           "Leave `save_mode` on `preview` while iterating; switch to `save` for automatic saves.",
-          "Use `filename_prefix` to control the output name. Supports subfolders with `/` and date tokens like `%date:yyyy-MM-dd%`.",
+          "Use `filename_prefix` to control the output name. Supports subfolders with `/`, date tokens like `%date:yyyy-MM-dd%`, and node references like `%Seed Pixaroma.seed%` that print another node's value into the name (in `save` mode, and the Save Disk / Save Output buttons).",
           "Click a thumbnail to expand it, then use the arrow keys to browse the batch.",
         ],
       },
@@ -731,7 +735,7 @@ const HELP = {
           "Wire an IMAGE batch into `video_frames` and the frame rate into `fps` (from AudioReact, connect its `video_frames` and `fps`).",
           "Optionally connect an `audio` output to add a soundtrack.",
           "Set `save_mode` to `preview` (temp, auto-cleared on restart) or `save` (kept in output).",
-          "Set `filename_prefix` to name the file; a 5-digit counter is added automatically.",
+          "Set `filename_prefix` to name the file; a 5-digit counter is added automatically. You can print another node's value into the name with a token like `%Seed Pixaroma.seed%`.",
           "Enable `trim_to_audio` to end the video at the audio length.",
         ],
       },

@@ -23,7 +23,11 @@ class PixaromaSeed:
         "seed and locks it; Use last seed brings back the previous run's seed; "
         "Copy puts the current seed on your clipboard. In Random mode a Last "
         "run line shows the seed that actually generated the last image.\n\n"
-        "Outputs the seed as INT. State saves and restores with the workflow."
+        "Outputs the seed as INT. State saves and restores with the workflow.\n\n"
+        "To print the seed into a saved file name, put %Seed Pixaroma.seed% in the "
+        "filename field of a Save Image, Save Mp4 Pixaroma, or Preview Image "
+        "Pixaroma node (use this node's name, not the sampler's; rename the node to "
+        "change the token)."
     )
 
     @classmethod
