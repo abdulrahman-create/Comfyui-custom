@@ -99,6 +99,28 @@ function measureFloor(ui) {
   return Math.max(200, h);
 }
 
+// Re-assert the size the workflow actually SAVED. ComfyUI's DOM-widget fit
+// machinery inflates the node right after load (measured live: saved
+// 474x806 came back 474x1830 at zoom 0.52 - the parked element's on-screen
+// height gets mis-scaled into graph units). Idempotent: a correct load
+// matches the saved size and writes nothing, so no dirty-on-load.
+function reassertSavedSize(node, saved) {
+  const apply = () => {
+    if (!node._pixSiUI) return;
+    if (Math.abs(node.size[0] - saved[0]) > 1 || Math.abs(node.size[1] - saved[1]) > 1) {
+      if (node.setSize) node.setSize([saved[0], saved[1]]);
+      else {
+        node.size[0] = saved[0];
+        node.size[1] = saved[1];
+      }
+      node.setDirtyCanvas?.(true, true);
+    }
+  };
+  apply();
+  requestAnimationFrame(apply);
+  setTimeout(apply, 400); // late fitters too (post-load layout passes)
+}
+
 // Grow-ONLY fit: after a run adds the thumb strip, make sure the node is at
 // least floor-tall. Never shrinks (the preview area is the user's to size).
 // Self-gates on isGraphLoading (Vue Compat #18).
@@ -832,12 +854,21 @@ app.registerExtension({
     };
 
     const origConfigure = nodeType.prototype.onConfigure;
-    nodeType.prototype.onConfigure = function () {
+    nodeType.prototype.onConfigure = function (info) {
       const r = origConfigure?.apply(this, arguments);
+      // capture the size the workflow SAVED (array or {0,1} object form)
+      let saved = null;
+      const s = info && info.size;
+      if (s != null) {
+        const sw = Number(s[0] ?? s["0"]);
+        const sh = Number(s[1] ?? s["1"]);
+        if (isFinite(sw) && isFinite(sh) && sw > 50 && sh > 50) saved = [sw, sh];
+      }
       queueMicrotask(() => {
         syncFace(this);
         restoreLastRun(this);
         updatePreview(this);
+        if (saved) reassertSavedSize(this, saved);
       });
       return r;
     };
