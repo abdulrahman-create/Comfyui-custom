@@ -105,16 +105,26 @@ function measureFloor(ui) {
 // height gets mis-scaled into graph units). Idempotent: a correct load
 // matches the saved size and writes nothing, so no dirty-on-load.
 function reassertSavedSize(node, saved) {
-  // any user press means the user owns the size now - the deferred passes
-  // must not fight a manual resize made inside the 400ms window
+  // A RESIZE-HANDLE grab means the user owns the size now - the deferred
+  // passes must not fight a manual resize. A plain click anywhere must NOT
+  // cancel (the late pass is the one that actually corrects the post-load
+  // inflation), so the cancel is scoped by the grabbed element's cursor
+  // (same signal js/shared/resize_floor.mjs uses).
   let done = false;
-  const cancel = () => {
+  const release = () => {
     done = true;
-    window.removeEventListener("pointerdown", cancel, true);
+    window.removeEventListener("pointerdown", onDown, true);
   };
-  window.addEventListener("pointerdown", cancel, true);
+  const onDown = (e) => {
+    try {
+      const el = e.target;
+      const cur = el && el.nodeType === 1 ? getComputedStyle(el).cursor || "" : "";
+      if (cur.indexOf("-resize") !== -1) release();
+    } catch {}
+  };
+  window.addEventListener("pointerdown", onDown, true);
   const apply = () => {
-    if (done || !node._pixSiUI) return;
+    if (done || !node._pixSiUI || node._pixSiSkipReassert) return;
     if (Math.abs(node.size[0] - saved[0]) > 1 || Math.abs(node.size[1] - saved[1]) > 1) {
       if (node.setSize) node.setSize([saved[0], saved[1]]);
       else {
@@ -128,7 +138,7 @@ function reassertSavedSize(node, saved) {
   requestAnimationFrame(apply);
   setTimeout(() => {
     apply(); // late fitters too (post-load layout passes)
-    cancel(); // and always release the listener
+    release(); // and always drop the listener
   }, 400);
 }
 
@@ -401,9 +411,12 @@ function resolveWiredName(node) {
   }
 }
 
-function scheduleCounterFetch(node, folderRaw, nameWithExt) {
+function cntKey(folderRaw, nameWithExt, digits) {
+  return folderRaw + " " + nameWithExt + " " + digits;
+}
+function scheduleCounterFetch(node, folderRaw, nameWithExt, digits) {
   if (!nameWithExt.includes("%counter%")) return;
-  const key = folderRaw + "\u0000" + nameWithExt;
+  const key = cntKey(folderRaw, nameWithExt, digits);
   if (node._pixSiCntKey === key) return; // already fetched / in flight
   node._pixSiCntKey = key;
   clearTimeout(node._pixSiCntTimer);
@@ -411,11 +424,16 @@ function scheduleCounterFetch(node, folderRaw, nameWithExt) {
     try {
       const r = await fetch(
         "/pixaroma/api/save_image/next_counter?folder=" + encodeURIComponent(folderRaw) +
-        "&name=" + encodeURIComponent(nameWithExt)
+        "&name=" + encodeURIComponent(nameWithExt) +
+        "&digits=" + encodeURIComponent(digits)
       );
       const j = await r.json();
       if (node._pixSiCntKey !== key || !node._pixSiUI) return; // superseded
       node._pixSiCounterNum = (j && j.counter) || 1;
+      // the server also resolves %counter% in FOLDER segments (sibling-dir
+      // scan, exactly like the save) - the exact path a Run would create
+      node._pixSiCntResolved = (j && j.resolved) || "";
+      node._pixSiCntResolvedFor = key;
       updatePreview(node);
     } catch {}
   }, 350);
@@ -426,7 +444,10 @@ function updatePreview(node) {
   if (!ui) return;
   const st = readState(node);
   let s = String(st.pattern || DEFAULT_STATE.pattern);
-  s = s.replace(/%input%/g, resolveWiredName(node));
+  // function replacement so a wired name containing "$" patterns ($&, $$)
+  // is inserted literally (JS string replacements interpret those)
+  const wired = resolveWiredName(node);
+  s = s.replace(/%input%/g, () => wired);
   s = resolveDateTokens(s);
   s = expandNativeTokens(s); // %year% %month% %day% %hour% %minute% %second%
   s = applyFilenameTokenRefs(s); // %Seed Pixaroma.seed% and friends
@@ -439,16 +460,23 @@ function updatePreview(node) {
   s = s.replace(/\\/g, "/").replace(/[<>:"|?*]/g, "_").replace(/_{2,}/g, "_");
   const ext = st.format === "jpg" ? ".jpg" : ".png";
   const digits = Math.max(1, Math.min(8, parseInt(st.counterDigits, 10) || 3));
-  const padded = String(node._pixSiCounterNum || 1).padStart(digits, "0");
-  const resolved = s.replace(/%counter%/g, padded);
+  let rel;
+  if (
+    node._pixSiCntResolved &&
+    node._pixSiCntResolvedFor === cntKey(st.folder || "", s + ext, digits)
+  ) {
+    rel = node._pixSiCntResolved; // server-resolved (folder %counter% too)
+  } else {
+    const padded = String(node._pixSiCounterNum || 1).padStart(digits, "0");
+    rel = s.replace(/%counter%/g, padded) + ext;
+  }
   const folder = st.folder ? normalizePath(st.folder) : "";
   const display =
     (folder ? folder.replace(/\//g, "\\") : "…\\ComfyUI\\output") +
     "\\" +
-    resolved.split("/").filter(Boolean).join("\\") +
-    ext;
+    rel.split("/").filter(Boolean).join("\\");
   ui.prevPath.textContent = display;
-  scheduleCounterFetch(node, st.folder || "", s + ext);
+  scheduleCounterFetch(node, st.folder || "", s + ext, digits);
 }
 
 // ── face sync (DOM only; safe on the load path) ──────────────────────────────
@@ -940,6 +968,7 @@ app.registerExtension({
         // stored in the workflow before the layout settled)
         content: "↺ Reset node size",
         callback: () => {
+          node._pixSiSkipReassert = true; // an explicit user size choice
           if (node.setSize) node.setSize([DEFAULT_W, DEFAULT_H]);
           else {
             node.size[0] = DEFAULT_W;

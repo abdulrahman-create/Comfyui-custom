@@ -213,7 +213,8 @@ def _resolve_save_folder(raw):
     """
     import folder_paths
     out_dir = os.path.realpath(folder_paths.get_output_directory())
-    s = (raw or "").strip().strip('"').strip("'")
+    # tolerate a non-string folder from hand-edited/imported workflow JSON
+    s = (raw if isinstance(raw, str) else "").strip().strip('"').strip("'")
     if not s:
         return out_dir, True
     s = os.path.expandvars(os.path.expanduser(s))

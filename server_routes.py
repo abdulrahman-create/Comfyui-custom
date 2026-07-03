@@ -1790,25 +1790,42 @@ async def api_save_image_next_counter(request):
     """
     folder_raw = request.query.get("folder", "")
     name = request.query.get("name", "")
+    try:
+        digits = max(1, min(8, int(request.query.get("digits", "3"))))
+    except Exception:
+        digits = 3
 
     def _scan():
         base, _inside = _resolve_save_folder(folder_raw)
         parts = [p for p in name.replace("\\", "/").split("/") if p]
         if not parts:
-            return 1
-        d = os.path.join(base, *parts[:-1]) if len(parts) > 1 else base
-        return _next_counter(d, parts[-1])
+            return 1, ""
+        # Mirror the save-time order (node_save_image.py): %counter% in a
+        # FOLDER segment resolves against existing sibling dirs FIRST, then
+        # the FILE counter scans inside that resolved directory - so the
+        # preview shows the exact path a Run would create.
+        resolved_dirs = []
+        parent = base
+        for seg in parts[:-1]:
+            if "%counter%" in seg:
+                n = _next_counter(parent, seg)
+                seg = seg.replace("%counter%", f"{n:0{digits}}")
+            resolved_dirs.append(seg)
+            parent = os.path.join(parent, seg)
+        counter = _next_counter(parent, parts[-1])
+        fname = parts[-1].replace("%counter%", f"{counter:0{digits}}")
+        return counter, "/".join(resolved_dirs + [fname])
 
     try:
         import asyncio
         loop = asyncio.get_running_loop()
-        counter = await loop.run_in_executor(None, _scan)
+        counter, resolved = await loop.run_in_executor(None, _scan)
         return web.json_response(
-            {"ok": True, "counter": counter, "padded": f"{counter:05}"}
+            {"ok": True, "counter": counter, "resolved": resolved}
         )
     except Exception as e:
         return web.json_response(
-            {"ok": False, "message": str(e), "counter": 1, "padded": "00001"}
+            {"ok": False, "message": str(e), "counter": 1, "resolved": ""}
         )
 
 

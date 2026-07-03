@@ -94,8 +94,22 @@ def _expand_native_tokens(s):
 
 
 def _tensor_to_pil(tensor):
-    """Convert a HxWxC float [0,1] tensor frame to a PIL.Image (RGB or RGBA)."""
+    """Convert a HxWxC float [0,1] tensor frame to a PIL.Image.
+
+    ComfyUI's IMAGE contract is 3 or 4 channels, but a misbehaving upstream
+    node can emit 1/2/5+ channels - PIL's fromarray raises a raw TypeError on
+    those, so normalize instead of crashing the save (1 -> grayscale, 2 ->
+    grayscale+alpha, 5+ -> first three as RGB).
+    """
     arr = (tensor.cpu().numpy() * 255.0).clip(0, 255).astype(np.uint8)
+    if arr.ndim == 3:
+        c = arr.shape[2]
+        if c == 1:
+            return Image.fromarray(arr[:, :, 0], "L")
+        if c == 2:
+            return Image.fromarray(arr, "LA")
+        if c > 4:
+            arr = arr[:, :, :3]
     return Image.fromarray(arr)
 
 
