@@ -27,7 +27,7 @@ export function injectCSS() {
   s.id = "pix-si-css";
   s.textContent = [
     ".pix-si-root{position:relative;width:100%;height:100%;box-sizing:border-box;}",
-    ".pix-si-inner{position:absolute;inset:0;display:flex;flex-direction:column;gap:10px;padding:8px 10px;box-sizing:border-box;overflow:hidden;font-family:'Segoe UI',system-ui,sans-serif;}",
+    ".pix-si-inner{position:absolute;inset:0;display:flex;flex-direction:column;gap:10px;padding:8px 10px 4px;box-sizing:border-box;overflow:hidden;font-family:'Segoe UI',system-ui,sans-serif;}",
     ".pix-si-lab{display:block;font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:#f66744;margin-bottom:4px;}",
     ".pix-si-row{display:flex;gap:6px;align-items:center;}",
     ".pix-si-field{flex:1;min-width:0;background:#1d1d1d;border:1px solid #444;border-radius:4px;color:#e0e0e0;padding:5px 8px;font-size:12px;outline:none;box-sizing:border-box;font-family:inherit;width:100%;}",
@@ -57,7 +57,7 @@ export function injectCSS() {
     ".pix-si-btnrow{display:flex;flex-wrap:wrap;gap:6px;align-items:stretch;}",
     ".pix-si-grow{flex:1 1 0;min-width:0;justify-content:center;}",
     // ── the viewer ──
-    ".pix-si-saved{flex:1 1 0;min-height:0;display:flex;flex-direction:column;gap:5px;}",
+    ".pix-si-saved{flex:1 1 0;min-height:0;display:flex;flex-direction:column;gap:3px;}",
     ".pix-si-view{position:relative;flex:1 1 0;min-height:120px;background:#151515;border:1px solid #3c3c3c;border-radius:4px;overflow:hidden;}",
     ".pix-si-view.has{background:transparent;border-color:transparent;}",
     ".pix-si-big{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;cursor:pointer;display:none;}",
@@ -77,7 +77,7 @@ export function injectCSS() {
     ".pix-si-x{position:absolute;top:6px;right:6px;background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.18);color:#ddd;border-radius:4px;padding:2px 9px;font-size:11px;cursor:pointer;display:none;}",
     ".pix-si-x:hover{background:#f66744;border-color:#f66744;color:#fff;}",
     // one small info line under the image: dims + save summary + flashes
-    ".pix-si-info{flex:0 0 auto;text-align:center;font-size:11px;color:#8f8f8f;min-height:14px;line-height:1.4;word-break:break-word;}",
+    ".pix-si-info{flex:0 0 auto;text-align:center;font-size:11px;color:#8f8f8f;min-height:12px;line-height:1.25;word-break:break-word;}",
     // Nodes 2.0: hide the native output-image preview panel for this node
     ".lg-node:has(.pix-si-root) .image-preview{display:none !important;}",
   ].join("\n");

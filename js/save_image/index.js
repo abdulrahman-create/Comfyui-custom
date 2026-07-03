@@ -785,6 +785,19 @@ app.registerExtension({
             updatePreview(node);
           }),
       },
+      {
+        // one-click escape from a stale oversized saved size (e.g. a size
+        // stored in the workflow before the layout settled)
+        content: "↺ Reset node size",
+        callback: () => {
+          if (node.setSize) node.setSize([DEFAULT_W, DEFAULT_H]);
+          else {
+            node.size[0] = DEFAULT_W;
+            node.size[1] = DEFAULT_H;
+          }
+          node.setDirtyCanvas?.(true, true);
+        },
+      },
     ];
   },
 
