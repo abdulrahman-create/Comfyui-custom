@@ -678,7 +678,7 @@ const HELP = {
           ["%year% %month% %day% %hour% %minute% %second%", "Native ComfyUI tokens, same values as the built-in Save Image node. %date:...% does the same thing in a shorter form."],
           ["%width% / %height%", "The image size in pixels."],
           ["%batch_num%", "The frame's position inside a batch (0, 1, 2 ...)."],
-          ["%Seed Pixaroma.seed%", "A node reference: prints another node's value into the name, like the seed that made the image."],
+          ["%Seed Pixaroma.seed%", "A node reference: prints another node's value into the name, like the seed that made the image. The `+ Model` chip builds one automatically for your model loader, so the model's name lands in the filename."],
         ],
       },
       {

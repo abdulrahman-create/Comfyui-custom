@@ -1818,23 +1818,40 @@ async def api_save_image_open_folder(request):
         import sys
         if sys.platform == "win32":
             os.startfile(path)
-            # Best-effort: bring the Explorer window to the FRONT. Like the
-            # native folder dialog, a window opened by the server lands
-            # BEHIND the browser (user report: "looked like it did nothing,
-            # it was only on the taskbar"). AppActivate matches the window
-            # title, which for Explorer is the folder's leaf name; path goes
-            # through an env var to avoid any quoting issues.
+            # Best-effort: bring the Explorer window to the FRONT. A window
+            # opened by the server lands BEHIND the browser (user report:
+            # "looked like it did nothing, it was only on the taskbar"), and
+            # plain AppActivate is refused by Windows' foreground lock. The
+            # trick that works: find the Explorer window for this exact path
+            # via Shell.Application, minimize it, restore it (restoring a
+            # minimized window is allowed to take the foreground), then
+            # SetForegroundWindow. Retries for up to ~4s because Explorer
+            # opens asynchronously. Path travels via an env var (no quoting
+            # issues); detached, windowless, and fully fail-silent.
             try:
-                leaf = os.path.basename(path.rstrip("\\/")) or path
                 ps = (
-                    "Start-Sleep -Milliseconds 600;"
-                    "$ws=New-Object -ComObject WScript.Shell;"
-                    "[void]$ws.AppActivate($env:PIX_SI_LEAF)"
+                    "$t=($env:PIX_SI_PATH).TrimEnd('\\');"
+                    "Add-Type -Namespace P -Name W -MemberDefinition "
+                    "'[DllImport(\"user32.dll\")]public static extern bool SetForegroundWindow(IntPtr h);"
+                    "[DllImport(\"user32.dll\")]public static extern bool ShowWindow(IntPtr h,int n);';"
+                    "$sh=New-Object -ComObject Shell.Application;"
+                    "$end=(Get-Date).AddSeconds(4);$done=$false;"
+                    "while(-not $done -and (Get-Date) -lt $end){"
+                    "Start-Sleep -Milliseconds 250;"
+                    "foreach($w in @($sh.Windows())){"
+                    "try{$p=$w.Document.Folder.Self.Path;"
+                    "if($p -and ($p.TrimEnd('\\') -ieq $t)){"
+                    "$h=[IntPtr]$w.HWND;"
+                    "[void][P.W]::ShowWindow($h,6);"
+                    "Start-Sleep -Milliseconds 120;"
+                    "[void][P.W]::ShowWindow($h,9);"
+                    "[void][P.W]::SetForegroundWindow($h);"
+                    "$done=$true;break}}catch{}}}"
                 )
                 env = dict(os.environ)
-                env["PIX_SI_LEAF"] = leaf
+                env["PIX_SI_PATH"] = path
                 subprocess.Popen(
-                    ["powershell", "-NoProfile", "-Command", ps],
+                    ["powershell", "-NoProfile", "-STA", "-Command", ps],
                     env=env,
                     creationflags=0x08000000,  # CREATE_NO_WINDOW
                 )
