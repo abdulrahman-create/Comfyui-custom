@@ -30,12 +30,12 @@ import {
 import { injectCSS, buildRoot, el } from "./ui.mjs";
 import { openSettingsPanel, closeSettingsPanelFor } from "./settings.mjs";
 
-// 500 wide keeps the full button row (2 pills + 3 equal action buttons) on
-// ONE line; 800 tall gives the preview real space (user-measured 474x806
-// with the sizer snippet, rounded up for the equal-width flush row).
-const MIN_W = 500;
-const DEFAULT_W = 500;
-const DEFAULT_H = 800;
+// User-measured with the sizer snippet: 474 wide keeps the full button row
+// (2 pills + 3 equal action buttons, third labeled "Folder") on ONE line;
+// 806 tall gives the preview real space.
+const MIN_W = 474;
+const DEFAULT_W = 474;
+const DEFAULT_H = 806;
 const PREVIEW_MIN = 160; // the viewer's minimum height inside the floor
 const THUMB_SHOW_MAX = 16;
 
@@ -633,18 +633,38 @@ function setupNode(node) {
     node._pixSiFloorOff = installResizeFloor(ui.root, () => measureFloor(ui));
   } catch {}
 
-  // default size on a FRESH drop only; configure() restores saved sizes
+  // default size on a FRESH drop only; configure() restores saved sizes.
+  // The sync write is NOT enough: ComfyUI's node-creation pipeline re-sizes
+  // the node AFTER onNodeCreated returns (measured live: a fresh drop ended
+  // up 500x1830 while computeSize said 518). So fresh nodes are SNAPPED to
+  // the default again on the microtask + next frame; loaded nodes untouched.
+  const fresh = !isGraphLoading();
   if (!node.size) node.size = [DEFAULT_W, DEFAULT_H];
-  if (!isGraphLoading()) {
+  if (fresh) {
     node.size[0] = DEFAULT_W;
     if (node.size[1] < DEFAULT_H) node.size[1] = DEFAULT_H;
   }
+  const snapFresh = () => {
+    if (!node._pixSiUI) return;
+    if (Math.abs(node.size[0] - DEFAULT_W) > 1 || Math.abs(node.size[1] - DEFAULT_H) > 1) {
+      if (node.setSize) node.setSize([DEFAULT_W, DEFAULT_H]);
+      else {
+        node.size[0] = DEFAULT_W;
+        node.size[1] = DEFAULT_H;
+      }
+      node.setDirtyCanvas?.(true, true);
+    }
+  };
 
   // initial populate, deferred so configure()'s state lands first (Compat #8)
   queueMicrotask(() => {
     syncFace(node);
     restoreLastRun(node);
     updatePreview(node);
+    if (fresh) {
+      snapFresh();
+      requestAnimationFrame(snapFresh);
+    }
   });
 }
 

@@ -158,7 +158,7 @@ export function buildRoot() {
   const btnOpen = el("button", "pix-si-btn pix-si-primary pix-si-grow", "Open");
   btnOpen.type = "button";
   btnOpen.title = "Open the shown image in a new browser tab";
-  const btnFolder = el("button", "pix-si-btn pix-si-primary pix-si-grow", "Open Folder");
+  const btnFolder = el("button", "pix-si-btn pix-si-primary pix-si-grow", "Folder");
   btnFolder.type = "button";
   btnFolder.title = "Open the save folder in your file explorer (the window can appear on the taskbar)";
   btnRow.appendChild(btnCopy);
