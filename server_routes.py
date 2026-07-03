@@ -1757,8 +1757,24 @@ async def api_lif_pick_native(request):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Save Image Pixaroma routes: live filename-counter preview + open-in-explorer.
+# Save Image Pixaroma routes: live filename-counter preview, open-in-explorer,
+# and token-served previews for files saved OUTSIDE ComfyUI's folders.
 # The Browse button reuses /pixaroma/api/load_images_folder/pick_native above.
+
+
+@PromptServer.instance.routes.get("/pixaroma/api/save_image/file")
+async def api_save_image_file(request):
+    """Serve a file this server session just saved, looked up by an opaque
+    token (exact-path registry in node_save_image, filled ONLY by the save
+    node itself). No path arrives from the client, so there is no traversal
+    surface. Powers the node's preview for files saved outside ComfyUI's
+    folders, which /view cannot reach. Read-only; tokens die with the
+    server process."""
+    from .nodes.node_save_image import resolve_serve_token
+    path = resolve_serve_token(request.query.get("t", ""))
+    if not path or not os.path.isfile(path):
+        return web.Response(status=404, text="unknown or expired preview token")
+    return web.FileResponse(path)
 
 
 @PromptServer.instance.routes.get("/pixaroma/api/save_image/next_counter")
@@ -1817,46 +1833,14 @@ async def api_save_image_open_folder(request):
         import subprocess
         import sys
         if sys.platform == "win32":
+            # Plain open ONLY. The window may land behind the browser (the JS
+            # status line says to check the taskbar). Do NOT re-add the
+            # PowerShell bring-to-front script: its Add-Type + user32.dll
+            # P/Invoke command line is flagged by Bitdefender as "Malicious
+            # command line detected" and BLOCKED (real user report,
+            # 2026-07-03) - antivirus heuristics can't tell it apart from
+            # injector malware. os.startfile is a normal API call and safe.
             os.startfile(path)
-            # Best-effort: bring the Explorer window to the FRONT. A window
-            # opened by the server lands BEHIND the browser (user report:
-            # "looked like it did nothing, it was only on the taskbar"), and
-            # plain AppActivate is refused by Windows' foreground lock. The
-            # trick that works: find the Explorer window for this exact path
-            # via Shell.Application, minimize it, restore it (restoring a
-            # minimized window is allowed to take the foreground), then
-            # SetForegroundWindow. Retries for up to ~4s because Explorer
-            # opens asynchronously. Path travels via an env var (no quoting
-            # issues); detached, windowless, and fully fail-silent.
-            try:
-                ps = (
-                    "$t=($env:PIX_SI_PATH).TrimEnd('\\');"
-                    "Add-Type -Namespace P -Name W -MemberDefinition "
-                    "'[DllImport(\"user32.dll\")]public static extern bool SetForegroundWindow(IntPtr h);"
-                    "[DllImport(\"user32.dll\")]public static extern bool ShowWindow(IntPtr h,int n);';"
-                    "$sh=New-Object -ComObject Shell.Application;"
-                    "$end=(Get-Date).AddSeconds(4);$done=$false;"
-                    "while(-not $done -and (Get-Date) -lt $end){"
-                    "Start-Sleep -Milliseconds 250;"
-                    "foreach($w in @($sh.Windows())){"
-                    "try{$p=$w.Document.Folder.Self.Path;"
-                    "if($p -and ($p.TrimEnd('\\') -ieq $t)){"
-                    "$h=[IntPtr]$w.HWND;"
-                    "[void][P.W]::ShowWindow($h,6);"
-                    "Start-Sleep -Milliseconds 120;"
-                    "[void][P.W]::ShowWindow($h,9);"
-                    "[void][P.W]::SetForegroundWindow($h);"
-                    "$done=$true;break}}catch{}}}"
-                )
-                env = dict(os.environ)
-                env["PIX_SI_PATH"] = path
-                subprocess.Popen(
-                    ["powershell", "-NoProfile", "-STA", "-Command", ps],
-                    env=env,
-                    creationflags=0x08000000,  # CREATE_NO_WINDOW
-                )
-            except Exception:
-                pass
         elif sys.platform == "darwin":
             subprocess.Popen(["open", path])
         else:

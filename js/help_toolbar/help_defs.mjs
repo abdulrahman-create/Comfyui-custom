@@ -667,7 +667,7 @@ const HELP = {
     sections: [
       {
         heading: "What it does",
-        body: "Saves every image it receives to the folder you choose: type or paste any path, click `Browse` to pick one with the normal system dialog, or leave the field empty to use ComfyUI's output folder. The `Will save as` line always shows the exact file the next run will create, so complex naming patterns are never a surprise.\n\nBatches are handled automatically: every frame is saved with the counter increasing, and files never overwrite existing ones. Type `/` in the name to create subfolders, so `%date:yyyy-MM-dd%/image_%counter%` makes a folder per day.",
+        body: "Saves every image it receives to the folder you choose: type or paste any path, click `Browse` to pick one with the normal system dialog, or leave the field empty to use ComfyUI's output folder. The `Will save as` line always shows the exact file the next run will create, so complex naming patterns are never a surprise.\n\nBatches are handled automatically: every frame is saved with the counter increasing, and files never overwrite existing ones. Type `/` in the name to create subfolders, so `%date:yyyy-MM-dd%/image_%counter%` makes a folder per day.\n\nThe saved images show in a big preview on the node, so you do not need a separate preview node: click the image or use the `◀ ▶` arrows to flip through a batch, click a thumbnail below to jump to it, and resize the node to make the preview bigger.",
       },
       {
         heading: "Filename tokens (click the chips to insert them)",
@@ -686,8 +686,9 @@ const HELP = {
         bullets: [
           "`PNG` is lossless, keeps transparency, and embeds the workflow: drag a saved PNG back into ComfyUI to reload everything with the exact seed that made it.",
           "`JPG` makes much smaller files with a quality setting. ComfyUI cannot reload workflows from JPG files, so pick PNG when that matters.",
-          "Right-click the node for `Save Image settings`: date style (the order the + Date chip inserts, e.g. dd-MM-yyyy), counter digits (how many zeros %counter% uses), JPG quality, workflow embedding on or off, and `Save on every run` (turn it off to test a workflow without writing files).",
-          "`Open folder` opens the save location in your file explorer.",
+          "Right-click the node for `Save Image settings`: date style (the order the + Date chip inserts, e.g. dd-MM-yyyy), counter digits (how many zeros %counter% uses), JPG quality, workflow embedding on or off, and `Save on every run`.",
+          "`Save on every run` off turns the node into a pure preview: the images show on the node but nothing is written to your folder (frames go to ComfyUI's temporary folder, cleared on restart).",
+          "`Open folder` opens the save location in your file explorer. The window can appear on the taskbar instead of in front; that is a Windows limitation.",
         ],
       },
     ],

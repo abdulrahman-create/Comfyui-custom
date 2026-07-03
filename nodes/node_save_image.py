@@ -9,12 +9,12 @@ resolved FRONTEND-side before injection; %date:FMT%, %input%, %width%,
 %height%, %batch_num% and %counter% are resolved here.
 """
 
-import base64
-import io
 import json
 import os
 import re
 import time
+import uuid
+from collections import OrderedDict
 
 import folder_paths
 import numpy as np
@@ -48,8 +48,28 @@ _MEDIA_EXT_RE = re.compile(
     r"\.(png|jpe?g|webp|gif|bmp|tiff?|avif|mp4|mov|webm|mkv|m4v)$", re.IGNORECASE
 )
 
-_THUMB_MAX = 16    # thumbnails shipped to the node preview (all files still save)
-_THUMB_SIDE = 192  # thumbnail long side in px
+_PREVIEW_MAX = 16  # frames shown in the node preview (all files still save)
+
+# ── token-served previews (files saved OUTSIDE ComfyUI's folders) ────────────
+# /view can only serve input/output/temp, so the node preview fetches external
+# files through /pixaroma/api/save_image/file?t=<token>. The registry maps
+# opaque tokens to EXACT paths this session wrote - the client never sends a
+# path, so there is no traversal surface. Bounded FIFO; dies with the process.
+_SERVE_TOKENS = OrderedDict()
+_SERVE_CAP = 256
+
+
+def _register_serve_token(path):
+    tok = uuid.uuid4().hex
+    _SERVE_TOKENS[tok] = path
+    while len(_SERVE_TOKENS) > _SERVE_CAP:
+        _SERVE_TOKENS.popitem(last=False)
+    return tok
+
+
+def resolve_serve_token(tok):
+    """Exact-token lookup used by the serving route. None for anything else."""
+    return _SERVE_TOKENS.get(str(tok or ""))
 
 
 def _expand_native_tokens(s):
@@ -77,16 +97,6 @@ def _tensor_to_pil(tensor):
     """Convert a HxWxC float [0,1] tensor frame to a PIL.Image (RGB or RGBA)."""
     arr = (tensor.cpu().numpy() * 255.0).clip(0, 255).astype(np.uint8)
     return Image.fromarray(arr)
-
-
-def _thumb_b64(pil):
-    """Small base64 JPEG thumbnail for the node preview. Needed because files
-    saved OUTSIDE ComfyUI's folders can't be served through /view."""
-    t = pil.convert("RGB")
-    t.thumbnail((_THUMB_SIDE, _THUMB_SIDE))
-    buf = io.BytesIO()
-    t.save(buf, "JPEG", quality=70)
-    return base64.b64encode(buf.getvalue()).decode("ascii")
 
 
 def _build_jpeg_exif(prompt=None, workflow=None):
@@ -118,8 +128,13 @@ class PixaromaSaveImage:
         "never overwrites), %width%, %height%, %batch_num%, plus node references like %Seed Pixaroma.seed%. "
         "Use / in the name to create subfolders. Format is PNG (lossless, embeds the workflow so the file can be "
         "dragged back into ComfyUI) or JPG (smaller, quality setting in the right-click panel; ComfyUI cannot "
-        "reload workflows from JPG). Right-click the node for JPG quality, workflow embedding, and the "
-        "save-on-every-run switch. Batches save every frame with the counter increasing."
+        "reload workflows from JPG). Right-click the node for date style, counter digits, JPG quality, workflow "
+        "embedding, and the save-on-every-run switch. Batches save every frame with the counter increasing.\n\n"
+        "Saved images show in a large preview on the node: click the image or use the arrows to flip through a "
+        "batch, with a thumbnail strip below. Resize the node to make the preview bigger. With save-on-every-run "
+        "off the node previews without writing to your folder (frames go to ComfyUI's temporary folder instead), "
+        "so it can double as a preview node. Open folder shows the save location in your file explorer; the "
+        "window can appear on the taskbar."
     )
 
     @classmethod
@@ -177,13 +192,22 @@ class PixaromaSaveImage:
         w = int(images.shape[2])
         folder_abs, inside_output = _resolve_save_folder(state.get("folder", ""))
 
-        # Saving switched off: show what WOULD be saved, write nothing.
+        # Saving switched off: the node acts as a pure PREVIEW. Frames go to
+        # ComfyUI's temp/ folder (auto-cleared on restart, /view-servable,
+        # workflow embedded like native PreviewImage) - nothing is written to
+        # the user's folder.
         if not save_on:
+            temp_dir = folder_paths.get_temp_directory()
+            os.makedirs(temp_dir, exist_ok=True)
+            pnginfo = _build_pnginfo(prompt=prompt, extra_pnginfo=extra_pnginfo)
             entries = []
             for i, tensor in enumerate(images):
-                if i >= _THUMB_MAX:
+                if i >= _PREVIEW_MAX:
                     break
-                entries.append({"filename": "", "thumb": _thumb_b64(_tensor_to_pil(tensor))})
+                pil = _tensor_to_pil(tensor)
+                fname = f"pixaroma_save_preview_{uuid.uuid4().hex}.png"
+                pil.save(os.path.join(temp_dir, fname), "PNG", pnginfo=pnginfo)
+                entries.append({"filename": fname, "subfolder": "", "type": "temp"})
             if not entries:
                 entries.append({"filename": ""})
             entries[0]["_pixaroma_status"] = {
@@ -192,7 +216,7 @@ class PixaromaSaveImage:
                 "w": w,
                 "h": h,
                 "inside_output": inside_output,
-                "note": "Saving is off - nothing was written",
+                "note": "Saving is off - preview only, nothing was written",
             }
             return {"ui": {"pixaroma_save_frames": entries}}
 
@@ -331,8 +355,10 @@ class PixaromaSaveImage:
                 entry["type"] = "output"
             else:
                 entry["path"] = path
-                if len(results) < _THUMB_MAX:
-                    entry["thumb"] = _thumb_b64(pil)
+                if len(results) < _PREVIEW_MAX:
+                    # full-quality preview via the token route (/view can't
+                    # serve external paths)
+                    entry["token"] = _register_serve_token(path)
             results.append(entry)
 
         status = {

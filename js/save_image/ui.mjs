@@ -44,9 +44,19 @@ export function injectCSS() {
     ".pix-si-seg button{background:#1d1d1d;color:#aaa;border:none;padding:4px 13px;font-size:12px;cursor:pointer;font-family:inherit;}",
     ".pix-si-seg button.on{background:#f66744;color:#fff;}",
     ".pix-si-fmt-hint{font-size:10px;color:#8f8f8f;line-height:1.4;flex:1;min-width:0;}",
-    ".pix-si-thumbs{display:flex;gap:6px;flex-wrap:wrap;margin-top:2px;}",
-    ".pix-si-thumb{height:64px;width:64px;object-fit:cover;border-radius:4px;border:1px solid #444;background:#1d1d1d;display:block;}",
-    ".pix-si-more{height:64px;min-width:36px;display:flex;align-items:center;justify-content:center;color:#aaa;font-size:12px;border:1px dashed #444;border-radius:4px;padding:0 8px;box-sizing:border-box;}",
+    ".pix-si-saved{flex:1 1 0;min-height:0;display:flex;flex-direction:column;gap:6px;}",
+    ".pix-si-view{position:relative;flex:1 1 0;min-height:90px;background:#151515;border:1px solid #3c3c3c;border-radius:4px;overflow:hidden;}",
+    ".pix-si-big{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;cursor:pointer;}",
+    ".pix-si-ph{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#777;font-size:11px;padding:8px;text-align:center;}",
+    ".pix-si-nav{position:absolute;top:50%;transform:translateY(-50%);background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.18);color:#ddd;border-radius:4px;padding:4px 7px;font-size:11px;cursor:pointer;display:none;}",
+    ".pix-si-nav.prev{left:6px;}",
+    ".pix-si-nav.next{right:6px;}",
+    ".pix-si-nav:hover{background:#f66744;border-color:#f66744;color:#fff;}",
+    ".pix-si-count{position:absolute;right:6px;bottom:6px;background:rgba(0,0,0,.55);color:#ddd;font-size:11px;padding:1px 7px;border-radius:3px;display:none;}",
+    ".pix-si-strip{display:flex;gap:5px;flex-wrap:wrap;flex:0 0 auto;}",
+    ".pix-si-thumb{height:44px;width:44px;object-fit:cover;border-radius:4px;border:1px solid #444;background:#1d1d1d;display:block;cursor:pointer;}",
+    ".pix-si-thumb.sel{border-color:#f66744;box-shadow:0 0 0 1px #f66744;}",
+    ".pix-si-more{height:44px;min-width:32px;display:flex;align-items:center;justify-content:center;color:#aaa;font-size:11px;border:1px dashed #444;border-radius:4px;padding:0 7px;box-sizing:border-box;}",
     ".pix-si-status{display:flex;align-items:center;gap:7px;margin-top:6px;}",
     ".pix-si-stico{flex:0 0 auto;font-size:12px;line-height:1;}",
     ".pix-si-stico.ok{color:#3ec371;}",
@@ -148,18 +158,35 @@ export function buildRoot() {
   secFmt.appendChild(fmtHint);
   inner.appendChild(secFmt);
 
-  // ── saved this run ──
-  const secSaved = el("div");
+  // ── saved this run: big preview (fills the node) + thumb strip + status ──
+  const secSaved = el("div", "pix-si-saved");
   secSaved.appendChild(el("span", "pix-si-lab", "Saved this run"));
-  const thumbs = el("div", "pix-si-thumbs");
-  secSaved.appendChild(thumbs);
+  const view = el("div", "pix-si-view");
+  const bigImg = el("img", "pix-si-big");
+  bigImg.style.display = "none";
+  const ph = el("div", "pix-si-ph", "Run the workflow to save and preview the result here");
+  const navPrev = el("button", "pix-si-nav prev", "◀");
+  navPrev.type = "button";
+  navPrev.title = "Previous image";
+  const navNext = el("button", "pix-si-nav next", "▶");
+  navNext.type = "button";
+  navNext.title = "Next image";
+  const counter = el("div", "pix-si-count", "");
+  view.appendChild(bigImg);
+  view.appendChild(ph);
+  view.appendChild(navPrev);
+  view.appendChild(navNext);
+  view.appendChild(counter);
+  secSaved.appendChild(view);
+  const strip = el("div", "pix-si-strip");
+  secSaved.appendChild(strip);
   const status = el("div", "pix-si-status");
   const stIco = el("span", "pix-si-stico info", "●");
   const stTxt = el("span", "pix-si-sttxt", "No run yet");
   const openBtn = el("button", "pix-si-btn pix-si-open");
   openBtn.type = "button";
   openBtn.textContent = "Open folder";
-  openBtn.title = "Open the save folder in your file explorer";
+  openBtn.title = "Open the save folder in your file explorer (the window can appear on the taskbar)";
   status.appendChild(stIco);
   status.appendChild(stTxt);
   status.appendChild(openBtn);
@@ -178,7 +205,14 @@ export function buildRoot() {
     fmtPng,
     fmtJpg,
     fmtHint,
-    thumbs,
+    savedSec: secSaved,
+    view,
+    bigImg,
+    ph,
+    navPrev,
+    navNext,
+    counter,
+    strip,
     stIco,
     stTxt,
     openBtn,
