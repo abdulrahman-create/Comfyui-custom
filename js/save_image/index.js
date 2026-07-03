@@ -196,6 +196,7 @@ function entriesToFrames(list) {
     frames.push({
       src,
       title: (f.path || ((f.subfolder ? f.subfolder + "/" : "") + (f.filename || ""))) || "",
+      name: f.filename || (f.path ? String(f.path).split(/[\\/]/).pop() : "image.png"),
     });
     if (frames.length >= THUMB_SHOW_MAX) break;
   }
@@ -240,6 +241,7 @@ function renderPreviewUI(node) {
         im.style.display = "none";
       };
       cell.title = (f.title || "") + " - click to view";
+      cell.dataset.i = String(i);
       cell.appendChild(im);
       cell.appendChild(el("div", "pix-si-cellbadge", (i + 1) + " / " + total));
       cell.addEventListener("click", () => {
@@ -298,6 +300,61 @@ function openFrame(node) {
   if (!f) return;
   const w = window.open(f.src, "_blank", "noopener");
   if (!w) flashStatus(node, "info", "Popup blocked by the browser");
+}
+
+// Download the shown frame (same-origin src, so the download attribute works).
+function downloadFrame(node) {
+  const f = (node._pixSiFrames || [])[node._pixSiSel || 0];
+  if (!f) return;
+  const a = document.createElement("a");
+  a.href = f.src;
+  a.download = f.name || "image.png";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+// ── right-click menu on the preview image (native Save Image parity) ─────────
+let _imgMenu = null;
+function _imgMenuOutside(e) {
+  if (_imgMenu && !_imgMenu.contains(e.target)) closeImageMenu();
+}
+function _imgMenuEsc(e) {
+  if (e.key === "Escape") closeImageMenu();
+}
+function closeImageMenu() {
+  if (!_imgMenu) return;
+  try {
+    _imgMenu.remove();
+  } catch {}
+  _imgMenu = null;
+  document.removeEventListener("pointerdown", _imgMenuOutside, true);
+  document.removeEventListener("keydown", _imgMenuEsc, true);
+}
+function openImageMenu(node, x, y) {
+  closeImageMenu();
+  const menu = el("div", "pix-si-menu");
+  _imgMenu = menu;
+  const add = (label, fn) => {
+    const it = el("div", "pix-si-mitem", label);
+    it.addEventListener("click", () => {
+      closeImageMenu();
+      fn();
+    });
+    menu.appendChild(it);
+  };
+  add("Open image", () => openFrame(node));
+  add("Copy image", () => copyFrame(node));
+  add("Save image", () => downloadFrame(node));
+  document.body.appendChild(menu);
+  menu.style.left = Math.max(4, Math.min(x, window.innerWidth - menu.offsetWidth - 8)) + "px";
+  menu.style.top = Math.max(4, Math.min(y, window.innerHeight - menu.offsetHeight - 8)) + "px";
+  const _m = menu;
+  setTimeout(() => {
+    if (_imgMenu !== _m) return;
+    document.addEventListener("pointerdown", _imgMenuOutside, true);
+    document.addEventListener("keydown", _imgMenuEsc, true);
+  }, 0);
 }
 
 // ── live "Will save as" preview ───────────────────────────────────────────────
@@ -554,12 +611,38 @@ function wireEvents(node, ui) {
   });
   ui.btnCopy.addEventListener("click", () => copyFrame(node));
   ui.btnOpen.addEventListener("click", () => openFrame(node));
-  // No browser context menu anywhere on the node body (user request) - the
-  // text fields keep it (paste needs it), everything else suppresses it.
+  // Right-click routing (user request): text fields keep the browser menu
+  // (paste), the preview image gets OUR Open/Copy/Save menu (native Save
+  // Image parity), and everywhere else opens ComfyUI's own NODE menu.
   ui.root.addEventListener("contextmenu", (e) => {
     const t = e.target;
     if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
     e.preventDefault();
+    e.stopPropagation();
+    const frames = node._pixSiFrames || [];
+    if (frames.length && ui.view.contains(t)) {
+      const cell = t.closest ? t.closest(".pix-si-cell") : null;
+      if (cell && cell.dataset.i != null) {
+        const i = parseInt(cell.dataset.i, 10);
+        if (isFinite(i)) node._pixSiSel = i;
+      }
+      openImageMenu(node, e.clientX, e.clientY);
+      return;
+    }
+    // hand the click to ComfyUI's node context menu
+    try {
+      const c = app.canvas;
+      if (c && c.processContextMenu) {
+        if (c.convertEventToCanvasOffset) {
+          const off = c.convertEventToCanvasOffset(e);
+          if (off) {
+            e.canvasX = off[0];
+            e.canvasY = off[1];
+          }
+        }
+        c.processContextMenu(node, e);
+      }
+    } catch {}
   });
 
   ui.browseBtn.addEventListener("click", async () => {
@@ -902,6 +985,7 @@ app.registerExtension({
         this._pixSiFloorOff?.();
       } catch {}
       closeSettingsPanelFor(this);
+      closeImageMenu();
       clearTimeout(this._pixSiCntTimer);
       clearTimeout(this._pixSiFlashT);
       this._pixSiUI = null;

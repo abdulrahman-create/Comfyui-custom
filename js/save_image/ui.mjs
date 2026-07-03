@@ -78,6 +78,10 @@ export function injectCSS() {
     ".pix-si-x:hover{background:#f66744;border-color:#f66744;color:#fff;}",
     // one small info line under the image: dims + save summary + flashes
     ".pix-si-info{flex:0 0 auto;text-align:center;font-size:11px;color:#8f8f8f;min-height:12px;line-height:1.25;word-break:break-word;}",
+    // right-click menu on the preview image (Open / Copy / Save image)
+    ".pix-si-menu{position:fixed;z-index:10011;background:#1a1a1a;border:1px solid #444;border-radius:6px;padding:4px;min-width:150px;box-shadow:0 8px 24px rgba(0,0,0,0.6);font-family:'Segoe UI',system-ui,sans-serif;}",
+    ".pix-si-mitem{padding:6px 12px;font-size:12px;color:#ddd;border-radius:4px;cursor:pointer;white-space:nowrap;user-select:none;}",
+    ".pix-si-mitem:hover{background:#f66744;color:#fff;}",
     // Nodes 2.0: hide the native output-image preview panel for this node
     ".lg-node:has(.pix-si-root) .image-preview{display:none !important;}",
   ].join("\n");
