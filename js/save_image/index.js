@@ -30,9 +30,12 @@ import {
 import { injectCSS, buildRoot, el } from "./ui.mjs";
 import { openSettingsPanel, closeSettingsPanelFor } from "./settings.mjs";
 
-const MIN_W = 360;
-const DEFAULT_W = 460;
-const DEFAULT_H = 740;
+// 500 wide keeps the full button row (2 pills + 3 equal action buttons) on
+// ONE line; 800 tall gives the preview real space (user-measured 474x806
+// with the sizer snippet, rounded up for the equal-width flush row).
+const MIN_W = 500;
+const DEFAULT_W = 500;
+const DEFAULT_H = 800;
 const PREVIEW_MIN = 160; // the viewer's minimum height inside the floor
 const THUMB_SHOW_MAX = 16;
 

@@ -47,10 +47,15 @@ export function injectCSS() {
     ".pix-si-prevlab{font-size:10px;color:#8f8f8f;margin-bottom:2px;}",
     ".pix-si-prevpath{font-family:Consolas,ui-monospace,monospace;font-size:11px;color:#ffb59e;word-break:break-all;line-height:1.45;}",
     ".pix-si-hint{font-size:10px;color:#8f8f8f;margin-top:4px;line-height:1.5;}",
-    ".pix-si-seg{display:inline-flex;border:1px solid #444;border-radius:4px;overflow:hidden;flex:0 0 auto;}",
-    ".pix-si-seg button{background:#1d1d1d;color:#aaa;border:none;padding:4px 13px;font-size:12px;cursor:pointer;font-family:inherit;}",
+    // toggles are rounded PILLS so they read as switches, not action buttons
+    // (the rectangular orange buttons are the actions - user request)
+    ".pix-si-seg{display:inline-flex;border:1px solid #444;border-radius:999px;overflow:hidden;flex:0 0 auto;}",
+    ".pix-si-seg button{background:#1d1d1d;color:#aaa;border:none;padding:4px 11px;font-size:12px;cursor:pointer;font-family:inherit;}",
     ".pix-si-seg button.on{background:#f66744;color:#fff;}",
-    ".pix-si-btnrow{display:flex;flex-wrap:wrap;gap:6px;align-items:center;}",
+    // the action buttons share the leftover row space EQUALLY and the row
+    // ends flush with the right edge (flex-wrap only as a narrow fallback)
+    ".pix-si-btnrow{display:flex;flex-wrap:wrap;gap:6px;align-items:stretch;}",
+    ".pix-si-grow{flex:1 1 0;min-width:0;justify-content:center;}",
     // ── the viewer ──
     ".pix-si-saved{flex:1 1 0;min-height:0;display:flex;flex-direction:column;gap:5px;}",
     ".pix-si-view{position:relative;flex:1 1 0;min-height:120px;background:#151515;border:1px solid #3c3c3c;border-radius:4px;overflow:hidden;}",
@@ -147,13 +152,13 @@ export function buildRoot() {
   segMode.appendChild(modeSave);
   segMode.appendChild(modePreview);
   btnRow.appendChild(segMode);
-  const btnCopy = el("button", "pix-si-btn pix-si-primary", "Copy");
+  const btnCopy = el("button", "pix-si-btn pix-si-primary pix-si-grow", "Copy");
   btnCopy.type = "button";
   btnCopy.title = "Copy the shown image to the clipboard";
-  const btnOpen = el("button", "pix-si-btn pix-si-primary", "Open");
+  const btnOpen = el("button", "pix-si-btn pix-si-primary pix-si-grow", "Open");
   btnOpen.type = "button";
   btnOpen.title = "Open the shown image in a new browser tab";
-  const btnFolder = el("button", "pix-si-btn pix-si-primary", "Open Folder");
+  const btnFolder = el("button", "pix-si-btn pix-si-primary pix-si-grow", "Open Folder");
   btnFolder.type = "button";
   btnFolder.title = "Open the save folder in your file explorer (the window can appear on the taskbar)";
   btnRow.appendChild(btnCopy);
