@@ -36,7 +36,7 @@ const NODE_W = 240;     // default body width on a fresh drop
 const MIN_W = 200;      // resize floor — keeps the widest readout (00:00:000) un-clipped
 const CLOCK_H = 84;     // body height (constant — single centered clock line)
 const VUE_CHROME = 52;  // Nodes 2.0 only: node.size[1] = body + footer chip + borders
-const BARE_VUE_CHROME = 6; // Nodes 2.0 BARE: title + footer chip + frame hidden, so almost no chrome
+const BARE_VUE_CHROME = 0; // Nodes 2.0 BARE: title + footer chip + frame all hidden, so node.size == the clock body
 const DEFAULT_BARE_SETTING = "Pixaroma.RunTimer.DefaultBare"; // new timers start bare
 
 const DEFAULT_STATE = {
@@ -317,6 +317,36 @@ function renderPanelBody(node, body) {
   body.innerHTML = "";
   const st = readState(node);
 
+  // ── Appearance (size look) ── — mirrors the Seed settings panel: this-node
+  // toggle + the global new-node default.
+  const aSec = section("Appearance");
+
+  const bRow = row("This node");
+  bRow.appendChild(segmented(
+    [{ v: false, label: "Full" }, { v: true, label: "Compact" }],
+    !!st.bare,
+    (v) => { writeState(node, { bare: v }); applyBare(node); }
+  ));
+  aSec.appendChild(bRow);
+  const bHint = el("div", "pix-rt-sublbl");
+  bHint.textContent = "Compact hides the title bar, the category chip and the frame so just the clock shows (like a Label).";
+  aSec.appendChild(bHint);
+
+  const nRow = row("New Run Timers");
+  const defBareNow = !!(app.ui && app.ui.settings &&
+    app.ui.settings.getSettingValue(DEFAULT_BARE_SETTING) === true);
+  nRow.appendChild(segmented(
+    [{ v: false, label: "Full" }, { v: true, label: "Compact" }],
+    defBareNow,
+    (v) => { try { app.ui.settings.setSettingValueAsync(DEFAULT_BARE_SETTING, v); } catch (_e) {} }
+  ));
+  aSec.appendChild(nRow);
+  const nHint = el("div", "pix-rt-sublbl");
+  nHint.textContent = "The look every NEW Run Timer starts in. Saved globally (same as ComfyUI Settings > Pixaroma > Run Timer appearance).";
+  aSec.appendChild(nHint);
+
+  body.appendChild(aSec);
+
   // ── Chime ──
   const cSec = section("Chime");
 
@@ -561,7 +591,7 @@ function injectCSS() {
     //    the canvas (the clock is display-only; settings open from the menu).
     //    Scoped to the .pix-rt-bare marker; the .lg-node rules are Vue-only (no
     //    .lg-node element exists in legacy, so they are a no-op there).
-    ".pix-rt-root.pix-rt-bare{padding:0;pointer-events:none;}",
+    ".pix-rt-root.pix-rt-bare{pointer-events:none;}",
     ".lg-node:has(.pix-rt-bare){background:transparent!important;border:none!important;box-shadow:none!important;}",
     ".lg-node:has(.pix-rt-bare) .lg-node-header{display:none!important;}",
     ".lg-node:has(.pix-rt-bare) .lg-node-content{padding:0!important;}",
@@ -621,10 +651,46 @@ function setBareTitle(node, bare) {
 function applyBare(node) {
   const bare = !!readState(node).bare;
   setBareTitle(node, bare);
+  // Drop the pack badge ("Pixaroma") in bare mode. It is canvas-painted above
+  // the node in the classic renderer (CSS can't reach it) and driven by
+  // node.badges (same field the Label node clears). Save + restore so un-baring
+  // brings it back this session.
+  if (bare) {
+    if (node._pixRtBadges === undefined) node._pixRtBadges = node.badges;
+    node.badges = [];
+  } else if (node._pixRtBadges !== undefined) {
+    node.badges = node._pixRtBadges;
+    node._pixRtBadges = undefined;
+  }
   if (node._pixRtRoot) node._pixRtRoot.classList.toggle("pix-rt-bare", bare);
   refreshNodeSize(node);
   node.setDirtyCanvas && node.setDirtyCanvas(true, true);
   app.graph && app.graph.setDirtyCanvas && app.graph.setDirtyCanvas(true, true);
+}
+
+// Classic only: the node body CARD (fill + outline) is canvas-painted behind the
+// DOM clock, so a bare node still shows a gray frame around the clock. Wrap
+// drawNode and, for a bare Run Timer, neuter ctx.fill + ctx.stroke for the
+// duration so the body/outline isn't painted — only the DOM clock (drawn on top)
+// shows, with the grid through the frame area (the Label node's approach). No-op
+// in Nodes 2.0 (drawNode skips body paint there; the frame is hidden via CSS).
+function installRtFrameHook() {
+  if (typeof window === "undefined" || window._pixRtFrameWrapped) return;
+  const proto = window.LGraphCanvas && window.LGraphCanvas.prototype;
+  if (!proto || typeof proto.drawNode !== "function") return;
+  window._pixRtFrameWrapped = true;
+  const orig = proto.drawNode;
+  proto.drawNode = function (node, ctx) {
+    if (ctx && node && (node.comfyClass === NODE_NAME || node.type === NODE_NAME) &&
+        node.properties && node.properties[STATE_PROP] && node.properties[STATE_PROP].bare) {
+      const of = ctx.fill, os = ctx.stroke;
+      ctx.fill = function () {};
+      ctx.stroke = function () {};
+      try { return orig.apply(this, arguments); }
+      finally { ctx.fill = of; ctx.stroke = os; }
+    }
+    return orig.apply(this, arguments);
+  };
 }
 // Flip this node between the normal card and the bare clock (user action → a
 // node.properties write is fine; never on the load path).
@@ -741,6 +807,7 @@ app.registerExtension({
 
   setup() {
     installRunListeners();
+    installRtFrameHook();
     fetchSounds().then((list) => { _soundsCache = list; });
   },
 
