@@ -307,6 +307,9 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
+### **July 7, 2026 · v1.4.20**
+- **Fold the Save Image node to save space.** Once a Save Image node is set up, you can fold it down with the small arrow in the top-left corner so it shows only the buttons and your result image, tucking away the folder and file-name settings. Click the arrow again to open it back up. There is also a setting (right-click the node) to hide the button bar as well when folded, for the most compact look. The node remembers whether it was folded when you save and reopen your workflow, and it works in both the classic and the new node interface.
+
 ### **July 6, 2026 · v1.4.19**
 - **NEW: Save Image Pixaroma.** Save your images to any folder on your computer, not just ComfyUI's output folder. Type or paste a path, click Browse to pick one, or leave it empty for the output folder. Build the file name from clickable chips - the name from a Load Image node, the date or time, an auto-increasing counter, the width and height, the batch number, even the seed from a Seed node - and a live "Will save as" line shows the exact file the next run will create, so a complicated name is never a surprise. Files never overwrite (the counter continues from the highest number already there), and typing a slash in the name makes subfolders, like a folder per day. Choose PNG (keeps transparency and embeds the workflow so you can drag the file back in later) or JPG (smaller, with a quality setting). Your saved images show in a big preview right on the node - one image fills the space, a batch shows as a grid you can click through - so it also works as a preview node, with Copy, Open, and Open Folder buttons and a right-click menu on the picture. Flip the Mode to Preview to see results on the node without writing anything to disk. Works in both the classic and the new node interface.
 
