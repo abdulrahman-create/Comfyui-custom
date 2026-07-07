@@ -28,8 +28,9 @@ export function injectCSS() {
   s.textContent = [
     ".pix-si-root{position:relative;width:100%;height:100%;box-sizing:border-box;}",
     ".pix-si-inner{position:absolute;inset:0;display:flex;flex-direction:column;gap:10px;padding:8px 10px 4px;box-sizing:border-box;overflow:hidden;font-family:'Segoe UI',system-ui,sans-serif;}",
-    // top strip that holds the fold/unfold toggle (right-aligned, always shown)
-    ".pix-si-topbar{display:flex;justify-content:flex-end;align-items:center;flex:0 0 auto;min-height:22px;margin-bottom:-4px;}",
+    // top strip that holds the fold/unfold toggle (left-aligned + pulled up so
+    // it hugs the slots and doesn't leave a big empty gap on the right)
+    ".pix-si-topbar{display:flex;justify-content:flex-start;align-items:center;flex:0 0 auto;min-height:20px;margin:-6px 0 -6px;}",
     // orange square + white triangle, same idea as the group fold icon
     ".pix-si-fold{width:24px;height:22px;border:none;border-radius:4px;background:#f66744;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:0;flex:0 0 auto;}",
     ".pix-si-fold:hover{background:#ff7d58;}",
@@ -178,7 +179,6 @@ export function buildRoot() {
   fmtJpg.title = "Smaller JPG files. Quality is in the right-click settings. No transparency. Workflows reload from PNG only.";
   segFmt.appendChild(fmtPng);
   segFmt.appendChild(fmtJpg);
-  btnRow.appendChild(segFmt);
   const segMode = el("div", "pix-si-seg");
   const modeSave = el("button", null, "Save");
   modeSave.type = "button";
@@ -188,7 +188,6 @@ export function buildRoot() {
   modePreview.title = "Show the images on the node without writing anything to your folder";
   segMode.appendChild(modeSave);
   segMode.appendChild(modePreview);
-  btnRow.appendChild(segMode);
   const btnCopy = el("button", "pix-si-btn pix-si-primary pix-si-grow", "Copy");
   btnCopy.type = "button";
   btnCopy.title = "Copy the shown image to the clipboard";
@@ -198,9 +197,12 @@ export function buildRoot() {
   const btnFolder = el("button", "pix-si-btn pix-si-primary pix-si-grow", "Folder");
   btnFolder.type = "button";
   btnFolder.title = "Open the save folder in your file explorer (the window can appear on the taskbar)";
-  btnRow.appendChild(btnCopy);
+  // order (user pick): Open, Copy, Open Folder, then the PNG/JPG + Save/Preview pills
   btnRow.appendChild(btnOpen);
+  btnRow.appendChild(btnCopy);
   btnRow.appendChild(btnFolder);
+  btnRow.appendChild(segFmt);
+  btnRow.appendChild(segMode);
   secBtns.appendChild(btnRow);
   inner.appendChild(secBtns);
 
