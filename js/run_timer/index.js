@@ -518,6 +518,12 @@ function injectCSS() {
     //    HEADER + its reserved height are removed by title_mode NO_TITLE on the node
     //    type (set in beforeRegisterNodeDef), exactly like Label.
     ".lg-node:has(.pix-rt-root){background:transparent!important;border:none!important;box-shadow:none!important;}",
+    // Kill the frontend's hardcoded node min-WIDTH (225px) + min-HEIGHT
+    // (node.size[1] + ~30px title height). The min-height floor is the one that
+    // matters here: without it Nodes 2.0 reserves 84+30=114px and shows a ~30px
+    // dead/gray gap BELOW the 84px clock (the 'gray contour'). Label zeros both
+    // (render.mjs injectVueLabelCSS rule 1); mirror it, scoped to .pix-rt-root.
+    ".lg-node:has(.pix-rt-root),.lg-node:has(.pix-rt-root) > div,.lg-node:has(.pix-rt-root) > div > div{min-width:0!important;min-height:0!important;}",
     ".lg-node:has(.pix-rt-root) .lg-node-header{display:none!important;}",
     ".lg-node:has(.pix-rt-root) .lg-node-content{padding:0!important;}",
     ".lg-node:has(.pix-rt-root) [class*=\"component-node-background\"]{padding:0!important;gap:0!important;background:transparent!important;}",
@@ -618,6 +624,39 @@ function paintLegacyClock(node, ctx) {
     ctx.fillText(s.g.unit, x + 2, midY - 8); ctx.globalAlpha = 1; x += 2 + s.uw;
   });
   ctx.restore();
+}
+
+// Classic only: LiteGraph paints the node's own body (bgcolor fill + a drop
+// shadow) BEFORE onDrawForeground. On a title-less node that leaves a soft
+// shadow/frame around the clock (the Label node hit this — CLAUDE.md Label #7).
+// Wrap drawNode and, for a Run Timer, MATCH the body to the clock screen (same
+// fill colour + corner radius) and kill the drop shadow for the duration, so the
+// body IS the clock and no frame shows. Our onDrawForeground paints the digits +
+// dot on top. All state restored in finally. No-op in Nodes 2.0 (body paint is
+// skipped there; the frame is hidden via CSS). Composes with Label's own drawNode
+// wrap (each checks its node type and passes the rest through).
+function installRtBodyHook() {
+  if (typeof window === "undefined" || window._pixRtBodyWrapped) return;
+  const proto = window.LGraphCanvas && window.LGraphCanvas.prototype;
+  if (!proto || typeof proto.drawNode !== "function") return;
+  window._pixRtBodyWrapped = true;
+  const orig = proto.drawNode;
+  proto.drawNode = function (node, ctx) {
+    if (ctx && node && (node.type === NODE_NAME || node.comfyClass === NODE_NAME)) {
+      const sBg = node.bgcolor, sCol = node.color, sShadow = ctx.shadowColor;
+      const LG = window.LiteGraph || {};
+      const sR = LG.ROUND_RADIUS;
+      node.bgcolor = "#0c0c0e"; node.color = "#0c0c0e";
+      if (LG) LG.ROUND_RADIUS = 8;
+      ctx.shadowColor = "rgba(0,0,0,0)";
+      try { return orig.apply(this, arguments); }
+      finally {
+        node.bgcolor = sBg; node.color = sCol; ctx.shadowColor = sShadow;
+        if (LG) LG.ROUND_RADIUS = sR;
+      }
+    }
+    return orig.apply(this, arguments);
+  };
 }
 
 // ── node sizing ─────────────────────────────────────────────────────────────
@@ -722,11 +761,14 @@ app.registerExtension({
 
   setup() {
     installRunListeners();
+    installRtBodyHook();
     fetchSounds().then((list) => { _soundsCache = list; });
   },
 
   getNodeMenuItems(node) {
-    if (!node || node.comfyClass !== NODE_NAME) return [];
+    // node.type fallback (comfyClass isn't populated on every build/timing — the
+    // exact case Label's own hook guards, js/label/index.js).
+    if (!node || (node.type !== NODE_NAME && node.comfyClass !== NODE_NAME)) return [];
     return [null, { content: "⚙ Run Timer settings", callback: () => openPanel(node) }];
   },
 
@@ -787,7 +829,7 @@ app.registerExtension({
   },
 
   nodeCreated(node) {
-    if (node.comfyClass !== NODE_NAME) return;
+    if (node.type !== NODE_NAME && node.comfyClass !== NODE_NAME) return;
     setupNode(node);
   },
 });
