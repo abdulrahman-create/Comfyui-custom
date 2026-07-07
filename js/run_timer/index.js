@@ -36,8 +36,14 @@ const NODE_W = 240;     // default body width on a fresh drop
 const MIN_W = 200;      // resize floor — keeps the widest readout (00:00:000) un-clipped
 const CLOCK_H = 84;     // body height (constant — single centered clock line)
 const VUE_CHROME = 52;  // Nodes 2.0 only: node.size[1] = body + footer chip + borders
-const BARE_VUE_CHROME = 0; // Nodes 2.0 BARE: title + footer chip + frame all hidden, so node.size == the clock body
 const DEFAULT_BARE_SETTING = "Pixaroma.RunTimer.DefaultBare"; // new timers start bare
+
+// LiteGraph's title-bar height (used to compensate the reserved title space that
+// Nodes 2.0 keeps in bare mode). Read lazily — window.LiteGraph isn't ready at
+// module load.
+function titleH() {
+  return (typeof window !== "undefined" && window.LiteGraph && window.LiteGraph.NODE_TITLE_HEIGHT) || 30;
+}
 
 const DEFAULT_STATE = {
   version: 1,
@@ -538,7 +544,11 @@ function injectCSS() {
   const s = document.createElement("style");
   s.id = "pix-rt-css";
   s.textContent = [
-    ".pix-rt-root{display:flex;padding:6px 8px;box-sizing:border-box;width:100%;height:100%;}",
+    // pointer-events:none → the whole clock body is click-through, so dragging it
+    // moves the NODE (via the canvas) instead of grabbing the display; user-select
+    // :none → the digits can never be selected as text. Right-click still opens
+    // the menu (the canvas gets it); the node has no interactive body controls.
+    ".pix-rt-root{display:flex;padding:6px 8px;box-sizing:border-box;width:100%;height:100%;pointer-events:none;user-select:none;-webkit-user-select:none;}",
     ".pix-rt-screen{flex:1;min-width:0;position:relative;display:flex;align-items:center;justify-content:center;background:#0c0c0e;border:1px solid #1d1d20;border-radius:8px;padding:8px;box-sizing:border-box;}",
     ".pix-rt-time{display:flex;align-items:center;justify-content:center;gap:4px;font-family:'Consolas','DejaVu Sans Mono','SF Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums;white-space:nowrap;color:var(--cc,#f66744);}",
     ".pix-rt-cseg{display:inline-flex;align-items:flex-start;}",
@@ -591,7 +601,6 @@ function injectCSS() {
     //    the canvas (the clock is display-only; settings open from the menu).
     //    Scoped to the .pix-rt-bare marker; the .lg-node rules are Vue-only (no
     //    .lg-node element exists in legacy, so they are a no-op there).
-    ".pix-rt-root.pix-rt-bare{pointer-events:none;}",
     ".lg-node:has(.pix-rt-bare){background:transparent!important;border:none!important;box-shadow:none!important;}",
     ".lg-node:has(.pix-rt-bare) .lg-node-header{display:none!important;}",
     ".lg-node:has(.pix-rt-bare) .lg-node-content{padding:0!important;}",
@@ -606,17 +615,29 @@ function injectCSS() {
 
 // ── node sizing (dot-less DOM-widget panel — Group Switch recipe) ───────────
 function bodyHeight() { return CLOCK_H; }
+// DOM-widget min height. In Nodes 2.0 BARE mode we keep title_mode NORMAL (the
+// reactive Vue node keeps reserving ~30px of title height regardless — a live
+// title_mode shadow does NOT clear it, verified), and instead shrink node.size by
+// that reserve so the rendered element lands back at the clock body. So the bare
+// Vue floor is bodyHeight - titleH; everything else is the full body.
+function widgetMinHeight(node) {
+  return (isVueNodes() && readState(node).bare) ? Math.max(20, bodyHeight() - titleH()) : bodyHeight();
+}
 function refreshNodeSize(node) {
   if (isGraphLoading()) return;
   try {
     if (typeof node.setSize !== "function") return;
     const bare = readState(node).bare;
-    // Bare hides the title, footer chip AND frame, so the Vue node needs almost
-    // no chrome beyond the clock body (the +52 accounts for the footer chip +
-    // borders that bare removes).
-    const target = isVueNodes()
-      ? bodyHeight() + (bare ? BARE_VUE_CHROME : VUE_CHROME)
-      : (typeof node.computeSize === "function" ? node.computeSize()[1] : bodyHeight());
+    let target;
+    if (isVueNodes()) {
+      // Normal = clock body + chrome (footer chip + borders). Bare = clock body
+      // MINUS the reserved title height (Nodes 2.0 still reserves it — the copy is
+      // stale), so element = node.size + reserve lands at the clock body. A
+      // CONSTANT, so it stays correct across save / load / toggle.
+      target = bare ? Math.max(20, bodyHeight() - titleH()) : bodyHeight() + VUE_CHROME;
+    } else {
+      target = (typeof node.computeSize === "function" ? node.computeSize()[1] : bodyHeight());
+    }
     if (Math.abs((node.size[1] || 0) - target) > 1) node.setSize([node.size[0], target]);
   } catch (_e) {}
 }
@@ -634,7 +655,16 @@ function refreshNodeSize(node) {
 // truth is state.bare, re-applied on load.
 function setBareTitle(node, bare) {
   const LG = (typeof window !== "undefined" && window.LiteGraph) || {};
-  if (bare) {
+  // Shadow title_mode ONLY in the CLASSIC renderer. Legacy re-reads title_mode
+  // fresh each draw (measure() reserves the title height + the draw gate), so the
+  // shadow reliably removes both the title bar AND its reserved height. Nodes 2.0
+  // caches title_mode in a reactive COPY that only re-reads on remount — a live
+  // shadow leaves title_mode = NO_TITLE but STILL reserves the 30px (verified via
+  // the diagnostic: element = node.size + 30). So in Vue we do NOT shadow: the
+  // title stays NORMAL, the header is hidden via CSS, and node.size compensates
+  // the constant reserve (see refreshNodeSize / widgetMinHeight).
+  const wantShadow = bare && !isVueNodes();
+  if (wantShadow) {
     Object.defineProperty(node, "title_mode", {
       value: LG.NO_TITLE != null ? LG.NO_TITLE : 1,
       configurable: true, writable: true, enumerable: false,
@@ -721,11 +751,11 @@ function setupNode(node) {
   const widget = node.addDOMWidget("run_timer_ui", "pixaroma_run_timer", root, {
     getValue: () => readState(node),
     setValue: () => {},
-    getMinHeight: () => bodyHeight(),
+    getMinHeight: () => widgetMinHeight(node),
     serialize: false, // state lives on node.properties
   });
   applyAdaptiveCanvasOnly(widget);
-  widget.computeLayoutSize = () => ({ minHeight: bodyHeight(), minWidth: 1 });
+  widget.computeLayoutSize = () => ({ minHeight: widgetMinHeight(node), minWidth: 1 });
   node._pixRtFloorOff = installResizeFloor(root, () => bodyHeight());
 
   // Classic: hug the body (the stock computeSize reserves a phantom slot row +
