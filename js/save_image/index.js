@@ -476,7 +476,7 @@ function resolveWiredName(node) {
 }
 
 function cntKey(folderRaw, nameWithExt, digits) {
-  return folderRaw + " " + nameWithExt + " " + digits;
+  return folderRaw + "\x00" + nameWithExt + "\x00" + digits;
 }
 function scheduleCounterFetch(node, folderRaw, nameWithExt, digits) {
   if (!nameWithExt.includes("%counter%")) return;
