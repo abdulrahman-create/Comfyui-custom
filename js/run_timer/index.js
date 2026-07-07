@@ -42,9 +42,10 @@ const BRAND = "#f66744";
 const NODE_NAME = "PixaromaRunTimer";
 const STATE_PROP = "runTimerState";
 
-const NODE_W = 185;  // default width on a fresh drop (compact)
-const MIN_W = 160;   // resize floor — keeps the m:s readout un-clipped
-const CLOCK_H = 54;  // node height (constant — a single tight clock line)
+const NODE_W = 160;  // starting width (refit to the clock content on drop)
+const MIN_W = 130;   // resize floor — keeps the m:s readout un-clipped
+const CLOCK_H = 50;  // node height (constant — a single tight clock line)
+const FIT_PAD_X = 26; // horizontal breathing room added around the measured clock
 
 const DEFAULT_STATE = {
   version: 1,
@@ -164,8 +165,46 @@ function flashScreen(node) {
 // Refresh the on-screen clock the right way for the renderer: a canvas repaint
 // in the CLASSIC renderer (onDrawForeground redraws), else the DOM paint.
 function refreshClock(node) {
+  maybeFitWidth(node); // hug the clock content when the readout shape changes
   if (!isVueNodes()) { node.setDirtyCanvas && node.setDirtyCanvas(true, true); }
   else paint(node);
+}
+
+// ── fit the node width to the clock content (the Label 'fit' trick) ─────────
+// Monospace digits → the width is stable per SHAPE (decimals + hour rollover), so
+// we only remeasure/resize when the shape changes. Sizing the node tightly to the
+// content is what makes it look like a compact clock with no empty space.
+let _measCanvas = null;
+function measureClockContentWidth(node) {
+  if (!_measCanvas) _measCanvas = document.createElement("canvas");
+  const ctx = _measCanvas.getContext("2d");
+  const parts = clockParts(node._rtDisplayMs || 0, node._pixRtDecimals != null ? node._pixRtDecimals : 0);
+  const NUM = "600 30px 'Consolas','DejaVu Sans Mono',ui-monospace,monospace";
+  const UNIT = "500 13px 'Consolas','DejaVu Sans Mono',ui-monospace,monospace";
+  const FRAC = "600 19px 'Consolas','DejaVu Sans Mono',ui-monospace,monospace";
+  const gap = 5;
+  let total = 0;
+  ctx.font = NUM; const colonW = ctx.measureText(":").width;
+  parts.groups.forEach((g, i) => {
+    if (i > 0) total += gap * 2 + colonW;
+    ctx.font = NUM; total += ctx.measureText(g.num).width + Math.max(0, g.num.length - 1); // + ~1px letter-spacing/digit
+    if (parts.frac && i === parts.groups.length - 1) { ctx.font = FRAC; total += ctx.measureText(parts.frac).width; }
+    ctx.font = UNIT; total += 2 + ctx.measureText(g.unit).width;
+  });
+  return total;
+}
+function fitClockWidth(node) {
+  if (isGraphLoading()) return; // dirty-on-load safe (trust the saved width on load)
+  if (typeof node.setSize !== "function") return;
+  const w = Math.max(MIN_W, Math.round(measureClockContentWidth(node) + FIT_PAD_X));
+  if (Math.abs((node.size[0] || 0) - w) > 1) node.setSize([w, node.size[1]]);
+}
+function maybeFitWidth(node) {
+  const parts = clockParts(node._rtDisplayMs || 0, node._pixRtDecimals != null ? node._pixRtDecimals : 0);
+  const sig = parts.groups.length + "|" + (parts.frac ? parts.frac.length : 0);
+  if (node._rtWidthSig === sig) return; // only refit when the readout shape changes
+  node._rtWidthSig = sig;
+  fitClockWidth(node);
 }
 // Apply color + decimals from state and repaint.
 function applyState(node) {
@@ -530,8 +569,11 @@ function injectCSS() {
     // Collapse the widget grid's padding/gaps + hide the reorder-handle gutter
     // (Label render.mjs rule 2) so the clock isn't offset or ringed by widget
     // chrome. The clock widget still fills the width (it's the last, 1fr column).
-    ".lg-node:has(.pix-rt-root) .lg-node-widgets{padding-right:0!important;row-gap:0!important;gap:0!important;}",
-    ".lg-node:has(.pix-rt-root) .lg-node-widget{gap:0!important;}",
+    // grid-template-columns: 1fr → the widget (and the clock screen inside it)
+    // FILLS the node width instead of hugging the digits, so the node body never
+    // shows as gray to the right of the clock.
+    ".lg-node:has(.pix-rt-root) .lg-node-widgets{grid-template-columns:minmax(0,1fr)!important;padding:0!important;row-gap:0!important;gap:0!important;}",
+    ".lg-node:has(.pix-rt-root) .lg-node-widget{gap:0!important;width:100%!important;}",
     ".lg-node:has(.pix-rt-root) .lg-node-widget > *:first-child{display:none!important;}",
     ".lg-node:has(.pix-rt-root) .lg-node-content{padding:0!important;}",
     ".lg-node:has(.pix-rt-root) [class*=\"component-node-background\"]{padding:0!important;gap:0!important;background:transparent!important;}",
