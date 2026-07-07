@@ -251,7 +251,11 @@ function fitSeedFont(num) {
   num.style.fontSize = MAX + "px";
   if (!num.clientWidth) return; // not laid out yet — a scheduled retry will catch it
   let fs = MAX, guard = 0;
-  while (fs > MIN && num.scrollWidth > num.clientWidth + 1 && guard++ < 24) {
+  // Shrink the moment the text overflows AT ALL. The old `+ 1` tolerance let a
+  // number that was 1px too wide through, so the last digit's edge got clipped
+  // (reported on Legacy). For an <input>, scrollWidth == clientWidth exactly
+  // when the text fits, so this stops as soon as it fits - no over-shrink.
+  while (fs > MIN && num.scrollWidth > num.clientWidth && guard++ < 24) {
     fs -= 1;
     num.style.fontSize = fs + "px";
   }
@@ -268,7 +272,7 @@ function measureSeedHeight(root) {
   return Math.round(h / 4) * 4;
 }
 
-const COMPACT_MIN_W = 285; // compact mode widens to at least this so the one-line seed fits + stays readable
+const COMPACT_MIN_W = 300; // compact mode widens to at least this so a 16-digit seed sits comfortably (not shrunk small / clipped)
 
 // Re-fit the node to the current content height (used after a Compact/Full
 // toggle - a user action, so writing node.size is fine; NEVER call this on the
