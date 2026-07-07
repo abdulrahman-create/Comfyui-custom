@@ -12,47 +12,47 @@ import { createPixaromaColorPicker } from "../shared/color_picker.mjs";
 // ╚══════════════════════════════════════════════════════════════════════╝
 //
 // Frontend-only node (never runs in Python). It listens to ComfyUI's run
-// events: on execution_start it resets to zero and counts up live; on finish
-// it freezes the total and plays a chime. The node body is JUST the clock;
-// every setting (chime on/off, sound, volume, decimals, clock color) lives in
-// a floating panel opened from the node's right-click menu. State is stored on
-// node.properties.runTimerState — serialized natively, restored on load.
+// events: on execution_start it resets to zero and counts up live; on finish it
+// freezes the total and plays a chime. Every setting (chime/sound/volume/
+// decimals/color) lives in a floating right-click panel. State is on
+// node.properties.runTimerState.
 //
-// The last FINISHED total is ALSO persisted (node.properties.runTimerLastMs) so
-// it survives a workflow-tab switch / page reload instead of resetting to zero
-// (the live _rtDisplayMs field is torn down with the node — Preview Image
-// Pattern #4). A finished run writes it, so the workflow flags "modified" —
-// accepted, exactly like Preview Image / Save Mp4. The restore path only READS
-// it, so a plain open never dirties the workflow (Vue Compat #18).
+// TITLE-LESS BY DESIGN (like the Label node). The whole node is just the clock —
+// no title bar, no category chip, no frame. This is done the SAME way Label does
+// it, which is the ONLY way that works cleanly in both renderers:
+//   • `nodeType.title_mode = NO_TITLE` is set ONCE on the node TYPE (not per
+//     node). Set at registration, so the Nodes 2.0 reactive node reads NO_TITLE
+//     from first mount and never reserves the title height (a per-node LIVE
+//     toggle does NOT work — Vue caches title_mode in a copy that only re-reads
+//     on remount, so it keeps reserving the 30px → the node renders too tall).
+//   • CLASSIC renderer: NO DOM widget at all — the clock is painted straight onto
+//     the node canvas (onDrawForeground). A DOM element on top of the canvas
+//     can't behave like a canvas node: click-through routes clicks to the
+//     browser, not the node, so it can't be dragged/right-clicked. Painting on
+//     the canvas makes it a real node — LiteGraph handles drag + right-click.
+//   • NODES 2.0: a DOM-widget clock, with the frame/chip hidden via CSS and the
+//     widget subtree click-through so drag + right-click reach the canvas.
 //
-// Built for BOTH renderers (the dot-less DOM-widget sizing recipe + the
-// floating settings panel are the Group Switch pattern).
+// The last FINISHED total is persisted (node.properties.runTimerLastMs) so it
+// survives a tab switch / reload (Preview Image Pattern #4); a finished run
+// writes it (flags "modified", accepted), the load path only READS it (dirty-on-
+// load safe, Vue Compat #18).
 
 const BRAND = "#f66744";
 const NODE_NAME = "PixaromaRunTimer";
 const STATE_PROP = "runTimerState";
 
-const NODE_W = 240;     // default body width on a fresh drop
-const MIN_W = 200;      // resize floor — keeps the widest readout (00:00:000) un-clipped
-const CLOCK_H = 84;     // body height (constant — single centered clock line)
-const VUE_CHROME = 52;  // Nodes 2.0 only: node.size[1] = body + footer chip + borders
-const DEFAULT_BARE_SETTING = "Pixaroma.RunTimer.DefaultBare"; // new timers start bare
-
-// LiteGraph's title-bar height (used to compensate the reserved title space that
-// Nodes 2.0 keeps in bare mode). Read lazily — window.LiteGraph isn't ready at
-// module load.
-function titleH() {
-  return (typeof window !== "undefined" && window.LiteGraph && window.LiteGraph.NODE_TITLE_HEIGHT) || 30;
-}
+const NODE_W = 240;  // default width on a fresh drop
+const MIN_W = 200;   // resize floor — keeps the widest readout (00:00:000) un-clipped
+const CLOCK_H = 84;  // node height (constant — a single centered clock line)
 
 const DEFAULT_STATE = {
   version: 1,
   color: BRAND,   // clock digit color
   decimals: 0,    // 0 = m:s (default), 2 = + hundredths, 3 = + milliseconds
   chime: true,    // play a sound on finish
-  sound: "",      // "" = use the library default (Vista.mp3 / first file)
+  sound: "",      // "" = the library default (Vista.mp3 / first file)
   volume: 70,     // 0..100
-  bare: false,    // true = hide the title bar + category chip + frame (float like Label)
 };
 
 // ── DOM helper ──────────────────────────────────────────────────────────────
@@ -98,12 +98,9 @@ async function playSound(filename, volume01) {
 
 // ── time formatting ─────────────────────────────────────────────────────────
 function pad(n, l) { n = String(n); while (n.length < l) n = "0" + n; return n; }
-// Break ms into labeled groups. The fraction (hundredths / milliseconds) rides
-// on the seconds group after a decimal point, so it reads as "8.886 sec"; the
-// hr/min/sec labels under each group say which is which. Past an hour the layout
-// becomes hr:min:sec (the fraction is dropped — it just flickers at that scale).
-// Math.floor on every part is REQUIRED: ms is a float, so without it the raw
-// decimals leak (e.g. "886.5999999999").
+// Break ms into labeled groups. The fraction rides on the seconds group after a
+// decimal point. Past an hour → hr:min:sec (fraction dropped). Math.floor on
+// every part is REQUIRED (ms is a float, else raw decimals leak).
 function clockParts(ms, dec) {
   if (ms >= 3600000) {
     const h = Math.floor(ms / 3600000);
@@ -120,9 +117,9 @@ function clockParts(ms, dec) {
   return { groups, frac };
 }
 
-// ── display ─────────────────────────────────────────────────────────────────
-// Rebuild the segment STRUCTURE only when the shape changes (hour rollover or a
-// decimals change); otherwise just update the numbers each frame for speed.
+// ── display (Nodes 2.0 DOM clock) ───────────────────────────────────────────
+// Rebuild the segment STRUCTURE only when the shape changes; otherwise just
+// update the numbers each frame. No-op in the classic renderer (no DOM clock).
 function paint(node) {
   const wrap = node._pixRtTime;
   if (!wrap) return;
@@ -153,32 +150,33 @@ function paint(node) {
   }
 }
 function setDot(node, mode) {
-  node._rtDotState = mode; // the classic-bare canvas painter reads this
+  node._rtDotState = mode; // the classic canvas painter reads this
   if (node._pixRtDot) node._pixRtDot.className = "pix-rt-dot" + (mode === "run" ? " run" : mode === "done" ? " done" : "");
-  if (!isVueNodes() && readState(node).bare) node.setDirtyCanvas && node.setDirtyCanvas(true, true);
+  if (!isVueNodes()) node.setDirtyCanvas && node.setDirtyCanvas(true, true);
 }
 function flashScreen(node) {
   const scr = node._pixRtScreen;
-  if (!scr) return;
+  if (!scr) return; // Nodes 2.0 only (classic just freezes the number + orange dot)
   scr.classList.remove("flash");
   void scr.offsetWidth; // reflow so the animation can replay
   scr.classList.add("flash");
 }
-// Apply color + decimals from state and repaint the current value.
+// Refresh the on-screen clock the right way for the renderer: a canvas repaint
+// in the CLASSIC renderer (onDrawForeground redraws), else the DOM paint.
+function refreshClock(node) {
+  if (!isVueNodes()) { node.setDirtyCanvas && node.setDirtyCanvas(true, true); }
+  else paint(node);
+}
+// Apply color + decimals from state and repaint.
 function applyState(node) {
   const st = readState(node);
   node._pixRtDecimals = st.decimals;
   if (node._pixRtScreen) node._pixRtScreen.style.setProperty("--cc", st.color || BRAND);
   refreshClock(node);
 }
-// Restore the last frozen total from node.properties so a workflow-tab switch
-// or page reload shows it again instead of 00:00 (the live _rtDisplayMs field
-// is torn down with the node — Preview Image Pattern #4). READ-ONLY: it never
-// writes node.properties, so a plain open stays dirty-on-load safe (Vue Compat
-// #18). Skipped while a run is live so it can't clobber the counting value.
-// A real run is a performance.now() delta (hours at most), so reject an absurd
-// value from a hand-edited / corrupted / shared workflow JSON — it would render
-// a garbage clock. The only legitimate writer is finishAll.
+// Restore the last frozen total from node.properties (survives tab switch /
+// reload). READ-ONLY (dirty-on-load safe). Rejects an absurd value from a
+// corrupted / hand-edited workflow JSON.
 const MAX_RESTORE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days — generous vs any real run
 function restoreLastRun(node) {
   if (node._rtRunning) return;
@@ -220,10 +218,8 @@ async function maybeChime(node) {
   if (app.ui.settings.getSettingValue("Pixaroma.RunTimer.Muted") === true) return;
   let sound = st.sound;
   if (!sound) {
-    // A very fast first run after a page load can finish before the sounds
-    // list has fetched. Await the memoized fetch (no extra request) so the
-    // default chime still plays; fall back to the bundled Vista.mp3 if the
-    // library is somehow empty.
+    // A very fast first run can finish before the sounds list has fetched. Await
+    // the memoized fetch so the default chime still plays; fall back to Vista.mp3.
     if (!_soundsCache.length) _soundsCache = await fetchSounds();
     sound = defaultSound() || "Vista.mp3";
   }
@@ -234,17 +230,14 @@ function finishAll(success) {
     if (!node._rtRunning) continue;   // idempotent: first finish wins
     node._rtRunning = false;
     node._rtDisplayMs = performance.now() - node._rtStart;
-    // Persist the frozen total so a workflow-tab switch / reload restores it
-    // (see restoreLastRun). This is a genuine run-completion write — it flags
-    // the workflow "modified" (accepted, like Preview Image / Save Mp4). It is
-    // NEVER written on the load path, so it stays dirty-on-load safe.
+    // Persist the frozen total (see restoreLastRun). A genuine run-completion
+    // write (flags "modified", accepted); never written on the load path.
     if (!node.properties) node.properties = {};
     node.properties.runTimerLastMs = node._rtDisplayMs;
     refreshClock(node);
     setDot(node, "done");
     flashScreen(node);
     if (success) maybeChime(node);
-    // The frozen total stays on screen; the dot eases back to idle.
     clearTimeout(node._rtDotT);
     node._rtDotT = setTimeout(() => setDot(node, "idle"), 2200);
   }
@@ -254,17 +247,15 @@ let _listenersInstalled = false;
 function installRunListeners() {
   if (_listenersInstalled) return;
   _listenersInstalled = true;
-  // Start: the run has begun executing.
   api.addEventListener("execution_start", () => startAll());
-  // Finish: 'executing' with a null node = the queue item finished (older
-  // builds), plus execution_success on newer builds. Either is a clean finish.
+  // 'executing' with a null node = queue item finished (older builds);
+  // execution_success covers newer builds.
   api.addEventListener("executing", (e) => {
     const d = e && e.detail;
     const nodeId = (d && typeof d === "object") ? d.node : d;
     if (nodeId == null) finishAll(true);
   });
   api.addEventListener("execution_success", () => finishAll(true));
-  // Error / cancel: stop the clock but do NOT chime.
   api.addEventListener("execution_error", () => finishAll(false));
   api.addEventListener("execution_interrupted", () => finishAll(false));
 }
@@ -283,9 +274,6 @@ function row(label) {
   r.appendChild(l);
   return r;
 }
-// Segmented control that updates its own active state in place (so the panel
-// never needs a full rebuild on a click — that would tear down the embedded
-// color picker mid-interaction).
 function segmented(options, current, onPick) {
   const seg = el("div", "pix-rt-seg");
   let cur = current;
@@ -317,42 +305,12 @@ function destroyPicker(node) {
   }
 }
 
-// The panel is built ONCE (controls self-update) so the embedded color picker
-// survives every interaction. Only opening a fresh panel rebuilds it.
+// Built ONCE (controls self-update) so the embedded color picker survives every
+// interaction.
 function renderPanelBody(node, body) {
   destroyPicker(node);
   body.innerHTML = "";
   const st = readState(node);
-
-  // ── Appearance (size look) ── — mirrors the Seed settings panel: this-node
-  // toggle + the global new-node default.
-  const aSec = section("Appearance");
-
-  const bRow = row("This node");
-  bRow.appendChild(segmented(
-    [{ v: false, label: "Full" }, { v: true, label: "Compact" }],
-    !!st.bare,
-    (v) => { writeState(node, { bare: v }); applyBare(node); }
-  ));
-  aSec.appendChild(bRow);
-  const bHint = el("div", "pix-rt-sublbl");
-  bHint.textContent = "Compact hides the title bar, the category chip and the frame so just the clock shows (like a Label).";
-  aSec.appendChild(bHint);
-
-  const nRow = row("New Run Timers");
-  const defBareNow = !!(app.ui && app.ui.settings &&
-    app.ui.settings.getSettingValue(DEFAULT_BARE_SETTING) === true);
-  nRow.appendChild(segmented(
-    [{ v: false, label: "Full" }, { v: true, label: "Compact" }],
-    defBareNow,
-    (v) => { try { app.ui.settings.setSettingValueAsync(DEFAULT_BARE_SETTING, v); } catch (_e) {} }
-  ));
-  aSec.appendChild(nRow);
-  const nHint = el("div", "pix-rt-sublbl");
-  nHint.textContent = "The look every NEW Run Timer starts in. Saved globally (same as ComfyUI Settings > Pixaroma > Run Timer appearance).";
-  aSec.appendChild(nHint);
-
-  body.appendChild(aSec);
 
   // ── Chime ──
   const cSec = section("Chime");
@@ -368,8 +326,6 @@ function renderPanelBody(node, body) {
     sel.innerHTML = "";
     const cur = readState(node).sound || defaultSound();
     const list = _soundsCache.length ? _soundsCache.slice() : [cur].filter(Boolean);
-    // Saved sound no longer in the library: still show it (marked) so the
-    // selection matches state instead of silently snapping to the first file.
     if (cur && list.indexOf(cur) === -1) list.unshift(cur);
     for (const f of list) {
       const op = el("option"); op.value = f;
@@ -419,8 +375,6 @@ function renderPanelBody(node, body) {
 
   const colLbl = el("div", "pix-rt-sublbl"); colLbl.textContent = "Clock color";
   dSec.appendChild(colLbl);
-  // Full embedded Pixaroma Color Picker — swatches + SV plane + hue + hex +
-  // Reset, live-recoloring the clock as you drag (no extra clicks, no popup).
   const picker = createPixaromaColorPicker({
     initialColor: st.color || BRAND,
     resetColor: BRAND,
@@ -433,8 +387,8 @@ function renderPanelBody(node, body) {
   requestAnimationFrame(reclampPanel);
 }
 
-// Screen-pixel rect of the node (DOM in Nodes 2.0, geometry math in legacy) so
-// the panel can open BESIDE the node instead of over it. (Node Colors pattern.)
+// Screen-pixel rect of the node so the panel opens BESIDE it. (Node Colors
+// pattern.) The node is title-less, so no title-height offset.
 function getNodeScreenRect(node) {
   if (isVueNodes() && node && node.id != null) {
     const elx = document.querySelector('[data-node-id="' + node.id + '"]');
@@ -444,16 +398,13 @@ function getNodeScreenRect(node) {
   const ds = c && c.ds, canvasEl = c && c.canvas;
   if (!ds || !canvasEl || !node || !node.pos || !node.size) return null;
   const cr = canvasEl.getBoundingClientRect();
-  const titleH = (window.LiteGraph && window.LiteGraph.NODE_TITLE_HEIGHT) || 30;
   const scale = ds.scale || 1, off = ds.offset || [0, 0];
   const left = cr.left + (node.pos[0] + off[0]) * scale;
-  const top = cr.top + (node.pos[1] - titleH + off[1]) * scale;
+  const top = cr.top + (node.pos[1] + off[1]) * scale;
   const width = node.size[0] * scale;
-  const height = (node.size[1] + titleH) * scale;
+  const height = node.size[1] * scale;
   return { left, top, right: left + width, bottom: top + height, width, height };
 }
-// Place the panel just to the RIGHT of the node, flipping left / clamping into
-// the viewport as needed. No rect (node off-screen) → center it.
 function placeBeside(panel, rect) {
   const vw = window.innerWidth, vh = window.innerHeight;
   const mw = panel.offsetWidth, mh = panel.offsetHeight;
@@ -464,8 +415,8 @@ function placeBeside(panel, rect) {
     return;
   }
   let left = rect.right + gap;
-  if (left + mw > vw - pad) left = rect.left - gap - mw; // flip to the left
-  if (left < pad) left = Math.max(pad, vw - mw - pad);   // last resort: pin right
+  if (left + mw > vw - pad) left = rect.left - gap - mw;
+  if (left < pad) left = Math.max(pad, vw - mw - pad);
   let top = rect.top;
   if (top + mh > vh - pad) top = vh - mh - pad;
   if (top < pad) top = pad;
@@ -488,7 +439,7 @@ function makeDraggable(panel, handle) {
     const r = panel.getBoundingClientRect();
     const ox = e.clientX - r.left, oy = e.clientY - r.top;
     const move = (ev) => {
-      if (!panel.isConnected) { up(); return; } // panel closed mid-drag — self-detach
+      if (!panel.isConnected) { up(); return; }
       panel.style.left = Math.max(0, Math.min(window.innerWidth - panel.offsetWidth, ev.clientX - ox)) + "px";
       panel.style.top = Math.max(0, Math.min(window.innerHeight - panel.offsetHeight, ev.clientY - oy)) + "px";
     };
@@ -500,7 +451,6 @@ function makeDraggable(panel, handle) {
 function outsideClose(e) {
   if (!_panel) return;
   if (_panel.contains(e.target)) return;
-  // Clicks inside the shared color picker popup/modal must NOT close the panel.
   if (e.target.closest && e.target.closest(".pix-cp-popup, .pix-cp-modal-backdrop")) return;
   closePanel();
 }
@@ -531,7 +481,7 @@ function openPanel(node) {
   requestAnimationFrame(reclampPanel);
   const _p = panel;
   setTimeout(() => {
-    if (_panel !== _p) return; // closed within the same tick — don't orphan listeners
+    if (_panel !== _p) return;
     document.addEventListener("pointerdown", outsideClose, true);
     document.addEventListener("keydown", escClose, true);
   }, 0);
@@ -545,12 +495,7 @@ function injectCSS() {
   const s = document.createElement("style");
   s.id = "pix-rt-css";
   s.textContent = [
-    // user-select:none → the digits never select as text. pointer-events is set
-    // PER-RENDERER in JS (applyRootMode): none in Nodes 2.0 bare (drag + right-
-    // click go through to the canvas), auto otherwise (the DOM widget stays
-    // interactive). In the CLASSIC renderer bare mode the DOM widget is hidden and
-    // the clock is painted straight on the canvas (onDrawForeground) so it's a real
-    // canvas node — draggable + right-clickable like the Label node.
+    // The DOM clock (Nodes 2.0 only). user-select:none so the digits never select.
     ".pix-rt-root{display:flex;padding:6px 8px;box-sizing:border-box;width:100%;height:100%;user-select:none;-webkit-user-select:none;}",
     ".pix-rt-screen{flex:1;min-width:0;position:relative;display:flex;align-items:center;justify-content:center;background:#0c0c0e;border:1px solid #1d1d20;border-radius:8px;padding:8px;box-sizing:border-box;}",
     ".pix-rt-time{display:flex;align-items:center;justify-content:center;gap:4px;font-family:'Consolas','DejaVu Sans Mono','SF Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums;white-space:nowrap;color:var(--cc,#f66744);}",
@@ -566,8 +511,21 @@ function injectCSS() {
     ".pix-rt-screen.flash{animation:pixRtFlash 0.6s;}",
     "@keyframes pixRtPulse{0%,100%{opacity:1;}50%{opacity:.3;}}",
     "@keyframes pixRtFlash{0%{box-shadow:0 0 0 3px var(--cc,#f66744);}100%{box-shadow:0 0 0 0 rgba(0,0,0,0);}}",
-    // panel — palette matches the Pixaroma Color Picker (#1a1a1a / #444) so the
-    // embedded picker blends in seamlessly.
+    // ── NODES 2.0 title-less float (like the Label node). Scoped to .pix-rt-root,
+    //    which only exists in Nodes 2.0 (classic has no DOM widget → no-op there).
+    //    Hides the card / frame / footer chip / resting border, and makes the whole
+    //    widget subtree click-through so drag + right-click reach the canvas. The
+    //    HEADER + its reserved height are removed by title_mode NO_TITLE on the node
+    //    type (set in beforeRegisterNodeDef), exactly like Label.
+    ".lg-node:has(.pix-rt-root){background:transparent!important;border:none!important;box-shadow:none!important;}",
+    ".lg-node:has(.pix-rt-root) .lg-node-header{display:none!important;}",
+    ".lg-node:has(.pix-rt-root) .lg-node-content{padding:0!important;}",
+    ".lg-node:has(.pix-rt-root) [class*=\"component-node-background\"]{padding:0!important;gap:0!important;background:transparent!important;}",
+    ".lg-node:has(.pix-rt-root) [class*=\"component-node-background\"] > div:has(.bg-node-component-surface),.lg-node:has(.pix-rt-root) .bg-node-component-surface{display:none!important;}",
+    ".lg-node:has(.pix-rt-root) > div.absolute.border:not([data-testid]){display:none!important;}",
+    ".lg-node:has(.pix-rt-root) [data-testid=\"node-state-outline-overlay\"],.lg-node:has(.pix-rt-root) > div.absolute.outline-none{inset:-2px!important;}",
+    ".lg-node:has(.pix-rt-root) .lg-node-widgets,.lg-node:has(.pix-rt-root) .lg-node-widgets *{pointer-events:none!important;}",
+    // panel — palette matches the Pixaroma Color Picker (#1a1a1a / #444).
     ".pix-rt-panel{position:fixed;z-index:10010;width:320px;max-width:94vw;background:#1a1a1a;border:1px solid #444;border-radius:6px;box-shadow:0 8px 24px rgba(0,0,0,0.6);font-family:'Segoe UI',system-ui,sans-serif;overflow:hidden;}",
     ".pix-rt-phead{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-bottom:1px solid #333;color:#ddd;font-size:13px;font-weight:600;cursor:move;}",
     ".pix-rt-px{border:0;background:transparent;color:#999;font-size:13px;cursor:pointer;padding:2px 7px;border-radius:4px;}",
@@ -586,7 +544,6 @@ function injectCSS() {
     ".pix-rt-tog.on .k{left:18px;background:#fff;}",
     ".pix-rt-select{background:#1a1a1a;border:1px solid #444;color:#ddd;border-radius:4px;font-size:12.5px;padding:5px 7px;font-family:inherit;cursor:pointer;max-width:150px;}",
     ".pix-rt-select:focus{outline:none;border-color:#f66744;}",
-    // clean filled slider — no track contour, orange fill up to the thumb
     ".pix-rt-vol{-webkit-appearance:none;appearance:none;flex:1;min-width:0;height:4px;border-radius:2px;outline:none;cursor:pointer;background:linear-gradient(to right,#f66744 var(--fill,70%),#3a3a3a var(--fill,70%));}",
     ".pix-rt-vol::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:14px;height:14px;border-radius:50%;background:#f66744;border:2px solid #1a1a1a;cursor:pointer;}",
     ".pix-rt-vol::-moz-range-thumb{width:13px;height:13px;border-radius:50%;background:#f66744;border:2px solid #1a1a1a;cursor:pointer;}",
@@ -597,139 +554,11 @@ function injectCSS() {
     ".pix-rt-seg{display:flex;background:#0e0e0e;border:1px solid #333;border-radius:6px;padding:2px;flex:none;}",
     ".pix-rt-sg{min-width:42px;text-align:center;color:#aaa;font-size:12px;padding:5px 10px;border-radius:4px;cursor:pointer;user-select:none;}",
     ".pix-rt-sg.on{background:#f66744;color:#fff;}",
-    // ── BARE mode (right-click "compact"): the title bar itself is removed via a
-    //    per-node title_mode shadow (setBareTitle); everything below hides the
-    //    frame + category chip + padding so just the floating clock remains, and
-    //    makes the body click-through so the node still drags / right-clicks via
-    //    the canvas (the clock is display-only; settings open from the menu).
-    //    Scoped to the .pix-rt-bare marker; the .lg-node rules are Vue-only (no
-    //    .lg-node element exists in legacy, so they are a no-op there).
-    ".lg-node:has(.pix-rt-bare){background:transparent!important;border:none!important;box-shadow:none!important;}",
-    ".lg-node:has(.pix-rt-bare) .lg-node-header{display:none!important;}",
-    ".lg-node:has(.pix-rt-bare) .lg-node-content{padding:0!important;}",
-    ".lg-node:has(.pix-rt-bare) [class*=\"component-node-background\"]{padding:0!important;gap:0!important;background:transparent!important;}",
-    ".lg-node:has(.pix-rt-bare) [class*=\"component-node-background\"] > div:has(.bg-node-component-surface),.lg-node:has(.pix-rt-bare) .bg-node-component-surface{display:none!important;}",
-    ".lg-node:has(.pix-rt-bare) > div.absolute.border:not([data-testid]){display:none!important;}",
-    ".lg-node:has(.pix-rt-bare) [data-testid=\"node-state-outline-overlay\"],.lg-node:has(.pix-rt-bare) > div.absolute.outline-none{inset:-2px!important;}",
-    ".lg-node:has(.pix-rt-bare) .lg-node-widgets,.lg-node:has(.pix-rt-bare) .lg-node-widgets *{pointer-events:none!important;}",
   ].join("\n");
   (document.head || document.documentElement).appendChild(s);
 }
 
-// ── node sizing (dot-less DOM-widget panel — Group Switch recipe) ───────────
-function bodyHeight() { return CLOCK_H; }
-// DOM-widget min height. In Nodes 2.0 BARE mode we keep title_mode NORMAL (the
-// reactive Vue node keeps reserving ~30px of title height regardless — a live
-// title_mode shadow does NOT clear it, verified), and instead shrink node.size by
-// that reserve so the rendered element lands back at the clock body. So the bare
-// Vue floor is bodyHeight - titleH; everything else is the full body.
-function widgetMinHeight(node) {
-  return (isVueNodes() && readState(node).bare) ? Math.max(20, bodyHeight() - titleH()) : bodyHeight();
-}
-function refreshNodeSize(node) {
-  if (isGraphLoading()) return;
-  try {
-    if (typeof node.setSize !== "function") return;
-    const bare = readState(node).bare;
-    let target;
-    if (isVueNodes()) {
-      // Normal = clock body + chrome (footer chip + borders). Bare = clock body
-      // MINUS the reserved title height (Nodes 2.0 still reserves it — the copy is
-      // stale), so element = node.size + reserve lands at the clock body. A
-      // CONSTANT, so it stays correct across save / load / toggle.
-      target = bare ? Math.max(20, bodyHeight() - titleH()) : bodyHeight() + VUE_CHROME;
-    } else {
-      target = (typeof node.computeSize === "function" ? node.computeSize()[1] : bodyHeight());
-    }
-    if (Math.abs((node.size[1] || 0) - target) > 1) node.setSize([node.size[0], target]);
-  } catch (_e) {}
-}
-
-// ── bare mode (right-click "compact"): hide the title bar + category chip +
-//    frame so just the floating clock remains (like the Label node) ──────────
-// Hide the title PER-NODE by SHADOWING the LGraphNode `title_mode` getter with an
-// instance own-property. Verified against the bundle: `get title_mode(){ return
-// this.constructor.title_mode ?? NORMAL_TITLE }` is read by BOTH renderers
-// (legacy `measure()` reserves the title height + the draw gate; Vue's height
-// calc reads `n.title_mode`), so shadowing it on the instance hides the title in
-// both — without touching the shared constructor (which would affect EVERY
-// Run Timer). It is NOT serialized (LiteGraph.serialize copies fixed fields, not
-// arbitrary own-properties), so it never dirties a saved workflow; the persisted
-// truth is state.bare, re-applied on load.
-function setBareTitle(node, bare) {
-  const LG = (typeof window !== "undefined" && window.LiteGraph) || {};
-  // Shadow title_mode ONLY in the CLASSIC renderer. Legacy re-reads title_mode
-  // fresh each draw (measure() reserves the title height + the draw gate), so the
-  // shadow reliably removes both the title bar AND its reserved height. Nodes 2.0
-  // caches title_mode in a reactive COPY that only re-reads on remount — a live
-  // shadow leaves title_mode = NO_TITLE but STILL reserves the 30px (verified via
-  // the diagnostic: element = node.size + 30). So in Vue we do NOT shadow: the
-  // title stays NORMAL, the header is hidden via CSS, and node.size compensates
-  // the constant reserve (see refreshNodeSize / widgetMinHeight).
-  const wantShadow = bare && !isVueNodes();
-  if (wantShadow) {
-    Object.defineProperty(node, "title_mode", {
-      value: LG.NO_TITLE != null ? LG.NO_TITLE : 1,
-      configurable: true, writable: true, enumerable: false,
-    });
-  } else if (Object.prototype.hasOwnProperty.call(node, "title_mode")) {
-    delete node.title_mode; // restore the prototype getter (→ NORMAL_TITLE)
-  }
-}
-// Apply the current bare state: title shadow + the CSS marker class + a size
-// re-fit. Called on setup, on load (onConfigure), and on every toggle. The size
-// re-fit is gated inside refreshNodeSize (skips the load path — dirty-on-load
-// safe, Vue Compat #18). Changing node.size on a toggle also forces the Vue node
-// to re-render, which re-reads the shadowed title_mode (so the title hides live).
-function applyBare(node) {
-  const bare = !!readState(node).bare;
-  setBareTitle(node, bare);
-  // Drop the pack badge ("Pixaroma") in bare mode. It is canvas-painted above
-  // the node in the classic renderer (CSS can't reach it) and driven by
-  // node.badges (same field the Label node clears). Save + restore so un-baring
-  // brings it back this session.
-  if (bare) {
-    if (node._pixRtBadges === undefined) node._pixRtBadges = node.badges;
-    node.badges = [];
-  } else if (node._pixRtBadges !== undefined) {
-    node.badges = node._pixRtBadges;
-    node._pixRtBadges = undefined;
-  }
-  if (node._pixRtRoot) node._pixRtRoot.classList.toggle("pix-rt-bare", bare);
-  applyRootMode(node);
-  refreshNodeSize(node);
-  node.setDirtyCanvas && node.setDirtyCanvas(true, true);
-  app.graph && app.graph.setDirtyCanvas && app.graph.setDirtyCanvas(true, true);
-}
-
-// Show/route the DOM clock per renderer + mode. CLASSIC BARE hides the DOM widget
-// (the clock is canvas-painted via onDrawForeground → a real, draggable canvas
-// node). NODES 2.0 BARE makes it click-through so drag / right-click reach the
-// canvas. Everything else keeps the DOM widget interactive (unchanged).
-function applyRootMode(node) {
-  const root = node._pixRtRoot;
-  if (!root) return;
-  const bare = !!readState(node).bare;
-  const vue = isVueNodes();
-  if (!vue && bare) {
-    root.style.display = "none";
-    root.style.pointerEvents = "";
-  } else {
-    root.style.display = "";
-    root.style.pointerEvents = (vue && bare) ? "none" : "auto";
-  }
-}
-
-// Refresh the on-screen clock the right way for the node's renderer/mode: a
-// canvas repaint for CLASSIC BARE (onDrawForeground redraws), else the DOM paint.
-function refreshClock(node) {
-  if (!isVueNodes() && readState(node).bare) {
-    node.setDirtyCanvas && node.setDirtyCanvas(true, true);
-  } else {
-    paint(node);
-  }
-}
-
+// ── classic renderer: paint the clock on the node canvas ────────────────────
 // Vertically center digit/colon text by its ACTUAL glyph box (digit-only strings
 // float high with textBaseline:middle — CLAUDE.md canvas note).
 function fillTextVC(ctx, text, x, yMid) {
@@ -742,26 +571,21 @@ function fillTextVC(ctx, text, x, yMid) {
     ctx.fillText(text, x, yMid);
   }
 }
-
-// CLASSIC BARE: paint the whole clock (screen + digits + units + status dot)
-// straight onto the node canvas, so the node is a plain canvas node — LiteGraph
-// handles drag + right-click natively (like the Label node). ctx is already
-// translated to the node body origin. Mirrors the DOM clock look.
-function paintLegacyBareClock(node, ctx) {
+// Paint the whole clock (dark screen filling the node + digits + units + dot).
+// ctx is already translated to the node origin (title-less → origin = node top).
+// The screen fills the node body (covering the default card fill), so only the
+// node's own 1px border shows — a clean bezel; the node stays a real canvas node,
+// so LiteGraph handles drag + right-click natively (like the Label node).
+function paintLegacyClock(node, ctx) {
   const w = node.size[0], h = node.size[1];
-  const p = 2;
-  const sx = p, sy = p, sw = Math.max(20, w - p * 2), sh = Math.max(20, h - p * 2);
   const rr = (x, y, ww, hh, r) => { if (ctx.roundRect) ctx.roundRect(x, y, ww, hh, r); else ctx.rect(x, y, ww, hh); };
   ctx.save();
-  // screen
   ctx.fillStyle = "#0c0c0e";
-  ctx.beginPath(); rr(sx, sy, sw, sh, 8); ctx.fill();
-  ctx.lineWidth = 1; ctx.strokeStyle = "#1d1d20";
-  ctx.beginPath(); rr(sx + 0.5, sy + 0.5, sw - 1, sh - 1, 7.5); ctx.stroke();
+  ctx.beginPath(); rr(0, 0, w, h, 8); ctx.fill();
   // status dot
   const dm = node._rtDotState || "idle";
   ctx.fillStyle = dm === "run" ? "#3ec371" : dm === "done" ? "#f66744" : "#6b6b72";
-  ctx.beginPath(); ctx.arc(sx + 11, sy + 11, 4, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(13, 13, 4, 0, Math.PI * 2); ctx.fill();
   // time
   const col = readState(node).color || BRAND;
   const parts = clockParts(node._rtDisplayMs || 0, node._pixRtDecimals != null ? node._pixRtDecimals : 0);
@@ -780,8 +604,8 @@ function paintLegacyBareClock(node, ctx) {
   });
   let total = 0;
   segs.forEach((s, i) => { if (i > 0) total += gap * 2 + colonW; total += s.nw + s.fw + 2 + s.uw; });
-  let x = sx + (sw - total) / 2;
-  const midY = sy + sh / 2;
+  let x = (w - total) / 2;
+  const midY = h / 2;
   segs.forEach((s, i) => {
     if (i > 0) {
       ctx.font = NUM; ctx.fillStyle = col; ctx.globalAlpha = 0.7;
@@ -795,71 +619,69 @@ function paintLegacyBareClock(node, ctx) {
   });
   ctx.restore();
 }
-// Flip this node between the normal card and the bare clock (user action → a
-// node.properties write is fine; never on the load path).
-function toggleBare(node) {
-  writeState(node, { bare: !readState(node).bare });
-  applyBare(node);
+
+// ── node sizing ─────────────────────────────────────────────────────────────
+// The node height is a constant (CLOCK_H) — a title-less single clock line. No
+// reserve to compensate (title_mode NO_TITLE on the node type is consistent from
+// mount in both renderers, so Nodes 2.0 never reserves the title height).
+function refreshNodeSize(node) {
+  if (isGraphLoading()) return;
+  try {
+    if (typeof node.setSize !== "function") return;
+    const target = isVueNodes() ? CLOCK_H : (typeof node.computeSize === "function" ? node.computeSize()[1] : CLOCK_H);
+    if (Math.abs((node.size[1] || 0) - target) > 1) node.setSize([node.size[0], target]);
+  } catch (_e) {}
 }
 
 function setupNode(node) {
   injectCSS();
-  const root = el("div", "pix-rt-root");
-  const screen = el("div", "pix-rt-screen");
-  const dot = el("span", "pix-rt-dot");
-  const time = el("div", "pix-rt-time");
-  screen.appendChild(dot); screen.appendChild(time);
-  root.appendChild(screen);
-
-  node._pixRtRoot = root;
-  node._pixRtScreen = screen;
-  node._pixRtDot = dot;
-  node._pixRtTime = time;
   node._rtDisplayMs = 0;
   node._rtRunning = false;
+  node._rtDotState = "idle";
   node._pixRtDecimals = DEFAULT_STATE.decimals;
-  paint(node); // render the initial 00:00 so the screen is not blank pre-microtask
+  node.badges = []; // no pack badge (title-less like Label)
 
-  installCanvasZoomPassthrough(root);
-  const widget = node.addDOMWidget("run_timer_ui", "pixaroma_run_timer", root, {
-    getValue: () => readState(node),
-    setValue: () => {},
-    getMinHeight: () => widgetMinHeight(node),
-    serialize: false, // state lives on node.properties
-  });
-  applyAdaptiveCanvasOnly(widget);
-  widget.computeLayoutSize = () => ({ minHeight: widgetMinHeight(node), minWidth: 1 });
-  node._pixRtFloorOff = installResizeFloor(root, () => bodyHeight());
-
-  // Classic: hug the body (the stock computeSize reserves a phantom slot row +
-  // per-widget spacing on this dot-less node). WIDTH = MIN_W (the corner-drag
-  // floor, NOT the live width). Vue uses computeLayoutSize.
-  if (!isVueNodes()) {
-    node.computeSize = function () { return [MIN_W, bodyHeight()]; };
+  if (isVueNodes()) {
+    // Nodes 2.0: a DOM-widget clock (frameless + click-through via the CSS above).
+    const root = el("div", "pix-rt-root");
+    const screen = el("div", "pix-rt-screen");
+    const dot = el("span", "pix-rt-dot");
+    const time = el("div", "pix-rt-time");
+    screen.appendChild(dot); screen.appendChild(time);
+    root.appendChild(screen);
+    node._pixRtRoot = root;
+    node._pixRtScreen = screen;
+    node._pixRtDot = dot;
+    node._pixRtTime = time;
+    paint(node); // initial 00:00
+    installCanvasZoomPassthrough(root);
+    const widget = node.addDOMWidget("run_timer_ui", "pixaroma_run_timer", root, {
+      getValue: () => readState(node),
+      setValue: () => {},
+      getMinHeight: () => CLOCK_H,
+      serialize: false, // state lives on node.properties
+    });
+    applyAdaptiveCanvasOnly(widget);
+    widget.computeLayoutSize = () => ({ minHeight: CLOCK_H, minWidth: 1 });
+    node._pixRtFloorOff = installResizeFloor(root, () => CLOCK_H);
+  } else {
+    // Classic: NO DOM widget — the clock is painted on the node canvas
+    // (onDrawForeground), so the node is a real canvas node: draggable +
+    // right-clickable, no DOM element eating clicks. computeSize hugs the body.
+    node.computeSize = function () { return [MIN_W, CLOCK_H]; };
   }
+
   if (Array.isArray(node.size)) {
     if (node.size[0] < NODE_W) node.size[0] = NODE_W;
+    node.size[1] = CLOCK_H;
   } else {
     node.size = [NODE_W, CLOCK_H];
   }
 
   _timers.add(node);
-  // nodeCreated fires BEFORE configure() restores node.properties (Vue Compat
-  // #8) — defer so a saved timer shows its restored color/decimals AND its last
-  // finished time (restoreLastRun), not defaults / 00:00.
-  queueMicrotask(() => {
-    // Fresh drop (no saved state): start in the look the user picked as their
-    // default (a global Pixaroma setting). Restored nodes keep their saved look
-    // (configure() has already set node.properties by now — Vue Compat #8).
-    if (!node.properties || node.properties[STATE_PROP] == null) {
-      const defBare = !!(app.ui && app.ui.settings &&
-        app.ui.settings.getSettingValue(DEFAULT_BARE_SETTING) === true);
-      if (defBare) writeState(node, { bare: true });
-    }
-    restoreLastRun(node);
-    applyState(node);
-    applyBare(node); // title shadow + marker class + size (includes refreshNodeSize)
-  });
+  // nodeCreated fires BEFORE configure() restores node.properties (Vue Compat #8)
+  // — defer so a saved timer shows its restored color/decimals + last time.
+  queueMicrotask(() => { restoreLastRun(node); applyState(node); refreshNodeSize(node); });
 }
 
 const HELP = {
@@ -867,20 +689,20 @@ const HELP = {
   tagline: "Times how long a workflow takes, and chimes when it is done.",
   sections: [
     { heading: "What it does", body: "The clock resets to zero the moment you press Run, counts up while the workflow is working, and freezes on the total time when it finishes. A chime plays on finish, so you know it is done even when you are in another browser tab or app." },
-    { heading: "Reading the clock", body: "The time shows as minutes : seconds : hundredths (for example 02:47:38). If a run goes past an hour the clock switches to hours : minutes : seconds. A small dot in the corner is green while running and orange the moment it finishes." },
-    { heading: "Comparing workflows across tabs", body: "Each workflow remembers its own last time, so you can run several workflows in different tabs and switch between them to compare how long each one took. The time you see always belongs to the workflow you are looking at, and it only resets when you run that same workflow again.", bullets: [
+    { heading: "A clean floating clock", body: "The node is just the clock - no title bar, no frame - so it takes very little room on the canvas. Drag it from anywhere on the clock to move it, and right-click it for the settings. It works the same in both the classic and the new node interface." },
+    { heading: "Reading the clock", body: "The time shows as minutes : seconds (for example 02:47). If a run goes past an hour the clock switches to hours : minutes : seconds. A small dot in the corner is green while running and orange the moment it finishes." },
+    { heading: "Comparing workflows across tabs", body: "Each workflow remembers its own last time, so you can run several workflows in different tabs and switch between them to compare how long each one took.", bullets: [
       "The time is saved with the workflow, so it is still there after you switch tabs, reload the page, or restart ComfyUI.",
-      "Because it is saved with the workflow, a small 'unsaved changes' dot shows on the tab after a run. Switching between tabs never asks you to save; only closing a tab asks, the same as always.",
-      "If you switch tabs while a run is still going, that run's time is not captured, and you will see the previous finished time when you come back. Let a run finish before switching if you want its time kept.",
+      "Because it is saved with the workflow, a small 'unsaved changes' dot shows on the tab after a run. Switching tabs never asks you to save; only closing a tab asks, as always.",
+      "If you switch tabs while a run is still going, that run's time is not captured, and you will see the previous finished time when you come back.",
     ]},
     { heading: "Settings (right-click the node)", defs: [
-      ["Compact (hide title bar)", "Right-click and choose Compact to hide the title bar, the category chip, and the frame so just the clock floats on the canvas, like a Label. Choose Show title bar to bring them back. A setting (under Pixaroma, then Run Timer appearance) makes new timers start compact if you like."],
       ["Chime on finish", "Turn the finish sound on or off."],
       ["Sound and Volume", "Pick the chime from the sound library and set how loud it is. The Preview button plays it right now."],
       ["Decimals", "Show hundredths (2), milliseconds (3), or just minutes and seconds (Off)."],
       ["Clock color", "Pick the digit color right in the panel: tap a swatch, drag the color square, or type a hex code. Reset returns it to Pixaroma orange."],
     ]},
-    { heading: "Good to know", body: "The node only shows the clock - all the controls are in the right-click menu. It does not need to be wired to anything; just drop it on the canvas. Add your own chimes by dropping .mp3, .wav, or .ogg files (use simple names - letters, numbers, dashes) into the assets/sounds folder. A master mute for every Run Timer lives in Settings, under Pixaroma, Run Timer." },
+    { heading: "Good to know", body: "It does not need to be wired to anything; just drop it on the canvas. Add your own chimes by dropping .mp3, .wav, or .ogg files (use simple names - letters, numbers, dashes) into the assets/sounds folder. A master mute for every Run Timer lives in Settings, under Pixaroma, Run Timer." },
   ],
 };
 
@@ -896,16 +718,6 @@ app.registerExtension({
       tooltip: "Master switch. When on, no Run Timer plays its finish chime.",
       category: ["👑 Pixaroma", "Run Timer"],
     },
-    {
-      // Distinct leaf ("Run Timer (appearance)") so it doesn't collapse into the
-      // Muted row (Vue Settings dedupes by deepest leaf — Align Pattern #10).
-      id: DEFAULT_BARE_SETTING,
-      name: "New Run Timers start bare (no title bar)",
-      type: "boolean",
-      defaultValue: false,
-      tooltip: "New Run Timer nodes drop in the compact bare look (no title bar, category chip, or frame — just the clock). Any node can still be switched with right-click.",
-      category: ["👑 Pixaroma", "Run Timer (appearance)"],
-    },
   ],
 
   setup() {
@@ -915,28 +727,27 @@ app.registerExtension({
 
   getNodeMenuItems(node) {
     if (!node || node.comfyClass !== NODE_NAME) return [];
-    const st = readState(node);
-    // Off the 👑 crown (a frame glyph + a gear) so they stand out from the
-    // crowded crown items — same rationale as the Seed menu.
-    return [
-      null,
-      {
-        content: st.bare ? "▭ Show title bar" : "▭ Compact (hide title bar)",
-        callback: () => toggleBare(node),
-      },
-      { content: "⚙ Run Timer settings", callback: () => openPanel(node) },
-    ];
+    return [null, { content: "⚙ Run Timer settings", callback: () => openPanel(node) }];
   },
 
   beforeRegisterNodeDef(nodeType, nodeData) {
     if (nodeData.name !== NODE_NAME) return;
+
+    // Title-less like the Label node: set NO_TITLE on the node TYPE (once, at
+    // registration) so both renderers treat it as title-less from first mount and
+    // never reserve the title height. This is the crux — a per-node LIVE toggle
+    // does NOT work in Nodes 2.0 (it caches title_mode in a copy that only re-reads
+    // on remount, so it keeps reserving the 30px).
+    const LG = (typeof window !== "undefined" && window.LiteGraph) || {};
+    nodeType.title_mode = (LG.NO_TITLE != null) ? LG.NO_TITLE : 1;
+
     if (nodeType.prototype._pixRtPatched) return; // hot-reload: don't double-wrap
     nodeType.prototype._pixRtPatched = true;
 
     const _origConfigure = nodeType.prototype.onConfigure;
     nodeType.prototype.onConfigure = function (info) {
       const r = _origConfigure ? _origConfigure.apply(this, arguments) : undefined;
-      if (this._pixRtRoot) { restoreLastRun(this); applyState(this); applyBare(this); }
+      restoreLastRun(this); applyState(this); refreshNodeSize(this);
       return r;
     };
 
@@ -950,27 +761,26 @@ app.registerExtension({
       if (_origRemoved) return _origRemoved.apply(this, arguments);
     };
 
-    // Classic only: keep resize HORIZONTAL (width free, height locked to the
-    // clock). Vue sizes via computeLayoutSize — leave it alone.
+    // Classic: keep resize HORIZONTAL (width free, height locked to the clock).
     const _origResize = nodeType.prototype.onResize;
     nodeType.prototype.onResize = function (size) {
       if (!isVueNodes()) {
         if (this.size[0] < MIN_W) this.size[0] = MIN_W;
-        this.size[1] = bodyHeight();
+        this.size[1] = CLOCK_H;
       }
       if (_origResize) return _origResize.apply(this, arguments);
     };
 
-    // Classic BARE: paint the clock straight onto the node canvas so it's a real
-    // canvas node (drag + right-click work natively, like the Label node).
-    // onDrawForeground fires reliably in the classic renderer; Nodes 2.0 skips it
-    // and keeps the DOM clock.
+    // Classic: paint the clock onto the node canvas + keep the height fixed (also
+    // self-heals a taller size saved by an older version). Nodes 2.0 skips this
+    // (its DOM clock renders instead + onDrawForeground is not the paint path).
     const _origFg = nodeType.prototype.onDrawForeground;
     nodeType.prototype.onDrawForeground = function (ctx) {
       const r = _origFg ? _origFg.apply(this, arguments) : undefined;
-      if (ctx && !isVueNodes() && this.properties &&
-          this.properties[STATE_PROP] && this.properties[STATE_PROP].bare) {
-        try { paintLegacyBareClock(this, ctx); } catch (_e) {}
+      if (ctx && !isVueNodes()) {
+        if (this.size[0] < MIN_W) this.size[0] = MIN_W;
+        if (Math.abs((this.size[1] || 0) - CLOCK_H) > 0.5) this.size[1] = CLOCK_H;
+        try { paintLegacyClock(this, ctx); } catch (_e) {}
       }
       return r;
     };
