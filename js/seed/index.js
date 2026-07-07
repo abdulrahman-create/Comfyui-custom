@@ -2,6 +2,7 @@ import { app } from "/scripts/app.js";
 import { BRAND, hideJsonWidget, applyAdaptiveCanvasOnly, isVueNodes, measureRootContent,
   installCanvasZoomPassthrough,
 } from "../shared/index.mjs";
+import { openSeedSettings, closeSeedSettingsFor } from "./settings.mjs";
 
 // ─────────────────────────────────────────────────────────────────────────
 // Seed Pixaroma — a seed source with Random / Fixed modes + buttons.
@@ -197,20 +198,35 @@ const NODE_H_HINT = WIDGET_H_FALLBACK + 48; // starting height (replace-branch o
 const STATE_PROP = "seedState";
 const HIDDEN_INPUT_NAME = "SeedState"; // matches Python INPUT_TYPES key
 
+const DEFAULT_SIZE_SETTING = "Pixaroma.Seed.DefaultSize"; // global default: new nodes start compact
+const MIN_DIGITS = 4;
+const MAX_DIGITS = 16; // 16 = the full safe-integer range (original behaviour)
+
 const DEFAULT_STATE = {
   seed: 0,
   mode: "random", // "random" | "fixed"
   compact: false, // one-line layout (right-click to toggle; a setting sets the default for new nodes)
+  digits: MAX_DIGITS, // how many digits a RANDOM seed can have (4-16); shorter = smaller seeds
 };
+
+function clampDigits(d) {
+  d = Math.floor(Number(d));
+  if (!Number.isFinite(d)) return MAX_DIGITS;
+  return Math.max(MIN_DIGITS, Math.min(MAX_DIGITS, d));
+}
 // The last-run seed is session-only RUNTIME state on node._pixSeedLastRun
 // (NOT node.properties), so a run never rewrites serialized state and can never
 // dirty a saved workflow (Vue Compat #18). It doesn't survive a reload, which
 // matches the "this session's last run" meaning.
 
-// Roll an exact integer in [0, 2^53) — within JS safe-integer range (so it
-// round-trips precisely) and well inside ComfyUI's 0..2^64-1 seed bounds.
-function rollSeed() {
-  return Math.floor(Math.random() * Number.MAX_SAFE_INTEGER);
+// Roll an exact integer with up to `digits` digits. digits=16 uses the full JS
+// safe-integer range (the original behaviour: round-trips precisely, well inside
+// ComfyUI's 0..2^64-1 bounds); a smaller value rolls in [0, 10^digits) so the
+// seed is shorter (some tools / users want a smaller seed - the digits option).
+function rollSeed(digits) {
+  const d = clampDigits(digits == null ? MAX_DIGITS : digits);
+  if (d >= MAX_DIGITS) return Math.floor(Math.random() * Number.MAX_SAFE_INTEGER);
+  return Math.floor(Math.random() * Math.pow(10, d));
 }
 
 function clampSeed(n) {
@@ -259,6 +275,27 @@ function fitSeedNodeHeight(node) {
   let w = Math.max(MIN_W, node.size[0] || NODE_W);
   if (readState(node).compact) w = Math.max(w, COMPACT_MIN_W);
   node.setSize([w, node.computeSize()[1]]);
+}
+
+// Re-fit over several frames after a layout-changing action (Compact <-> Full).
+// A single early measure can land SHORT - the rebuilt DOM body settles over a
+// few frames, and nothing re-fits the height later (onDrawForeground only heals
+// width), so the last row was getting clipped. The later passes correct it.
+function refitSeedNode(node) {
+  requestAnimationFrame(() => requestAnimationFrame(() => fitSeedNodeHeight(node)));
+  setTimeout(() => fitSeedNodeHeight(node), 90);
+  setTimeout(() => fitSeedNodeHeight(node), 260);
+}
+
+// Flip this node between Compact and Full, rebuild the body, and re-fit the size.
+// User action (menu / panel), so writing node.size is fine (never on load).
+function toggleSeedCompact(node, forceCompact) {
+  const cur = readState(node);
+  const next = typeof forceCompact === "boolean" ? forceCompact : !cur.compact;
+  if (next === !!cur.compact) return;
+  writeState(node, { ...cur, compact: next });
+  renderUI(node);
+  refitSeedNode(node);
 }
 
 function readState(node) {
@@ -515,7 +552,7 @@ function buildSeedBody(node, root) {
   newBtn.title = "Roll a brand-new random seed and lock it (switches to Fixed).";
   newBtn.addEventListener("click", () => {
     const cur = readState(node);
-    writeState(node, { ...cur, seed: rollSeed(), mode: "fixed" });
+    writeState(node, { ...cur, seed: rollSeed(cur.digits), mode: "fixed" });
     renderUI(node);
   });
   root.appendChild(newBtn);
@@ -639,8 +676,8 @@ function setupSeedNode(node) {
     if (!node.properties?.[STATE_PROP]) {
       // Fresh drop: start in the size the user set as their default (a global
       // Pixaroma setting), else Full. Restored nodes keep their saved size.
-      const defCompact = !!app.ui?.settings?.getSettingValue?.("Pixaroma.Seed.DefaultSize");
-      writeState(node, { ...DEFAULT_STATE, seed: rollSeed(), compact: defCompact });
+      const defCompact = !!app.ui?.settings?.getSettingValue?.(DEFAULT_SIZE_SETTING);
+      writeState(node, { ...DEFAULT_STATE, seed: rollSeed(DEFAULT_STATE.digits), compact: defCompact });
       // A fresh compact node wants a touch more width so the one-line seed reads
       // well. Fresh ONLY (restored nodes keep their saved width - never widened
       // here, or that would dirty the saved workflow).
@@ -670,7 +707,7 @@ app.registerExtension({
 
   settings: [
     {
-      id: "Pixaroma.Seed.DefaultSize",
+      id: DEFAULT_SIZE_SETTING,
       name: "New Seed nodes start compact",
       type: "boolean",
       defaultValue: false,
@@ -688,15 +725,26 @@ app.registerExtension({
     return [
       null,
       {
+        // quick one-click size flip
         content: st.compact ? "Full size" : "Compact size",
-        callback: () => {
-          const cur = readState(node);
-          writeState(node, { ...cur, compact: !cur.compact });
-          renderUI(node);
-          // Re-fit the node to the new content (user action, both renderers).
-          requestAnimationFrame(() => fitSeedNodeHeight(node));
-          setTimeout(() => fitSeedNodeHeight(node), 120);
-        },
+        callback: () => toggleSeedCompact(node),
+      },
+      {
+        // the full panel: size (this node + new-node default) + seed digits
+        content: "⚙ Seed settings",
+        callback: () =>
+          openSeedSettings(node, {
+            readState,
+            writeState,
+            applyResize: (n) => {
+              renderUI(n);
+              refitSeedNode(n);
+            },
+            settingId: DEFAULT_SIZE_SETTING,
+            MIN_DIGITS,
+            MAX_DIGITS,
+            clampDigits,
+          }),
       },
     ];
   },
@@ -732,6 +780,13 @@ app.registerExtension({
     nodeType.prototype.onDrawForeground = function (ctx) {
       if (!isVueNodes() && this.size[0] < MIN_W) this.size[0] = MIN_W;
       if (_origDraw) return _origDraw.apply(this, arguments);
+    };
+
+    // Close the settings panel if it belonged to a node that's being removed.
+    const _origRemoved = nodeType.prototype.onRemoved;
+    nodeType.prototype.onRemoved = function () {
+      closeSeedSettingsFor(this);
+      if (_origRemoved) return _origRemoved.apply(this, arguments);
     };
   },
 
@@ -792,7 +847,7 @@ app.graphToPrompt = async function (...args) {
   for (const [nid, node] of seedIndex) {
     if (!node) continue;
     const st = readState(node);
-    const runSeed = st.mode === "random" ? rollSeed() : clampSeed(st.seed);
+    const runSeed = st.mode === "random" ? rollSeed(st.digits) : clampSeed(st.seed);
     rolled.set(nid, runSeed);
     setSeedMirror(node, runSeed);
   }

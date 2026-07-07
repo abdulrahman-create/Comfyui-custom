@@ -42,8 +42,12 @@ const HELP = {
         ],
       },
       {
-        heading: "Full or compact size",
-        body: "Right-click the node and choose Compact size to shrink it to a single row - the seed number, a small Random/Fixed toggle, and a copy button - so it takes less room on the canvas. Right-click and choose Full size to bring the buttons back. Your choice is saved with the workflow. To make every new Seed node start small, turn on \"New Seed nodes start compact\" in Settings, under Pixaroma then Seed.",
+        heading: "Size and settings",
+        body: "Right-click the node for two things: a one-click Compact size / Full size flip, and a Seed settings panel. Compact shrinks the node to a single row (the seed, a small Random/Fixed toggle, and a copy button) so it takes less room; Full brings the buttons back. Your choice is saved with the workflow.\n\nThe Seed settings panel also sets the size every NEW Seed node starts at (the same as ComfyUI Settings, under Pixaroma then Seed), so you can have them all come in compact if you like.",
+      },
+      {
+        heading: "Random seed digits",
+        body: "In the Seed settings panel you can cap how big a Random seed is, from 4 up to 16 digits. Lower it if the seed feels too long or another tool expects a smaller number (for example 8 digits gives seeds from 0 to 99999999). It only changes the Random roll; typing an exact seed always works, whatever the setting.",
       },
       {
         heading: "Put the seed in your file names",
