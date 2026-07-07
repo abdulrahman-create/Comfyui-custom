@@ -36,6 +36,8 @@ const NODE_W = 240;     // default body width on a fresh drop
 const MIN_W = 200;      // resize floor — keeps the widest readout (00:00:000) un-clipped
 const CLOCK_H = 84;     // body height (constant — single centered clock line)
 const VUE_CHROME = 52;  // Nodes 2.0 only: node.size[1] = body + footer chip + borders
+const BARE_VUE_CHROME = 6; // Nodes 2.0 BARE: title + footer chip + frame hidden, so almost no chrome
+const DEFAULT_BARE_SETTING = "Pixaroma.RunTimer.DefaultBare"; // new timers start bare
 
 const DEFAULT_STATE = {
   version: 1,
@@ -44,6 +46,7 @@ const DEFAULT_STATE = {
   chime: true,    // play a sound on finish
   sound: "",      // "" = use the library default (Vista.mp3 / first file)
   volume: 70,     // 0..100
+  bare: false,    // true = hide the title bar + category chip + frame (float like Label)
 };
 
 // ── DOM helper ──────────────────────────────────────────────────────────────
@@ -551,6 +554,22 @@ function injectCSS() {
     ".pix-rt-seg{display:flex;background:#0e0e0e;border:1px solid #333;border-radius:6px;padding:2px;flex:none;}",
     ".pix-rt-sg{min-width:42px;text-align:center;color:#aaa;font-size:12px;padding:5px 10px;border-radius:4px;cursor:pointer;user-select:none;}",
     ".pix-rt-sg.on{background:#f66744;color:#fff;}",
+    // ── BARE mode (right-click "compact"): the title bar itself is removed via a
+    //    per-node title_mode shadow (setBareTitle); everything below hides the
+    //    frame + category chip + padding so just the floating clock remains, and
+    //    makes the body click-through so the node still drags / right-clicks via
+    //    the canvas (the clock is display-only; settings open from the menu).
+    //    Scoped to the .pix-rt-bare marker; the .lg-node rules are Vue-only (no
+    //    .lg-node element exists in legacy, so they are a no-op there).
+    ".pix-rt-root.pix-rt-bare{padding:0;pointer-events:none;}",
+    ".lg-node:has(.pix-rt-bare){background:transparent!important;border:none!important;box-shadow:none!important;}",
+    ".lg-node:has(.pix-rt-bare) .lg-node-header{display:none!important;}",
+    ".lg-node:has(.pix-rt-bare) .lg-node-content{padding:0!important;}",
+    ".lg-node:has(.pix-rt-bare) [class*=\"component-node-background\"]{padding:0!important;gap:0!important;background:transparent!important;}",
+    ".lg-node:has(.pix-rt-bare) [class*=\"component-node-background\"] > div:has(.bg-node-component-surface),.lg-node:has(.pix-rt-bare) .bg-node-component-surface{display:none!important;}",
+    ".lg-node:has(.pix-rt-bare) > div.absolute.border:not([data-testid]){display:none!important;}",
+    ".lg-node:has(.pix-rt-bare) [data-testid=\"node-state-outline-overlay\"],.lg-node:has(.pix-rt-bare) > div.absolute.outline-none{inset:-2px!important;}",
+    ".lg-node:has(.pix-rt-bare) .lg-node-widgets,.lg-node:has(.pix-rt-bare) .lg-node-widgets *{pointer-events:none!important;}",
   ].join("\n");
   (document.head || document.documentElement).appendChild(s);
 }
@@ -561,11 +580,57 @@ function refreshNodeSize(node) {
   if (isGraphLoading()) return;
   try {
     if (typeof node.setSize !== "function") return;
+    const bare = readState(node).bare;
+    // Bare hides the title, footer chip AND frame, so the Vue node needs almost
+    // no chrome beyond the clock body (the +52 accounts for the footer chip +
+    // borders that bare removes).
     const target = isVueNodes()
-      ? bodyHeight() + VUE_CHROME
+      ? bodyHeight() + (bare ? BARE_VUE_CHROME : VUE_CHROME)
       : (typeof node.computeSize === "function" ? node.computeSize()[1] : bodyHeight());
     if (Math.abs((node.size[1] || 0) - target) > 1) node.setSize([node.size[0], target]);
   } catch (_e) {}
+}
+
+// ── bare mode (right-click "compact"): hide the title bar + category chip +
+//    frame so just the floating clock remains (like the Label node) ──────────
+// Hide the title PER-NODE by SHADOWING the LGraphNode `title_mode` getter with an
+// instance own-property. Verified against the bundle: `get title_mode(){ return
+// this.constructor.title_mode ?? NORMAL_TITLE }` is read by BOTH renderers
+// (legacy `measure()` reserves the title height + the draw gate; Vue's height
+// calc reads `n.title_mode`), so shadowing it on the instance hides the title in
+// both — without touching the shared constructor (which would affect EVERY
+// Run Timer). It is NOT serialized (LiteGraph.serialize copies fixed fields, not
+// arbitrary own-properties), so it never dirties a saved workflow; the persisted
+// truth is state.bare, re-applied on load.
+function setBareTitle(node, bare) {
+  const LG = (typeof window !== "undefined" && window.LiteGraph) || {};
+  if (bare) {
+    Object.defineProperty(node, "title_mode", {
+      value: LG.NO_TITLE != null ? LG.NO_TITLE : 1,
+      configurable: true, writable: true, enumerable: false,
+    });
+  } else if (Object.prototype.hasOwnProperty.call(node, "title_mode")) {
+    delete node.title_mode; // restore the prototype getter (→ NORMAL_TITLE)
+  }
+}
+// Apply the current bare state: title shadow + the CSS marker class + a size
+// re-fit. Called on setup, on load (onConfigure), and on every toggle. The size
+// re-fit is gated inside refreshNodeSize (skips the load path — dirty-on-load
+// safe, Vue Compat #18). Changing node.size on a toggle also forces the Vue node
+// to re-render, which re-reads the shadowed title_mode (so the title hides live).
+function applyBare(node) {
+  const bare = !!readState(node).bare;
+  setBareTitle(node, bare);
+  if (node._pixRtRoot) node._pixRtRoot.classList.toggle("pix-rt-bare", bare);
+  refreshNodeSize(node);
+  node.setDirtyCanvas && node.setDirtyCanvas(true, true);
+  app.graph && app.graph.setDirtyCanvas && app.graph.setDirtyCanvas(true, true);
+}
+// Flip this node between the normal card and the bare clock (user action → a
+// node.properties write is fine; never on the load path).
+function toggleBare(node) {
+  writeState(node, { bare: !readState(node).bare });
+  applyBare(node);
 }
 
 function setupNode(node) {
@@ -613,7 +678,19 @@ function setupNode(node) {
   // nodeCreated fires BEFORE configure() restores node.properties (Vue Compat
   // #8) — defer so a saved timer shows its restored color/decimals AND its last
   // finished time (restoreLastRun), not defaults / 00:00.
-  queueMicrotask(() => { restoreLastRun(node); applyState(node); refreshNodeSize(node); });
+  queueMicrotask(() => {
+    // Fresh drop (no saved state): start in the look the user picked as their
+    // default (a global Pixaroma setting). Restored nodes keep their saved look
+    // (configure() has already set node.properties by now — Vue Compat #8).
+    if (!node.properties || node.properties[STATE_PROP] == null) {
+      const defBare = !!(app.ui && app.ui.settings &&
+        app.ui.settings.getSettingValue(DEFAULT_BARE_SETTING) === true);
+      if (defBare) writeState(node, { bare: true });
+    }
+    restoreLastRun(node);
+    applyState(node);
+    applyBare(node); // title shadow + marker class + size (includes refreshNodeSize)
+  });
 }
 
 const HELP = {
@@ -628,6 +705,7 @@ const HELP = {
       "If you switch tabs while a run is still going, that run's time is not captured, and you will see the previous finished time when you come back. Let a run finish before switching if you want its time kept.",
     ]},
     { heading: "Settings (right-click the node)", defs: [
+      ["Compact (hide title bar)", "Right-click and choose Compact to hide the title bar, the category chip, and the frame so just the clock floats on the canvas, like a Label. Choose Show title bar to bring them back. A setting (under Pixaroma, then Run Timer appearance) makes new timers start compact if you like."],
       ["Chime on finish", "Turn the finish sound on or off."],
       ["Sound and Volume", "Pick the chime from the sound library and set how loud it is. The Preview button plays it right now."],
       ["Decimals", "Show hundredths (2), milliseconds (3), or just minutes and seconds (Off)."],
@@ -649,6 +727,16 @@ app.registerExtension({
       tooltip: "Master switch. When on, no Run Timer plays its finish chime.",
       category: ["👑 Pixaroma", "Run Timer"],
     },
+    {
+      // Distinct leaf ("Run Timer (appearance)") so it doesn't collapse into the
+      // Muted row (Vue Settings dedupes by deepest leaf — Align Pattern #10).
+      id: DEFAULT_BARE_SETTING,
+      name: "New Run Timers start bare (no title bar)",
+      type: "boolean",
+      defaultValue: false,
+      tooltip: "New Run Timer nodes drop in the compact bare look (no title bar, category chip, or frame — just the clock). Any node can still be switched with right-click.",
+      category: ["👑 Pixaroma", "Run Timer (appearance)"],
+    },
   ],
 
   setup() {
@@ -658,7 +746,17 @@ app.registerExtension({
 
   getNodeMenuItems(node) {
     if (!node || node.comfyClass !== NODE_NAME) return [];
-    return [null, { content: "⚙ Run Timer settings", callback: () => openPanel(node) }];
+    const st = readState(node);
+    // Off the 👑 crown (a frame glyph + a gear) so they stand out from the
+    // crowded crown items — same rationale as the Seed menu.
+    return [
+      null,
+      {
+        content: st.bare ? "▭ Show title bar" : "▭ Compact (hide title bar)",
+        callback: () => toggleBare(node),
+      },
+      { content: "⚙ Run Timer settings", callback: () => openPanel(node) },
+    ];
   },
 
   beforeRegisterNodeDef(nodeType, nodeData) {
@@ -669,7 +767,7 @@ app.registerExtension({
     const _origConfigure = nodeType.prototype.onConfigure;
     nodeType.prototype.onConfigure = function (info) {
       const r = _origConfigure ? _origConfigure.apply(this, arguments) : undefined;
-      if (this._pixRtRoot) { restoreLastRun(this); applyState(this); }
+      if (this._pixRtRoot) { restoreLastRun(this); applyState(this); applyBare(this); }
       return r;
     };
 
