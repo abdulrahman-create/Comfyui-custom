@@ -682,7 +682,12 @@ function setupSeedNode(node) {
   // always >= this floor, so it never overrides a wider saved width).
   _widget.computeLayoutSize = () => {
     const compact = readState(node).compact;
-    return { minHeight: measureSeedHeight(root, compact), minWidth: compact ? COMPACT_MIN_W : 1 };
+    // minWidth stays 1 in BOTH modes so the saved width round-trips. A REAL
+    // minWidth makes Nodes 2.0 snap the node WIDER on every reload (Compare
+    // gotcha 2) - that was the Ctrl+Shift+R growth. The compact width comes from
+    // setSize (fitSeedNodeHeight on a fresh drop / toggle), which persists as
+    // node.size and round-trips with minWidth:1.
+    return { minHeight: measureSeedHeight(root, compact), minWidth: 1 };
   };
   node._pixSeedRoot = root;
 
