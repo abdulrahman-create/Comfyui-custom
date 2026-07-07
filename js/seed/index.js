@@ -268,7 +268,7 @@ function measureSeedHeight(root) {
   return Math.round(h / 4) * 4;
 }
 
-const COMPACT_MIN_W = 256; // compact mode widens to at least this so the one-line seed stays readable
+const COMPACT_MIN_W = 285; // compact mode widens to at least this so the one-line seed fits + stays readable
 
 // Re-fit the node to the current content height (used after a Compact/Full
 // toggle - a user action, so writing node.size is fine; NEVER call this on the
@@ -664,10 +664,28 @@ function setupSeedNode(node) {
   });
   applyAdaptiveCanvasOnly(_widget);
   // Nodes 2.0: a widget WITH computeLayoutSize is the grower row (CLAUDE.md). It's
-  // the sole visible widget, so it's safely the grower; minWidth:1 keeps the
-  // locked width round-tripping (Compare gotcha 2).
-  _widget.computeLayoutSize = () => ({ minHeight: measureSeedHeight(root), minWidth: 1 });
+  // the sole visible widget, so it's safely the grower. Full uses minWidth:1 so
+  // the saved width round-trips (Compare gotcha 2); Compact uses a real floor so
+  // the one-line seed number isn't clipped in Nodes 2.0 (the compact width is
+  // always >= this floor, so it never overrides a wider saved width).
+  _widget.computeLayoutSize = () => ({
+    minHeight: measureSeedHeight(root),
+    minWidth: readState(node).compact ? COMPACT_MIN_W : 1,
+  });
   node._pixSeedRoot = root;
+
+  // Re-fit the seed number font whenever the body's width settles or changes
+  // (Vue Compat #13: node.onResize is unreliable for DOM widgets, and in Nodes
+  // 2.0 the compact field can settle NARROWER than the first fit measured, which
+  // clipped the number). A font change doesn't alter the root's box, so this
+  // never loops.
+  try {
+    node._pixSeedRO = new ResizeObserver(() => {
+      const num = root.querySelector(".pix-seed-num");
+      if (num) fitSeedFont(num);
+    });
+    node._pixSeedRO.observe(root);
+  } catch {}
 
   // Hidden mirror widget named "seed" so ComfyUI's %Node.seed% filename token
   // (and our save nodes) can read the current seed (see setSeedMirror). Added
@@ -802,6 +820,9 @@ app.registerExtension({
     const _origRemoved = nodeType.prototype.onRemoved;
     nodeType.prototype.onRemoved = function () {
       closeSeedSettingsFor(this);
+      try {
+        this._pixSeedRO?.disconnect();
+      } catch {}
       if (_origRemoved) return _origRemoved.apply(this, arguments);
     };
   },
