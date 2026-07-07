@@ -42,6 +42,10 @@ const HELP = {
         ],
       },
       {
+        heading: "Full or compact size",
+        body: "Right-click the node and choose Compact size to shrink it to a single row - the seed number, a small Random/Fixed toggle, and a copy button - so it takes less room on the canvas. Right-click and choose Full size to bring the buttons back. Your choice is saved with the workflow. To make every new Seed node start small, turn on \"New Seed nodes start compact\" in Settings, under Pixaroma then Seed.",
+      },
+      {
         heading: "Put the seed in your file names",
         body: "You can print the seed into a saved file name. In a Save Image, Save Mp4 Pixaroma, or Preview Image Pixaroma node's filename field, type `%Seed Pixaroma.seed%` where you want the number, for example `portrait_%Seed Pixaroma.seed%`. On save it becomes `portrait_2137`.\n\nAlways point at THIS node, not the sampler: `%Seed Pixaroma.seed%`, not `%KSampler.seed%` (once wired, the sampler no longer holds the number, this node does). If you rename this node on the canvas, use the new name in the token. With more than one Seed node, rename them so each token points at the right one.",
       },

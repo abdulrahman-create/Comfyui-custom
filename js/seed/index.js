@@ -138,6 +138,43 @@ function injectCSS() {
       overflow: hidden;
       text-overflow: ellipsis;
     }
+    /* Compact one-line layout (right-click to toggle Compact / Full). */
+    .pix-seed-minirow { display: flex; align-items: center; gap: 8px; }
+    .pix-seed-num.compact {
+      flex: 1;
+      min-width: 0;
+      width: auto;
+      height: 32px;
+      padding: 6px 8px;
+      font-size: 14px;
+    }
+    .pix-seed-minitog {
+      display: flex;
+      flex: 0 0 auto;
+      background: rgba(255,255,255,0.06);
+      border-radius: 7px;
+      padding: 3px;
+    }
+    .pix-seed-minitog .pix-seed-seg { flex: 0 0 auto; padding: 5px 9px; }
+    .pix-seed-minicopy {
+      flex: 0 0 auto;
+      box-sizing: border-box;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 32px;
+      min-width: 34px;
+      padding: 0 8px;
+      border-radius: 6px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.14);
+      color: ${BRAND};
+      cursor: pointer;
+      transition: background 0.08s, border-color 0.08s, color 0.08s;
+    }
+    .pix-seed-minicopy:hover { background: ${BRAND}; border-color: ${BRAND}; color: #fff; }
+    .pix-seed-minicopy.is-flashing,
+    .pix-seed-minicopy.is-flashing:hover { background: #3ec371; border-color: #3ec371; color: #fff; }
   `;
   const style = document.createElement("style");
   style.id = "pixaroma-seed-css";
@@ -163,6 +200,7 @@ const HIDDEN_INPUT_NAME = "SeedState"; // matches Python INPUT_TYPES key
 const DEFAULT_STATE = {
   seed: 0,
   mode: "random", // "random" | "fixed"
+  compact: false, // one-line layout (right-click to toggle; a setting sets the default for new nodes)
 };
 // The last-run seed is session-only RUNTIME state on node._pixSeedLastRun
 // (NOT node.properties), so a run never rewrites serialized state and can never
@@ -187,7 +225,8 @@ function clampSeed(n) {
 // cheap; safe to call repeatedly. No-op until the field is laid out.
 function fitSeedFont(num) {
   if (!num || !num.isConnected) return;
-  const MAX = 19, MIN = 11;
+  // Compact mode's field is narrower, so start from a smaller max (still >= 11).
+  const MAX = num.classList.contains("compact") ? 15 : 19, MIN = 11;
   num.style.fontSize = MAX + "px";
   if (!num.clientWidth) return; // not laid out yet — a scheduled retry will catch it
   let fs = MAX, guard = 0;
@@ -206,6 +245,20 @@ function measureSeedHeight(root) {
   const h = root ? measureRootContent(root) : 0;
   if (!(h > 20)) return WIDGET_H_FALLBACK;
   return Math.round(h / 4) * 4;
+}
+
+const COMPACT_MIN_W = 256; // compact mode widens to at least this so the one-line seed stays readable
+
+// Re-fit the node to the current content height (used after a Compact/Full
+// toggle - a user action, so writing node.size is fine; NEVER call this on the
+// load path). In compact mode it also nudges the width up to COMPACT_MIN_W so
+// the single-row seed isn't cramped. Works in both renderers (setSize is the
+// documented way to shrink a Nodes 2.0 node, which otherwise only grows).
+function fitSeedNodeHeight(node) {
+  if (typeof node.setSize !== "function") return;
+  let w = Math.max(MIN_W, node.size[0] || NODE_W);
+  if (readState(node).compact) w = Math.max(w, COMPACT_MIN_W);
+  node.setSize([w, node.computeSize()[1]]);
 }
 
 function readState(node) {
@@ -289,15 +342,20 @@ function syncModeUI(root, mode) {
   });
 }
 
-function copySeed(node, btn) {
+function copySeed(node, btn, iconMode) {
   const state = readState(node);
   // What-you-see-is-what-you-copy: copy exactly the seed shown in the big field
   // (the last-run seed in Random mode, the locked value in Fixed).
   const text = String(clampSeed(displayedSeed(node, state)));
   const flash = (ok) => {
+    // iconMode (compact copy button): flash the colour only, keep the SVG icon
+    // (rewriting textContent would wipe it).
     btn.classList.toggle("is-flashing", ok);
-    btn.textContent = ok ? "Copied" : "No clipboard";
-    setTimeout(() => { btn.classList.remove("is-flashing"); btn.textContent = "Copy"; }, 700);
+    if (!iconMode) btn.textContent = ok ? "Copied" : "No clipboard";
+    setTimeout(() => {
+      btn.classList.remove("is-flashing");
+      if (!iconMode) btn.textContent = "Copy";
+    }, 700);
   };
   // Fallback for INSECURE contexts (ComfyUI served over http://<LAN-IP>), where
   // navigator.clipboard is undefined — a throwaway textarea + execCommand still
@@ -330,18 +388,23 @@ function copySeed(node, btn) {
 // renderUI so the INITIAL render can target the captured root element even
 // before LiteGraph has attached it — bailing on isConnected there (the first
 // version did) left the body blank on a fresh drop.
-function buildSeedBody(node, root) {
-  const state = readState(node);
-  const lastSeed = node._pixSeedLastRun ?? null; // session-only (see DEFAULT_STATE note)
-  root.innerHTML = "";
+// SVG copy icon (Lucide "copy") for the compact button. stroke=currentColor, so
+// it takes the button's `color` - brand orange at rest, white on hover/flash.
+// Built as a plain JS string (NOT in the CSS template literal), so no escape
+// hazards.
+const COPY_SVG =
+  '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
 
-  // ── big editable seed number ──────────────────────────────────
+// The editable big seed number + its commit logic. Shared by the Full and
+// Compact layouts (compact adds a modifier class for the smaller sizing).
+function makeSeedNumberInput(node, root, compact) {
+  const state = readState(node);
   const num = document.createElement("input");
   num.type = "text";
   num.spellcheck = false;
   num.autocomplete = "off";
   num.inputMode = "numeric";
-  num.className = "pix-seed-num";
+  num.className = "pix-seed-num" + (compact ? " compact" : "");
   num.value = String(displayedSeed(node, state));
   num.title = "The seed value. Type a number to set an exact seed (switches to Fixed).";
   const commitNum = () => {
@@ -370,34 +433,78 @@ function buildSeedBody(node, root) {
     if (e.key === "Enter") { e.preventDefault(); num.blur(); }
   });
   num.addEventListener("blur", commitNum);
+  return num;
+}
+
+// One Random|Fixed segment button. Keeps the .pix-seed-seg class so syncModeUI
+// finds it; shared by Full ("Random"/"Fixed") and Compact ("R"/"F") with the
+// same click behaviour.
+function makeModeSeg(node, root, m, label, title) {
+  const state = readState(node);
+  const seg = document.createElement("button");
+  seg.type = "button";
+  seg.className = "pix-seed-seg" + (state.mode === m ? " active" : "");
+  seg.textContent = label;
+  seg.dataset.mode = m;
+  seg.title = title;
+  seg.addEventListener("click", () => {
+    const cur = readState(node);
+    if (cur.mode === m) return;
+    const next = { ...cur, mode: m };
+    // Switching Random -> Fixed locks the seed the user is CURRENTLY seeing
+    // (the last run), not the older stored value, so the number doesn't jump.
+    if (m === "fixed" && cur.mode === "random" && node._pixSeedLastRun != null) {
+      next.seed = clampSeed(node._pixSeedLastRun);
+    }
+    writeState(node, next);
+    renderUI(node);
+  });
+  return seg;
+}
+
+function buildSeedBody(node, root) {
+  const state = readState(node);
+  const lastSeed = node._pixSeedLastRun ?? null; // session-only (see DEFAULT_STATE note)
+  root.innerHTML = "";
+  root.classList.toggle("compact", !!state.compact);
+
+  const fitLater = (num) => {
+    // Fit the number font now and shortly after — covers the fresh-drop case
+    // where the widget isn't laid out on the first frame (in either renderer).
+    requestAnimationFrame(() => fitSeedFont(num));
+    setTimeout(() => fitSeedFont(num), 60);
+    setTimeout(() => fitSeedFont(num), 220);
+  };
+
+  // ── COMPACT: one row — number + R|F toggle + orange copy icon ──
+  if (state.compact) {
+    const row = document.createElement("div");
+    row.className = "pix-seed-minirow";
+    const num = makeSeedNumberInput(node, root, true);
+    const tog = document.createElement("div");
+    tog.className = "pix-seed-minitog";
+    tog.appendChild(makeModeSeg(node, root, "random", "R", "Random: roll a new seed every run."));
+    tog.appendChild(makeModeSeg(node, root, "fixed", "F", "Fixed: same seed every run."));
+    const cp = document.createElement("button");
+    cp.type = "button";
+    cp.className = "pix-seed-minicopy";
+    cp.title = "Copy the seed to the clipboard.";
+    cp.innerHTML = COPY_SVG;
+    cp.addEventListener("click", () => copySeed(node, cp, true));
+    row.append(num, tog, cp);
+    root.appendChild(row);
+    fitLater(num);
+    return;
+  }
+
+  // ── FULL (default) ──
+  const num = makeSeedNumberInput(node, root, false);
   root.appendChild(num);
 
-  // ── Random | Fixed pill ───────────────────────────────────────
   const pill = document.createElement("div");
   pill.className = "pix-seed-pill";
-  for (const [m, label] of [["random", "Random"], ["fixed", "Fixed"]]) {
-    const seg = document.createElement("button");
-    seg.type = "button";
-    seg.className = "pix-seed-seg" + (state.mode === m ? " active" : "");
-    seg.textContent = label;
-    seg.dataset.mode = m;
-    seg.title = m === "random"
-      ? "Roll a new random seed every run."
-      : "Keep the same seed every run (repeatable result).";
-    seg.addEventListener("click", () => {
-      const cur = readState(node);
-      if (cur.mode === m) return;
-      const next = { ...cur, mode: m };
-      // Switching Random -> Fixed locks the seed the user is CURRENTLY seeing
-      // (the last run), not the older stored value, so the number doesn't jump.
-      if (m === "fixed" && cur.mode === "random" && node._pixSeedLastRun != null) {
-        next.seed = clampSeed(node._pixSeedLastRun);
-      }
-      writeState(node, next);
-      renderUI(node);
-    });
-    pill.appendChild(seg);
-  }
+  pill.appendChild(makeModeSeg(node, root, "random", "Random", "Roll a new random seed every run."));
+  pill.appendChild(makeModeSeg(node, root, "fixed", "Fixed", "Keep the same seed every run (repeatable result)."));
   root.appendChild(pill);
 
   // ── New fixed random ──────────────────────────────────────────
@@ -447,11 +554,7 @@ function buildSeedBody(node, root) {
   refreshLastRunEl(lr, state.mode, lastSeed);
   root.appendChild(lr);
 
-  // Fit the number font now and shortly after — covers the fresh-drop case
-  // where the widget isn't laid out on the first frame (in either renderer).
-  requestAnimationFrame(() => fitSeedFont(num));
-  setTimeout(() => fitSeedFont(num), 60);
-  setTimeout(() => fitSeedFont(num), 220);
+  fitLater(num);
 }
 
 // Resolve the live root element (adopting the widget's element if Vue swapped
@@ -534,7 +637,14 @@ function setupSeedNode(node) {
   // node already has seedState so we leave it untouched (no dirty-on-load).
   queueMicrotask(() => {
     if (!node.properties?.[STATE_PROP]) {
-      writeState(node, { ...DEFAULT_STATE, seed: rollSeed() });
+      // Fresh drop: start in the size the user set as their default (a global
+      // Pixaroma setting), else Full. Restored nodes keep their saved size.
+      const defCompact = !!app.ui?.settings?.getSettingValue?.("Pixaroma.Seed.DefaultSize");
+      writeState(node, { ...DEFAULT_STATE, seed: rollSeed(), compact: defCompact });
+      // A fresh compact node wants a touch more width so the one-line seed reads
+      // well. Fresh ONLY (restored nodes keep their saved width - never widened
+      // here, or that would dirty the saved workflow).
+      if (defCompact && node.size[0] < COMPACT_MIN_W) node.size[0] = COMPACT_MIN_W;
     }
     // Build into the captured `root` directly — it may not be attached to the
     // page yet on a fresh drop, but the content shows once LiteGraph draws it.
@@ -557,6 +667,39 @@ function setupSeedNode(node) {
 
 app.registerExtension({
   name: "Pixaroma.Seed",
+
+  settings: [
+    {
+      id: "Pixaroma.Seed.DefaultSize",
+      name: "New Seed nodes start compact",
+      type: "boolean",
+      defaultValue: false,
+      tooltip:
+        "New Seed Pixaroma nodes drop in the small one-line layout. Any node can still be switched with right-click.",
+      category: ["👑 Pixaroma", "Seed"],
+    },
+  ],
+
+  // Right-click → toggle this node between the Full and Compact (one-line)
+  // layouts. Writes only on the click (a user action), so no dirty-on-load.
+  getNodeMenuItems(node) {
+    if (node?.comfyClass !== "PixaromaSeed") return [];
+    const st = readState(node);
+    return [
+      null,
+      {
+        content: st.compact ? "Full size" : "Compact size",
+        callback: () => {
+          const cur = readState(node);
+          writeState(node, { ...cur, compact: !cur.compact });
+          renderUI(node);
+          // Re-fit the node to the new content (user action, both renderers).
+          requestAnimationFrame(() => fitSeedNodeHeight(node));
+          setTimeout(() => fitSeedNodeHeight(node), 120);
+        },
+      },
+    ];
+  },
 
   beforeRegisterNodeDef(nodeType, nodeData) {
     if (nodeData.name !== "PixaromaSeed") return;
