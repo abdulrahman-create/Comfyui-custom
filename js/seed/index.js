@@ -162,7 +162,9 @@ function injectCSS() {
       padding: 3px;
     }
     .pix-seed-minitog .pix-seed-seg { flex: 0 0 auto; padding: 5px 9px; }
-    .pix-seed-minicopy {
+    /* Square action button in the compact row (the "N" = new fixed random).
+       Orange glyph at rest, brand fill on hover. */
+    .pix-seed-minibtn {
       flex: 0 0 auto;
       box-sizing: border-box;
       display: flex;
@@ -175,12 +177,54 @@ function injectCSS() {
       background: rgba(255,255,255,0.05);
       border: 1px solid rgba(255,255,255,0.14);
       color: ${BRAND};
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      user-select: none;
+      transition: background 0.08s, border-color 0.08s, color 0.08s;
+    }
+    .pix-seed-minibtn:hover { background: ${BRAND}; border-color: ${BRAND}; color: #fff; }
+    /* Hover popover on the compact number: shows the FULL seed (the narrow field
+       can clip a long one) + a copy button. Dark to match the seed box; floats on
+       document.body so it escapes the node's clipping. */
+    .pix-seed-tip {
+      position: fixed;
+      z-index: 2147483000;
+      display: none;
+      align-items: center;
+      gap: 8px;
+      background: #171819;
+      border: 1px solid #3a3d40;
+      border-radius: 6px;
+      padding: 6px 8px;
+      box-shadow: 0 6px 18px rgba(0,0,0,0.5);
+    }
+    .pix-seed-tip-val {
+      color: #f2f2f2;
+      font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+      font-size: 14px;
+      letter-spacing: 0.3px;
+      white-space: nowrap;
+      user-select: text;
+    }
+    .pix-seed-tip-copy {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 26px;
+      height: 26px;
+      border-radius: 5px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.14);
+      color: ${BRAND};
       cursor: pointer;
       transition: background 0.08s, border-color 0.08s, color 0.08s;
     }
-    .pix-seed-minicopy:hover { background: ${BRAND}; border-color: ${BRAND}; color: #fff; }
-    .pix-seed-minicopy.is-flashing,
-    .pix-seed-minicopy.is-flashing:hover { background: #3ec371; border-color: #3ec371; color: #fff; }
+    .pix-seed-tip-copy:hover { background: ${BRAND}; border-color: ${BRAND}; color: #fff; }
+    .pix-seed-tip-copy.is-flashing,
+    .pix-seed-tip-copy.is-flashing:hover { background: #3ec371; border-color: #3ec371; color: #fff; }
   `;
   const style = document.createElement("style");
   style.id = "pixaroma-seed-css";
@@ -460,6 +504,77 @@ function copySeed(node, btn, iconMode) {
 const COPY_SVG =
   '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
 
+// ── Hover popover for the COMPACT number field ────────────────────────────
+// The compact field can clip a long (16-digit) seed and has no room for a Copy
+// button, so hovering it pops a small dark popover showing the FULL seed + a
+// copy button. ONE reusable element lives on document.body (escapes the node's
+// clipping / z-order); a short grace timer lets the cursor travel from the field
+// into the popover to click Copy.
+let _seedTipEl = null;
+let _seedTipNode = null;
+let _seedTipHideTimer = null;
+
+function ensureSeedTip() {
+  if (_seedTipEl) return _seedTipEl;
+  const tip = document.createElement("div");
+  tip.className = "pix-seed-tip";
+  const val = document.createElement("span");
+  val.className = "pix-seed-tip-val";
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "pix-seed-tip-copy";
+  btn.title = "Copy the seed to the clipboard.";
+  btn.innerHTML = COPY_SVG;
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (_seedTipNode) copySeed(_seedTipNode, btn, true);
+  });
+  tip.append(val, btn);
+  // Keep the popover open while the cursor is over it (so Copy stays clickable);
+  // hide once the cursor leaves it.
+  tip.addEventListener("mouseenter", () => {
+    if (_seedTipHideTimer) { clearTimeout(_seedTipHideTimer); _seedTipHideTimer = null; }
+  });
+  tip.addEventListener("mouseleave", () => hideSeedTip());
+  document.body.appendChild(tip);
+  _seedTipEl = tip;
+  return tip;
+}
+
+function showSeedTip(node, num) {
+  const tip = ensureSeedTip();
+  _seedTipNode = node;
+  if (_seedTipHideTimer) { clearTimeout(_seedTipHideTimer); _seedTipHideTimer = null; }
+  const state = readState(node);
+  tip.querySelector(".pix-seed-tip-val").textContent =
+    String(clampSeed(displayedSeed(node, state)));
+  // Measure while hidden, then place ABOVE the field (flip below if there's no
+  // room), clamped to the viewport. getBoundingClientRect is post-zoom SCREEN
+  // coords, so a position:fixed popover lands correctly at any graph zoom.
+  tip.style.visibility = "hidden";
+  tip.style.display = "flex";
+  const r = num.getBoundingClientRect();
+  const tw = tip.offsetWidth, th = tip.offsetHeight;
+  const left = Math.max(4, Math.min(r.left, window.innerWidth - tw - 4));
+  let top = r.top - th - 6;
+  if (top < 4) top = r.bottom + 6;
+  tip.style.left = left + "px";
+  tip.style.top = top + "px";
+  tip.style.visibility = "visible";
+}
+
+function scheduleHideSeedTip() {
+  if (_seedTipHideTimer) clearTimeout(_seedTipHideTimer);
+  _seedTipHideTimer = setTimeout(hideSeedTip, 180);
+}
+
+function hideSeedTip() {
+  if (_seedTipHideTimer) { clearTimeout(_seedTipHideTimer); _seedTipHideTimer = null; }
+  if (_seedTipEl) _seedTipEl.style.display = "none";
+  _seedTipNode = null;
+}
+
 // The editable big seed number + its commit logic. Shared by the Full and
 // Compact layouts (compact adds a modifier class for the smaller sizing).
 function makeSeedNumberInput(node, root, compact) {
@@ -498,6 +613,13 @@ function makeSeedNumberInput(node, root, compact) {
     if (e.key === "Enter") { e.preventDefault(); num.blur(); }
   });
   num.addEventListener("blur", commitNum);
+  // Compact only: hovering the (possibly clipped) number shows a popover with
+  // the FULL seed + a copy button. Full mode has a real Copy button + a wide
+  // field, so it needs neither.
+  if (compact) {
+    num.addEventListener("mouseenter", () => showSeedTip(node, num));
+    num.addEventListener("mouseleave", scheduleHideSeedTip);
+  }
   return num;
 }
 
@@ -530,6 +652,9 @@ function makeModeSeg(node, root, m, label, title) {
 function buildSeedBody(node, root) {
   const state = readState(node);
   const lastSeed = node._pixSeedLastRun ?? null; // session-only (see DEFAULT_STATE note)
+  // The old number element (which the hover popover points at) is about to be
+  // destroyed — hide the popover if it belonged to this node.
+  if (_seedTipNode === node) hideSeedTip();
   root.innerHTML = "";
   root.classList.toggle("compact", !!state.compact);
 
@@ -541,7 +666,8 @@ function buildSeedBody(node, root) {
     setTimeout(() => fitSeedFont(num), 220);
   };
 
-  // ── COMPACT: one row — number + R|F toggle + orange copy icon ──
+  // ── COMPACT: one row — number + R|F toggle + N (new fixed random) ──
+  // Copy lives in the number's hover popover (which also reveals a clipped seed).
   if (state.compact) {
     const row = document.createElement("div");
     row.className = "pix-seed-minirow";
@@ -550,13 +676,19 @@ function buildSeedBody(node, root) {
     tog.className = "pix-seed-minitog";
     tog.appendChild(makeModeSeg(node, root, "random", "R", "Random: roll a new seed every run."));
     tog.appendChild(makeModeSeg(node, root, "fixed", "F", "Fixed: same seed every run."));
-    const cp = document.createElement("button");
-    cp.type = "button";
-    cp.className = "pix-seed-minicopy";
-    cp.title = "Copy the seed to the clipboard.";
-    cp.innerHTML = COPY_SVG;
-    cp.addEventListener("click", () => copySeed(node, cp, true));
-    row.append(num, tog, cp);
+    // N = new fixed random (the compact stand-in for the full layout's "New fixed
+    // random" button): roll a fresh seed AND lock it (switches to Fixed).
+    const nb = document.createElement("button");
+    nb.type = "button";
+    nb.className = "pix-seed-minibtn";
+    nb.textContent = "N";
+    nb.title = "New fixed random: roll a new seed and lock it (Fixed).";
+    nb.addEventListener("click", () => {
+      const cur = readState(node);
+      writeState(node, { ...cur, seed: rollSeed(cur.digits), mode: "fixed" });
+      renderUI(node);
+    });
+    row.append(num, tog, nb);
     root.appendChild(row);
     fitLater(num);
     return;
@@ -856,6 +988,7 @@ app.registerExtension({
     const _origRemoved = nodeType.prototype.onRemoved;
     nodeType.prototype.onRemoved = function () {
       closeSeedSettingsFor(this);
+      if (_seedTipNode === this) hideSeedTip();
       try {
         this._pixSeedRO?.disconnect();
       } catch {}

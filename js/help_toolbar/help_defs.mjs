@@ -43,7 +43,7 @@ const HELP = {
       },
       {
         heading: "Size and settings",
-        body: "Right-click the node for two things: a one-click Compact size / Full size flip, and a Seed settings panel. Compact shrinks the node to a single row (the seed, a small Random/Fixed toggle, and a copy button) so it takes less room; Full brings the buttons back. Your choice is saved with the workflow.\n\nThe Seed settings panel also sets the size every NEW Seed node starts at (the same as ComfyUI Settings, under Pixaroma then Seed), so you can have them all come in compact if you like.",
+        body: "Right-click the node for two things: a one-click Compact size / Full size flip, and a Seed settings panel. Compact shrinks the node to a single row (the seed, a small Random/Fixed toggle, and an N button that rolls a new fixed random seed) so it takes less room; Full brings all the buttons back. To copy the seed in compact mode, hover over the number: a small popup shows the full seed with a copy button (handy since a long seed can get trimmed in the small field). Your choice of size is saved with the workflow.\n\nThe Seed settings panel also sets the size every NEW Seed node starts at (the same as ComfyUI Settings, under Pixaroma then Seed), so you can have them all come in compact if you like.",
       },
       {
         heading: "Random seed digits",
