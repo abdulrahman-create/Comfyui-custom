@@ -16,6 +16,8 @@ export const DEFAULT_STATE = {
   saveOnRun: true,
   dateStyle: "yyyy-MM-dd", // what the + Date chip inserts (regional order)
   counterDigits: 3, // %counter% zero-padding (001 = 3)
+  folded: false, // JS-only: node body collapsed to the toolbar + preview
+  hideBarWhenFolded: false, // JS-only: also tuck the toolbar away when folded
 };
 
 export function readState(node) {

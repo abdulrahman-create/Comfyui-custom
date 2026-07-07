@@ -244,6 +244,15 @@ export function openSettingsPanel(node, onChange) {
     )
   );
 
+  body.appendChild(
+    switchRow(
+      node,
+      "hideBarWhenFolded",
+      "Hide the toolbar when folded",
+      "When folded, also tuck away the format and Copy/Open/Folder buttons"
+    )
+  );
+
   panel.appendChild(body);
   document.body.appendChild(panel);
   placeBeside(panel, getNodeScreenRect(node));

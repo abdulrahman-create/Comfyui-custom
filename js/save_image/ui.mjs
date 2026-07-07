@@ -28,6 +28,14 @@ export function injectCSS() {
   s.textContent = [
     ".pix-si-root{position:relative;width:100%;height:100%;box-sizing:border-box;}",
     ".pix-si-inner{position:absolute;inset:0;display:flex;flex-direction:column;gap:10px;padding:8px 10px 4px;box-sizing:border-box;overflow:hidden;font-family:'Segoe UI',system-ui,sans-serif;}",
+    // top strip that holds the fold/unfold toggle (right-aligned, always shown)
+    ".pix-si-topbar{display:flex;justify-content:flex-end;align-items:center;flex:0 0 auto;min-height:22px;margin-bottom:-4px;}",
+    // orange square + white triangle, same idea as the group fold icon
+    ".pix-si-fold{width:24px;height:22px;border:none;border-radius:4px;background:#f66744;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:0;flex:0 0 auto;}",
+    ".pix-si-fold:hover{background:#ff7d58;}",
+    ".pix-si-fold i{display:block;width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;}",
+    ".pix-si-fold:not(.folded) i{border-bottom:6px solid #fff;}", // ▲ = fold up
+    ".pix-si-fold.folded i{border-top:6px solid #fff;}", // ▼ = open back up
     ".pix-si-lab{display:block;font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:#f66744;margin-bottom:4px;}",
     ".pix-si-row{display:flex;gap:6px;align-items:center;}",
     ".pix-si-field{flex:1;min-width:0;background:#1d1d1d;border:1px solid #444;border-radius:4px;color:#e0e0e0;padding:5px 8px;font-size:12px;outline:none;box-sizing:border-box;font-family:inherit;width:100%;}",
@@ -109,6 +117,14 @@ export function buildRoot() {
   const root = el("div", "pix-si-root");
   const inner = el("div", "pix-si-inner");
   root.appendChild(inner);
+
+  // ── fold/unfold toggle (top strip, always visible) ──
+  const topbar = el("div", "pix-si-topbar");
+  const foldBtn = el("button", "pix-si-fold");
+  foldBtn.type = "button";
+  foldBtn.appendChild(el("i"));
+  topbar.appendChild(foldBtn);
+  inner.appendChild(topbar);
 
   // ── folder (no label - the placeholder + hint say it all) ──
   const secFolder = el("div");
@@ -219,6 +235,11 @@ export function buildRoot() {
   return {
     root,
     inner,
+    topbar,
+    foldBtn,
+    secFolder,
+    secName,
+    secBtns,
     folderInput,
     browseBtn,
     browseLbl,

@@ -158,6 +158,70 @@ function growToFloor(node) {
   });
 }
 
+// ── fold / unfold (collapse the settings, keep the toolbar + preview) ────────
+// Height (graph units == layout px) occupied by the settings sections between
+// the top strip and the preview, AS CURRENTLY DISPLAYED. offsetTop is layout-
+// relative so it is immune to graph zoom, and these sections are content-height
+// (not flex-grow), so the reading is stable regardless of the preview size.
+function settingsBlockH(ui) {
+  const barBottom = ui.topbar.offsetTop + ui.topbar.offsetHeight;
+  return Math.max(0, ui.savedSec.offsetTop - barBottom);
+}
+
+function setFoldDisplay(ui, folded, hideBar) {
+  ui.secFolder.style.display = folded ? "none" : "";
+  ui.secName.style.display = folded ? "none" : "";
+  ui.secBtns.style.display = folded && hideBar ? "none" : "";
+}
+
+function updateFoldIcon(ui, folded) {
+  ui.foldBtn.classList.toggle("folded", folded);
+  ui.foldBtn.title = folded
+    ? "Unfold - show the folder and filename settings"
+    : "Fold - hide the settings, keep the toolbar and preview";
+}
+
+// Apply the fold state to the DOM. When allowResize (a user action, NEVER the
+// load path) AND the visible set actually changes, shrink/grow the node by
+// exactly the space the sections occupy so the preview keeps its size. On the
+// load path we only set the look and trust the saved size (Vue Compat #18).
+function applyFold(node, allowResize) {
+  const ui = node._pixSiUI;
+  if (!ui) return;
+  const st = readState(node);
+  const folded = !!st.folded;
+  const hideBar = !!st.hideBarWhenFolded;
+  const isHidden = (elx) => elx.style.display === "none";
+  const wantFolderHidden = folded;
+  const wantBtnsHidden = folded && hideBar;
+  const changing =
+    isHidden(ui.secFolder) !== wantFolderHidden || isHidden(ui.secBtns) !== wantBtnsHidden;
+
+  if (allowResize && changing && !isGraphLoading()) {
+    const before = settingsBlockH(ui);
+    setFoldDisplay(ui, folded, hideBar);
+    const after = settingsBlockH(ui); // forces a sync reflow before paint
+    const delta = before - after; // >0 shrink (hid), <0 grow (showed)
+    if (Math.abs(delta) > 0.5) {
+      const floor = Math.round(measureFloor(ui) / 4) * 4;
+      const target = Math.max(floor, node.size[1] - delta);
+      if (node.setSize) node.setSize([node.size[0], target]);
+      else node.size[1] = target;
+      node.setDirtyCanvas?.(true, true);
+    }
+  } else {
+    setFoldDisplay(ui, folded, hideBar);
+  }
+  updateFoldIcon(ui, folded);
+}
+
+function toggleFold(node) {
+  const st = readState(node);
+  st.folded = !st.folded;
+  writeState(node, st);
+  applyFold(node, true);
+}
+
 // ── backend helpers ───────────────────────────────────────────────────────────
 // Browse reuses the Load Images from Folder native-dialog route (generic:
 // it just pops the OS picker and returns a path).
@@ -664,6 +728,12 @@ function wireEvents(node, ui) {
   });
   ui.btnCopy.addEventListener("click", () => copyFrame(node));
   ui.btnOpen.addEventListener("click", () => openFrame(node));
+  // fold / unfold toggle (stop the pointerdown so it can't start a node drag)
+  ui.foldBtn.addEventListener("pointerdown", (e) => e.stopPropagation());
+  ui.foldBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    toggleFold(node);
+  });
   // Right-click routing (user request): text fields keep the browser menu
   // (paste), the preview image gets OUR Open/Copy/Save menu (native Save
   // Image parity), and everywhere else opens ComfyUI's own NODE menu.
@@ -819,6 +889,7 @@ function setupNode(node) {
     syncFace(node);
     restoreLastRun(node);
     updatePreview(node);
+    applyFold(node, false); // restore the folded look; never resizes on load
     if (fresh) {
       snapFresh();
       requestAnimationFrame(snapFresh);
@@ -961,6 +1032,7 @@ app.registerExtension({
           openSettingsPanel(node, () => {
             syncFace(node);
             updatePreview(node);
+            applyFold(node, true); // resizes only if "hide toolbar" flips while folded
           }),
       },
       {
@@ -969,6 +1041,13 @@ app.registerExtension({
         content: "↺ Reset node size",
         callback: () => {
           node._pixSiSkipReassert = true; // an explicit user size choice
+          // back to normal: unfold too, then snap to the default size
+          const st = readState(node);
+          if (st.folded) {
+            st.folded = false;
+            writeState(node, st);
+          }
+          applyFold(node, false); // show everything; size is set right after
           if (node.setSize) node.setSize([DEFAULT_W, DEFAULT_H]);
           else {
             node.size[0] = DEFAULT_W;
@@ -1007,6 +1086,7 @@ app.registerExtension({
         syncFace(this);
         restoreLastRun(this);
         updatePreview(this);
+        applyFold(this, false); // restore the folded look; never resizes on load
         if (saved) reassertSavedSize(this, saved);
       });
       return r;

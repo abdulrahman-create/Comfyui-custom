@@ -40,6 +40,8 @@ DEFAULT_STATE = {
     "saveOnRun": True,
     "dateStyle": "yyyy-MM-dd",  # JS-only (what the + Date chip inserts)
     "counterDigits": 3,         # %counter% zero-padding (001 = 3)
+    "folded": False,            # JS-only (node body collapsed on the canvas)
+    "hideBarWhenFolded": False, # JS-only (also hide the toolbar when folded)
 }
 
 # Extensions stripped off a wired `name` value so "cat.png" doesn't become
