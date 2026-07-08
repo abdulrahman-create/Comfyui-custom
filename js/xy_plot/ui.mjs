@@ -42,6 +42,9 @@ const XY_HELP = {
         ["LoRA", "Compare loras or their strengths. Pick a lora ROW to swap which lora file, or its `strength` entry to sweep the weight (e.g. 0.3, 0.6, 1.0). Any OTHER lora rows stay applied in every square, so turn off the ones you are not comparing. Works with the core Load LoRA node and multi-lora loaders like the Power Lora Loader."],
         ["Prompt text", "`Full list` (one full prompt per line) or `Find & replace` (swap a word for each value)."],
       ],
+      bullets: [
+        "The checklist shows ALL your installed options (every lora, sampler, checkpoint, etc.), not just the one in the node - that is how you compare against ones you have not loaded yet. The `now:` line under the picker shows what the node is set to right now.",
+      ],
     },
     {
       heading: "Entering numbers",
