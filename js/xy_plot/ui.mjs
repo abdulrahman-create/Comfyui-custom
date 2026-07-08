@@ -8,7 +8,7 @@
 import { app } from "/scripts/app.js";
 import {
   readState, writeState,
-  enumerateTargets, lookupWidgetMeta, currentValuePreview,
+  enumerateTargets, lookupWidgetMeta, currentValuePreview, axisDisplayName,
   resolveAxisValues, computeCounts, axisReady,
 } from "./core.mjs";
 import { registerNodeHelp } from "../shared/index.mjs";
@@ -39,7 +39,7 @@ const XY_HELP = {
       defs: [
         ["Number", "A `Range` (Start / End / Steps) or a `List` of values."],
         ["Dropdown", "A checklist - tick the samplers / models / schedulers you want to compare."],
-        ["LoRA", "Tick which loras to compare. Works with the core Load LoRA node and multi-lora loaders like the Power Lora Loader (pick the row you want to vary)."],
+        ["LoRA", "Compare loras or their strengths. Pick a lora ROW to swap which lora file, or its `strength` entry to sweep the weight (e.g. 0.3, 0.6, 1.0). Any OTHER lora rows stay applied in every square, so turn off the ones you are not comparing. Works with the core Load LoRA node and multi-lora loaders like the Power Lora Loader."],
         ["Prompt text", "`Full list` (one full prompt per line) or `Find & replace` (swap a word for each value)."],
       ],
     },
@@ -274,9 +274,11 @@ function flatChoices(node) {
 function selectChoice(node, axisKey, choice, rerender) {
   const state = readState(node);
   const axis = state[axisKey];
-  const changed = axis.nodeId !== choice.nodeId || axis.widgetName !== choice.w.name;
+  const sf = choice.w.subField || null;
+  const changed = axis.nodeId !== choice.nodeId || axis.widgetName !== choice.w.name || (axis.subField || null) !== sf;
   axis.nodeId = choice.nodeId;
   axis.widgetName = choice.w.name;
+  axis.subField = sf;
   axis.widgetType = choice.w.type;
   axis.step = choice.w.step || 1;
   axis.precision = (typeof choice.w.precision === "number") ? choice.w.precision : null;
@@ -320,9 +322,10 @@ function openPicker(node, axisKey, anchorEl, rerender) {
       const items = [];
       for (const w of t.widgets) {
         const item = el("div", "pix-xy-pop-item");
-        if (axis.nodeId === t.nodeId && axis.widgetName === w.name) item.classList.add("sel");
+        if (axis.nodeId === t.nodeId && axis.widgetName === w.name && (axis.subField || "lora") === (w.subField || "lora")) item.classList.add("sel");
         const top = el("div", "pix-xy-pop-item-top");
-        top.appendChild(el("span", "pix-xy-wname", w.name));
+        const disp = w.label || w.name;
+        top.appendChild(el("span", "pix-xy-wname", disp));
         top.appendChild(el("span", "pix-xy-wtype", w.type));
         item.appendChild(top);
         // A preview of the current value disambiguates identically-named nodes
@@ -333,7 +336,7 @@ function openPicker(node, axisKey, anchorEl, rerender) {
           closePopup();
         });
         popup.appendChild(item);
-        items.push({ el: item, hay: (t.title + " " + w.name + " " + (w.cur || "")).toLowerCase() });
+        items.push({ el: item, hay: (t.title + " " + disp + " " + (w.cur || "")).toLowerCase() });
       }
       rows.push({ sec, items });
     }
@@ -388,13 +391,14 @@ function renderPicker(node, axisKey, mountRow, rerender) {
   const state = readState(node);
   const axis = state[axisKey];
   const choices = flatChoices(node);
-  const curIdx = choices.findIndex((c) => c.nodeId === axis.nodeId && c.w.name === axis.widgetName);
+  const curIdx = choices.findIndex((c) => c.nodeId === axis.nodeId && c.w.name === axis.widgetName && (c.w.subField || "lora") === (axis.subField || "lora"));
 
   const combo = el("div", "pix-xy-combo");
   const val = el("span", "pix-xy-val");
   if (axis.nodeId != null && axis.widgetName) {
     const title = choices[curIdx]?.title || ("Node " + axis.nodeId);
-    val.innerHTML = `<span class="pix-xy-node">${escapeHtml(title)}</span> · ${escapeHtml(axis.widgetName)}`;
+    const disp = choices[curIdx]?.w?.label || axisDisplayName(axis);
+    val.innerHTML = `<span class="pix-xy-node">${escapeHtml(title)}</span> · ${escapeHtml(disp)}`;
   } else {
     val.classList.add("placeholder");
     val.textContent = "Pick a setting…";

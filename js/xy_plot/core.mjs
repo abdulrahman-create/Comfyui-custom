@@ -18,6 +18,11 @@ function emptyAxis() {
   return {
     nodeId: null,
     widgetName: null,
+    // subField is NOT defaulted here on purpose: object-valued lora rows set it to
+    // "lora"|"strength"|"strengthTwo" at pick time (a user action). Leaving it out of
+    // the default shape means backfillAxis never ADDS it to a pre-existing axis on the
+    // load path, so opening an older saved workflow can't dirty it (Vue Compat #18).
+    // Every read normalizes a missing subField to "lora" (via `axis.subField || "lora"`).
     widgetType: null,        // "number" | "combo" | "text" | null
     mode: null,              // number: "range"|"list"; text: "fulllist"|"sr"
     step: 1,
@@ -99,6 +104,7 @@ export function resetAxis(node, axisKey) {
   if (!axis) return state;
   axis.nodeId = null;
   axis.widgetName = null;
+  axis.subField = null;
   axis.widgetType = null;
   axis.mode = null;
   axis.step = 1;
@@ -213,17 +219,10 @@ export function classifyWidget(w) {
   // and hold a JSON blob, not a parameter anyone would sweep.
   if (w.hidden || t === "hidden") return null;
   if (w.options && w.options.canvasOnly === true) return null;
-  // Object-valued LoRA rows: multi-lora loaders (e.g. the Power Lora Loader) store
-  // each row as {on, lora, strength, ...} under a non-standard widget type, so the
-  // number/combo/text checks below would skip them. Detect by value shape and
-  // expose each row as a combo of lora filenames so it sweeps exactly like the core
-  // Load LoRA node's `lora_name`. Injection preserves the row dict (see injectAxis).
-  const oval = w.value;
-  if (oval && typeof oval === "object" && !Array.isArray(oval) &&
-      ("lora" in oval) && ("strength" in oval || "on" in oval)) {
-    const curLora = (typeof oval.lora === "string" && oval.lora !== "None") ? oval.lora : "";
-    return { name, type: "combo", options: loraOptions(curLora), cur: curLora };
-  }
+  // Object-valued lora rows are handled by classifyWidgetEntries (they yield MULTIPLE
+  // plottable axes: the lora name + its strength[s]); classifyWidget only handles
+  // single-value number/combo/text widgets, so bail for those here.
+  if (isLoraRowValue(w.value)) return null;
   const cur = previewValue(w);
   if (t === "number") {
     const opts = w.options || {};
@@ -253,6 +252,57 @@ export function classifyWidget(w) {
   return null;
 }
 
+// True when a widget value is an object-valued lora ROW (rgthree Power Lora Loader
+// and similar multi-lora loaders): { on, lora, strength, strengthTwo? }.
+function isLoraRowValue(v) {
+  return !!(v && typeof v === "object" && !Array.isArray(v) &&
+    ("lora" in v) && ("strength" in v || "on" in v));
+}
+
+// The plottable axes a single lora ROW exposes: the lora NAME (a combo of files),
+// its model STRENGTH (a number), and - only when the loader is in "Separate Model &
+// Clip" mode - its clip strength. Each entry keeps the SAME identity `name` (the
+// widget key, e.g. "lora_1") and is disambiguated by `subField`; `label` is the
+// friendly display string. Injection reaches the right dict key via subField.
+function loraRowEntries(name, val) {
+  const out = [];
+  const curLora = (typeof val.lora === "string" && val.lora !== "None") ? val.lora : "";
+  out.push({ name, subField: "lora", label: name, type: "combo", options: loraOptions(curLora), cur: curLora });
+  const st = (typeof val.strength === "number") ? val.strength : 1;
+  // precision 2 mirrors the loader's own 2-decimal strength; realStep null = no
+  // snap toggle (users type exact weights like 0.1 / 0.35 / 1.0).
+  out.push({ name, subField: "strength", label: name + " strength", type: "number", step: 0.05, precision: 2, realStep: null, cur: String(st) });
+  if (typeof val.strengthTwo === "number") {
+    out.push({ name, subField: "strengthTwo", label: name + " clip strength", type: "number", step: 0.05, precision: 2, realStep: null, cur: String(val.strengthTwo) });
+  }
+  return out;
+}
+
+// All plottable axes for ONE widget. A lora row yields several (name + strength[s]);
+// everything else yields 0 or 1 (delegating to classifyWidget). The skip guards
+// mirror classifyWidget so an internal/hidden lora-shaped widget is still excluded.
+export function classifyWidgetEntries(w) {
+  if (!w || !w.name) return [];
+  const name = String(w.name);
+  if (name.startsWith("$$")) return [];
+  const t = w.type;
+  if (typeof t === "string" && t.startsWith("pixaroma_")) return [];
+  if (w.hidden || t === "hidden") return [];
+  if (w.options && w.options.canvasOnly === true) return [];
+  if (isLoraRowValue(w.value)) return loraRowEntries(name, w.value);
+  const single = classifyWidget(w);
+  return single ? [single] : [];
+}
+
+// Friendly display name for an axis (used on the grid + in the picker readout):
+// "lora_1", "lora_1 strength", "lora_1 clip strength", or the plain widget name.
+export function axisDisplayName(axis) {
+  if (!axis || !axis.widgetName) return "";
+  if (axis.subField === "strength") return axis.widgetName + " strength";
+  if (axis.subField === "strengthTwo") return axis.widgetName + " clip strength";
+  return axis.widgetName;
+}
+
 // List every graph node (except the XY node itself) that has at least one
 // plottable widget. Returns [{nodeId, title, widgets:[{name,type,...}]}].
 export function enumerateTargets(xyNode) {
@@ -261,7 +311,7 @@ export function enumerateTargets(xyNode) {
   const out = [];
   for (const n of nodes) {
     if (!n || n === xyNode || n.id === xyNode?.id) continue;
-    const widgets = (n.widgets || []).map(classifyWidget).filter(Boolean);
+    const widgets = (n.widgets || []).flatMap(classifyWidgetEntries).filter(Boolean);
     if (!widgets.length) continue;
     out.push({
       nodeId: n.id,
@@ -291,20 +341,32 @@ export function currentValuePreview(node, axis) {
   const w = target?.widgets?.find((x) => x && x.name === axis.widgetName);
   if (!w || w.value == null) return "";
   let raw = w.value;
-  // Object-valued lora rows (Power Lora Loader): show the lora file, not "[object Object]".
-  if (raw && typeof raw === "object" && !Array.isArray(raw) && "lora" in raw) raw = raw.lora || "None";
+  // Object-valued lora rows (Power Lora Loader): show the sub-field this axis
+  // targets (the lora file, or the strength number), not "[object Object]".
+  if (raw && typeof raw === "object" && !Array.isArray(raw) && ("lora" in raw)) {
+    const sf = axis.subField || "lora";
+    if (sf === "strength") raw = (raw.strength != null ? raw.strength : "");
+    else if (sf === "strengthTwo") raw = (raw.strengthTwo != null ? raw.strengthTwo : "");
+    else raw = raw.lora || "None";
+  }
   const v = String(raw).replace(/\s+/g, " ").trim();
   return v.length > 48 ? v.slice(0, 48) + "…" : v;
 }
 
 // Look up a fresh classification for an axis's currently-picked widget (so the
-// editor can rebuild combo option lists, number steps, etc. after reload).
+// editor can rebuild combo option lists, number steps, etc. after reload). For an
+// object-valued lora row the widget yields several entries - return the one that
+// matches this axis's subField.
 export function lookupWidgetMeta(node, axis) {
   if (!axis || axis.nodeId == null || !axis.widgetName) return null;
   const graph = node?.graph || app.graph;
   const target = graph?.getNodeById?.(axis.nodeId);
   const w = target?.widgets?.find((x) => x && x.name === axis.widgetName);
-  return classifyWidget(w);
+  if (!w) return null;
+  const entries = classifyWidgetEntries(w);
+  if (entries.length <= 1) return entries[0] || null;
+  const sf = axis.subField || "lora";
+  return entries.find((e) => (e.subField || "lora") === sf) || entries[0] || null;
 }
 
 // ── Value parsing ──────────────────────────────────────────────────────────

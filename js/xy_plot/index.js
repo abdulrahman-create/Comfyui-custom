@@ -2,7 +2,7 @@ import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
 import {
   readState, restoreFromProperties, resetState, resetAxis as resetAxisCore,
-  resolveAxisValues, axisReady, computeCounts,
+  resolveAxisValues, axisReady, computeCounts, axisDisplayName,
 } from "./core.mjs";
 import { injectCSS, buildRoot, renderBody, measureContentHeight, closePopupIfOwner } from "./ui.mjs";
 import { buildGridPreview } from "./grid.mjs";
@@ -335,11 +335,18 @@ function injectAxis(out, axis, value) {
     return;
   }
   // Object-valued rows (rgthree Power Lora Loader and similar multi-lora loaders
-  // store each row as {on, lora, strength, ...}). Preserve the row and swap only
-  // the lora file - and force it on so the sweep actually takes effect - instead
-  // of clobbering the whole dict with a bare string (which the loader can't read).
+  // store each row as {on, lora, strength, strengthTwo?}). Preserve the row and set
+  // ONLY the swept sub-field (lora file / model strength / clip strength), forcing
+  // the row on so the sweep takes effect, instead of clobbering the whole dict with
+  // a bare value (which the loader can't read). X and Y compose: sweeping the name
+  // on one axis and the strength on the other both land on the same row dict.
   if (cur && typeof cur === "object" && !Array.isArray(cur) && "lora" in cur) {
-    te.inputs[axis.widgetName] = { ...cur, lora: String(value), on: true };
+    const sf = axis.subField || "lora";
+    const next = { ...cur, on: true };
+    if (sf === "strength") next.strength = Number(value);
+    else if (sf === "strengthTwo") next.strengthTwo = Number(value);
+    else next.lora = String(value);
+    te.inputs[axis.widgetName] = next;
     return;
   }
   // Number / combo / text(full-list): inject the swept value, OVERRIDING a
@@ -508,8 +515,8 @@ app.queuePrompt = async function (...args) {
     const sessionId = "xy_" + Date.now() + "_" + (_sessionCounter++);
     const xLabels = xValues.map(String);
     const yLabels = yValues.map(String);
-    const xName = (axisReady(state.x) && state.x.widgetName) || "";
-    const yName = (axisReady(state.y) && state.y.widgetName) || "";
+    const xName = axisReady(state.x) ? axisDisplayName(state.x) : "";
+    const yName = axisReady(state.y) ? axisDisplayName(state.y) : "";
 
     return await runQueueLoop(async () => {
       let last;
