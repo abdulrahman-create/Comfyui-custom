@@ -2098,6 +2098,10 @@ app.registerExtension({
     // styling palette for the selected group; repaint after it edits fields.
     try {
       window.PixaromaPixGroup = {
+        // Perf-fix load marker: run `window.PixaromaPixGroup?.perf` in the console.
+        // "v2-clips" = the reduced-overdraw group drawing (commit f69f62e) is loaded;
+        // undefined = the browser is still running an OLD cached bundle (Ctrl+Shift+R).
+        perf: "v2-clips",
         getSelected,
         getSelectedGroups,
         groupAt,
