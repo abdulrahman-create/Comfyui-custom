@@ -84,37 +84,45 @@ function ink(hex) {
   return lum > 0.62 ? "#1a1a1a" : "#ffffff";
 }
 
-// ── header-button icons (SVGs tinted + drawn on the canvas) ──────────────
-const ICON_BASE = "/pixaroma/assets/icons/ui/";
+// ── header-button icons ─────────────────────────────────────────────────
+// Drawn as VECTOR paths (Path2D + ctx.fill), NEVER ctx.drawImage of a bitmap.
+// A single drawImage of even a 12px icon onto LiteGraph's BACKGROUND canvas
+// forces a synchronous GPU->CPU readback (~20ms PER FRAME on Windows/Chrome —
+// the WHOLE bg redraw stalls, so one group made the canvas feel sluggish during
+// pan), while ctx.fill of a path is microseconds on that same canvas. Verified
+// empirically: the cost was invariant to icon source (canvas AND ImageBitmap),
+// transform, smoothing, and 12px size — only NOT calling drawImage fixed it. The
+// path data below is copied 1:1 from assets/icons/ui/<name>.svg (identical
+// silhouettes), rendered aspect-fit + centered exactly like the old SVG raster.
 const BTN_ICONS = { run: "play", mute: "mute", bypass: "bypass", fold: "fold", unfold: "unfold" };
-const _iconImgs = {};   // url -> { img, loaded, err }
-const _tintCache = {};  // url|hex -> canvas
-function getRawImg(url) {
-  let e = _iconImgs[url];
-  if (!e) {
-    e = { img: new Image(), loaded: false, err: false };
-    e.img.onload = () => { e.loaded = true; repaint(); };
-    e.img.onerror = () => { e.err = true; };
-    e.img.src = url;
-    _iconImgs[url] = e;
+const ICON_PATHS = {
+  play:   { w: 64, h: 64, d: "M56.655,35.769L13.607,59.804c-3.485,1.946-8.039-.16-8.442-4.131-.021-.205-.031-.412-.031-.622V8.95c0-.21.011-.418.031-.622.403-3.971,4.958-6.077,8.442-4.131l43.048,24.034c2.95,1.647,2.95,5.892,0,7.539Z" },
+  mute:   { w: 23.295, h: 23.295, d: "M11.647,0C5.225,0,0,5.225,0,11.647s5.225,11.648,11.647,11.648,11.647-5.226,11.647-11.648S18.07,0,11.647,0ZM11.647,4c1.359,0,2.634.36,3.741.985L4.985,15.389c-.624-1.107-.985-2.382-.985-3.742,0-4.217,3.431-7.647,7.647-7.647ZM11.647,19.295c-1.408,0-2.724-.389-3.858-1.055l10.45-10.45c.666,1.134,1.055,2.45,1.055,3.857,0,4.217-3.431,7.648-7.647,7.648Z" },
+  bypass: { w: 23.16, h: 21.297, d: "M17.3,15.407v-1.891c0-.3-.243-.543-.543-.543H1.192c-.658,0-1.192-.533-1.192-1.192v-2.298c0-.658.533-1.192,1.192-1.192h15.566c.3,0,.543-.243.543-.543v-1.891c0-.484.585-.726.926-.384l4.774,4.774c.212.212.212.556,0,.768l-4.774,4.774c-.342.342-.926.1-.926-.384ZM14.5,0H3.009c-.3,0-.543.243-.543.543v4.926c0,.3.243.543.543.543h11.492c.3,0,.543-.243.543-.543V.543c0-.3-.243-.543-.543-.543ZM3.009,21.297h11.492c.3,0,.543-.243.543-.543v-4.959c0-.3-.243-.543-.543-.543H3.009c-.3,0-.543.243-.543.543v4.959c0,.3.243.543.543.543Z" },
+  fold:   { w: 59.763, h: 63.302, d: "M53.415,56.13c1.647,2.95-.136,6.803-3.497,7.146-.174.018-.349.026-.526.026H10.371c-.178,0-.354-.009-.526-.026-3.362-.335-5.144-4.197-3.497-7.146L26.691,19.693c1.394-2.497,4.987-2.497,6.381,0l20.343,36.437ZM55.2,0H4.563C2.043,0,0,2.043,0,4.563v5.378c0,2.52,2.043,4.563,4.563,4.563h50.637c2.52,0,4.563-2.043,4.563-4.563v-5.378c0-2.52-2.043-4.563-4.563-4.563Z" },
+  unfold: { w: 62.258, h: 58.612, d: "M.801,9.242C-1.321,5.441.976.475,5.307.034c.224-.023.449-.034.678-.034h50.286c.229,0,.456.012.678.034,4.332.432,6.629,5.408,4.506,9.208l-26.216,46.956c-1.796,3.218-6.427,3.218-8.223,0L.801,9.242Z" },
+};
+// Build each Path2D once (lazily) and cache it on the spec object.
+function iconSpec(name) {
+  const spec = ICON_PATHS[name];
+  if (!spec) return null;
+  if (spec._p === undefined) {
+    try { spec._p = (typeof Path2D === "function") ? new Path2D(spec.d) : null; }
+    catch (_e) { spec._p = null; }
   }
-  return e;
+  return spec._p ? spec : null;
 }
-function tintedIcon(name, hex) {
-  const url = ICON_BASE + name + ".svg";
-  const key = url + "|" + hex;
-  if (_tintCache[key]) return _tintCache[key];
-  const e = getRawImg(url);
-  if (!e.loaded) return null;
-  const S = 64;
-  const oc = document.createElement("canvas");
-  oc.width = S; oc.height = S;
-  const o = oc.getContext("2d");
-  o.drawImage(e.img, 0, 0, S, S);
-  o.globalCompositeOperation = "source-in";
-  o.fillStyle = hex; o.fillRect(0, 0, S, S);
-  _tintCache[key] = oc;
-  return oc;
+// Fill an icon inside the size x size box at (x,y): aspect-fit, centered, in `color`.
+function drawIcon(ctx, name, x, y, size, color) {
+  const spec = iconSpec(name);
+  if (!spec) return;
+  const s = size / Math.max(spec.w, spec.h);
+  ctx.save();
+  ctx.translate(x + (size - spec.w * s) / 2, y + (size - spec.h * s) / 2);
+  ctx.scale(s, s);
+  ctx.fillStyle = color;
+  ctx.fill(spec._p);
+  ctx.restore();
 }
 
 // ── per-group style, with back-compat (prototype groups stored a single `color`
@@ -432,8 +440,7 @@ function drawButton(ctx, b, g, tInk) {
     ? (hot ? "rgba(255,255,255,0.32)" : "rgba(255,255,255,0.13)")
     : (hot ? "rgba(0,0,0,0.30)" : "rgba(0,0,0,0.13)");
   roundRect(ctx, b.x, b.y, b.w, b.h, 4); ctx.fill();
-  const ic = tintedIcon(BTN_ICONS[b.key], tInk);
-  if (ic) ctx.drawImage(ic, b.x + (b.w - BICON) / 2, b.y + (b.h - BICON) / 2, BICON, BICON);
+  drawIcon(ctx, BTN_ICONS[b.key], b.x + (b.w - BICON) / 2, b.y + (b.h - BICON) / 2, BICON, tInk);
 }
 
 function drawOne(ctx, g) {
@@ -2099,9 +2106,9 @@ app.registerExtension({
     try {
       window.PixaromaPixGroup = {
         // Perf-fix load marker: run `window.PixaromaPixGroup?.perf` in the console.
-        // "v2-clips" = the reduced-overdraw group drawing (commit f69f62e) is loaded;
+        // "v3-vector-icons" = the button icons draw as vector paths (no drawImage);
         // undefined = the browser is still running an OLD cached bundle (Ctrl+Shift+R).
-        perf: "v2-clips",
+        perf: "v3-vector-icons",
         getSelected,
         getSelectedGroups,
         groupAt,
