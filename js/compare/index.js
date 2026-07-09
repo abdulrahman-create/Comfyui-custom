@@ -15,6 +15,10 @@ const COMPARE_HELP = {
       body: "Wire any two IMAGE outputs into `image1` and `image2` (before / after upscaling, original / inpainted, two checkpoints, ...) and run the workflow once. Each image's size is shown on the node with a `1` / `2` badge - the sizes turn orange when the two differ.",
     },
     {
+      heading: "Missing an image is fine",
+      body: "Both inputs are optional. If only one is connected - for example when a branch feeding one input is muted or bypassed in a workflow that toggles between text-to-image and image-to-image - the node simply shows that one image. If neither is connected it shows a short note. It never throws a system error, so you can leave it in the graph and just ignore it when it has nothing to compare.",
+    },
+    {
       heading: "View modes",
       defs: [
         ["Show 1 / Show 2", "View one image full-size. Click to switch between the two."],
@@ -574,17 +578,18 @@ function saveCompareState(node) {
   };
 }
 
-function saveCompareImagesToProps(node, outputImages) {
+function saveCompareImagesToProps(node, d1, d2) {
   node.properties = node.properties || {};
+  const clean = (d) => (d
+    ? { filename: d.filename, subfolder: d.subfolder || "", type: d.type || "temp" }
+    : null);
+  // Fixed 2-slot array [side1, side2]; either can be null when only one image
+  // is connected, so the missing side restores empty (not a stale image).
   node.properties[STATE_KEY] = {
     mode: node._cmpMode ?? 0,
     showWhich: node._cmpShowWhich ?? 0,
     opacity: node._cmpOpacity ?? 0.5,
-    images: outputImages.slice(0, 2).map((d) => ({
-      filename: d.filename,
-      subfolder: d.subfolder || "",
-      type: d.type || "temp",
-    })),
+    images: [clean(d1), clean(d2)],
   };
 }
 
@@ -595,9 +600,12 @@ function restoreCompareFromProperties(node) {
   if (typeof s.mode === "number") node._cmpMode = s.mode;
   if (typeof s.showWhich === "number") node._cmpShowWhich = s.showWhich;
   if (typeof s.opacity === "number") node._cmpOpacity = s.opacity;
-  if (Array.isArray(s.images) && s.images.length === 2) {
-    loadCmpImage(node, s.images[0], 0);
-    loadCmpImage(node, s.images[1], 1);
+  // images is a [side1, side2] array; either entry may be null (only one image
+  // was connected). Load whichever is present. Older saves stored two non-null
+  // entries, which still work here.
+  if (Array.isArray(s.images)) {
+    if (s.images[0]) loadCmpImage(node, s.images[0], 0);
+    if (s.images[1]) loadCmpImage(node, s.images[1], 1);
   }
   cmpRepaint(node);
 }
@@ -1172,12 +1180,29 @@ app.registerExtension({
       // Suppress default preview
       this.imgs = null;
 
-      if (!output?.images || output.images.length < 2) return;
-      // Persist image refs to node.properties before loading so a Vue tab
-      // switch immediately after execution still restores correctly.
-      saveCompareImagesToProps(this, output.images);
-      loadCmpImage(this, output.images[0], 0);
-      loadCmpImage(this, output.images[1], 1);
+      // Both inputs are optional, so Python skips a missing one and tags each
+      // saved image with its slot (1/2). Map by slot so a lone image2 lands on
+      // side 2, not side 1. Fall back to index order for an untagged payload.
+      const imgs = Array.isArray(output?.images) ? output.images : [];
+      let d1 = null, d2 = null;
+      for (const d of imgs) {
+        if (d?.slot === 2) d2 = d;
+        else if (d?.slot === 1) d1 = d;
+      }
+      if (d1 == null && d2 == null && imgs.length) {
+        d1 = imgs[0] || null;
+        d2 = imgs[1] || null;
+      }
+
+      // Persist BEFORE loading so a Vue tab switch right after execution
+      // restores correctly.
+      saveCompareImagesToProps(this, d1, d2);
+      // Load present slots; CLEAR absent ones so a stale image can't linger
+      // (e.g. toggling to text2img mutes image1 - side 1 must go empty, not
+      // keep showing the previous run's image).
+      if (d1) loadCmpImage(this, d1, 0); else this._cmpImg1 = null;
+      if (d2) loadCmpImage(this, d2, 1); else this._cmpImg2 = null;
+      cmpRepaint(this);
     };
 
     // Suppress default background image rendering (legacy only — onDrawBackground
