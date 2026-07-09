@@ -11,7 +11,7 @@ import os
 
 import folder_paths
 
-from ._prompt_reader_helpers import read_prompt_from_image
+from ._prompt_reader_helpers import read_prompt_from_image, resolve_input_image_name
 
 
 class PixaromaPromptReader:
@@ -30,7 +30,11 @@ class PixaromaPromptReader:
         "so downstream wiring does not break. Handles ComfyUI workflows "
         "with chained text nodes (ConditioningCombine, "
         "StringConcatenate, SDXL dual-text encoders) and the "
-        "Automatic1111 / Forge 'parameters' format."
+        "Automatic1111 / Forge 'parameters' format. You can also wire a "
+        "filename into the optional 'filename' input (for example from Load "
+        "Image Pixaroma's 'filename' output) - while it is connected the node "
+        "ignores its own picker and reads the prompt from that image instead. "
+        "Pick, upload, or drop a file to take over and the wire disconnects."
     )
 
     @classmethod
@@ -54,6 +58,13 @@ class PixaromaPromptReader:
             "required": {
                 "image": (sorted(files), {"image_upload": True, "tooltip": "The image to read the prompt from. Upload, drag-drop, or pick a PNG made with ComfyUI / Automatic1111 / Forge so its embedded prompt can be recovered. The readout updates as soon as you pick a file."}),
             },
+            "optional": {
+                # Wire-only (no widget). When connected it drives the read and
+                # the picker above is ignored. Load Image Pixaroma's filename
+                # output is extension-less, so read() resolves it back to the
+                # real file via resolve_input_image_name.
+                "filename": ("STRING", {"forceInput": True, "tooltip": "Optional. Wire an image's filename here (for example Load Image Pixaroma's 'filename' output) to read that image's prompt automatically. While connected, the node ignores its own picker. Pick, upload, or drop a file on the node to take over and disconnect the wire."}),
+            },
         }
 
     CATEGORY = "👑 Pixaroma/💬 Prompt & Text"
@@ -63,9 +74,33 @@ class PixaromaPromptReader:
     FUNCTION = "read"
     OUTPUT_NODE = True
 
-    def read(self, image: str):
+    @staticmethod
+    def _effective_name(image, filename):
+        """Pick which image to read: the wired filename wins over the picker.
+
+        Returns (name, error_message). When a filename is wired but cannot be
+        matched to a real file, name is None and error_message explains it so
+        read() can surface that to the user instead of silently falling back to
+        the picker (which would be confusing).
+        """
+        wired = filename.strip() if isinstance(filename, str) else ""
+        if wired:
+            resolved = resolve_input_image_name(wired)
+            if not resolved:
+                return None, (
+                    f"Could not find an image named '{wired}' in the input "
+                    "folder. Make sure the image sent by the connected node "
+                    "is present in ComfyUI's input folder."
+                )
+            return resolved, None
+        return image, None
+
+    def read(self, image: str, filename: str = None):
+        name, err = self._effective_name(image, filename)
+        if err:
+            return {"ui": {"text": [err]}, "result": (err,)}
         try:
-            image_path = folder_paths.get_annotated_filepath(image)
+            image_path = folder_paths.get_annotated_filepath(name)
         except Exception:
             text = "Image file not found in the input folder."
             return {"ui": {"text": [text]}, "result": (text,)}
@@ -78,24 +113,38 @@ class PixaromaPromptReader:
         return {"ui": {"text": [text]}, "result": (text,)}
 
     @classmethod
-    def IS_CHANGED(cls, image):
+    def IS_CHANGED(cls, image, filename=None):
         # Use (mtime, size) instead of a full-file SHA hash. ComfyUI's native
         # LoadImage hashes the file content, but we only need to know whether
         # the file changed - a 50MB PNG hashed on every run is wasteful.
         # mtime+size catches every realistic edit (the only false-negative is
         # an in-place byte swap that preserves size AND mtime, which doesn't
         # happen in practice when ComfyUI re-saves or the user re-uploads).
+        # Reflect the EFFECTIVE file (wired filename wins) so a change on the
+        # connected image also invalidates the cache and re-runs.
+        name, _err = cls._effective_name(image, filename)
+        if not name:
+            wired = filename.strip() if isinstance(filename, str) else ""
+            if wired:
+                # Wired but unresolvable - key on the raw name so it re-checks
+                # when the file appears / the wire changes.
+                return f"unresolved:{wired}"
+            # Nothing selected at all - always re-run (nan), same as before.
+            return float("nan")
         try:
-            image_path = folder_paths.get_annotated_filepath(image)
+            image_path = folder_paths.get_annotated_filepath(name)
             st = os.stat(image_path)
             return f"{st.st_mtime_ns}:{st.st_size}"
         except Exception:
-            return float("nan")
+            return f"name:{name}"
 
     @classmethod
-    def VALIDATE_INPUTS(cls, image):
-        if not folder_paths.exists_annotated_filepath(image):
-            return f"Invalid image file: {image}"
+    def VALIDATE_INPUTS(cls, image=None, filename=None):
+        # Never hard-block the graph: the node always runs and reports any
+        # problem (missing file, no metadata) via its readout / output string,
+        # so downstream wiring keeps working. This also means a wired filename
+        # driving the read is never blocked by a stale picker value, and an
+        # uploaded file not yet in the combo list is accepted.
         return True
 
 

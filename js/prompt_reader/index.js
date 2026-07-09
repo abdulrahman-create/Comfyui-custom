@@ -13,6 +13,7 @@ import { app } from "/scripts/app.js";
 import { BRAND, applyAdaptiveCanvasOnly,
   installCanvasZoomPassthrough,
 } from "../shared/index.mjs";
+import { isGraphLoading } from "../shared/graph_loading.mjs";
 
 const STATE_PROP = "promptReaderState";
 
@@ -138,6 +139,13 @@ function injectCSS() {
       letter-spacing: 0.3px;
       margin-top: -3px;
     }
+    /* Wired state: a filename is connected, so the node reads that image and
+       the picker is overridden. Dim the picker controls (still clickable - a
+       click / drop takes over and disconnects the wire) and turn the hint
+       orange, naming the connected image. */
+    .pix-pr-wired .pix-pr-upload-btn,
+    .pix-pr-wired .pix-pr-filerow { opacity: 0.45; }
+    .pix-pr-hint.pix-pr-wired-hint { color: ${BRAND}; font-weight: 600; }
     .pix-pr-dropdown {
       background: #1d1d1d;
       border: 1px solid #444;
@@ -421,7 +429,7 @@ function nextReqId(node) {
 
 // ── Readout rendering ──────────────────────────────────────────────────────
 
-function applyResult(node, result) {
+function applyResult(node, result, storeFilename) {
   const root = node._pixPrRoot;
   // Guard: node may have been removed mid-fetch (onRemoved nulls _pixPrRoot).
   // Without this guard the in-flight response would still try to write to
@@ -452,9 +460,11 @@ function applyResult(node, result) {
   }
 
   // Persist (Pattern #9 / Preview Pattern #4) so reload / Vue tab switching
-  // brings the same readout back without re-hitting the server.
+  // brings the same readout back without re-hitting the server. storeFilename
+  // is the source that produced this readout (the picker's value normally, or
+  // the followed filename when a wire drives the read).
   writeState(node, {
-    filename: node._pixPrImageWidget?.value || "",
+    filename: storeFilename != null ? storeFilename : (node._pixPrImageWidget?.value || ""),
     found: !!result?.found,
     text: result?.text || "",
     message: result?.message || "",
@@ -466,9 +476,9 @@ function restoreFromState(node) {
   const s = readState(node);
   if (!s || !s.filename) return;
   if (s.found) {
-    applyResult(node, { found: true, text: s.text, source: s.source });
+    applyResult(node, { found: true, text: s.text, source: s.source }, s.filename);
   } else if (s.message) {
-    applyResult(node, { found: false, message: s.message });
+    applyResult(node, { found: false, message: s.message }, s.filename);
   }
 }
 
@@ -519,14 +529,19 @@ function pickByOffset(node, offset) {
   else next = ((cur + offset) % values.length + values.length) % values.length;
   w.value = values[next];
   node._pixPrSelectedFilename = values[next];
-  onImageChanged(node);
+  // A manual step wins over any connected filename. If it severed a wire, the
+  // disconnect's onConnectionsChange cascade already refreshed the readout, so
+  // only extract here when nothing was severed (avoids a double fetch).
+  if (!takeOverFromWire(node)) onImageChanged(node);
 }
 
-async function onImageChanged(node) {
+// Core extract-and-render for an explicit filename. Used by BOTH the picker
+// path (onImageChanged) and the wired-follow path (pollFollowOnce). storeName
+// is persisted as the readout's source (Pattern #9).
+async function runExtract(node, filename, storeName) {
   refreshDropdown(node);
-  const filename = node._pixPrImageWidget?.value || "";
   if (!filename) {
-    applyResult(node, { found: false, message: "Pick an image to read its prompt." });
+    applyResult(node, { found: false, message: "Pick an image to read its prompt." }, storeName || "");
     return;
   }
   // Show a transient loading state.
@@ -537,7 +552,156 @@ async function onImageChanged(node) {
   // Bail if a newer request has been kicked off in the meantime - prevents
   // out-of-order responses from stamping stale text on the readout.
   if (node._pixPrReqId !== myId) return;
-  applyResult(node, result);
+  applyResult(node, result, storeName != null ? storeName : filename);
+}
+
+// Picker path: read the node's own selected image.
+async function onImageChanged(node) {
+  const filename = node._pixPrImageWidget?.value || "";
+  return runExtract(node, filename, filename);
+}
+
+// ── Wired filename input (Load Image Pixaroma → Prompt Reader) ───────────────
+// When the optional `filename` input is connected, the node reads THAT image
+// and ignores its own picker. The readout follows the upstream live (Vue Compat
+// #1: no onDraw tick, so we poll). Any manual pick / upload / drop disconnects
+// the wire and hands control back to the picker (Image Resize auto-swap idiom).
+
+const INPUT_TYPE = (typeof LiteGraph !== "undefined" && LiteGraph.INPUT != null) ? LiteGraph.INPUT : 1;
+
+function isFilenameWired(node) {
+  const inp = node.inputs?.find((i) => i && i.name === "filename");
+  return !!(inp && inp.link != null);
+}
+
+// The CURRENT filename on the wire, read live from the upstream node's own
+// state so scrubbing Load Image updates us before Run. Returns null when the
+// upstream exposes no live filename (e.g. a plain String node computed only at
+// run time) - the hint then says "loads on run" and the backend does the real
+// read on execute.
+function readWiredFilename(node) {
+  const inp = node.inputs?.find((i) => i && i.name === "filename");
+  if (!inp || inp.link == null) return null;
+  const graph = node.graph;
+  if (!graph) return null;
+  let l = graph.links?.[inp.link];
+  if (!l && typeof graph.links?.get === "function") l = graph.links.get(inp.link);
+  if (!l) return null;
+  const up = graph.getNodeById(l.origin_id);
+  if (!up) return null;
+  // Load Image Pixaroma exposes the selected filename WITH extension + subfolder.
+  if (typeof up._pixLiSelectedFilename === "string" && up._pixLiSelectedFilename) {
+    return up._pixLiSelectedFilename;
+  }
+  // A chained Prompt Reader.
+  if (typeof up._pixPrSelectedFilename === "string" && up._pixPrSelectedFilename) {
+    return up._pixPrSelectedFilename;
+  }
+  // Generic image-picker fallback: a widget literally named "image".
+  const iw = (up.widgets || []).find((w) => w && w.name === "image");
+  if (iw && typeof iw.value === "string" && iw.value) return iw.value;
+  return null;
+}
+
+function disconnectInputByName(node, name) {
+  const i = node.inputs?.findIndex((inp) => inp && inp.name === name);
+  if (i != null && i >= 0 && node.inputs[i]?.link != null) {
+    node.disconnectInput(i);
+    return true;
+  }
+  return false;
+}
+
+// Called before every MANUAL pick (upload / drop / dropdown / arrow). If a
+// filename wire is connected, drop it so the manual choice takes over. The
+// disconnect fires onConnectionsChange → refreshWiredState, which removes the
+// lock UI, stops the follow timer, and re-reads the picker.
+function takeOverFromWire(node) {
+  return disconnectInputByName(node, "filename");
+}
+
+function baseNameOf(path) {
+  if (!path) return "";
+  const n = String(path).replace(/\\/g, "/");
+  const i = n.lastIndexOf("/");
+  return i < 0 ? n : n.slice(i + 1);
+}
+
+// Toggle the "driven by a wire" look: dim the picker + orange hint naming the
+// connected image.
+function setWiredUI(node, wired, followed) {
+  const root = node._pixPrRoot;
+  if (!root) return;
+  root.classList.toggle("pix-pr-wired", wired);
+  const hint = root.querySelector('[data-role="hint"]');
+  if (!hint) return;
+  if (wired) {
+    hint.classList.add("pix-pr-wired-hint");
+    hint.textContent = followed
+      ? `\u{1F517} Reading ${baseNameOf(followed)} · pick or drop to take over`
+      : "\u{1F517} Connected · the prompt loads when you run";
+  } else {
+    hint.classList.remove("pix-pr-wired-hint");
+    hint.textContent = "or drag a PNG here";
+  }
+}
+
+function stopFollow(node) {
+  if (node._pixPrFollowTimer) {
+    clearInterval(node._pixPrFollowTimer);
+    node._pixPrFollowTimer = null;
+  }
+  node._pixPrFollowName = null;
+}
+
+function startFollow(node) {
+  if (node._pixPrFollowTimer) return; // already running
+  node._pixPrFollowTimer = setInterval(() => pollFollowOnce(node), 350);
+}
+
+// One follow tick: if the upstream's live filename changed, re-extract. Cheap
+// no-op when unchanged.
+function pollFollowOnce(node) {
+  const root = node._pixPrRoot;
+  // Skip a tick while the DOM widget is transiently detached (e.g. a Vue tab
+  // switch) but KEEP the timer running so it resumes on re-attach. It is
+  // cleared for real in onRemoved (permanent removal) and stopFollow (unwire),
+  // so it never leaks for a node that is genuinely gone.
+  if (!root || !root.isConnected) return;
+  if (!isFilenameWired(node)) { stopFollow(node); return; }
+  const name = readWiredFilename(node);
+  if (name && name !== node._pixPrFollowName) {
+    node._pixPrFollowName = name;
+    setWiredUI(node, true, name);
+    runExtract(node, name, name);
+  } else if (!name && node._pixPrFollowName == null) {
+    // Upstream exposes no live filename yet - show the "loads on run" hint
+    // once, without clobbering an existing readout.
+    setWiredUI(node, true, null);
+  }
+}
+
+// Central wired-state refresh. UI + timer only (no serialized-state writes of
+// its own), so it is safe during load (Vue Compat #17/#19). Called on
+// connect/disconnect, on setup, and on configure.
+function refreshWiredState(node) {
+  if (isFilenameWired(node)) {
+    // Do NOT reset _pixPrFollowName here: pollFollowOnce dedups on it, so a
+    // wired node opened / configured (this runs up to 3x per load - the
+    // link-restore replay plus both queueMicrotasks) extracts only ONCE. A
+    // genuine disconnect->reconnect still re-extracts because stopFollow()
+    // (the unwire branch) nulls it.
+    setWiredUI(node, true, readWiredFilename(node));
+    startFollow(node);
+    pollFollowOnce(node);           // immediate first tick (extracts if changed)
+  } else {
+    stopFollow(node);
+    setWiredUI(node, false, null);
+    // Revert to the picker's own image, but never on the load path (the
+    // configure replay fires connection events too; onConfigure's own
+    // queueMicrotask handles the picker population there).
+    if (!isGraphLoading()) onImageChanged(node);
+  }
 }
 
 // ── Dropdown popup ─────────────────────────────────────────────────────────
@@ -597,7 +761,7 @@ function openDropdown(node, anchorEl) {
           w.value = entry.full;
           node._pixPrSelectedFilename = entry.full;
           close();
-          onImageChanged(node);
+          if (!takeOverFromWire(node)) onImageChanged(node);  // manual pick wins over a wire
         });
         popup.appendChild(item);
       }
@@ -720,7 +884,11 @@ function setupNode(node) {
     imageWidget.callback = function () {
       const r = orig?.apply(this, arguments);
       if (imageWidget.value) node._pixPrSelectedFilename = imageWidget.value;
-      onImageChanged(node);
+      // A genuine native drop / combo change is a manual pick and takes over
+      // from a wire - but NEVER during load (a configure-time value restore
+      // must not sever a saved wire). If the takeover severed a wire, its
+      // cascade already refreshed the readout, so only extract here otherwise.
+      if (isGraphLoading() || !takeOverFromWire(node)) onImageChanged(node);
       return r;
     };
     // Seed the defensive cache from whatever value the widget has at setup
@@ -735,7 +903,7 @@ function setupNode(node) {
     e.stopPropagation();
     try {
       const saved = await pickAndUpload(node);
-      if (saved) onImageChanged(node);
+      if (saved && !takeOverFromWire(node)) onImageChanged(node);  // manual upload wins over a wire
     } catch (err) {
       console.error("[PixaromaPromptReader] upload failed", err);
       applyResult(node, { found: false, message: `Upload failed: ${err.message}` });
@@ -798,7 +966,7 @@ function setupNode(node) {
     if (!file || !file.type.startsWith("image/")) return;
     try {
       await uploadImage(node, file);
-      onImageChanged(node);
+      if (!takeOverFromWire(node)) onImageChanged(node);  // dropping an image wins over a wire
     } catch (err) {
       console.error("[PixaromaPromptReader] drop upload failed", err);
       applyResult(node, { found: false, message: `Upload failed: ${err.message}` });
@@ -812,6 +980,11 @@ function setupNode(node) {
   // to existing workflows without the user having to re-pick a file.
   queueMicrotask(() => {
     refreshDropdown(node);
+    // A connected filename input drives the read and overrides the picker.
+    if (isFilenameWired(node)) {
+      refreshWiredState(node);
+      return;
+    }
     const wval = imageWidget?.value || "";
     if (wval) {
       onImageChanged(node);
@@ -835,6 +1008,10 @@ app.registerExtension({
       const r = origCfg?.apply(this, arguments);
       queueMicrotask(() => {
         refreshDropdown(this);
+        if (isFilenameWired(this)) {
+          refreshWiredState(this);
+          return;
+        }
         const wval = this._pixPrImageWidget?.value || "";
         if (wval) {
           this._pixPrSelectedFilename = wval;
@@ -843,6 +1020,22 @@ app.registerExtension({
           restoreFromState(this);
         }
       });
+      return r;
+    };
+
+    // React to the optional `filename` input connecting / disconnecting. UI +
+    // follow-timer only (no serialized-state writes here), so it is safe during
+    // the configure-replay + link-restore load window (Vue Compat #17 / #19).
+    // Gated to INPUT-type changes so wiring the `text` output doesn't trigger it.
+    const origConn = nodeType.prototype.onConnectionsChange;
+    nodeType.prototype.onConnectionsChange = function (type, idx, connected, link, ioSlot) {
+      const r = origConn?.apply(this, arguments);
+      // Only react to the `filename` INPUT changing - not the `text` output,
+      // and not any other input a future ComfyUI build might auto-expose.
+      const slotName = ioSlot?.name || this.inputs?.[idx]?.name;
+      if (type === INPUT_TYPE && slotName === "filename") {
+        try { refreshWiredState(this); } catch (_e) { /* ignore */ }
+      }
       return r;
     };
 
@@ -876,6 +1069,7 @@ app.registerExtension({
       // Stale in-flight requests after this point will all fail the
       // reqId match in onImageChanged.
       this._pixPrReqId = (this._pixPrReqId | 0) + 1;
+      stopFollow(this);   // clear the wired-follow interval so it can't leak
       this._pixPrRoot = null;
       this._pixPrImageWidget = null;
       if (_activePromptReaderNode === this) _activePromptReaderNode = null;

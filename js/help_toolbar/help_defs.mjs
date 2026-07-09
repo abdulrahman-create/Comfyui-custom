@@ -627,6 +627,16 @@ const HELP = {
         ],
       },
       {
+        heading: "Follow a connected image",
+        body: "Wire an image's filename into the optional `filename` input (for example from Load Image Pixaroma's `filename` output) and the node reads that image's prompt automatically. While the wire is connected it ignores its own picker, and the readout follows the connected node live as you switch images.\n\nTo go back to picking manually, just upload, drop, or pick a file on the node - that takes over and disconnects the wire.\n\nOnly images that actually have a prompt baked in (a PNG made by ComfyUI / A1111 / Forge) can be read. A JPEG or plain photo carries no prompt.\n\nNote: the connected filename does not include the subfolder, so if you keep two images with the exact same name in different input subfolders, the run may read the wrong one. Give them distinct names to be safe (the live readout in the node always shows the correct one).",
+      },
+      {
+        heading: "Inputs",
+        defs: [
+          ["filename (optional)", "A filename to read from, usually wired from Load Image Pixaroma's `filename` output. When connected it drives the read and overrides the picker."],
+        ],
+      },
+      {
         heading: "Outputs",
         defs: [
           ["text", "The recovered prompt, or an explanatory message when none was found."],

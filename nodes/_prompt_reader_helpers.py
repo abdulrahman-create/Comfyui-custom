@@ -24,6 +24,103 @@ except ImportError:
     _folder_paths = None
 
 
+# Extension preference when matching a bare/extension-less name back to a real
+# file. PNG first because that is where ComfyUI / A1111 / Forge embed the
+# prompt; the others are included so a match is still found for images that
+# simply have no prompt (the readout then explains that).
+_IMAGE_EXT_PRIORITY = (".png", ".webp", ".jpeg", ".jpg", ".bmp", ".gif", ".tiff", ".tif")
+
+# Upper bound on files scanned by the stem search so a pathological / huge input
+# folder (or a client spamming the extract route with non-resolving names) can't
+# turn a single lookup into an unbounded tree walk. Real libraries are far under
+# this; on hitting it we just return the best match found so far.
+_MAX_RESOLVE_SCAN = 50000
+
+
+def resolve_input_image_name(name):
+    """Resolve a possibly extension-less / bare image name to a real file under
+    ComfyUI's input directory.
+
+    Load Image Pixaroma's ``filename`` output is the base name WITHOUT its
+    extension AND without any subfolder (built that way to double as a
+    save-prefix), so a value like ``"BunnyExplorer"`` wired into Prompt Reader
+    has to be matched back to the actual file (``"BunnyExplorer.png"``). PNG is
+    preferred because that is where prompt metadata lives.
+
+    Returns a name that ``folder_paths.get_annotated_filepath`` resolves to an
+    existing file (which may equal the input when it already resolves), or
+    ``None`` when nothing matches.
+    """
+    if not name or _folder_paths is None:
+        return name or None
+    raw = str(name).strip()
+    if not raw:
+        return None
+    # 1) Direct hit - already a complete, valid reference (handles the "name
+    #    [input]" annotation and full "sub/file.png" values untouched).
+    try:
+        p = _folder_paths.get_annotated_filepath(raw)
+        if p and os.path.isfile(p):
+            return raw
+    except Exception:
+        pass
+    # 2) Strip any "[input]/[output]/[temp]" annotation, normalise separators,
+    #    then search the input dir by file stem (extension-less base name).
+    ann = re.sub(r"\s*\[(?:input|output|temp)\]\s*$", "", raw)
+    ann = ann.replace("\\", "/").strip().strip("/")
+    if not ann:
+        return None
+    sub_hint, _, base = ann.rpartition("/")
+    stem = os.path.splitext(base)[0]
+    if not stem:
+        return None
+    try:
+        input_dir = _folder_paths.get_input_directory()
+    except Exception:
+        input_dir = None
+    if not input_dir or not os.path.isdir(input_dir):
+        return None
+    stem_lower = stem.lower()
+    best = None
+    best_rank = None
+    scanned = 0
+    # Recursive walk: Load Image strips the subfolder from its filename output,
+    # so a subfolder image arrives as a bare stem and must still be found.
+    # os.walk yields the input ROOT first, so root-level files are seen before
+    # any subfolder is descended into.
+    for root, _dirs, fnames in os.walk(input_dir):
+        rel_root = os.path.relpath(root, input_dir).replace("\\", "/")
+        rel_sub = "" if rel_root == "." else rel_root
+        for fname in fnames:
+            scanned += 1
+            if scanned > _MAX_RESOLVE_SCAN:
+                return best
+            fstem, fext = os.path.splitext(fname)
+            if fstem.lower() != stem_lower:
+                continue
+            ext = fext.lower()
+            if ext not in _IMAGE_EXT_PRIORITY:
+                continue
+            rel = fname if rel_sub == "" else rel_sub + "/" + fname
+            # Rank (lower is better): a subfolder-hint match wins, then PNG-first
+            # extension order, then the shallowest path, then name for stability.
+            sub_match = 0 if (sub_hint and rel_sub == sub_hint) else 1
+            ext_rank = _IMAGE_EXT_PRIORITY.index(ext)
+            depth = rel.count("/")
+            rank = (sub_match, ext_rank, depth, rel.lower())
+            if best_rank is None or rank < best_rank:
+                best_rank = rank
+                best = rel
+            # Fast path for the common case (a bare name from Load Image, no
+            # subfolder hint): a root-level PNG is the best rank achievable, so
+            # stop instead of walking the rest of the tree. When a subfolder
+            # hint IS present a deeper hint-match could still beat it, so only
+            # short-circuit when there is no hint.
+            if not sub_hint and rel_sub == "" and ext == ".png":
+                return best
+    return best
+
+
 # Known text-bearing input names. Frozenset for O(1) lookup; the regex
 # `_TEXT_KEY_RE` below catches the long tail of `text_X` / `string_X`
 # / `prompt_X` patterns used by various concat / format / chain nodes.

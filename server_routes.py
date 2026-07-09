@@ -16,7 +16,7 @@ from .nodes._save_helpers import (
     _resolve_save_folder,
     _safe_prefix,
 )
-from .nodes._prompt_reader_helpers import read_prompt_from_image
+from .nodes._prompt_reader_helpers import read_prompt_from_image, resolve_input_image_name
 from .nodes._bg_removal_helpers import (
     get_birefnet_inventory,
     is_birefnet_model_id,
@@ -1430,10 +1430,18 @@ async def api_prompt_reader_extract(request):
     try:
         image_path = folder_paths.get_annotated_filepath(filename)
     except Exception:
-        return web.json_response({
-            "found": False,
-            "message": "Image file not found in the input folder.",
-        })
+        image_path = None
+    # Fall back to the resolver for a bare / extension-less name (e.g. a value
+    # wired from Load Image Pixaroma's filename output) so the live readout can
+    # follow a connected node even when it hands us "BunnyExplorer" rather than
+    # "BunnyExplorer.png".
+    if not image_path or not os.path.isfile(image_path):
+        resolved = resolve_input_image_name(filename)
+        if resolved:
+            try:
+                image_path = folder_paths.get_annotated_filepath(resolved)
+            except Exception:
+                image_path = None
     if not image_path or not os.path.isfile(image_path):
         return web.json_response({
             "found": False,
