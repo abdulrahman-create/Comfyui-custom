@@ -530,16 +530,19 @@ function drawOne(ctx, g) {
   }
 
   // resize handle (bottom-right) — not while folded (the bar isn't resizable).
-  // Corner vertex pulled onto the r=8 rounded corner (inset = 8*(1-1/√2)) so the
-  // triangle stays inside the rounded box WITHOUT a per-frame full-box clip.
+  // Trace the r=8 rounded corner inside the handle's OWN fill path so it matches
+  // the frame exactly, WITHOUT a per-frame full-box clip (the slow path the perf
+  // pass removed). The earlier "pull one vertex onto the arc" shortcut left the
+  // handle's straight edges poking past the rounded corner (a visible wedge).
+  // HANDLE (18) > r (8), so V1/V3 sit on the straight edges beyond the arc.
   if (!g.folded) {
-    const inset = 8 * (1 - Math.SQRT1_2);
     ctx.fillStyle = rgba(tColor, sel ? 1 : 0.85);
     ctx.beginPath();
-    ctx.moveTo(g.x + g.w, g.y + g.h - HANDLE);
-    ctx.lineTo(g.x + g.w - inset, g.y + g.h - inset);
-    ctx.lineTo(g.x + g.w - HANDLE, g.y + g.h);
-    ctx.closePath();
+    ctx.moveTo(g.x + g.w, g.y + g.h - HANDLE);                     // up the right edge
+    ctx.lineTo(g.x + g.w, g.y + g.h - 8);                          // down to the arc start
+    ctx.arcTo(g.x + g.w, g.y + g.h, g.x + g.w - 8, g.y + g.h, 8);  // the rounded corner
+    ctx.lineTo(g.x + g.w - HANDLE, g.y + g.h);                     // along the bottom edge
+    ctx.closePath();                                               // diagonal back to start
     ctx.fill();
   }
 }
