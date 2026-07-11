@@ -2,7 +2,7 @@
 // renders identically in the Classic and Nodes 2.0 renderers with zero
 // isVueNodes() branching (the project's recommended dual-mode strategy).
 // Layout top->bottom: toggle pill (Pause | Pass), status line, the two
-// action buttons (Continue, Regenerate), then the preview image filling the
+// action buttons (Regenerate, Continue), then the preview image filling the
 // remaining height at the bottom.
 import { BRAND } from "../shared/utils.mjs";
 import { getState } from "./state.mjs";
@@ -85,7 +85,9 @@ export function buildPauseWidget(node, callbacks) {
   btnRegen.className = "pix-pi-btn";
   btnRegen.textContent = "⟳ Regenerate";
   btnRegen.title = "Roll a new image at this point (respects your seed)";
-  btns.append(btnContinue, btnRegen);
+  // Regenerate on the LEFT, Continue on the RIGHT (Continue is the primary
+  // "commit" action; putting it right of Regenerate reads less confusingly).
+  btns.append(btnRegen, btnContinue);
 
   // Row 2: utilities that act on the previewed image.
   const btns2 = document.createElement("div");
