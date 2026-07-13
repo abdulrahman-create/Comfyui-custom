@@ -16,6 +16,7 @@ import {
   BRAND,
   applyAdaptiveCanvasOnly,
   isVueNodes,
+  isGraphLoading,
   installCanvasZoomPassthrough,
   registerNodeHelp,
 } from "../shared/index.mjs";
@@ -63,13 +64,29 @@ function injectCSS() {
   document.head.appendChild(style);
 }
 
-function setStatus(el, state, text) {
+function setStatus(node, state, text) {
+  const el = node._klcStatusEl;
   if (!el) return;
   el.textContent = text;
   el.classList.remove("is-ok", "is-warn", "is-err");
   if (state === "ok") el.classList.add("is-ok");
   else if (state === "warn") el.classList.add("is-warn");
   else if (state === "err") el.classList.add("is-err");
+  refitNode(node);
+}
+
+// Grow/shrink the node so the (variable-height) readout always fits inside the
+// frame. The readout height changes after an async inspect/convert, and the
+// framework does not re-measure a DOM widget on its own, so nudge it here.
+// Skipped during graph load so it never rewrites a saved node's size (dirty-on-load).
+function refitNode(node) {
+  requestAnimationFrame(() => {
+    if (!node.graph || isGraphLoading()) return;
+    const want = node.computeSize?.();
+    if (!want) return;
+    if (Math.abs((node.size?.[1] ?? 0) - want[1]) > 2) node.setSize?.([node.size[0], want[1]]);
+    node.setDirtyCanvas?.(true, true);
+  });
 }
 
 function setConvertEnabled(node, on) {
@@ -90,17 +107,17 @@ function renderInspect(node, info) {
   const s = node._klcStatusEl;
   if (!s) return;
   if (!info || info.ok === false) {
-    setStatus(s, "err", info?.message || "Could not read the file.");
+    setStatus(node,"err", info?.message || "Could not read the file.");
     setConvertEnabled(node, false);
     return;
   }
   if (info.verdict === "already_loadable") {
-    setStatus(s, "neutral", "This LoRA already uses ComfyUI-style names (not the fal format), so there is nothing to convert. It should load in ComfyUI directly.");
+    setStatus(node,"neutral", "This LoRA already uses ComfyUI-style names (not the fal format), so there is nothing to convert. It should load in ComfyUI directly.");
     setConvertEnabled(node, false);
     return;
   }
   if (info.verdict !== "convert") {
-    setStatus(s, "neutral", "This does not look like a fal Krea 2 LoRA.");
+    setStatus(node,"neutral", "This does not look like a fal Krea 2 LoRA.");
     setConvertEnabled(node, false);
     return;
   }
@@ -110,10 +127,10 @@ function renderInspect(node, info) {
   const rank = info.rank ? `, rank ${info.rank}` : "";
   const out = effectiveOutputName(node, info.suggested_output);
   if (unmap > 0) {
-    setStatus(s, "warn",
+    setStatus(node,"warn",
       `⚠ Krea 2 LoRA: ${mappable} of ${total} layers recognized (${unmap} unknown will be skipped)${rank}.\nSaves as: ${out}`);
   } else {
-    setStatus(s, "ok", `✓ fal Krea 2 LoRA: ${mappable} layers${rank}.\nSaves as: ${out}`);
+    setStatus(node,"ok", `✓ fal Krea 2 LoRA: ${mappable} layers${rank}.\nSaves as: ${out}`);
   }
   setConvertEnabled(node, true);
 }
@@ -142,22 +159,22 @@ async function doInspect(node) {
     renderInspect(node, info);
   } catch (e) {
     console.warn("[Krea LoRA Converter] inspect failed:", e);
-    setStatus(node._klcStatusEl, "err", "Could not reach the server.");
+    setStatus(node,"err", "Could not reach the server.");
   }
 }
 
 function renderResult(node, res) {
   const s = node._klcStatusEl;
   if (!res || res.ok === false) {
-    setStatus(s, "err", res?.message || "Conversion failed.");
+    setStatus(node,"err", res?.message || "Conversion failed.");
     return;
   }
   const skipped = res.skipped_count || 0;
   if (skipped > 0) {
-    setStatus(s, "warn",
+    setStatus(node,"warn",
       `⚠ Saved ${res.output_name}.\n${res.converted} of ${res.total} layers converted; ${skipped} were not recognized and were skipped.`);
   } else {
-    setStatus(s, "ok", `✓ Saved ${res.output_name}.\n${res.converted} of ${res.total} layers converted.`);
+    setStatus(node,"ok", `✓ Saved ${res.output_name}.\n${res.converted} of ${res.total} layers converted.`);
   }
 }
 
@@ -184,7 +201,7 @@ async function doConvert(node) {
     }
   } catch (e) {
     console.warn("[Krea LoRA Converter] convert failed:", e);
-    setStatus(node._klcStatusEl, "err", "Convert failed: could not reach the server.");
+    setStatus(node,"err", "Convert failed: could not reach the server.");
   } finally {
     btn.textContent = prev;
     btn.disabled = !node._klcCanConvert;  // stay grey if the file isn't convertible
