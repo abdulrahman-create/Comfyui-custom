@@ -98,6 +98,8 @@ from .nodes.node_run_timer import NODE_CLASS_MAPPINGS as _MAPS_RUN_TIMER
 from .nodes.node_run_timer import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_RUN_TIMER
 from .nodes.node_save_image import NODE_CLASS_MAPPINGS as _MAPS_SAVE_IMAGE
 from .nodes.node_save_image import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_SAVE_IMAGE
+from .nodes.node_krea_lora_convert import NODE_CLASS_MAPPINGS as _MAPS_KREA_LORA_CONVERT
+from .nodes.node_krea_lora_convert import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_KREA_LORA_CONVERT
 
 # development mode for loading additional refrence nodes
 dev_mode = False
@@ -160,6 +162,7 @@ NODE_CLASS_MAPPINGS = {
     **_MAPS_GROUP_SWITCH,
     **_MAPS_RUN_TIMER,
     **_MAPS_SAVE_IMAGE,
+    **_MAPS_KREA_LORA_CONVERT,
 }
 
 # combine all node display name mappings
@@ -214,6 +217,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     **_NAMES_GROUP_SWITCH,
     **_NAMES_RUN_TIMER,
     **_NAMES_SAVE_IMAGE,
+    **_NAMES_KREA_LORA_CONVERT,
 }
 
 # web directory for loading js files

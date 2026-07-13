@@ -27,6 +27,10 @@ from .nodes._font_catalog import (
     get_custom_fonts_dir as _font_custom_dir,
     resolve_custom_file as _font_resolve_custom,
 )
+from .nodes.node_krea_lora_convert import (
+    inspect_lora as _krea_lora_inspect,
+    resolve_and_convert as _krea_lora_convert,
+)
 
 # Ensure ComfyUI/models/fonts/ exists so users have a place to drop fonts.
 try:
@@ -253,6 +257,36 @@ async def pixaroma_sounds(request):
         return web.json_response({"sounds": files})
     except Exception:
         return web.json_response({"sounds": []})
+
+
+@PromptServer.instance.routes.get("/pixaroma/api/krea_lora/inspect")
+async def krea_lora_inspect(request):
+    """Detection info for the Krea LoRA Converter node's live readout.
+
+    Given a lora filename (as listed in the node's dropdown), report whether it
+    is a fal Krea 2 LoRA, how many layers convert, and the suggested output name.
+    """
+    name = request.query.get("lora_name", "")
+    try:
+        return web.json_response(_krea_lora_inspect(name))
+    except Exception as exc:
+        return web.json_response({"ok": False, "message": "Inspect failed: {}".format(exc)})
+
+
+@PromptServer.instance.routes.post("/pixaroma/api/krea_lora/convert")
+async def krea_lora_convert(request):
+    """Convert a fal Krea 2 LoRA to ComfyUI format (the node's Convert button)."""
+    try:
+        data = await request.json()
+    except Exception:
+        return web.json_response({"ok": False, "message": "Bad request."}, status=400)
+    name = data.get("lora_name", "")
+    out = data.get("output_name", "")
+    overwrite = bool(data.get("overwrite", False))
+    try:
+        return web.json_response(_krea_lora_convert(name, out, overwrite))
+    except Exception as exc:
+        return web.json_response({"ok": False, "message": "Convert failed: {}".format(exc)})
 
 
 @PromptServer.instance.routes.get("/pixaroma/api/note/icons/list")
