@@ -295,6 +295,9 @@ Model files download automatically on first use to `ComfyUI/models/rembg/`. For 
 
 If you have **at least one BiRefNet variant** installed, the dropdown defaults to BiRefNet Standard (or HR / Matting if Standard isn't installed). Otherwise it falls back to rembg Auto. You can always change the selection manually - the dropdown shows install / download instructions inline for any option that isn't ready to use.
 
+### 🔧 Krea LoRA Converter
+Trained a LoRA for the **Krea 2** model on **fal.ai**? It will not load in ComfyUI on its own, because it names its layers differently than ComfyUI expects. This node fixes that: pick your LoRA, press Convert, and it saves a ready-to-use copy into your LoRAs folder that works with any LoRA loader. The conversion is exact - your training is untouched, the result is identical, just loadable. It reads the file first and tells you what it is (so it will not touch a LoRA that already works), and it only ever reads your file and writes a new one. It never changes the original or downloads anything.
+
 ---
 
 ## 📺 Learning Resources
@@ -306,6 +309,9 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 ---
 
 ## 🛠 Changelog
+
+### **July 13, 2026 · v1.4.31**
+- **New: Krea LoRA Converter.** If you train a LoRA for the Krea 2 model on fal.ai, it will not load in ComfyUI on its own, because the file names its parts differently than ComfyUI expects. Drop in this node, pick your LoRA, and press Convert - it saves a ready-to-use copy into your LoRAs folder that works with any LoRA loader. Nothing about your training changes; the result is identical, just usable. It checks the file first and tells you what it is, so it will not touch a LoRA that already works, and it only ever reads your file and writes a new one - it never changes the original or downloads anything.
 
 ### **July 11, 2026 · v1.4.30**
 - **The Seed node got several handy additions.** Small up and down arrows next to the seed let you nudge it by one (hold to keep counting) - handy for trying the seeds right next to one you like. You can now set random seeds as short as three digits if you prefer small, easy-to-remember numbers. And a new Seed history panel - open it with the H button or by right-clicking the node - remembers the last ten seeds you have run, so you can reuse one, copy it, or save the whole list to a text file. The buttons were also rearranged so their labels always fit.
