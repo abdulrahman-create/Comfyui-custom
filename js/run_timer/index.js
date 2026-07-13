@@ -277,10 +277,13 @@ function saveRunHistory(arr) {
   } catch (_e) {}
 }
 // Record one finished run (most-recent first, capped). Guards a garbage duration.
-function recordRunHistory(ms) {
+// `name` is captured at run START (see startAll) — the active tab can change
+// while a run is in flight, so we must NOT re-query the name here at finish.
+function recordRunHistory(ms, name) {
   const dur = Number(ms);
   if (!isFinite(dur) || dur < 0) return;
-  const entry = { ms: Math.round(dur), name: activeWorkflowName(), at: Date.now() };
+  const nm = (typeof name === "string" && name) ? name : activeWorkflowName();
+  const entry = { ms: Math.round(dur), name: nm, at: Date.now() };
   saveRunHistory([entry, ...getRunHistory()].slice(0, HISTORY_MAX));
   refreshRunHistory(); // update the panel if it happens to be open
 }
@@ -297,6 +300,7 @@ function openRunHistoryPanel(node) {
 const _timers = new Set();
 let _rafId = null;
 let _runStart = null; // run-level origin (set on execution_start) → history duration
+let _runName = "";    // active workflow name captured at run start → history label
 function loop() {
   let anyRunning = false;
   const now = performance.now();
@@ -313,6 +317,8 @@ function ensureLoop() { if (_rafId == null) _rafId = requestAnimationFrame(loop)
 
 function startAll() {
   _runStart = performance.now(); // one origin for the run → history duration
+  _runName = activeWorkflowName(); // capture the workflow NOW (at start), not at
+                                   // finish — the active tab may change mid-run
   for (const node of _timers) {
     clearTimeout(node._rtDotT);
     node._rtRunning = true;
@@ -359,7 +365,7 @@ function finishAll(success) {
   // event (some builds fire BOTH 'executing'(null) and execution_success): after
   // the first, every node is already stopped, so the second pass adds nothing.
   if (anyFinished && success && _runStart != null) {
-    recordRunHistory(performance.now() - _runStart);
+    recordRunHistory(performance.now() - _runStart, _runName);
   }
 }
 
@@ -872,7 +878,7 @@ const HELP = {
       "Because it is saved with the workflow, a small 'unsaved changes' dot shows on the tab after a run. Switching tabs never asks you to save; only closing a tab asks, as always.",
       "If you switch tabs while a run is still going, that run's time is not captured, and you will see the previous finished time when you come back.",
     ]},
-    { heading: "Run time history", body: "Right-click the node and pick 'Run time history' to see the last 10 finished runs, newest first. Each line shows the workflow name and the time of day it ran, next to how long it took, and the fastest one is marked with a lightning bolt - handy for comparing how quick different workflows are. The list is shared across every workflow and is remembered between sessions (it is not saved inside any one workflow). You can copy a single line, export the whole list as a text file, or clear it. Only completed runs are listed; a run you stop or that errors out is skipped." },
+    { heading: "Run time history", body: "Right-click the node and pick 'Run time history' to see the last 10 finished runs, newest first. Each line shows the workflow name and the time of day it ran, next to how long it took, and the fastest one is marked with a lightning bolt - handy for comparing how quick different workflows are. The list is shared across every workflow and is remembered between sessions (it is not saved inside any one workflow). You can copy a single line, export the whole list as a text file, or clear it. Each run is filed under whichever workflow was active when it started. Only completed runs are listed; a run you stop or that errors out is skipped." },
     { heading: "Settings (right-click the node)", defs: [
       ["Chime on finish", "Turn the finish sound on or off."],
       ["Sound and Volume", "Pick the chime from the sound library and set how loud it is. The Preview button plays it right now."],
