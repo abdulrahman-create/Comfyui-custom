@@ -131,6 +131,49 @@ function toggleGroup(node, g) {
   renderNode(node);
 }
 
+// ── All on / All off ───────────────────────────────────────────────────────
+// Flip every group this switch OWNS (the rows it shows - so scope "pick" only
+// touches the picked ones) in one click. Requested on Discord: a workflow whose
+// layout can't put every group inside one parent group had no way to kill them
+// all at once.
+//
+// The switching rule can make one of these impossible, and we must not silently
+// produce a state the rule forbids:
+//   any    - "any number on"        -> both make sense.
+//   one    - "only one on at a time" -> All off is fine (zero is allowed by this
+//            rule); All on would leave N on, so it is refused.
+//   always - "always keep one on"   -> All off is refused (zero is exactly what
+//            it forbids), and All on would leave N on, so that is refused too.
+// A single group is a trivial case where both are always legal.
+function canSetAll(node, on) {
+  const b = bridge();
+  if (!b || typeof b.setGroupSwitch !== "function") return false;
+  const groups = visibleGroups(node);
+  if (!groups.length) return false;
+  if (groups.length <= 1) return true;
+  const r = readState(node).restriction;
+  return on ? r === "any" : r !== "always";
+}
+
+// Why a button is greyed out - shown as its tooltip, so the rule is discoverable
+// instead of the button just looking broken.
+function whyCannotSetAll(node, on) {
+  const b = bridge();
+  if (!b || typeof b.setGroupSwitch !== "function") return "Pixaroma groups are not available.";
+  if (!visibleGroups(node).length) return "There are no groups to switch.";
+  return on
+    ? "The switching rule keeps only one group on at a time, so they cannot all be on. Change it under Switching in the settings."
+    : "The switching rule always keeps one group on, so they cannot all be off. Change it under Switching in the settings.";
+}
+
+function setAllGroups(node, on) {
+  if (!canSetAll(node, on)) return;
+  const b = bridge();
+  const st = readState(node);
+  for (const g of visibleGroups(node)) b.setGroupSwitch(g.id, on, st.action);
+  renderNode(node);
+}
+
 // When the rule changes to one/always, normalize the current on-set once.
 function enforceRestriction(node) {
   const st = readState(node);
@@ -213,10 +256,31 @@ function renderNode(node) {
 
   const top = el("div", "pix-gs-top");
   const tag = el("div", "pix-gs-tag"); tag.textContent = st.action === "bypass" ? "Bypass" : "Mute";
+
+  // All on / All off. Always PRESENT (greyed + explained when the switching rule
+  // forbids them) rather than appearing and vanishing, so the strip never reflows
+  // and the rule stays discoverable. TOP_H stays 32 - the buttons are the same
+  // height as the gear, so bodyHeight() is unchanged.
+  const bulk = el("div", "pix-gs-bulk");
+  const mkBulk = (label, on) => {
+    const ok = canSetAll(node, on);
+    const btn = el("button", "pix-gs-bulkbtn" + (ok ? "" : " off"));
+    btn.textContent = label;
+    btn.title = ok
+      ? (on ? "Turn every group in this list on." : "Turn every group in this list off.")
+      : whyCannotSetAll(node, on);
+    btn.disabled = !ok;
+    btn.onpointerdown = (e) => e.stopPropagation();  // don't start a node drag
+    btn.onclick = (e) => { e.stopPropagation(); setAllGroups(node, on); };
+    return btn;
+  };
+  bulk.appendChild(mkBulk("All on", true));
+  bulk.appendChild(mkBulk("All off", false));
+
   const gear = el("button", "pix-gs-gear"); gear.innerHTML = GEAR_SVG; gear.title = "Settings";
   gear.onpointerdown = (e) => e.stopPropagation();
   gear.onclick = (e) => { e.stopPropagation(); openPanel(node, e); };
-  top.appendChild(tag); top.appendChild(gear);
+  top.appendChild(tag); top.appendChild(bulk); top.appendChild(gear);
   root.appendChild(top);
 
   const list = el("div", "pix-gs-list");
@@ -457,9 +521,25 @@ function injectCSS() {
   s.id = "pix-gs-css";
   s.textContent = [
     ".pix-gs-root{font-family:'Segoe UI',system-ui,sans-serif;display:flex;flex-direction:column;padding:2px 0;box-sizing:border-box;}",
-    ".pix-gs-top{display:flex;align-items:center;gap:8px;padding:4px 8px 6px;}",
-    ".pix-gs-tag{font-size:11px;padding:2px 8px;border-radius:5px;background:rgba(246,103,68,0.18);color:#f99877;}",
-    ".pix-gs-gear{margin-left:auto;display:flex;align-items:center;justify-content:center;width:22px;height:22px;border:0;background:transparent;color:rgba(255,255,255,0.5);cursor:pointer;border-radius:5px;padding:0;}",
+    ".pix-gs-top{display:flex;align-items:center;gap:6px;padding:4px 8px 6px;}",
+    // min-width:0 + ellipsis so a hand-narrowed node clips the TAG rather than
+    // pushing the buttons out of the node frame.
+    ".pix-gs-tag{font-size:11px;padding:2px 8px;border-radius:5px;background:rgba(246,103,68,0.18);color:#f99877;flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}",
+    // The All on / All off pair carries the margin-left:auto (it used to be on the
+    // gear), so the whole control cluster sits together on the right. The default
+    // node (250) fits the strip comfortably; MIN_W stays 120, so a hand-narrowed
+    // node degrades by ellipsis (tag first, then the labels) instead of pushing
+    // anything outside the node frame. Raising MIN_W instead would re-widen a node
+    // someone had deliberately narrowed, and could dirty their saved workflow.
+    ".pix-gs-bulk{margin-left:auto;display:flex;align-items:center;gap:4px;flex:0 1 auto;min-width:0;}",
+    // Adaptive surface (white overlay, never opaque dark) so it reads correctly on
+    // any node colour - Pixaroma node UI convention #1. Height 22 = the gear's, so
+    // the strip stays TOP_H (32) tall and bodyHeight() is unaffected.
+    ".pix-gs-bulkbtn{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;height:22px;box-sizing:border-box;padding:0 7px;font:11px 'Segoe UI',system-ui,sans-serif;border-radius:5px;border:1px solid rgba(255,255,255,0.14);background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.72);cursor:pointer;white-space:nowrap;}",
+    ".pix-gs-bulkbtn:hover{border-color:#f66744;background:#f66744;color:#fff;}",
+    // Greyed, not hidden - the tooltip says WHY (the switching rule forbids it).
+    ".pix-gs-bulkbtn.off,.pix-gs-bulkbtn.off:hover{opacity:0.35;cursor:default;border-color:rgba(255,255,255,0.14);background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.72);}",
+    ".pix-gs-gear{display:flex;align-items:center;justify-content:center;width:22px;height:22px;border:0;background:transparent;color:rgba(255,255,255,0.5);cursor:pointer;border-radius:5px;padding:0;flex:0 0 auto;}",
     ".pix-gs-gear:hover{color:#f66744;background:rgba(255,255,255,0.06);}",
     ".pix-gs-list{display:flex;flex-direction:column;gap:1px;padding:0 5px 4px;}",
     ".pix-gs-row{display:flex;align-items:center;gap:9px;padding:6px 7px;border-radius:6px;cursor:pointer;}",
@@ -569,6 +649,7 @@ const HELP = {
   sections: [
     { heading: "What it does", body: "Each switch turns a whole Pixaroma Group on or off by muting or bypassing every node inside it. Flip a switch and that section of your workflow stops running, without unplugging a single wire." },
     { heading: "The switches", body: "The node body is just the switches. Click anywhere on a row to flip that group on or off - not only the small switch. An enabled row shows bright white text; a switched-off row is dimmed, so you can read the state at a glance. A small tag in the corner shows whether this one mutes or bypasses, and the colored dot and name (plus a number when two groups share a name) tell the groups apart." },
+    { heading: "All on / All off", body: "The two buttons at the top flip every group in the list at once, so you can kill a whole set of sections (or bring them all back) in one click instead of clicking each switch. They only touch the groups this switch lists, so if you set it to a hand-picked set, the rest are left alone.\n\nIf you have chosen a switching rule that only allows one group on at a time, turning them all on is impossible, so that button is greyed out - and hovering it tells you why. The same goes for All off when the rule always keeps one group on." },
     { heading: "Settings (the gear, or right-click)", defs: [
       ["Action", "Make this switch a Mute or a Bypass. New switches default to Bypass. For both at once, drop two switches."],
       ["Groups", "Control all groups, or Pick a hand-picked set. Search and sort (by canvas position, name, or color) to find them. The locate icon flashes a group on the canvas."],
