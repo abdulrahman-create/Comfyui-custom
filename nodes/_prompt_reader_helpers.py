@@ -193,11 +193,12 @@ _PROMPT_PACK_CLASS = "PixaromaPromptPack"
 _PROMPT_FROM_LIST_CLASS = "PixaromaPromptFromList"
 
 # Switch Source Pixaroma: N-output A/B bank switcher. The hidden
-# SwitchSourceState carries active side + row count. At submit time the JS
-# hook prunes the inactive side, so only a_r OR b_r survives in the saved
-# prompt JSON. To know which row we came from, the walker tracks
-# `origin_slot` (the upstream output slot index of the link tuple that led
-# here): row = origin_slot + 1, then follow a_r or b_r based on active.
+# SwitchSourceState carries active side + row count, and the walker follows
+# whichever side it names - so this works whether or not the inactive side is
+# present (a browser-submitted prompt is pruned to the active side; an
+# API-exported one keeps both). To know which row we came from, the walker
+# tracks `origin_slot` (the upstream output slot index of the link tuple that
+# led here): row = origin_slot + 1, then follow a_r or b_r based on active.
 _SWITCH_SOURCE_CLASS = "PixaromaSwitchSource"
 
 _MAX_WALK_DEPTH = 24
@@ -485,9 +486,10 @@ def _pix_switch_source_active_link(inputs: dict, row: int):
     for the given row of a PixaromaSwitchSource, or None.
 
     SwitchSourceState is injected by js/switch_source/index.js's graphToPrompt
-    hook as {"version":1, "active":"A"|"B", "rows":N, ...}. The same hook
-    prunes the inactive side, so only the active a_r or b_r key carries a
-    wire tuple in the saved prompt JSON.
+    hook as {"version":1, "active":"A"|"B", "rows":N, ...}. We resolve the side
+    from that state, so this holds whether the inactive side is present or not
+    (a browser-submitted prompt is pruned to the active side at submit time; an
+    API-exported one keeps both banks).
 
     Returns None when state is unparseable, row out of range, or the active
     side has no link on that row (the walker bails cleanly in that case).

@@ -9,8 +9,15 @@ inputs (b_1..b_16) - the "two stacked banks" order - plus MAX_ROWS ANY outputs.
 The JS frontend shows only the rows the user asked for (the Rows field). The
 active bank, visible row count, missing-side mode, and per-side wiring are
 carried via the hidden SwitchSourceState input (Pattern #9 - injected by the JS
-app.graphToPrompt hook, which also prunes each row to the side that is actually
-used so only that branch executes).
+app.graphToPrompt hook).
+
+THE INACTIVE BANK IS SKIPPED SERVER-SIDE (lazy inputs). Every a_N/b_N is declared
+"lazy": True and check_lazy_status() asks ComfyUI for ONLY the active bank, so the
+other bank's upstream never executes. That is what makes an API-exported workflow
+work: the JS cannot run for a headless /prompt submission, so a frontend-only
+trick could never pick the bank there. The JS hook still prunes the inactive bank
+at SUBMIT time (browser runs only) - now just a caching/validation optimisation,
+not the mechanism. See "Switch Source" in CLAUDE.md.
 """
 import json
 
@@ -153,8 +160,8 @@ class PixaromaSwitchSource:
             if i > rows:
                 out.append(None)
                 continue
-            # ACTIVE SIDE ONLY. The JS hook prunes the inactive side regardless
-            # of mode, so its upstream branch never runs. We never fall back.
+            # ACTIVE SIDE ONLY - we never fall back to the other side. Its upstream
+            # never runs either: check_lazy_status only ever requests this side.
             val = kwargs.get(f"a_{i}") if active == "A" else kwargs.get(f"b_{i}")
             if val is None and missing == "strict":
                 # Active is empty AND the user wired the OTHER side - almost

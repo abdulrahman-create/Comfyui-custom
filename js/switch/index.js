@@ -255,14 +255,18 @@ function findSwitchNode(index, promptId) {
 // in a branch you are not using can't fail the run) - exactly as before.
 // ─────────────────────────────────────────────────────────────────────────────
 
-// The active row for a Switch entry in a prompt, or null when it is not ours.
-function switchActiveIndex(index, id, entry) {
-  if (!entry || entry.class_type !== "PixaromaSwitch") return null;
+// The active row for a Switch entry, or null when the live node cannot be resolved
+// (a foreign//stale prompt, or a subgraph id that misses the index). Callers must
+// treat null as "I don't know": the PRUNE must then delete NOTHING (deleting on a
+// guessed row would drop the user's real wires - Python's lazy inputs still keep
+// only the active branch running), while the INJECT path may fall back to row 1,
+// which is what Python defaults to anyway.
+// activeIndex 0 means nothing is connected yet -> 1, so Python surfaces its clear
+// "not connected" error rather than a crash.
+function switchActiveIndex(index, id) {
   const node = findSwitchNode(index, id);
-  const state = node?.properties?.[STATE_PROP];
-  // activeIndex 0 means nothing is connected yet - fall back to 1 so Python
-  // surfaces a clear "not connected" error rather than a crash.
-  return state?.activeIndex || 1;
+  if (!node) return null;
+  return node.properties?.[STATE_PROP]?.activeIndex || 1;
 }
 
 const _origGraphToPrompt = app.graphToPrompt.bind(app);
@@ -275,10 +279,8 @@ app.graphToPrompt = async function (...args) {
       const entry = out[id];
       if (!entry || entry.class_type !== "PixaromaSwitch") continue;
       if (!index) index = buildSwitchNodeIndex();
-      const activeIdx = switchActiveIndex(index, id, entry);
-      if (activeIdx == null) continue;
       entry.inputs = entry.inputs || {};
-      entry.inputs[HIDDEN_INPUT_NAME] = String(activeIdx);
+      entry.inputs[HIDDEN_INPUT_NAME] = String(switchActiveIndex(index, id) ?? 1);
     }
   }
   return result;
@@ -301,7 +303,9 @@ if (!api._pixSwQueueWrapped) {
           const entry = out[id];
           if (!entry || entry.class_type !== "PixaromaSwitch") continue;
           if (!index) index = buildSwitchNodeIndex();
-          const activeIdx = switchActiveIndex(index, id, entry);
+          const activeIdx = switchActiveIndex(index, id);
+          // null = we could not resolve the live node, so we do NOT know which row
+          // is active. Prune nothing rather than guess row 1 and delete real wires.
           if (activeIdx == null || !entry.inputs) continue;
           for (const inputName of Object.keys(entry.inputs)) {
             if (!inputName.startsWith("input_")) continue;

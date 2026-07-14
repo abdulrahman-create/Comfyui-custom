@@ -28,9 +28,14 @@ MAX_INPUTS = 32
 
 
 def _active_index(switch_state):
-    """1-based active row from the hidden SwitchState. Out-of-range/garbage -> 1."""
+    """1-based active row from the hidden SwitchState. Out-of-range/garbage -> 1.
+
+    Goes through float() so a hand-edited API export is forgiving: "2", 2, 2.0 and
+    "2.0" all mean row 2. (An API-exported workflow is MEANT to be edited by hand -
+    plain int("2.0") raises, which would have silently run row 1 instead.)
+    """
     try:
-        idx = int(switch_state)
+        idx = int(float(str(switch_state).strip()))
     except (TypeError, ValueError):
         return 1
     if idx < 1 or idx > MAX_INPUTS:
