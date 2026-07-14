@@ -315,16 +315,25 @@ export function scheduleAlign(node) {
 
 // LEGACY: park each output at its widget's Y. LiteGraph reads slot.pos verbatim
 // (getConnectionPos) and skips positioned outputs in the auto-stacker.
+//
+// ⚠️ MIND THE MARGIN. Legacy insets a DOM widget's ELEMENT by widget.margin
+// (DEFAULT_MARGIN = 10): the element is drawn at
+//     node.pos + margin + widget.y
+// while widget.y itself carries no margin. Placing the dot at widget.y + rowH/2
+// therefore lands it a full 10px ABOVE the row's real centre - which on a 23px
+// row is almost exactly its top edge (user-reported: "aligned on top, not
+// centre"). Nodes 2.0 has no such margin, which is why it looked right there.
 export function alignOutputsLegacy(node) {
   const rows = node._pixSldRows || [];
   if (!node.outputs || !rows.length) return;
-  const half = (window.LiteGraph?.NODE_SLOT_HEIGHT || 20) * 0.5;
   for (let i = 0; i < node.outputs.length && i < rows.length; i++) {
-    const y = rows[i]?.y;
+    const w = rows[i];
+    const y = w?.y;
     if (!Number.isFinite(y)) continue;
+    const margin = Number.isFinite(w.margin) ? w.margin : 10;
     const pos = node.outputs[i].pos;
     const nx = node.size[0];
-    const ny = y + ROW_H * 0.5;
+    const ny = y + margin + ROW_H * 0.5;   // the row's true visual centre
     if (!pos || pos[0] !== nx || Math.abs(pos[1] - ny) > 0.5) {
       node.outputs[i].pos = [nx, ny];
     }
