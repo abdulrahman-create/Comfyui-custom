@@ -20,6 +20,41 @@ MAX_ROWS = 16
 _DEFAULT_STATE = '{"version":1,"active":"A","rows":1,"missing":"connected"}'
 
 
+def _parse_state(switch_source_state):
+    """Hidden SwitchSourceState -> (active, rows, missing, a_wired, b_wired).
+
+    Shared by pick() and check_lazy_status() so the two can never disagree about
+    which bank is active. Tolerant of garbage/missing state (an API submission may
+    carry only the default), falling back to the A bank.
+    """
+    active = "A"
+    rows = 0
+    missing = "connected"
+    a_wired = []
+    b_wired = []
+    try:
+        state = json.loads(switch_source_state)
+        if isinstance(state, dict):
+            if state.get("active") in ("A", "B"):
+                active = state["active"]
+            r = state.get("rows")
+            # Accept a JSON float (1.0) too; reject bool (subclass of int).
+            if isinstance(r, (int, float)) and not isinstance(r, bool) and r > 0:
+                rows = min(int(r), MAX_ROWS)
+            if state.get("missing") in ("connected", "strict"):
+                missing = state["missing"]
+            aw = state.get("aWired")
+            if isinstance(aw, list):
+                a_wired = [int(x) for x in aw if isinstance(x, int) and not isinstance(x, bool)]
+            bw = state.get("bWired")
+            if isinstance(bw, list):
+                b_wired = [int(x) for x in bw if isinstance(x, int) and not isinstance(x, bool)]
+    except (TypeError, ValueError):
+        if switch_source_state in ("A", "B"):
+            active = switch_source_state
+    return active, rows, missing, a_wired, b_wired
+
+
 class PixaromaSwitchSource:
     DESCRIPTION = (
         "Switch Source Pixaroma - flip a whole set of wires between two "
@@ -42,17 +77,21 @@ class PixaromaSwitchSource:
 
     @classmethod
     def INPUT_TYPES(cls):
+        # "lazy": True -> ComfyUI only evaluates an input's upstream branch when
+        # check_lazy_status() asks for it, so the INACTIVE bank never runs. This
+        # is server-side, so it also works for an API submission (where our JS
+        # hook cannot run at all).
         optional = {}
         for i in range(1, MAX_ROWS + 1):
             optional[f"a_{i}"] = (
                 ANY,
-                {"forceInput": True,
+                {"forceInput": True, "lazy": True,
                  "tooltip": f"Source A for row {i}. Flows to output_{i} when the toggle is on A."},
             )
         for i in range(1, MAX_ROWS + 1):
             optional[f"b_{i}"] = (
                 ANY,
-                {"forceInput": True,
+                {"forceInput": True, "lazy": True,
                  "tooltip": f"Source B for row {i}. Flows to output_{i} when the toggle is on B."},
             )
         return {
@@ -72,32 +111,29 @@ class PixaromaSwitchSource:
     FUNCTION = "pick"
     CATEGORY = "👑 Pixaroma/🔀 Logic & Flow"
 
+    def check_lazy_status(self, SwitchSourceState=_DEFAULT_STATE, **kwargs):
+        """Ask ComfyUI to evaluate ONLY the active bank's upstream branches.
+
+        The active side is the only one that ever flows out (pick() never falls
+        back to the other side), so the inactive bank is never requested and its
+        upstream never runs.
+
+        A wired-but-unevaluated input arrives as key-present/value-None; an UNWIRED
+        input's key is absent. So requesting only keys that are PRESENT means an
+        unwired active row is simply not requested - the node then runs and pick()
+        applies its own 'Allow empty' / 'Show error' rule, rather than ComfyUI
+        raising a raw NodeInputError. Must return a LIST.
+
+        Row count is deliberately NOT consulted here: a slot can only be wired if
+        the node exposed it, and pick() already extends `rows` to cover the highest
+        wired index, so every wired active-side input is genuinely needed.
+        """
+        active, _rows, _missing, _aw, _bw = _parse_state(SwitchSourceState)
+        prefix = "a_" if active == "A" else "b_"
+        return [k for k, v in kwargs.items() if k.startswith(prefix) and v is None]
+
     def pick(self, SwitchSourceState=_DEFAULT_STATE, **kwargs):
-        active = "A"
-        rows = 0
-        missing = "connected"
-        a_wired = []
-        b_wired = []
-        try:
-            state = json.loads(SwitchSourceState)
-            if isinstance(state, dict):
-                if state.get("active") in ("A", "B"):
-                    active = state["active"]
-                r = state.get("rows")
-                # Accept a JSON float (1.0) too; reject bool (subclass of int).
-                if isinstance(r, (int, float)) and not isinstance(r, bool) and r > 0:
-                    rows = min(int(r), MAX_ROWS)
-                if state.get("missing") in ("connected", "strict"):
-                    missing = state["missing"]
-                aw = state.get("aWired")
-                if isinstance(aw, list):
-                    a_wired = [int(x) for x in aw if isinstance(x, int) and not isinstance(x, bool)]
-                bw = state.get("bWired")
-                if isinstance(bw, list):
-                    b_wired = [int(x) for x in bw if isinstance(x, int) and not isinstance(x, bool)]
-        except (TypeError, ValueError):
-            if SwitchSourceState in ("A", "B"):
-                active = SwitchSourceState
+        active, rows, missing, a_wired, b_wired = _parse_state(SwitchSourceState)
 
         # Row count: trust the injected state, but NEVER fall below the highest
         # wired index. The JS hook normally injects the exact rows; if it did not

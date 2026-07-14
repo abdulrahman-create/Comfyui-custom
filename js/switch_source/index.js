@@ -1,4 +1,5 @@
 import { app } from "/scripts/app.js";
+import { api } from "/scripts/api.js";
 import { installCanvasZoomPassthrough } from "../shared/canvas_zoom.mjs";
 import {
   STATE_PROP, MAX_ROWS, CONTROL_BAND,
@@ -363,10 +364,43 @@ function findNode(index, promptId) {
   return null;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Prompt hooks - split in two, exactly like Switch Pixaroma (see the long note in
+// js/switch/index.js). graphToPrompt INJECTS the hidden state only, so ComfyUI's
+// "Export (API)" keeps EVERY wired a_N / b_N and the exported JSON can be
+// re-pointed at the other bank by hand. api.queuePrompt PRUNES the inactive bank,
+// and only when a prompt is actually submitted from the browser.
+//
+// The inactive bank not EXECUTING is no longer this prune's job: node_switch_source.py
+// declares the inputs "lazy" and check_lazy_status() requests only the active
+// side, server-side - which is the only thing that can work for an API submission,
+// where this JS never runs. The prune stays for browser runs as a caching /
+// validation optimisation (an unused bank can't invalidate the cache or fail
+// validation), which is how it has always behaved.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Per-Switch-Source facts needed by both hooks: which bank is active, how many
+// rows, and which sides are wired.
+function switchSourceInfo(index, id, entry) {
+  if (!entry || entry.class_type !== "PixaromaSwitchSource") return null;
+  const node = findNode(index, id);
+  if (!node) return null;
+  const state = readState(node);
+  const rows = rowCount(node);
+  const aWired = [];
+  const bWired = [];
+  for (let r = 1; r <= rows; r++) {
+    const a = (node.inputs || []).find((s) => s.name === `a_${r}`);
+    const b = (node.inputs || []).find((s) => s.name === `b_${r}`);
+    if (a && a.link != null) aWired.push(r);
+    if (b && b.link != null) bWired.push(r);
+  }
+  return { active: state.active, missing: state.missing, rows, aWired, bWired };
+}
+
 // Idempotency guard: hot-reload or duplicate module evaluation would otherwise
 // capture this module's previous wrapper as _origGraphToPrompt and double-wrap,
-// double-injecting SwitchSourceState and double-pruning. Matches the
-// _pixSsLoadWrapped pattern above.
+// double-injecting SwitchSourceState. Matches the _pixSsLoadWrapped pattern above.
 if (!app._pixSsGtpWrapped) {
   app._pixSsGtpWrapped = true;
   const _origGraphToPrompt = app.graphToPrompt.bind(app);
@@ -374,45 +408,60 @@ if (!app._pixSsGtpWrapped) {
     const result = await _origGraphToPrompt(...args);
     const out = result?.output;
     if (out) {
-    let index = null;
-    for (const id in out) {
-      const entry = out[id];
-      if (!entry || entry.class_type !== "PixaromaSwitchSource") continue;
-      if (!index) index = buildIndex();
-      const node = findNode(index, id);
-      if (!node) continue;
-
-      const state = readState(node);
-      const active = state.active;
-      const missing = state.missing;
-      const rows = rowCount(node);
-
-      const aWired = [];
-      const bWired = [];
-      for (let r = 1; r <= rows; r++) {
-        const a = (node.inputs || []).find((s) => s.name === `a_${r}`);
-        const b = (node.inputs || []).find((s) => s.name === `b_${r}`);
-        if (a && a.link != null) aWired.push(r);
-        if (b && b.link != null) bWired.push(r);
+      let index = null;
+      for (const id in out) {
+        const entry = out[id];
+        if (!entry || entry.class_type !== "PixaromaSwitchSource") continue;
+        if (!index) index = buildIndex();
+        const info = switchSourceInfo(index, id, entry);
+        if (!info) continue;
+        entry.inputs = entry.inputs || {};
+        // aWired/bWired travel with the state so 'Show error' mode can tell whether
+        // the OTHER side was wired (i.e. the user dropped the wire on the wrong bank).
+        entry.inputs[HIDDEN_INPUT_NAME] = JSON.stringify({
+          version: 1,
+          active: info.active,
+          rows: info.rows,
+          missing: info.missing,
+          aWired: info.aWired,
+          bWired: info.bWired,
+        });
       }
-
-      entry.inputs = entry.inputs || {};
-      // ACTIVE SIDE ONLY: always prune the inactive side, regardless of mode.
-      // The mode (use-connected vs strict) only affects Python's behaviour
-      // when the active side is empty - it never causes a fallback to the
-      // other side. aWired/bWired travel with the state so strict mode can
-      // tell whether the OTHER side was wired (i.e. the user probably meant
-      // to use the other bank and should see an error).
-      for (let r = 1; r <= rows; r++) {
-        const drop = active === "A" ? `b_${r}` : `a_${r}`;
-        if (drop in entry.inputs) delete entry.inputs[drop];
-      }
-
-      entry.inputs[HIDDEN_INPUT_NAME] = JSON.stringify({
-        version: 1, active, rows, missing, aWired, bWired,
-      });
     }
-  }
-  return result;
+    return result;
+  };
+}
+
+// Submit-time prune of the inactive bank (browser runs only). ...args is forwarded
+// untouched so partialExecutionTargets and any future option survive.
+if (!api._pixSsQueueWrapped) {
+  api._pixSsQueueWrapped = true;
+  const _origQueuePrompt = api.queuePrompt.bind(api);
+  api.queuePrompt = async function (...args) {
+    try {
+      const out = args[1]?.output;
+      if (out) {
+        let index = null;
+        for (const id in out) {
+          const entry = out[id];
+          if (!entry || entry.class_type !== "PixaromaSwitchSource") continue;
+          if (!index) index = buildIndex();
+          const info = switchSourceInfo(index, id, entry);
+          if (!info || !entry.inputs) continue;
+          // ACTIVE SIDE ONLY: always drop the inactive side, regardless of mode.
+          // The mode (allow-empty vs show-error) only changes what Python does when
+          // the ACTIVE side is empty - it never falls back to the other side.
+          for (let r = 1; r <= info.rows; r++) {
+            const drop = info.active === "A" ? `b_${r}` : `a_${r}`;
+            if (drop in entry.inputs) delete entry.inputs[drop];
+          }
+        }
+      }
+    } catch (e) {
+      // Never block a run over a pruning failure - Python's lazy inputs already
+      // guarantee only the active bank executes.
+      console.warn("[Switch Source Pixaroma] could not prune the inactive bank:", (e && e.message) || e);
+    }
+    return _origQueuePrompt(...args);
   };
 }

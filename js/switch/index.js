@@ -1,4 +1,5 @@
 import { app } from "/scripts/app.js";
+import { api } from "/scripts/api.js";
 import {
   setupNode, restoreFromProperties,
   handleConnect, handleDisconnect, setActiveRow,
@@ -229,6 +230,41 @@ function findSwitchNode(index, promptId) {
   return null;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Prompt hooks. TWO different jobs, deliberately on TWO different hooks:
+//
+//   graphToPrompt  -> INJECT SwitchState only.   Runs for a RUN *and* for
+//                     "Export (API)" (ComfyUI's workflowService.exportWorkflow
+//                     calls app.graphToPrompt() and serialises .output).
+//   api.queuePrompt -> PRUNE the inactive links. Runs ONLY when a prompt is
+//                     actually submitted from the browser.
+//
+// WHY THE SPLIT (bug reported 2026-07-11): the prune used to live in
+// graphToPrompt, so the API EXPORT was pruned too - the exported JSON contained
+// only the active input_N and the user could not re-point SwitchState at another
+// row (ComfyUI errored: input_1 not supplied). Export now carries EVERY wired
+// input_N plus SwitchState, so it can be edited freely and submitted headlessly.
+//
+// Branch selection itself is NO LONGER the prune's job: node_switch.py declares
+// the inputs "lazy" and check_lazy_status() asks ComfyUI for only the active row,
+// so the unselected branches do not execute - server-side, which is the only way
+// it can work for an API submission (our JS never runs there). The prune is kept
+// for BROWSER runs purely as an optimisation: it keeps the unused branches out of
+// the prompt, and therefore out of the cache signature (editing an unused branch
+// can't invalidate everything downstream) and out of validation (a missing model
+// in a branch you are not using can't fail the run) - exactly as before.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// The active row for a Switch entry in a prompt, or null when it is not ours.
+function switchActiveIndex(index, id, entry) {
+  if (!entry || entry.class_type !== "PixaromaSwitch") return null;
+  const node = findSwitchNode(index, id);
+  const state = node?.properties?.[STATE_PROP];
+  // activeIndex 0 means nothing is connected yet - fall back to 1 so Python
+  // surfaces a clear "not connected" error rather than a crash.
+  return state?.activeIndex || 1;
+}
+
 const _origGraphToPrompt = app.graphToPrompt.bind(app);
 app.graphToPrompt = async function (...args) {
   const result = await _origGraphToPrompt(...args);
@@ -239,30 +275,48 @@ app.graphToPrompt = async function (...args) {
       const entry = out[id];
       if (!entry || entry.class_type !== "PixaromaSwitch") continue;
       if (!index) index = buildSwitchNodeIndex();
-      const node = findSwitchNode(index, id);
-      const state = node?.properties?.[STATE_PROP];
-      // activeIndex 0 means nothing is connected yet - fall back to 1 so
-      // Python surfaces a clear "not connected" error rather than a crash.
-      const activeIdx = state?.activeIndex || 1;
+      const activeIdx = switchActiveIndex(index, id, entry);
+      if (activeIdx == null) continue;
       entry.inputs = entry.inputs || {};
-      // Execution pruning: drop every input_N link EXCEPT the active one so
-      // ComfyUI only executes the chosen upstream branch. Without this the
-      // SwitchState injection makes Python RETURN only the active input, but
-      // the prompt still lists every wire as a dependency, so ComfyUI runs all
-      // upstream branches anyway (reported: "processing all inputs"). This is
-      // submission-only - the visible wires and saved workflow keep every
-      // connection; only the run is pruned. If the active slot is unconnected,
-      // no input_N survives and Python raises its clear "not connected" error.
-      for (const inputName of Object.keys(entry.inputs)) {
-        if (inputName.startsWith("input_")) {
-          const slot = Number(inputName.slice("input_".length));
-          if (!Number.isFinite(slot) || slot !== activeIdx) {
-            delete entry.inputs[inputName];
-          }
-        }
-      }
       entry.inputs[HIDDEN_INPUT_NAME] = String(activeIdx);
     }
   }
   return result;
 };
+
+// Submit-time prune. api.queuePrompt(number, {output, workflow}, options) is the
+// single funnel every browser run goes through (normal Run, partial "Execute
+// Node", and the Prompt Multi / Prompt Pack / XY Plot queue loops, which all call
+// app.queuePrompt -> api.queuePrompt). Forward ...args untouched so
+// partialExecutionTargets and any future option survive.
+if (!api._pixSwQueueWrapped) {
+  api._pixSwQueueWrapped = true;
+  const _origQueuePrompt = api.queuePrompt.bind(api);
+  api.queuePrompt = async function (...args) {
+    try {
+      const out = args[1]?.output;
+      if (out) {
+        let index = null;
+        for (const id in out) {
+          const entry = out[id];
+          if (!entry || entry.class_type !== "PixaromaSwitch") continue;
+          if (!index) index = buildSwitchNodeIndex();
+          const activeIdx = switchActiveIndex(index, id, entry);
+          if (activeIdx == null || !entry.inputs) continue;
+          for (const inputName of Object.keys(entry.inputs)) {
+            if (!inputName.startsWith("input_")) continue;
+            const slot = Number(inputName.slice("input_".length));
+            if (!Number.isFinite(slot) || slot !== activeIdx) {
+              delete entry.inputs[inputName];
+            }
+          }
+        }
+      }
+    } catch (e) {
+      // Never block a run over a pruning failure - Python's lazy inputs already
+      // guarantee only the active branch executes.
+      console.warn("[Switch Pixaroma] could not prune inactive inputs:", (e && e.message) || e);
+    }
+    return _origQueuePrompt(...args);
+  };
+}
