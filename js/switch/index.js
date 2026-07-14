@@ -63,6 +63,27 @@ app.registerExtension({
       queueMicrotask(() => restoreFromProperties(this));
     };
 
+    // ── Serialize (keep the render-time widget marker out of the file) ───
+    // In Nodes 2.0 each input is marked widget-backed (vue_list.mjs) so its dot
+    // is drawn on the row instead of in the top column. LiteGraph WOULD write
+    // that marker into the workflow (inputAsSerialisable emits `widget: {name}`),
+    // which would (a) change every saved file, (b) travel into the legacy
+    // renderer, where it would hide the dots we paint ourselves, and (c) flag a
+    // clean workflow "modified" on open. The marker is purely a render-time
+    // concern - syncRowWidgets rebuilds it on load - so strip it from the
+    // serialized copy. The change-tracker snapshots via serialize() too, so this
+    // also keeps a plain open+close clean (Vue Compat #18).
+    const _origSerialize = nodeType.prototype.serialize;
+    nodeType.prototype.serialize = function () {
+      const o = _origSerialize?.apply(this, arguments);
+      if (o?.inputs) {
+        for (const inp of o.inputs) {
+          if (inp && inp.widget) delete inp.widget;
+        }
+      }
+      return o;
+    };
+
     // ── Removal ──────────────────────────────────────────────────────────
     // Cancel any open label editor so the DOM <input> is not left orphaned
     // in document.body after the node is deleted.
