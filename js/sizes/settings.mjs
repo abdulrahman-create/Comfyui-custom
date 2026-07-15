@@ -188,7 +188,7 @@ export function openSizesPanel(node, onChange) {
   const body = el("div", "pix-szp-b");
   const foot = el("div", "pix-szp-f");
 
-  const fire = () => { _onChange?.(); };
+  const fire = (info) => { _onChange?.(info); };
   const repaintAccent = () => {
     const a = accentOf(node);
     panel.style.setProperty("--acc", a);
@@ -211,7 +211,7 @@ export function openSizesPanel(node, onChange) {
     addBtn.disabled = st.sizes.length >= MAX_SIZES;
     const doAdd = () => {
       const [w, h] = sanitizePair(wIn.value, hIn.value);
-      if (addSize(node, w, h)) { fire(); buildBody(); }
+      if (addSize(node, w, h)) { fire({ structural: true }); buildBody(); }
     };
     addBtn.addEventListener("click", doAdd);
     for (const inp of [wIn, hIn]) {
@@ -239,7 +239,7 @@ export function openSizesPanel(node, onChange) {
       del.title = st.sizes.length > 1 ? "Remove this size" : "Keep at least one size";
       del.addEventListener("click", (e) => {
         e.stopPropagation();
-        if (removeSize(node, i)) { fire(); buildBody(); }
+        if (removeSize(node, i)) { fire({ structural: true }); buildBody(); }
       });
 
       row.addEventListener("dragover", (e) => {
@@ -258,7 +258,7 @@ export function openSizesPanel(node, onChange) {
         const r = row.getBoundingClientRect();
         let to = (e.clientY - r.top) > r.height / 2 ? i + 1 : i;
         if (dragFrom < to) to -= 1; // account for the removed source slot
-        if (reorderSize(node, dragFrom, to)) { fire(); buildBody(); }
+        if (reorderSize(node, dragFrom, to)) { fire({ structural: false }); buildBody(); }
         dragFrom = -1;
       });
 
@@ -275,7 +275,7 @@ export function openSizesPanel(node, onChange) {
       const b = el("button", v === (st.snap || 0) ? "on" : null, v === 0 ? "Off" : String(v));
       b.addEventListener("click", () => {
         writeState(node, { ...readState(node), snap: v });
-        fire(); buildBody();
+        fire({ structural: false }); buildBody();
       });
       seg.appendChild(b);
     }
@@ -302,7 +302,7 @@ export function openSizesPanel(node, onChange) {
       onPick: (c) => {
         writeState(node, { ...readState(node), accent: c || null });
         repaintAccent();
-        fire();
+        fire({ structural: false });
       },
     });
   });
@@ -314,7 +314,7 @@ export function openSizesPanel(node, onChange) {
   common.disabled = readState(node).sizes.length >= MAX_SIZES;
   common.addEventListener("click", () => {
     addCommonSizes(node);
-    fire(); buildBody();
+    fire({ structural: true }); buildBody();
     common.disabled = readState(node).sizes.length >= MAX_SIZES;
   });
 

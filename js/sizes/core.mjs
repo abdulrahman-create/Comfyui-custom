@@ -28,6 +28,7 @@ export const DEFAULT_STATE = {
   orientation: "portrait", // "portrait" | "landscape"
   snap: 0,                 // 0 = off; else 8 / 16 / 32 / 64
   accent: null,            // per-node override; null = follow the global default
+  collapsed: false,        // folded down to show only the selected size
   w: 1024,
   h: 1024,
 };
@@ -92,6 +93,7 @@ export function readState(node) {
       if (st.selected < 0 || st.selected >= st.sizes.length) st.selected = 0;
       if (st.orientation !== "landscape") st.orientation = "portrait";
       if (!SNAP_OPTIONS.includes(st.snap)) st.snap = 0;
+      st.collapsed = !!st.collapsed;
       return st;
     } catch { /* fall through to default */ }
   }
@@ -108,6 +110,7 @@ export function writeState(node, state) {
   if (st.selected < 0 || st.selected >= st.sizes.length) st.selected = 0;
   if (st.orientation !== "landscape") st.orientation = "portrait";
   if (!SNAP_OPTIONS.includes(st.snap)) st.snap = 0;
+  st.collapsed = !!st.collapsed;
   const [w, h] = finalWH(st);
   st.w = w; st.h = h;
   node.properties[STATE_PROP] = JSON.stringify(st);

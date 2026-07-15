@@ -16,6 +16,7 @@ DEFAULT_STATE = {
     "orientation": "portrait",  # "portrait" | "landscape"
     "snap": 0,                  # 0 = off; else 8 / 16 / 32 / 64
     "accent": None,
+    "collapsed": False,         # UI-only; Python ignores it
     "w": 1024,
     "h": 1024,
 }

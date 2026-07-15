@@ -9,6 +9,7 @@
 import { app } from "/scripts/app.js";
 import { hideJsonWidget, applyAdaptiveCanvasOnly } from "../shared/index.mjs";
 import { isVueNodes } from "../shared/nodes2.mjs";
+import { isGraphLoading } from "../shared/graph_loading.mjs";
 import { registerNodeHelp } from "../shared/help.mjs";
 import {
   BRAND, ACCENT_SETTING, STATE_PROP, HIDDEN_INPUT, MAX_SIZES,
@@ -18,33 +19,55 @@ import { openSizesPanel, closeSizesPanelFor } from "./settings.mjs";
 
 const CLASS = "PixaromaSizes";
 
-const NODE_W = 210;
-const ROW_H = 28;
-const HEADER_H = 30;   // pills + gear row
-const GAP = 8;         // gap between header and list
-const HINT_H = 22;     // shown only when the list has one size
-const PAD = 9;         // inner padding (top + bottom)
-const MAX_VISIBLE = 8; // rows shown before the list scrolls
-const CHROME = 46;     // legacy: title + 2 output slot rows + margins
-const VUE_CHROME = 52; // Nodes 2.0: title + category chip
+const NODE_W = 240;
+const ROW_H = 30;       // list row height (CSS + height math kept in lockstep)
+const HEADER_H = 30;    // chevron + pills + gear row
+const GAP = 8;          // gap between header and list
+const HINT_H = 22;      // shown only when the list has one size (expanded)
+const PAD = 9;          // inner padding (top + bottom)
+const LIST_PAD = 10;    // list border + sub-pixel overhead beyond rows * ROW_H
+const MAX_VISIBLE = 14; // auto-fit shows up to this many rows; beyond it scrolls
+const CHROME = 46;      // legacy fallback: title + 2 output slot rows + margins
+const VUE_CHROME = 52;  // Nodes 2.0 fallback: title + category chip
 
-function widgetH(node) {
+// The height the node WANTS in order to show all its content. Collapsed = the
+// header + the single selected row; expanded = every size (capped, then scrolls).
+function contentWidgetH(node) {
   const st = readState(node);
-  const rows = Math.min(Math.max(st.sizes.length, 1), MAX_VISIBLE);
-  const listH = rows * ROW_H + 2; // + top/bottom border
-  const hint = st.sizes.length <= 1 ? GAP + HINT_H : 0;
+  const rows = st.collapsed ? 1 : Math.min(Math.max(st.sizes.length, 1), MAX_VISIBLE);
+  const listH = rows * ROW_H + LIST_PAD; // rows + border/sub-pixel overhead
+  const hint = (!st.collapsed && st.sizes.length <= 1) ? GAP + HINT_H : 0;
   return PAD + HEADER_H + GAP + listH + hint + PAD;
+}
+function fitNodeH(node) {
+  // Delegate the chrome (title + the two output slot rows + margins) to
+  // LiteGraph instead of guessing it: computeSize sums the slot rows + the DOM
+  // widget's getMinHeight (== contentWidgetH), so the node is exactly tall enough
+  // to show every row with no scrollbar. Fall back to a constant estimate only if
+  // computeSize is unavailable.
+  try {
+    const cs = node.computeSize?.();
+    if (cs && cs[1] > 0) return Math.round(cs[1]);
+  } catch (_e) { /* fall through */ }
+  return contentWidgetH(node) + (isVueNodes() ? VUE_CHROME : CHROME);
 }
 
 function injectCSS() {
   if (document.getElementById("pixaroma-sizes-css")) return;
   const css = `
-    .pix-sz-root { position:relative; width:100%; height:100%; box-sizing:border-box;
+    .pix-sz-root { width:100%; box-sizing:border-box;
       background:#1d1d1d; border-radius:4px; color:#ddd;
       font-family: ui-sans-serif, system-ui, sans-serif; font-size:11px; }
-    .pix-sz-inner { position:absolute; inset:0; box-sizing:border-box; padding:${PAD}px;
+    /* Normal flow (NOT absolute): the inner's natural height == the content, so the
+       node shows every row with no scrollbar and no chrome guessing. The list caps
+       + scrolls only past MAX_VISIBLE rows. */
+    .pix-sz-inner { box-sizing:border-box; padding:${PAD}px;
       display:flex; flex-direction:column; gap:${GAP}px; }
     .pix-sz-head { display:flex; align-items:stretch; gap:6px; flex:0 0 auto; }
+    .pix-sz-chevron { flex:0 0 auto; width:22px; display:flex; align-items:center; justify-content:center;
+      background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.14); border-radius:5px;
+      color:#bbb; font-size:11px; cursor:pointer; user-select:none; line-height:1; }
+    .pix-sz-chevron:hover { border-color:var(--acc,${BRAND}); color:#fff; }
     .pix-sz-pills { display:flex; gap:5px; flex:1; min-width:0; }
     .pix-sz-pill { flex:1; text-align:center; padding:6px 4px; border-radius:5px;
       background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.14);
@@ -57,8 +80,9 @@ function injectCSS() {
       background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.14); border-radius:5px;
       color:#bbb; font-size:14px; cursor:pointer; user-select:none; line-height:1; }
     .pix-sz-gear:hover { border-color:var(--acc,${BRAND}); color:#fff; }
-    .pix-sz-list { flex:1 1 auto; min-height:0; overflow-x:hidden; overflow-y:auto;
+    .pix-sz-list { flex:0 0 auto; overflow:visible;
       background:rgba(0,0,0,0.28); border:1px solid #333; border-radius:6px; }
+    .pix-sz-list.scroll { max-height:${MAX_VISIBLE * ROW_H + 2}px; overflow-x:hidden; overflow-y:auto; }
     .pix-sz-list::-webkit-scrollbar { width:6px; }
     .pix-sz-list::-webkit-scrollbar-thumb { background:#555; border-radius:3px; }
     .pix-sz-list::-webkit-scrollbar-track { background:transparent; }
@@ -109,9 +133,15 @@ function render(node) {
   inner.style.setProperty("--acc", accentOf(node));
   inner.innerHTML = "";
 
-  // ── header: Portrait / Landscape pills + gear ──────────────────────────
+  // ── header: fold chevron + Portrait / Landscape pills + gear ───────────
   const head = document.createElement("div");
   head.className = "pix-sz-head";
+
+  const chevron = document.createElement("div");
+  chevron.className = "pix-sz-chevron";
+  chevron.textContent = st.collapsed ? "▸" : "▾";
+  chevron.title = st.collapsed ? "Expand — show all sizes" : "Collapse — show only the selected size";
+
   const pills = document.createElement("div");
   pills.className = "pix-sz-pills";
   for (const [o, label] of [["portrait", "Portrait"], ["landscape", "Landscape"]]) {
@@ -126,23 +156,26 @@ function render(node) {
   gear.className = "pix-sz-gear";
   gear.textContent = "⚙";
   gear.title = "Sizes settings — add, remove, reorder, snap";
-  head.append(pills, gear);
+  head.append(chevron, pills, gear);
 
-  // ── size list ──────────────────────────────────────────────────────────
+  // ── size list (collapsed = only the selected row; scroll only past the cap) ──
   const list = document.createElement("div");
-  list.className = "pix-sz-list";
-  st.sizes.forEach((pair, i) => {
+  list.className = "pix-sz-list" + (!st.collapsed && st.sizes.length > MAX_VISIBLE ? " scroll" : "");
+  const indices = st.collapsed
+    ? [st.sizes[st.selected] ? st.selected : 0]
+    : st.sizes.map((_, i) => i);
+  for (const i of indices) {
     const row = document.createElement("div");
     row.className = "pix-sz-row" + (i === st.selected ? " active" : "");
     row.dataset.idx = String(i);
-    row.textContent = fmtRow(pair, st);
+    row.textContent = fmtRow(st.sizes[i], st);
     list.appendChild(row);
-  });
+  }
 
   inner.append(head, list);
 
-  // ── first-use hint (only while a single size exists) ────────────────────
-  if (st.sizes.length <= 1) {
+  // ── first-use hint (only expanded, while a single size exists) ─────────
+  if (!st.collapsed && st.sizes.length <= 1) {
     const hint = document.createElement("div");
     hint.className = "pix-sz-hint";
     hint.textContent = "⚙ open settings to add more sizes";
@@ -150,26 +183,53 @@ function render(node) {
   }
 }
 
-function refitNode(node) {
-  const targetH = isVueNodes() ? widgetH(node) + VUE_CHROME : widgetH(node) + CHROME;
-  if (!node.size || Math.abs(node.size[0] - NODE_W) > 0.5 || Math.abs(node.size[1] - targetH) > 0.5) {
-    if (node.setSize) node.setSize([NODE_W, targetH]);
-    else node.size = [NODE_W, targetH];
-  }
+// Auto-fit the node to show all its content. USER ACTIONS ONLY (add / remove /
+// collapse) - never on the load path, or a saved size gets rewritten and a clean
+// workflow opens "modified" (Vue Compat #18). Preserves the current width so a
+// manual widen sticks.
+function fitToContent(node) {
+  if (isGraphLoading()) return;
+  const w = Math.max(node.size?.[0] || NODE_W, NODE_W); // keep the header usable
+  const h = fitNodeH(node);
+  if (node.setSize) node.setSize([w, h]);
+  else node.size = [w, h];
 }
 
-// A single change to selection / orientation persists + repaints + refits.
+// Persist + repaint for a change that does NOT alter the node height (select,
+// orientation) - leaves a manual resize alone.
 function applyAndRefresh(node, patch) {
   writeState(node, { ...readState(node), ...patch });
   render(node);
-  refitNode(node);
   node.setDirtyCanvas?.(true, true);
 }
 
+function toggleCollapsed(node) {
+  writeState(node, { ...readState(node), collapsed: !readState(node).collapsed });
+  render(node);
+  fitToContent(node);
+  node.setDirtyCanvas?.(true, true);
+}
+
+// Settings-panel callback: repaint, and re-fit only when the change was
+// STRUCTURAL (a size added / removed / common loaded) so a manual resize
+// survives snap / accent / reorder tweaks.
+function onPanelChange(node) {
+  return (info) => {
+    render(node);
+    if (info?.structural) fitToContent(node);
+    node.setDirtyCanvas?.(true, true);
+  };
+}
+
 function onClick(node, e) {
+  if (e.target.closest(".pix-sz-chevron")) {
+    e.stopPropagation();
+    toggleCollapsed(node);
+    return;
+  }
   if (e.target.closest(".pix-sz-gear")) {
     e.stopPropagation();
-    openSizesPanel(node, () => { render(node); refitNode(node); node.setDirtyCanvas?.(true, true); });
+    openSizesPanel(node, onPanelChange(node));
     return;
   }
   const pill = e.target.closest(".pix-sz-pill");
@@ -195,16 +255,24 @@ function setupNode(node) {
   inner.className = "pix-sz-inner";
   root.appendChild(inner);
 
+  // Locked-to-content DOM widget: getMinHeight == getMaxHeight == the height that
+  // shows all sizes (or one row when collapsed). Deterministic from the size
+  // COUNT, so it never dirties a saved workflow (Vue Compat #18) and never leaves
+  // a scrollbar for a normal list. The node auto-grows / shrinks on add / remove
+  // / collapse via fitToContent below.
   const widget = node.addDOMWidget("sizes_ui", "custom", root, {
     getValue: () => readState(node),
     setValue: () => {},
-    getMinHeight: () => widgetH(node),
-    getMaxHeight: () => widgetH(node),
+    getMinHeight: () => contentWidgetH(node),
+    getMaxHeight: () => contentWidgetH(node),
     margin: 4,
     serialize: false,
   });
-  widget.computeLayoutSize = () => ({ minHeight: widgetH(node), minWidth: 1 });
+  widget.computeLayoutSize = () => ({ minHeight: contentWidgetH(node), minWidth: 1 });
   applyAdaptiveCanvasOnly(widget);
+
+  // Fresh default size (configure() overrides this for a loaded node, convention #9).
+  node.size = [NODE_W, fitNodeH(node)];
 
   node._pixSzRoot = root;
   node._pixSzInner = inner;
@@ -215,8 +283,10 @@ function setupNode(node) {
   clickTarget.addEventListener("click", (e) => onClick(node, e));
 
   // Defer the first populate past configure() so a restored workflow renders
-  // its saved sizes on the first paint, not the default (Vue Compat #8).
-  queueMicrotask(() => { render(node); refitNode(node); });
+  // its saved sizes on the first paint, not the default (Vue Compat #8). On a
+  // fresh drop this fits to content; on the load path fitToContent bails (the
+  // saved size is already restored).
+  queueMicrotask(() => { render(node); fitToContent(node); });
 }
 
 app.registerExtension({
@@ -257,16 +327,18 @@ app.registerExtension({
     const _origConfigure = nodeType.prototype.onConfigure;
     nodeType.prototype.onConfigure = function (info) {
       const r = _origConfigure?.apply(this, arguments);
-      if (this._pixSzRoot) { render(this); refitNode(this); }
+      // Render + re-fit to the restored state. contentWidgetH is deterministic
+      // from the size count, so this matches the saved node.size and never dirties
+      // a clean workflow (Vue Compat #18).
+      if (this._pixSzRoot) { render(this); fitToContent(this); }
       return r;
     };
 
-    // Locked to content — re-clamp any resize attempt back to the computed size.
+    // Locked to content - re-clamp any resize attempt back to the computed size.
     const _origResize = nodeType.prototype.onResize;
     nodeType.prototype.onResize = function (size) {
-      const targetH = isVueNodes() ? widgetH(this) + VUE_CHROME : widgetH(this) + CHROME;
-      this.size[0] = NODE_W;
-      this.size[1] = targetH;
+      this.size[0] = Math.max(this.size[0] || NODE_W, NODE_W);
+      this.size[1] = fitNodeH(this);
       if (_origResize) return _origResize.call(this, size);
     };
 
@@ -285,18 +357,16 @@ app.registerExtension({
   // Right-click menu (new context-menu API, Vue Compat #20) — works in both renderers.
   getNodeMenuItems(node) {
     if (node?.comfyClass !== CLASS) return [];
+    const st = readState(node);
     return [
-      {
-        content: "⚙ Sizes settings",
-        callback: () => openSizesPanel(node, () => { render(node); refitNode(node); node.setDirtyCanvas?.(true, true); }),
-      },
+      { content: "⚙ Sizes settings", callback: () => openSizesPanel(node, onPanelChange(node)) },
       {
         content: "⇄ Flip orientation",
-        callback: () => {
-          const cur = readState(node);
-          applyAndRefresh(node, { orientation: cur.orientation === "landscape" ? "portrait" : "landscape" });
-        },
+        callback: () => applyAndRefresh(node, {
+          orientation: readState(node).orientation === "landscape" ? "portrait" : "landscape",
+        }),
       },
+      { content: st.collapsed ? "▾ Expand" : "▸ Collapse", callback: () => toggleCollapsed(node) },
     ];
   },
 });
