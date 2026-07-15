@@ -154,6 +154,9 @@ Save your images to **any folder on your computer**, not just ComfyUI's output f
 ### 📐 Resolution Pixaroma
 A simple, one-click resolution picker. Choose from 9 popular aspect ratios - 1:1, 16:9, 9:16, 2:1, 3:2, 2:3, 4:3, 3:4, and 4:5 (Instagram-portrait friendly) - and instantly get the exact width and height you need, including popular sizes for AI video. Type any Custom Ratio (21:9, 16:10, anything) with auto-computed AI-friendly sizes, or use Custom Resolution to type exact dimensions. Math expressions work in the Width and Height fields too - type `1024+128` or `512*2` and it just works. It perfectly saves all your settings with your workflow!
 
+### 📐 Sizes Pixaroma
+Keep your favourite exact resolutions in one tidy list and pick the one you want with a click - it sends out the **width** and **height**. Add any size you like from the settings (a `1024 × 1536` here, a `1920 × 1080` there), and a **Portrait / Landscape** button flips the whole list between tall and wide, so you only ever add a size once and switch orientation on the fly. There is an optional **snap** to keep every size on a multiple of 8, 16, 32 or 64 (handy for models that are fussy about dimensions), and you can recolour the node's buttons per node - or save your colour as the default for every new one. A small arrow folds the node down to just the size you have selected when you want it out of the way, and adding a size you already have never makes a duplicate - it just points you at the one that is there. Works in both the classic and the new node interface.
+
 ### 🌱 Seed Pixaroma
 A dedicated seed node you wire into KSampler (or any node with a seed input). Flip between **Random** - a fresh seed every run - and **Fixed** - the same seed for repeatable results - right on the node. **New fixed random** rolls a new seed and locks it (great for keeping a lucky result while you tweak other things), **Use last seed** brings back the seed from the previous run, and **Copy** puts the current seed on your clipboard. Type any number into the big readout to set it exactly, and in Random mode a **Last run** line tells you which seed actually made the latest image. One Seed node can feed several samplers at once so they all stay in sync. Works in both the classic and the new node interface.
 
@@ -313,7 +316,8 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
-### **July 15, 2026 · v1.4.38**
+### **July 15, 2026 · v1.4.38–v1.4.39**
+- **New: Sizes Pixaroma.** A tidy list of your favourite exact resolutions - pick one and it sends out the width and height. Add any sizes you want from the settings, and a Portrait / Landscape button flips the whole list between tall and wide, so you only add a size once and switch orientation whenever you like. There is an optional snap to keep sizes on a multiple of 8, 16, 32 or 64 (handy for models that are fussy about dimensions), and you can recolour the node's buttons - per node, or save your colour as the default. A small arrow folds the node down to just the size you picked when you want it compact. Adding a size you already have does not make a duplicate; it simply points you at the one that is there. Works in both the classic and the new node interface.
 - **Duplicating a Crop or Inpaint Crop node no longer touches the original.** When you copied one of these nodes, the copy quietly shared the original's saved image and mask, so painting a new mask on the copy and saving it could overwrite what was on the original. Now every copy starts with a clean slate: its editor opens empty and its little preview on the node clears too, so the two are never mixed up. If the copy is wired to an image, it simply shows that image as usual. This works for every way of copying a node.
 
 ### **July 14, 2026 · v1.4.33–v1.4.37**
