@@ -5,7 +5,7 @@
 
 import { app } from "/scripts/app.js";
 import { isVueNodes } from "../shared/nodes2.mjs";
-import { openPixaromaCompactColorPickerPopup, PIXAROMA_PALETTE } from "../shared/color_picker.mjs";
+import { openPixaromaColorPickerPopup, BUTTON_PALETTE } from "../shared/color_picker.mjs";
 import {
   readState, writeState, addSize, removeSize, reorderSize, addCommonSizes,
   accentOf, sanitizePair, BRAND, ACCENT_SETTING, SNAP_OPTIONS, MAX_SIZES,
@@ -293,16 +293,20 @@ export function openSizesPanel(node, onChange) {
   sw.title = "Pick the highlight colour";
   sw.style.background = accentOf(node);
   sw.addEventListener("click", () => {
-    openPixaromaCompactColorPickerPopup(sw, {
+    // The LIVE picker (SV drag + hue + hex + button-safe swatches). onPick
+    // fires on every change, so the node's pills + selected row recolour live
+    // as you drag - just like the Group Colors picker.
+    openPixaromaColorPickerPopup(sw, {
       initialColor: accentOf(node),
-      swatches: PIXAROMA_PALETTE.slice(0, 35),
+      swatches: BUTTON_PALETTE,
       showClear: true,        // clear tile = follow the global default
-      clearPosition: "last",
-      clearDisabled: false,
+      resetColor: BRAND,
       onPick: (c) => {
         writeState(node, { ...readState(node), accent: c || null });
         repaintAccent();
-        fire({ structural: false });
+        // Recolour the node live without a full rebuild (cheap CSS var swap).
+        node._pixSzInner?.style.setProperty("--acc", c || accentOf(node));
+        node.setDirtyCanvas?.(true, true);
       },
     });
   });

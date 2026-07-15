@@ -38,6 +38,40 @@ export const PIXAROMA_PALETTE = [
   "#a16d3a","#b08968","#ddb892","#a07e6a","#5a4634","#2c2620",
 ];
 
+// ── Button-safe palette ────────────────────────────────────────────
+// For accent colours that fill BUTTONS / pills with WHITE text on top
+// (Sliders, Sizes, and any future orange-button node). Every colour here
+// is saturated / mid-dark enough that white text stays readable - no
+// whites, pale tints, or light greys where the label would disappear.
+// The Pixaroma brand orange leads; the rest are Tailwind-600-ish shades
+// (designed for white text) spanning the hue wheel + a few neutrals.
+export const BUTTON_PALETTE = [
+  "#f66744", // Pixaroma orange (brand)
+  "#dc2626", // red
+  "#ea580c", // orange
+  "#d97706", // amber
+  "#ca8a04", // gold
+  "#65a30d", // lime
+  "#16a34a", // green
+  "#059669", // emerald
+  "#0d9488", // teal
+  "#0891b2", // cyan
+  "#0284c7", // sky
+  "#2563eb", // blue
+  "#4f46e5", // indigo
+  "#7c3aed", // violet
+  "#9333ea", // purple
+  "#c026d3", // fuchsia
+  "#db2777", // pink
+  "#e11d48", // rose
+  "#b45309", // brown
+  "#0f766e", // deep teal
+  "#1d4ed8", // deep blue
+  "#6d28d9", // deep violet
+  "#475569", // slate
+  "#4b5563", // graphite
+];
+
 // ── HSV ↔ hex math ────────────────────────────────────────────────
 function hexToHsv(hex) {
   const m = /^#?([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(hex || "");

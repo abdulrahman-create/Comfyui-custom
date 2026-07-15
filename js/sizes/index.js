@@ -21,11 +21,11 @@ const CLASS = "PixaromaSizes";
 
 const NODE_W = 240;
 const ROW_H = 30;       // list row height (CSS + height math kept in lockstep)
-const HEADER_H = 30;    // chevron + pills + gear row
+const HEADER_H = 28;    // chevron + pills + gear row (measured rendered height)
 const GAP = 8;          // gap between header and list
-const HINT_H = 22;      // shown only when the list has one size (expanded)
+const HINT_H = 16;      // one-line hint, shown only when the list has one size
 const PAD = 9;          // inner padding (top + bottom)
-const LIST_PAD = 10;    // list border + sub-pixel overhead beyond rows * ROW_H
+const LIST_PAD = 2;     // the list's top + bottom border
 const MAX_VISIBLE = 14; // auto-fit shows up to this many rows; beyond it scrolls
 const CHROME = 46;      // legacy fallback: title + 2 output slot rows + margins
 const VUE_CHROME = 52;  // Nodes 2.0 fallback: title + category chip
@@ -58,12 +58,12 @@ function injectCSS() {
     .pix-sz-root { width:100%; box-sizing:border-box;
       background:#1d1d1d; border-radius:4px; color:#ddd;
       font-family: ui-sans-serif, system-ui, sans-serif; font-size:11px; }
-    /* Normal flow (NOT absolute): the inner's natural height == the content, so the
-       node shows every row with no scrollbar and no chrome guessing. The list caps
-       + scrolls only past MAX_VISIBLE rows. */
-    .pix-sz-inner { box-sizing:border-box; padding:${PAD}px;
-      display:flex; flex-direction:column; gap:${GAP}px; }
-    .pix-sz-head { display:flex; align-items:stretch; gap:6px; flex:0 0 auto; }
+    /* Plain block flow (NOT flex, NOT absolute): each child takes its natural
+       height so the list can never be squeezed, the node hugs the content with
+       no bottom gap, and every row shows with no scrollbar. The list caps +
+       scrolls only past MAX_VISIBLE rows. */
+    .pix-sz-inner { box-sizing:border-box; padding:${PAD}px; }
+    .pix-sz-head { display:flex; align-items:stretch; gap:6px; margin-bottom:${GAP}px; }
     .pix-sz-chevron { flex:0 0 auto; width:22px; display:flex; align-items:center; justify-content:center;
       background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.14); border-radius:5px;
       color:#bbb; font-size:11px; cursor:pointer; user-select:none; line-height:1; }
@@ -80,7 +80,7 @@ function injectCSS() {
       background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.14); border-radius:5px;
       color:#bbb; font-size:14px; cursor:pointer; user-select:none; line-height:1; }
     .pix-sz-gear:hover { border-color:var(--acc,${BRAND}); color:#fff; }
-    .pix-sz-list { flex:0 0 auto; overflow:visible;
+    .pix-sz-list { overflow:visible;
       background:rgba(0,0,0,0.28); border:1px solid #333; border-radius:6px; }
     .pix-sz-list.scroll { max-height:${MAX_VISIBLE * ROW_H + 2}px; overflow-x:hidden; overflow-y:auto; }
     .pix-sz-list::-webkit-scrollbar { width:6px; }
@@ -91,7 +91,8 @@ function injectCSS() {
       font-variant-numeric:tabular-nums; user-select:none; }
     .pix-sz-row:hover { background:rgba(255,255,255,0.05); }
     .pix-sz-row.active { background:rgba(255,255,255,0.06); color:var(--acc,${BRAND}); font-weight:600; }
-    .pix-sz-hint { flex:0 0 auto; text-align:center; color:#6f6f6f; font-size:11px;
+    .pix-sz-hint { margin-top:${GAP}px; text-align:center; color:#6f6f6f; font-size:11px;
+      white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
       display:flex; align-items:center; justify-content:center; gap:5px; }
   `;
   const s = document.createElement("style");
@@ -181,6 +182,7 @@ function render(node) {
     hint.textContent = "⚙ open settings to add more sizes";
     inner.appendChild(hint);
   }
+
 }
 
 // Auto-fit the node to show all its content. USER ACTIONS ONLY (add / remove /
