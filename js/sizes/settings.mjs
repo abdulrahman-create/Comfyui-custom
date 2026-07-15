@@ -48,6 +48,15 @@ function injectCSS() {
     .pix-szp-addbtn:hover { filter:brightness(1.08); }
     .pix-szp-addbtn:disabled { opacity:.4; cursor:default; filter:none; }
 
+    .pix-szp-addmsg { font-size:11px; color:var(--acc,${BRAND}); text-align:center;
+      opacity:0; max-height:0; overflow:hidden; margin-top:-8px; transition:opacity .12s, max-height .12s, margin-top .12s; }
+    .pix-szp-addmsg.show { opacity:1; max-height:20px; margin-top:0; }
+    @keyframes pix-szp-flash {
+      0%   { box-shadow:inset 0 0 0 2px var(--acc,${BRAND}); background:rgba(255,255,255,0.12); }
+      100% { box-shadow:inset 0 0 0 0 transparent; background:rgba(255,255,255,0.02); }
+    }
+    .pix-szp-row.flash { animation:pix-szp-flash .75s ease; }
+
     .pix-szp-list { background:rgba(0,0,0,0.28); border-radius:6px; padding:4px; display:flex; flex-direction:column; gap:2px; }
     .pix-szp-row { display:flex; align-items:center; gap:8px; padding:7px 8px; border-radius:5px; color:#cfcfcf;
       background:rgba(255,255,255,0.02); }
@@ -199,6 +208,27 @@ export function openSizesPanel(node, onChange) {
   };
 
   let dragFrom = -1;
+  let addMsgEl = null;
+  let addMsgTimer = null;
+
+  // Subtle "why nothing was added" line under the add field.
+  function showAddMsg(text) {
+    if (!addMsgEl) return;
+    addMsgEl.textContent = text;
+    addMsgEl.classList.add("show");
+    clearTimeout(addMsgTimer);
+    addMsgTimer = setTimeout(() => addMsgEl?.classList.remove("show"), 1800);
+  }
+  // Pulse an existing row so the user sees the duplicate they already have.
+  function flashRow(idx) {
+    const row = body.querySelector(`.pix-szp-row[data-idx="${idx}"]`);
+    if (!row) return;
+    try { row.scrollIntoView({ block: "nearest" }); } catch {}
+    row.classList.remove("flash");
+    void row.offsetWidth; // restart the animation
+    row.classList.add("flash");
+    setTimeout(() => row.classList.remove("flash"), 780);
+  }
 
   function buildBody() {
     body.innerHTML = "";
@@ -214,7 +244,20 @@ export function openSizesPanel(node, onChange) {
     addBtn.disabled = st.sizes.length >= MAX_SIZES;
     const doAdd = () => {
       const [w, h] = sanitizePair(wIn.value, hIn.value);
-      if (addSize(node, w, h)) { fire({ structural: true }); buildBody(); }
+      const res = addSize(node, w, h);
+      if (res.ok) {
+        fire({ structural: true });
+        buildBody();
+      } else if (res.reason === "duplicate") {
+        // Already have this size (any orientation) — don't clutter the list;
+        // just select + flash the one that's there and say so quietly.
+        fire({ structural: false }); // the selection may have moved to it
+        buildBody();
+        flashRow(res.index);
+        showAddMsg("Already in the list");
+      } else if (res.reason === "max") {
+        showAddMsg(`List is full (max ${MAX_SIZES})`);
+      }
     };
     addBtn.addEventListener("click", doAdd);
     for (const inp of [wIn, hIn]) {
@@ -222,6 +265,8 @@ export function openSizesPanel(node, onChange) {
     }
     add.append(wIn, el("span", "x", "×"), hIn, addBtn);
     body.appendChild(add);
+    addMsgEl = el("div", "pix-szp-addmsg");
+    body.appendChild(addMsgEl);
 
     // ── the size list (drag to reorder, ✕ to delete) ───────────────────────
     const list = el("div", "pix-szp-list");

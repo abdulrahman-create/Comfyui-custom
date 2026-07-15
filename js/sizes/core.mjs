@@ -60,6 +60,24 @@ export function sanitizePair(w, h) {
   return [a, b];
 }
 
+// Unordered key so 1024×1536 and 1536×1024 count as the SAME size — orientation
+// decides which number is width vs height, so the stored order is irrelevant.
+export function pairKey(w, h) {
+  const a = Math.round(Number(w) || 0), b = Math.round(Number(h) || 0);
+  return `${Math.min(a, b)}x${Math.max(a, b)}`;
+}
+
+// Index of an existing size matching w×h (unordered, sanitized), else -1.
+export function findSizeIndex(state, w, h) {
+  const [pw, ph] = sanitizePair(w, h);
+  const key = pairKey(pw, ph);
+  const sizes = Array.isArray(state?.sizes) ? state.sizes : [];
+  for (let i = 0; i < sizes.length; i++) {
+    if (pairKey(sizes[i]?.[0], sizes[i]?.[1]) === key) return i;
+  }
+  return -1;
+}
+
 // Final output for a state: orient the selected size, then snap both dims.
 export function finalWH(state) {
   const sizes = Array.isArray(state.sizes) && state.sizes.length ? state.sizes : [[1024, 1024]];
@@ -117,13 +135,23 @@ export function writeState(node, state) {
   return st;
 }
 
+// Adds a size, refusing exact (unordered) duplicates. Returns a result object:
+//   { ok:true,  state, index }              added — index is its new row
+//   { ok:false, reason:"duplicate", index } already present — NOT added
+//   { ok:false, reason:"max" }              the list is full
 export function addSize(node, w, h) {
   const st = readState(node);
-  if (st.sizes.length >= MAX_SIZES) return null;
-  const pair = sanitizePair(w, h);
-  st.sizes.push(pair);
+  const [pw, ph] = sanitizePair(w, h);
+  const dup = findSizeIndex(st, pw, ph);
+  if (dup >= 0) {
+    // Still land the user on the size they typed, but don't clutter the list.
+    if (st.selected !== dup) writeState(node, { ...st, selected: dup });
+    return { ok: false, reason: "duplicate", index: dup };
+  }
+  if (st.sizes.length >= MAX_SIZES) return { ok: false, reason: "max" };
+  st.sizes.push([pw, ph]);
   st.selected = st.sizes.length - 1; // select the freshly added one
-  return writeState(node, st);
+  return { ok: true, state: writeState(node, st), index: st.selected };
 }
 
 export function removeSize(node, idx) {
@@ -152,9 +180,9 @@ export function reorderSize(node, from, to) {
 
 export function addCommonSizes(node) {
   const st = readState(node);
-  const seen = new Set(st.sizes.map((p) => `${p[0]}x${p[1]}`));
+  const seen = new Set(st.sizes.map((p) => pairKey(p[0], p[1])));
   for (const [w, h] of COMMON_SIZES) {
-    const key = `${w}x${h}`;
+    const key = pairKey(w, h);
     if (seen.has(key)) continue;
     if (st.sizes.length >= MAX_SIZES) break;
     st.sizes.push([w, h]);
