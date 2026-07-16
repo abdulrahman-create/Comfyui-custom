@@ -1161,11 +1161,13 @@ app.registerExtension({
       // HEAL a workflow that was SAVED while inflated. ComfyUI's load fit is
       // grow-only, so once a silly height reaches the file it is permanent and
       // self-reinforcing - faithfully re-asserting it would keep the node broken
-      // forever. The real content is ~490 tall, so anything past this threshold
-      // cannot be a deliberate user size; fall back to the default. The threshold
-      // is deliberately way above any sane hand-resize so a genuinely tall node
-      // the user made is never shrunk.
-      const INFLATED_H = FLOOR_CAP * 1.5; // 1209; the observed break was 1830
+      // forever. This only has to catch files saved while measureFloor could
+      // still explode (the root cause is fixed above), which landed around 1830.
+      // Keep the bar HIGH: the preview area is the user's to size (growToFloor
+      // never shrinks it), and a portrait image on a slightly widened node
+      // reaches ~1330 legitimately - healing that would silently undo a
+      // deliberate resize on every single load.
+      const INFLATED_H = FLOOR_CAP * 2; // 1612; the observed break was 1830
       if (saved && saved[1] > INFLATED_H) {
         console.warn(
           "[PixaromaSaveImage] saved height " + Math.round(saved[1]) +
@@ -1210,6 +1212,13 @@ app.registerExtension({
     nodeType.prototype.onRemoved = function () {
       try {
         this._pixSiFloorOff?.();
+      } catch {}
+      // A watcher that has not retired yet (its root never laid out - e.g. the
+      // node lived in a tab that was never shown) still holds the window /
+      // document listeners and the ResizeObserver, and the RO pins the whole
+      // built DOM subtree. Nulling _pixSiUI below only makes apply() a no-op.
+      try {
+        this._pixSiReassertOff?.();
       } catch {}
       closeSettingsPanelFor(this);
       if (_imgMenuNode === this) closeImageMenu();
