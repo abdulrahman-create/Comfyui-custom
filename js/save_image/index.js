@@ -79,9 +79,29 @@ function findModelToken() {
 // ── node body FLOOR (fill model: the big preview grows with the node) ────────
 // Sum the INNER layer's children, but count the preview box at its MINIMUM
 // (not its grown offsetHeight - Load Image pattern) so the node can shrink.
+// The floor's ONLY contract is "the fixed content must not spill", and the real
+// content at the design width is ~490 - so any value above DEFAULT_H is by
+// definition a mis-measurement, not a tall node. Clamping here makes an inflated
+// floor unreachable for EVERY consumer (getMinHeight, computeLayoutSize,
+// growToFloor, the resize-floor pin) without having to know which fitter misfired.
+// Safe by construction: the clamp can only LOWER the floor, and the floor reaches
+// node.size only through grow-only Math.max(), so it can never grow a node or
+// rewrite a clean saved size.
+//
+// Two states LIE and must not be measured at all:
+//  - root not laid out / unmounted -> every offsetHeight reads 0. addDOMWidget
+//    defaults hideOnZoom:true, so the element is unmounted on any zoom-out.
+//  - root with no real width -> the button row wraps and the sum explodes. This
+//    is the only mechanism found that can reach ~1800.
+// In those states reuse the last good reading instead of inventing one.
+const FLOOR_CAP = DEFAULT_H;
 function measureFloor(ui) {
   const inner = ui && ui.inner;
   if (!inner) return 320;
+  const root = ui.root;
+  if (!root || !root.isConnected || root.clientWidth < MIN_W - 40) {
+    return ui._pixSiFloorCache || 320;
+  }
   let h = 0;
   let n = 0;
   for (const ch of inner.children) {
@@ -93,53 +113,105 @@ function measureFloor(ui) {
     h += oh;
     n++;
   }
-  if (n === 0) return 320; // pre-attach placeholder
+  if (n === 0) return ui._pixSiFloorCache || 320; // pre-attach placeholder
   h += 16; // inner vertical padding (8 + 8)
   h += (n - 1) * 10; // flex gaps
-  return Math.max(200, h);
+  const out = Math.min(Math.max(200, h), FLOOR_CAP);
+  ui._pixSiFloorCache = out;
+  return out;
 }
 
-// Re-assert the size the workflow actually SAVED. ComfyUI's DOM-widget fit
-// machinery inflates the node right after load (measured live: saved
-// 474x806 came back 474x1830 at zoom 0.52 - the parked element's on-screen
-// height gets mis-scaled into graph units). Idempotent: a correct load
-// matches the saved size and writes nothing, so no dirty-on-load.
+// Re-assert the size the workflow actually SAVED, because ComfyUI's grow-only
+// fit passes inflate the node right after load (measured live: saved 474x806 came
+// back 474x1830). Idempotent: a correct load matches the saved size and writes
+// nothing, so no dirty-on-load.
+//
+// NOTE, corrected 2026-07-16: the old note here blamed a zoom mis-scale ("the
+// parked element's on-screen height gets mis-scaled into graph units"). That is
+// NOT what this frontend does - the DOM-widget host is sized in GRAPH units with a
+// CSS transform, so offsetHeight is never zoom-scaled. measureFloor is now clamped
+// at FLOOR_CAP, which makes the inflated value unreachable at the source.
+//
+// This used to be time-boxed (now + next frame + 400ms, then give up), which is
+// why the node sometimes STAYED big: in a hidden browser tab or an inactive
+// workflow tab, requestAnimationFrame does not fire and the canvas never DRAWS -
+// and a DOM widget is only mounted and laid out by a draw. So ComfyUI's fit (and
+// its inflation) does not happen until the user comes back, long after the 400ms
+// window shut. The correction is now driven by the layout itself: a
+// ResizeObserver on the widget root fires exactly when the fit really happens,
+// whenever that is, and visibilitychange covers the tab being shown again.
+//
+// It retires when the root is genuinely laid out AND the size already matches -
+// i.e. things have settled - so it cannot linger and fight growToFloor after a
+// run. It also retires the moment the user grabs a resize handle: the size is
+// theirs from then on.
 function reassertSavedSize(node, saved) {
-  // A RESIZE-HANDLE grab means the user owns the size now - the deferred
-  // passes must not fight a manual resize. A plain click anywhere must NOT
-  // cancel (the late pass is the one that actually corrects the post-load
-  // inflation), so the cancel is scoped by the grabbed element's cursor
-  // (same signal js/shared/resize_floor.mjs uses).
   let done = false;
-  const release = () => {
+  let ro = null;
+
+  // A real box means the widget is mounted and ComfyUI has actually fitted it.
+  // Until then a size match proves nothing, so we must keep watching.
+  const mounted = () => {
+    const r = node._pixSiUI && node._pixSiUI.root;
+    return !!r && r.isConnected && r.clientWidth > 0;
+  };
+
+  function retire() {
+    if (done) return;
     done = true;
     window.removeEventListener("pointerdown", onDown, true);
-  };
-  const onDown = (e) => {
-    try {
-      const el = e.target;
-      const cur = el && el.nodeType === 1 ? getComputedStyle(el).cursor || "" : "";
-      if (cur.indexOf("-resize") !== -1) release();
-    } catch {}
-  };
-  window.addEventListener("pointerdown", onDown, true);
-  const apply = () => {
+    document.removeEventListener("visibilitychange", onVis);
+    try { if (ro) ro.disconnect(); } catch {}
+    ro = null;
+    if (node._pixSiReassertOff === retire) node._pixSiReassertOff = null;
+  }
+
+  // Correct if wrong; retire only once laid out AND already correct.
+  const apply = (mayRetire) => {
     if (done || !node._pixSiUI || node._pixSiSkipReassert) return;
-    if (Math.abs(node.size[0] - saved[0]) > 1 || Math.abs(node.size[1] - saved[1]) > 1) {
+    const off =
+      Math.abs(node.size[0] - saved[0]) > 1 || Math.abs(node.size[1] - saved[1]) > 1;
+    if (off) {
       if (node.setSize) node.setSize([saved[0], saved[1]]);
       else {
         node.size[0] = saved[0];
         node.size[1] = saved[1];
       }
       node.setDirtyCanvas?.(true, true);
+      return; // our own write re-lays-out the root; the next pass confirms
     }
+    if (mayRetire && mounted()) retire();
   };
-  apply();
-  requestAnimationFrame(apply);
-  setTimeout(() => {
-    apply(); // late fitters too (post-load layout passes)
-    release(); // and always drop the listener
-  }, 400);
+
+  // A RESIZE-HANDLE grab means the user owns the size now. A plain click must NOT
+  // cancel, so the signal is the grabbed element's cursor (same test
+  // js/shared/resize_floor.mjs uses).
+  const onDown = (e) => {
+    try {
+      const el = e.target;
+      const cur = el && el.nodeType === 1 ? getComputedStyle(el).cursor || "" : "";
+      if (cur.indexOf("-resize") !== -1) retire();
+    } catch {}
+  };
+  const onVis = () => {
+    if (document.visibilityState === "visible") requestAnimationFrame(() => apply(true));
+  };
+
+  try { node._pixSiReassertOff?.(); } catch {} // a previous configure must not linger
+  node._pixSiReassertOff = retire;
+
+  window.addEventListener("pointerdown", onDown, true);
+  document.addEventListener("visibilitychange", onVis);
+  try {
+    const root = node._pixSiUI && node._pixSiUI.root;
+    if (root && typeof ResizeObserver === "function") {
+      ro = new ResizeObserver(() => apply(true));
+      ro.observe(root);
+    }
+  } catch {}
+
+  apply(false); // never retire on these two: the fit has not happened yet
+  requestAnimationFrame(() => apply(false));
 }
 
 // Grow-ONLY fit: after a run adds the thumb strip, make sure the node is at
@@ -1074,6 +1146,10 @@ app.registerExtension({
     const origConfigure = nodeType.prototype.onConfigure;
     nodeType.prototype.onConfigure = function (info) {
       const r = origConfigure?.apply(this, arguments);
+      // A fresh configure brings a fresh authoritative saved size, so any earlier
+      // "the user picked this size" intent is stale. Without this, one Reset node
+      // size click disabled the only thing that undoes the inflation, for good.
+      this._pixSiSkipReassert = false;
       // capture the size the workflow SAVED (array or {0,1} object form)
       let saved = null;
       const s = info && info.size;
@@ -1081,6 +1157,21 @@ app.registerExtension({
         const sw = Number(s[0] ?? s["0"]);
         const sh = Number(s[1] ?? s["1"]);
         if (isFinite(sw) && isFinite(sh) && sw > 50 && sh > 50) saved = [sw, sh];
+      }
+      // HEAL a workflow that was SAVED while inflated. ComfyUI's load fit is
+      // grow-only, so once a silly height reaches the file it is permanent and
+      // self-reinforcing - faithfully re-asserting it would keep the node broken
+      // forever. The real content is ~490 tall, so anything past this threshold
+      // cannot be a deliberate user size; fall back to the default. The threshold
+      // is deliberately way above any sane hand-resize so a genuinely tall node
+      // the user made is never shrunk.
+      const INFLATED_H = FLOOR_CAP * 1.5; // 1209; the observed break was 1830
+      if (saved && saved[1] > INFLATED_H) {
+        console.warn(
+          "[PixaromaSaveImage] saved height " + Math.round(saved[1]) +
+            " looks inflated (a known ComfyUI fit bug); restoring the default " + DEFAULT_H + "."
+        );
+        saved = [saved[0], DEFAULT_H];
       }
       queueMicrotask(() => {
         syncFace(this);

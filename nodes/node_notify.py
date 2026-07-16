@@ -42,9 +42,19 @@ class NotifyPixaroma:
         "in another browser tab or app while ComfyUI is running.\n\n"
         "Sound files are auto-enumerated from assets/sounds/ - drop in a .mp3, .wav, "
         "or .ogg there to add more (restart ComfyUI to pick up new files).\n\n"
-        "A master toggle lives in Settings -> Pixaroma -> Notify -> Enabled. Each "
-        "node also has its own per-node enabled toggle. The Preview button bypasses "
-        "both toggles, since clicking it is a manual request to hear the sound right now."
+        "Each node is also a checkpoint timer: on every Run it measures how long "
+        "the workflow took to reach it, shows that time on the node, and keeps a "
+        "per-node history you can open by right-clicking (Notify time history). "
+        "Timing is independent of the sound (it still records when the sound is "
+        "off) and can be switched off per node from the right-click menu.\n\n"
+        "A small arrow on the clock row folds the node down to just the clock when "
+        "you want it compact, and folds it back out again (also on the right-click "
+        "menu as Collapse / Expand).\n\n"
+        "Each node has its own sound toggle, and a master sound switch covers every "
+        "Notify node at once - it lives in Settings -> Pixaroma -> Notify -> Enabled "
+        "and on the right-click menu as Mute all Notify sounds. The Preview button "
+        "bypasses both toggles, since clicking it is a manual request to hear the "
+        "sound right now."
     )
 
     @classmethod
@@ -63,9 +73,10 @@ class NotifyPixaroma:
                 "enabled": ("BOOLEAN", {
                     "default": True,
                     "tooltip":
-                        "Per-node mute toggle. When OFF, this specific node stays "
-                        "silent on every Run (no sound, no console log). Other "
-                        "Notify nodes in the workflow are unaffected."
+                        "Per-node SOUND toggle. When OFF, this specific node stays "
+                        "silent on every Run, but its checkpoint timer still records "
+                        "(right-click the node -> Notify time history). Other Notify "
+                        "nodes in the workflow are unaffected."
                 }),
                 "sound": (sounds, {
                     "default": default,
@@ -102,14 +113,22 @@ class NotifyPixaroma:
     CATEGORY = "👑 Pixaroma/🔀 Logic & Flow"
 
     def notify(self, any, enabled, sound, volume, label):
-        if not enabled:
-            return {"ui": {}}
+        # Always emit the event, even when sound is disabled: the JS frontend
+        # times how long the run took to reach this node and records it to this
+        # node's own history, independently of whether the ding plays. The
+        # `enabled` flag rides along so the frontend knows whether to play sound.
         msg = (label or "").strip() or sound.rsplit(".", 1)[0]
-        print(f"[Notify Pixaroma] {msg}  ({sound} @ {volume}%)")
+        if enabled:
+            print(f"[Notify Pixaroma] {msg}  ({sound} @ {volume}%)")
         return {
             "ui": {
                 "pixaroma_notify": [
-                    {"sound": sound, "volume": int(volume), "label": msg}
+                    {
+                        "sound": sound,
+                        "volume": int(volume),
+                        "label": msg,
+                        "enabled": bool(enabled),
+                    }
                 ]
             }
         }
