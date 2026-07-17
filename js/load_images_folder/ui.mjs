@@ -1,6 +1,6 @@
 // Load Images from Folder Pixaroma — DOM (node body, gallery, folder browser) + CSS.
 
-import { thumbURL, readLocalFileAsBlob, browseFolder } from "./api.mjs";
+import { thumbURL, browseFolder } from "./api.mjs";
 import { readState, writeState, sortFiles } from "./state.mjs";
 
 // folder.svg (assets/icons/ui/folder.svg) inlined so the Browse button + browser

@@ -51,10 +51,12 @@ export async function pickNativeFolder(startPath) {
   }
 }
 
-// ── Client-side local folder (File System Access API) ───────────────────────
-// These use `window.showDirectoryPicker()` to browse the USER'S local machine,
-// not the ComfyUI host. Falls back to server-side browsing when unavailable
-// (Firefox, Safari, older Chromium).
+// ── Client-side local folder (webkitdirectory input) ────────────────────────
+// Uses a hidden `<input type="file" webkitdirectory>` to open the native folder
+// picker on the USER'S local machine. Works in ALL modern browsers (Chrome,
+// Edge, Firefox, Safari) and over HTTP (not just HTTPS), unlike the File System
+// Access API (`showDirectoryPicker`). Falls back to server-side browsing when
+// the browser doesn't support `webkitdirectory`.
 
 const LOCAL_IMAGE_EXTS = new Set([
   ".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif", ".tiff", ".tif",
@@ -66,112 +68,105 @@ function isImageFile(name) {
   return LOCAL_IMAGE_EXTS.has(name.slice(dot).toLowerCase());
 }
 
-/** Check if the browser supports the File System Access API for local folder picking. */
-export function canUseLocalPicker() {
-  return "showDirectoryPicker" in window;
-}
-
 /**
- * Open the native OS folder picker on the user's LOCAL machine.
- * Returns a FileSystemDirectoryHandle, or null if the user cancelled / the API
- * is unavailable.
+ * Open the native folder picker on the user's LOCAL machine using a hidden
+ * `<input type="file" webkitdirectory>`. Works in all modern browsers
+ * (Chrome 31+, Edge 79+, Firefox 50+, Safari 11.1+) and over HTTP.
+ *
+ * Returns `{ folderName, files:[{file, name, size, mtime, fileObj}] }` on
+ * success, or `null` if the user cancelled.
  */
-export async function pickLocalFolder() {
-  try {
-    const handle = await window.showDirectoryPicker({ mode: "read" });
-    return handle;
-  } catch (e) {
-    if (e.name === "AbortError" || e.name === "SecurityError") return null;
-    console.warn("[LoadImagesFolder] showDirectoryPicker failed:", e);
-    return null;
-  }
+export function pickLocalFolder() {
+  return new Promise((resolve) => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.webkitdirectory = true;
+    input.style.display = "none";
+    document.body.appendChild(input);
+
+    // Track whether the picker dialog is open. When the window regains focus
+    // after the click and no `change` event fired, the user cancelled
+    // (the `cancel` event is not reliably fired across browsers).
+    let done = false;
+    let pickerOpened = false;
+    const cleanup = () => {
+      done = true;
+      document.body.removeChild(input);
+      window.removeEventListener("focus", onFocus);
+    };
+    const onFocus = () => {
+      if (!pickerOpened) return; // first focus is the click itself
+      setTimeout(() => {
+        if (!done) {
+          cleanup();
+          resolve(null);
+        }
+      }, 200); // small delay to let a change event win the race
+    };
+    window.addEventListener("focus", onFocus);
+
+    input.addEventListener("change", () => {
+      if (done) return;
+      cleanup();
+      const rawFiles = Array.from(input.files || []);
+      if (!rawFiles.length) {
+        resolve(null);
+        return;
+      }
+
+      // Derive the top-level folder name from the first file's webkitRelativePath
+      const firstPath = rawFiles[0].webkitRelativePath || "";
+      const folderName = firstPath.split("/")[0] || "Local Folder";
+
+      // Filter to image files and build our standard file-info list
+      const imageFiles = [];
+      const seen = new Set();
+      for (const f of rawFiles) {
+        if (!isImageFile(f.name)) continue;
+        const relPath = f.webkitRelativePath || f.name;
+        if (seen.has(relPath)) continue;
+        seen.add(relPath);
+        imageFiles.push({
+          file: relPath,
+          name: f.name,
+          size: f.size,
+          mtime: f.lastModified,
+          fileObj: f, // keep a reference to the File object
+        });
+      }
+      resolve({ folderName, files: imageFiles });
+    });
+
+    // Trigger the native folder picker
+    input.click();
+    pickerOpened = true;
+  });
 }
 
 /**
- * Recursively list image files inside a client-side directory handle.
- * @param {FileSystemDirectoryHandle} dirHandle
- * @param {boolean} recursive
- * @param {string} [prefix=""] — relative path prefix for recursion
- * @returns {Promise<{file:string, name:string, size:number, mtime:number, handle:FileSystemFileHandle}[]>}
- */
-export async function listLocalFolder(dirHandle, recursive, prefix = "") {
-  const files = [];
-  for await (const [name, entry] of dirHandle.entries()) {
-    if (entry.kind === "file") {
-      if (!isImageFile(name)) continue;
-      const file = await entry.getFile();
-      const rel = prefix ? `${prefix}/${name}` : name;
-      files.push({
-        file: rel,
-        name,
-        size: file.size,
-        mtime: file.lastModified,
-        handle: entry,
-      });
-    } else if (entry.kind === "directory" && recursive) {
-      const sub = await listLocalFolder(entry, true, prefix ? `${prefix}/${name}` : name);
-      files.push(...sub);
-    }
-  }
-  return files;
-}
-
-/**
- * Read a local image file as a blob for client-side thumbnail display.
- * @param {FileSystemDirectoryHandle} dirHandle
- * @param {string} relPath — relative path to the file inside the folder
- * @returns {Promise<string|null>} — object URL or null
- */
-export async function readLocalFileAsBlob(dirHandle, relPath) {
-  try {
-    const parts = relPath.split("/");
-    let handle = dirHandle;
-    for (let i = 0; i < parts.length - 1; i++) {
-      handle = await handle.getDirectoryHandle(parts[i]);
-    }
-    const fileHandle = await handle.getFileHandle(parts[parts.length - 1]);
-    const file = await fileHandle.getFile();
-    return URL.createObjectURL(file);
-  } catch (e) {
-    console.warn("[LoadImagesFolder] readLocalFileAsBlob failed:", relPath, e);
-    return null;
-  }
-}
-
-/**
- * Upload selected files from a local folder handle to the server.
- * Only the selected (relative-path) files are uploaded, one per multipart field.
- * Subdirectory separators in the path are replaced with '_' to produce flat
- * filenames (e.g. "subdir/photo.jpg" → "subdir_photo.jpg") so the server stores
- * them without needing nested directories.
- * @param {FileSystemDirectoryHandle} dirHandle
- * @param {string[]} selectedRelPaths — array of relative file paths
+ * Upload selected files (from a `webkitdirectory` pick) to the server.
+ * Subdirectory separators are replaced with '_' for flat storage
+ * (e.g. "subdir/photo.jpg" → "subdir_photo.jpg").
+ *
+ * @param {{file:string, fileObj:File}[]} selectedFiles — file info objects
+ *        that each have a `fileObj` property (the native File reference).
  * @param {string} [sessionId] — optional session ID to reuse a temp dir
- * @returns {Promise<{ok:boolean, folder?:string, session?:string, files?:Array, message?:string}>}
+ * @returns {Promise<{ok, folder?, session?, files?, _nameMap?, message?}>}
  */
-export async function uploadLocalFiles(dirHandle, selectedRelPaths, sessionId) {
+export async function uploadLocalFiles(selectedFiles, sessionId) {
   try {
     const formData = new FormData();
-    const nameMap = {}; // relPath → flatUploadName for remapping selected later
+    const nameMap = {};
     let uploaded = 0;
 
-    for (const relPath of selectedRelPaths) {
-      try {
-        const parts = relPath.split("/");
-        let handle = dirHandle;
-        for (let i = 0; i < parts.length - 1; i++) {
-          handle = await handle.getDirectoryHandle(parts[i]);
-        }
-        const fileHandle = await handle.getFileHandle(parts[parts.length - 1]);
-        const file = await fileHandle.getFile();
-        // Flatten subdirectory paths: "subdir/photo.jpg" → "subdir_photo.jpg"
-        const flatName = relPath.replace(/\//g, "_");
-        nameMap[relPath] = flatName;
-        formData.append("file", file, flatName);
-        uploaded++;
-      } catch (e) {
-        console.warn("[LoadImagesFolder] skipping unreadable file:", relPath, e);
-      }
+    for (const info of selectedFiles) {
+      const f = info.fileObj;
+      if (!f) continue;
+      // Flatten subdirectory paths
+      const flatName = info.file.replace(/\//g, "_");
+      nameMap[info.file] = flatName;
+      formData.append("file", f, flatName);
+      uploaded++;
     }
 
     if (uploaded === 0) {
@@ -183,7 +178,6 @@ export async function uploadLocalFiles(dirHandle, selectedRelPaths, sessionId) {
 
     const r = await fetch(url, { method: "POST", body: formData });
     const result = await r.json();
-    // Attach the name map so the caller can remap selected paths
     if (result.ok) result._nameMap = nameMap;
     return result;
   } catch (e) {

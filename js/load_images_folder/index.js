@@ -19,8 +19,7 @@ import {
 } from "./state.mjs";
 import {
   listFolder, pickNativeFolder,
-  canUseLocalPicker, pickLocalFolder, listLocalFolder,
-  readLocalFileAsBlob, uploadLocalFiles, cleanupUpload,
+  pickLocalFolder, uploadLocalFiles, cleanupUpload,
 } from "./api.mjs";
 import {
   injectCSS,
@@ -129,10 +128,9 @@ function renderUI(node) {
 // ── (re)list the chosen folder + reconcile selection ─────────────────────────
 // userAction = the call came from a real user gesture (folder change / subfolder
 // toggle), as opposed to a workflow-load path (onNodeCreated / onConfigure).
-/** Clear local-file mode: revoke blob URLs, discard handles, reset flags. */
+/** Clear local-file mode: revoke blob URLs, discard file list, reset flags. */
 function clearLocalMode(node) {
   node._pixLifLocalMode = false;
-  node._pixLifDirHandle = null;
   node._pixLifUploadSession = null;
   // Revoke all cached blob URLs
   if (node._pixLifBlobCache) {
@@ -143,14 +141,13 @@ function clearLocalMode(node) {
   node._pixLifBlobCache = null;
 }
 
-/** Get a thumbnail URL for a local file (blob URL from the File System API). */
-async function getLocalThumbnail(node, fileInfo) {
-  if (!node._pixLifDirHandle || !fileInfo?.file) return null;
-  // Cache blob URLs so we don't re-read every time the gallery re-renders
+/** Get a thumbnail URL for a local file (blob URL from the File object). */
+function getLocalThumbnail(node, fileInfo) {
+  if (!fileInfo?.fileObj) return null;
   const cache = node._pixLifBlobCache || (node._pixLifBlobCache = {});
   if (cache[fileInfo.file]) return cache[fileInfo.file];
-  const url = await readLocalFileAsBlob(node._pixLifDirHandle, fileInfo.file);
-  if (url) cache[fileInfo.file] = url;
+  const url = URL.createObjectURL(fileInfo.fileObj);
+  cache[fileInfo.file] = url;
   return url;
 }
 
@@ -161,12 +158,10 @@ async function refreshListing(node, userAction = false) {
   const myReq = (node._pixLifListReq = (node._pixLifListReq || 0) + 1);
   const state = readState(node);
 
-  // ── Local-file mode: list from the directory handle (no server fetch) ──
-  if (node._pixLifLocalMode && node._pixLifDirHandle) {
-    const localFiles = await listLocalFolder(node._pixLifDirHandle, !!state.recursive);
-    if (node._pixLifListReq !== myReq || !node._pixLifUI) return;
-    node._pixLifFiles = localFiles;
-    node._pixLifListError = localFiles.length ? "" : "No images found in this folder.";
+  // ── Local-file mode: files are already on the node (picked via webkitdirectory) ──
+  // No server fetch needed — the user's files are stored in node._pixLifFiles.
+  if (node._pixLifLocalMode) {
+    // In local mode, the files don't change unless the user picks a new folder.
     renderUI(node);
     return;
   }
@@ -323,37 +318,38 @@ function setupNode(node) {
     ui.browseBtn.disabled = true;
     if (lbl) lbl.textContent = "Opening…";
 
-    // ── Try client-side local picker FIRST (user's PC, not host) ──
-    if (canUseLocalPicker()) {
-      const dirHandle = await pickLocalFolder();
-      if (dirHandle) {
-        // User picked a local folder — switch to local-file mode
-        node._pixLifLocalMode = true;
-        node._pixLifDirHandle = dirHandle;
-        node._pixLifUploadSession = null; // fresh session
-        // List image files from the local folder
-        const st = readState(node);
-        const recursive = !!st.recursive;
-        const localFiles = await listLocalFolder(dirHandle, recursive);
-        node._pixLifFiles = localFiles;
-        node._pixLifListError = localFiles.length ? "" : "No images found in this folder.";
-        st.folder = "[Local Folder]"; // placeholder — real folder resolved on upload
-        st.selected = [];
-        writeState(node, st);
-        renderUI(node);
-        // Cache blob URLs for thumbnails (revoked when gallery closes or mode changes)
-        node._pixLifBlobCache = {};
-        ui.browseBtn.disabled = false;
-        if (lbl) lbl.textContent = prev || "Browse";
-        return;
-      }
-      // User cancelled the local picker. If we're already in local mode, stay
-      // in local mode (don't fall through to server-side options).
-      if (node._pixLifLocalMode) {
-        ui.browseBtn.disabled = false;
-        if (lbl) lbl.textContent = prev || "Browse";
-        return;
-      }
+    // ── Try client-side local folder picker FIRST (user's PC, not host) ──
+    // Uses <input type="file" webkitdirectory> — works in all modern browsers
+    // (Chrome, Edge, Firefox, Safari) and over HTTP.
+    const localResult = await pickLocalFolder();
+    if (localResult) {
+      // User picked a local folder — switch to local-file mode
+      node._pixLifLocalMode = true;
+      node._pixLifUploadSession = null;
+      // Note: webkitdirectory always returns flat (non-recursive) files from
+      // the picked folder. The browser handles recursion internally, and each
+      // file has a webkitRelativePath property with the subdirectory path.
+      node._pixLifFiles = localResult.files;
+      node._pixLifListError = localResult.files.length
+        ? ""
+        : "No images found in this folder.";
+      const st = readState(node);
+      st.folder = "[Local Folder]"; // placeholder — real folder resolved on upload
+      st.selected = [];
+      writeState(node, st);
+      renderUI(node);
+      // Cache blob URLs for thumbnails (revoked when gallery closes or mode changes)
+      node._pixLifBlobCache = {};
+      ui.browseBtn.disabled = false;
+      if (lbl) lbl.textContent = prev || "Browse";
+      return;
+    }
+    // User cancelled the local picker. If we're already in local mode, stay
+    // in local mode (don't fall through to server-side options).
+    if (node._pixLifLocalMode) {
+      ui.browseBtn.disabled = false;
+      if (lbl) lbl.textContent = prev || "Browse";
+      return;
     }
 
     // ── Fall back to server-side native dialog (host PC) ──
@@ -444,15 +440,25 @@ function matchNode(nodes, promptId) {
   return nodes.find((x) => String(x.id) === tail) || null;
 }
 async function uploadLocalNodeState(node) {
-  if (!node._pixLifLocalMode || !node._pixLifDirHandle) return false;
+  if (!node._pixLifLocalMode) return false;
   const state = readState(node);
   const selected = state.selected || [];
   if (!selected.length) return false;
 
+  // Build the list of selected file info objects (with fileObj references)
+  const fileMap = {};
+  for (const f of node._pixLifFiles || []) {
+    fileMap[f.file] = f;
+  }
+  const selectedFileInfos = selected
+    .map((rel) => fileMap[rel])
+    .filter(Boolean);
+
+  if (!selectedFileInfos.length) return false;
+
   // Upload only the selected files to the server temp dir
   const res = await uploadLocalFiles(
-    node._pixLifDirHandle,
-    selected,
+    selectedFileInfos,
     node._pixLifUploadSession || undefined
   );
   if (!res || !res.ok || !res.folder) {
