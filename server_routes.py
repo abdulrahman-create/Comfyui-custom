@@ -1800,6 +1800,103 @@ async def api_lif_pick_native(request):
         return web.json_response({"ok": False, "message": str(e)})
 
 
+# ── Client-side local folder upload ──────────────────────────────────────────
+# When the user picks a folder from their LOCAL machine (not the ComfyUI host),
+# the frontend reads files via the File System Access API and uploads the
+# selected images here so the Python backend can access them. Received files
+# are stored in a temp dir that persists for the session; the returned path
+# becomes the node's "folder" in the hidden state.
+_LIF_TEMP_DIRS: set = set()
+
+
+@PromptServer.instance.routes.post("/pixaroma/api/load_images_folder/upload")
+async def api_lif_upload(request):
+    """Accept image files uploaded from the client browser (local folder picker).
+    Multipart POST; each part must have name="file" and a filename.
+    ?session=<id> groups uploads into the same temp directory (reused across
+    multiple upload calls, e.g. re-queueing the same workflow). If no session
+    is given, a fresh temp dir is created.
+    Returns {ok, folder, files:[{file,name,size,mtime}]}."""
+    import tempfile as _tempfile
+    session = request.query.get("session", "") or ""
+    if session and _SAFE_ID_RE.match(session):
+        upload_dir = os.path.join(_tempfile.gettempdir(), "pixaroma_lif", session)
+    else:
+        session = uuid.uuid4().hex[:12]
+        upload_dir = os.path.join(_tempfile.gettempdir(), "pixaroma_lif", session)
+        if not _SAFE_ID_RE.match(session):
+            return web.json_response({"ok": False, "message": "Invalid session ID."})
+
+    os.makedirs(upload_dir, exist_ok=True)
+    _LIF_TEMP_DIRS.add(upload_dir)
+
+    reader = await request.multipart()
+    files = []
+    while True:
+        part = await reader.next()
+        if part is None:
+            break
+        if part.name != "file":
+            continue
+        filename = part.filename
+        if not filename:
+            continue
+        # Sanitise: only allow safe filenames, strip directory separators
+        safe_name = re.sub(r'[^a-zA-Z0-9_.\-()\[\] ]', "_", os.path.basename(filename))
+        if not safe_name or not _lif_is_image(safe_name):
+            continue
+        dest = os.path.join(upload_dir, safe_name)
+        with open(dest, "wb") as f:
+            while True:
+                chunk = await part.read_chunk()
+                if not chunk:
+                    break
+                f.write(chunk)
+        try:
+            st = os.stat(dest)
+            files.append({"file": safe_name, "name": safe_name, "size": st.st_size, "mtime": st.st_mtime})
+        except OSError:
+            continue
+
+    if not files:
+        return web.json_response({"ok": False, "message": "No valid image files uploaded."})
+
+    return web.json_response({"ok": True, "folder": upload_dir, "session": session, "files": files})
+
+
+@PromptServer.instance.routes.post("/pixaroma/api/load_images_folder/cleanup")
+async def api_lif_cleanup(request):
+    """Remove a temp upload directory and its contents. ?session=<id> or
+    ?path=<abs-path>. Returns {ok:true} or {ok:false, message}."""
+    import tempfile as _tempfile
+    import shutil as _shutil
+    session = request.query.get("session", "")
+    path = request.query.get("path", "")
+    if session and _SAFE_ID_RE.match(session):
+        target = os.path.join(_tempfile.gettempdir(), "pixaroma_lif", session)
+    elif path:
+        target = path
+    else:
+        return web.json_response({"ok": False, "message": "Provide ?session= or ?path=."})
+
+    # Reject cleanup requests for directories we didn't create ourselves,
+    # unless the path is provably under one of our known temp dirs.
+    target_real = os.path.realpath(target)
+    if target_real in _LIF_TEMP_DIRS:
+        pass  # exact match — known temp dir
+    elif _LIF_TEMP_DIRS and any(target_real.startswith(p.rstrip(os.sep) + os.sep) or target_real == p for p in _LIF_TEMP_DIRS):
+        pass  # subdirectory of a known temp dir
+    else:
+        return web.json_response({"ok": False, "message": "Unknown or already-cleaned directory."})
+
+    try:
+        _shutil.rmtree(target, ignore_errors=True)
+        _LIF_TEMP_DIRS.discard(target)
+        return web.json_response({"ok": True})
+    except Exception as e:
+        return web.json_response({"ok": False, "message": str(e)})
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Save Image Pixaroma routes: live filename-counter preview, open-in-explorer,
 # and token-served previews for files saved OUTSIDE ComfyUI's folders.

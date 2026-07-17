@@ -17,7 +17,11 @@ import {
   readState,
   writeState,
 } from "./state.mjs";
-import { listFolder, pickNativeFolder } from "./api.mjs";
+import {
+  listFolder, pickNativeFolder,
+  canUseLocalPicker, pickLocalFolder, listLocalFolder,
+  readLocalFileAsBlob, uploadLocalFiles, cleanupUpload,
+} from "./api.mjs";
 import {
   injectCSS,
   buildRoot,
@@ -110,6 +114,10 @@ function renderUI(node) {
   if (document.activeElement !== ui.folderInput) {
     ui.folderInput.value = state.folder || "";
   }
+  // Show a friendly label in local-file mode
+  if (node._pixLifLocalMode) {
+    ui.folderInput.value = "📁 Your PC — files will be uploaded on Run";
+  }
   const total = (node._pixLifFiles || []).length;
   const sel = (state.selected || []).length;
   ui.pickBtn.textContent = `Pick images · ${sel} / ${total}`;
@@ -121,13 +129,50 @@ function renderUI(node) {
 // ── (re)list the chosen folder + reconcile selection ─────────────────────────
 // userAction = the call came from a real user gesture (folder change / subfolder
 // toggle), as opposed to a workflow-load path (onNodeCreated / onConfigure).
+/** Clear local-file mode: revoke blob URLs, discard handles, reset flags. */
+function clearLocalMode(node) {
+  node._pixLifLocalMode = false;
+  node._pixLifDirHandle = null;
+  node._pixLifUploadSession = null;
+  // Revoke all cached blob URLs
+  if (node._pixLifBlobCache) {
+    for (const url of Object.values(node._pixLifBlobCache)) {
+      URL.revokeObjectURL(url);
+    }
+  }
+  node._pixLifBlobCache = null;
+}
+
+/** Get a thumbnail URL for a local file (blob URL from the File System API). */
+async function getLocalThumbnail(node, fileInfo) {
+  if (!node._pixLifDirHandle || !fileInfo?.file) return null;
+  // Cache blob URLs so we don't re-read every time the gallery re-renders
+  const cache = node._pixLifBlobCache || (node._pixLifBlobCache = {});
+  if (cache[fileInfo.file]) return cache[fileInfo.file];
+  const url = await readLocalFileAsBlob(node._pixLifDirHandle, fileInfo.file);
+  if (url) cache[fileInfo.file] = url;
+  return url;
+}
+
 async function refreshListing(node, userAction = false) {
   // Bump FIRST so even the no-folder early-return invalidates any in-flight
   // fetch (clear the folder while a listing is loading -> the stale response
   // must not repopulate the file list).
   const myReq = (node._pixLifListReq = (node._pixLifListReq || 0) + 1);
   const state = readState(node);
-  if (!state.folder) {
+
+  // ── Local-file mode: list from the directory handle (no server fetch) ──
+  if (node._pixLifLocalMode && node._pixLifDirHandle) {
+    const localFiles = await listLocalFolder(node._pixLifDirHandle, !!state.recursive);
+    if (node._pixLifListReq !== myReq || !node._pixLifUI) return;
+    node._pixLifFiles = localFiles;
+    node._pixLifListError = localFiles.length ? "" : "No images found in this folder.";
+    renderUI(node);
+    return;
+  }
+
+  // ── Server-file mode (original behavior) ──
+  if (!state.folder || state.folder === "[Local Folder]") {
     node._pixLifFiles = [];
     node._pixLifListError = "";
     renderUI(node);
@@ -273,13 +318,45 @@ function setupNode(node) {
   });
   ui.browseBtn.addEventListener("click", async () => {
     const start = readState(node).folder || "";
-    // Try the native OS folder dialog first (real dialog, real path, no copying).
-    // Fall back to the in-app browser when it isn't available (non-Windows /
-    // remote / error). A cancel just does nothing.
     const lbl = ui.browseLbl;
     const prev = lbl ? lbl.textContent : "";
     ui.browseBtn.disabled = true;
     if (lbl) lbl.textContent = "Opening…";
+
+    // ── Try client-side local picker FIRST (user's PC, not host) ──
+    if (canUseLocalPicker()) {
+      const dirHandle = await pickLocalFolder();
+      if (dirHandle) {
+        // User picked a local folder — switch to local-file mode
+        node._pixLifLocalMode = true;
+        node._pixLifDirHandle = dirHandle;
+        node._pixLifUploadSession = null; // fresh session
+        // List image files from the local folder
+        const st = readState(node);
+        const recursive = !!st.recursive;
+        const localFiles = await listLocalFolder(dirHandle, recursive);
+        node._pixLifFiles = localFiles;
+        node._pixLifListError = localFiles.length ? "" : "No images found in this folder.";
+        st.folder = "[Local Folder]"; // placeholder — real folder resolved on upload
+        st.selected = [];
+        writeState(node, st);
+        renderUI(node);
+        // Cache blob URLs for thumbnails (revoked when gallery closes or mode changes)
+        node._pixLifBlobCache = {};
+        ui.browseBtn.disabled = false;
+        if (lbl) lbl.textContent = prev || "Browse";
+        return;
+      }
+      // User cancelled the local picker. If we're already in local mode, stay
+      // in local mode (don't fall through to server-side options).
+      if (node._pixLifLocalMode) {
+        ui.browseBtn.disabled = false;
+        if (lbl) lbl.textContent = prev || "Browse";
+        return;
+      }
+    }
+
+    // ── Fall back to server-side native dialog (host PC) ──
     let res;
     try {
       res = await pickNativeFolder(start);
@@ -289,31 +366,46 @@ function setupNode(node) {
     ui.browseBtn.disabled = false;
     if (lbl) lbl.textContent = prev || "Browse";
     if (res && res.ok && res.path) {
+      // Switching from local to server mode — clean up
+      if (node._pixLifLocalMode) clearLocalMode(node);
       await setFolder(node, res.path);
       return;
     }
     if (res && res.cancelled) return; // user closed the native dialog
+    // Fall back to the in-app server-side folder browser
     openBrowsePopup(node, ui.browseBtn, {
       startPath: start,
-      onPick: (folder) => setFolder(node, folder),
+      onPick: async (folder) => {
+        if (node._pixLifLocalMode) clearLocalMode(node);
+        await setFolder(node, folder);
+      },
     });
   });
   ui.pickBtn.addEventListener("click", async () => {
-    // commit a typed-but-not-blurred path first
-    const typed = ui.folderInput.value.trim();
-    if (typed !== (readState(node).folder || "")) await setFolder(node, typed);
-    const st = readState(node);
-    if (!st.folder) {
-      ui.folderInput.focus();
-      node._pixLifListError = "Set a folder first (type, paste, or Browse).";
-      renderUI(node);
-      return;
+    // In local-file mode, skip the folder-path check — the folder handle is stored on the node
+    if (!node._pixLifLocalMode) {
+      // commit a typed-but-not-blurred path first
+      const typed = ui.folderInput.value.trim();
+      if (typed !== (readState(node).folder || "")) await setFolder(node, typed);
+      const st = readState(node);
+      if (!st.folder) {
+        ui.folderInput.focus();
+        node._pixLifListError = "Set a folder first (type, paste, or Browse).";
+        renderUI(node);
+        return;
+      }
     }
     if (!node._pixLifFiles) await refreshListing(node, true);
-    openPickGallery(node, ui.pickBtn, {
+    const galCtx = {
       onChange: renderUI,
       refreshListing: (n) => refreshListing(n, true),
-    });
+    };
+    // In local-file mode, provide a thumbnail resolver that reads from the
+    // File System API instead of the server thumbURL route.
+    if (node._pixLifLocalMode) {
+      galCtx.getThumbnailUrl = (f) => getLocalThumbnail(node, f);
+    }
+    openPickGallery(node, ui.pickBtn, galCtx);
   });
 
   try {
@@ -351,12 +443,59 @@ function matchNode(nodes, promptId) {
   const tail = String(promptId).split(":").pop();
   return nodes.find((x) => String(x.id) === tail) || null;
 }
-function injectState(result) {
+async function uploadLocalNodeState(node) {
+  if (!node._pixLifLocalMode || !node._pixLifDirHandle) return false;
+  const state = readState(node);
+  const selected = state.selected || [];
+  if (!selected.length) return false;
+
+  // Upload only the selected files to the server temp dir
+  const res = await uploadLocalFiles(
+    node._pixLifDirHandle,
+    selected,
+    node._pixLifUploadSession || undefined
+  );
+  if (!res || !res.ok || !res.folder) {
+    console.warn("[LoadImagesFolder] upload failed:", res?.message);
+    return false;
+  }
+
+  // Store the session ID so subsequent queues reuse the same temp dir
+  node._pixLifUploadSession = res.session || null;
+
+  // Rewrite state: replace folder placeholder with real temp path,
+  // and remap selected paths to the flat uploaded filenames
+  const nameMap = res._nameMap || {};
+  const uploadedNames = new Set((res.files || []).map((f) => f.file));
+  const newSelected = selected
+    .map((rel) => nameMap[rel] || rel.split("/").pop())
+    .filter((f) => uploadedNames.has(f));
+
+  state.folder = res.folder;
+  state.selected = newSelected;
+  writeState(node, state);
+  return true;
+}
+
+async function injectState(result) {
   const out = result?.output;
   if (!out) return;
   const lifNodes = [];
   collectNodes(app.graph, lifNodes);
   if (!lifNodes.length) return;
+
+  // First pass: upload local files for any LIF node in local mode
+  const uploads = [];
+  for (const node of lifNodes) {
+    if (node._pixLifLocalMode) {
+      uploads.push(uploadLocalNodeState(node));
+    }
+  }
+  if (uploads.length) {
+    await Promise.all(uploads);
+  }
+
+  // Second pass: inject state (now with real server paths for local-mode nodes)
   for (const id in out) {
     const entry = out[id];
     if (!entry || entry.class_type !== COMFY_CLASS) continue;
@@ -373,7 +512,7 @@ function installGraphToPromptHook() {
   app.graphToPrompt = async function (...args) {
     const result = await orig(...args);
     try {
-      injectState(result);
+      await injectState(result);
     } catch (e) {
       console.warn("[LoadImagesFolder] graphToPrompt inject failed", e);
     }
@@ -432,6 +571,8 @@ app.registerExtension({
       try {
         this._pixLifFloorOff?.();
       } catch {}
+      // Revoke blob URLs for local-file mode
+      clearLocalMode(this);
       // Close only THIS node's popups - deleting one node must not close another
       // node's open gallery. Menus are transient, so a global sweep is fine.
       this._pixLifGallery?._pixClose?.();

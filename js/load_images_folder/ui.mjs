@@ -1,6 +1,6 @@
 // Load Images from Folder Pixaroma — DOM (node body, gallery, folder browser) + CSS.
 
-import { thumbURL, browseFolder } from "./api.mjs";
+import { thumbURL, readLocalFileAsBlob, browseFolder } from "./api.mjs";
 import { readState, writeState, sortFiles } from "./state.mjs";
 
 // folder.svg (assets/icons/ui/folder.svg) inlined so the Browse button + browser
@@ -184,7 +184,10 @@ const SORTS = [
 ];
 
 // ── the multi-select "Pick images" gallery ──────────────────────────────────
-// ctx: { onChange(node), refreshListing(node):Promise }
+// ctx: { onChange(node), refreshListing(node):Promise, getThumbnailUrl?(fileInfo):string|null }
+//   getThumbnailUrl — optional; when present (local-file mode), returns a local
+//   object URL instead of a server thumbURL. Falls back to server thumbURL when
+//   absent.
 export function openPickGallery(node, anchorEl, ctx) {
   document.querySelectorAll(".pix-lif-gallery").forEach((g) => g._pixClose?.());
   const gal = document.createElement("div");
@@ -256,8 +259,11 @@ export function openPickGallery(node, anchorEl, ctx) {
     for (const f of sorted) {
       const cell = document.createElement("div");
       cell.className = "pix-lif-thumb" + (selSet.has(f.file) ? " sel" : "");
+      // Use local thumbnail resolver if available (local-file mode), otherwise
+      // fall back to the server-side thumbURL
+      const src = ctx.getThumbnailUrl?.(f) ?? thumbURL(state.folder, f.file, f.mtime);
       cell.innerHTML =
-        `<img loading="lazy" src="${thumbURL(state.folder, f.file, f.mtime)}" onerror="this.style.display='none'">` +
+        `<img loading="lazy" src="${src}" onerror="this.style.display='none'">` +
         `<div class="veil"></div><div class="chk">✓</div>` +
         `<div class="nm">${escapeHtml(f.name)}</div>`;
       cell.addEventListener("click", () => {
