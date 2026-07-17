@@ -81,27 +81,30 @@ export function pickLocalFolder() {
     const input = document.createElement("input");
     input.type = "file";
     input.webkitdirectory = true;
-    input.style.display = "none";
+    // Use opacity/position instead of display:none — some browsers restrict
+    // file picker opening on display:none elements for security.
+    input.style.cssText = "position:fixed;left:-9999px;top:-9999px;opacity:0;width:1px;height:1px;pointer-events:none";
     document.body.appendChild(input);
 
-    // Track whether the picker dialog is open. When the window regains focus
-    // after the click and no `change` event fired, the user cancelled
-    // (the `cancel` event is not reliably fired across browsers).
     let done = false;
-    let pickerOpened = false;
     const cleanup = () => {
+      if (done) return;
       done = true;
       document.body.removeChild(input);
       window.removeEventListener("focus", onFocus);
     };
+
+    // Detect cancel via window focus. When the native file picker closes
+    // (regardless of selection or cancel), focus returns to the window.
+    // If the `change` event hasn't fired by then, the user cancelled.
     const onFocus = () => {
-      if (!pickerOpened) return; // first focus is the click itself
+      // Small delay lets a `change` event scheduled before the focus event
+      // win the race (they fire in the same microtask in practice).
       setTimeout(() => {
-        if (!done) {
-          cleanup();
-          resolve(null);
-        }
-      }, 200); // small delay to let a change event win the race
+        if (done) return;
+        cleanup();
+        resolve(null);
+      }, 50);
     };
     window.addEventListener("focus", onFocus);
 
@@ -139,7 +142,6 @@ export function pickLocalFolder() {
 
     // Trigger the native folder picker
     input.click();
-    pickerOpened = true;
   });
 }
 

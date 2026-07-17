@@ -312,17 +312,18 @@ function setupNode(node) {
     }, 0);
   });
   ui.browseBtn.addEventListener("click", async () => {
-    const start = readState(node).folder || "";
-    const lbl = ui.browseLbl;
-    const prev = lbl ? lbl.textContent : "";
-    ui.browseBtn.disabled = true;
-    if (lbl) lbl.textContent = "Opening…";
+    try {
+      const start = readState(node).folder || "";
+      const lbl = ui.browseLbl;
+      const prev = lbl ? lbl.textContent : "";
+      ui.browseBtn.disabled = true;
+      if (lbl) lbl.textContent = "Opening…";
 
-    // ── Try client-side local folder picker FIRST (user's PC, not host) ──
-    // Uses <input type="file" webkitdirectory> — works in all modern browsers
-    // (Chrome, Edge, Firefox, Safari) and over HTTP.
-    const localResult = await pickLocalFolder();
-    if (localResult) {
+      // ── Try client-side local folder picker FIRST (user's PC, not host) ──
+      // Uses <input type="file" webkitdirectory> — works in ALL modern browsers
+      // (Chrome, Edge, Firefox, Safari) and over plain HTTP.
+      const localResult = await pickLocalFolder();
+      if (localResult) {
       // User picked a local folder — switch to local-file mode
       node._pixLifLocalMode = true;
       node._pixLifUploadSession = null;
@@ -376,6 +377,12 @@ function setupNode(node) {
         await setFolder(node, folder);
       },
     });
+    } catch (e) {
+      console.warn("[LoadImagesFolder] Browse error:", e);
+      // Reset the button so it's not stuck in "disabled" state
+      ui.browseBtn.disabled = false;
+      if (ui.browseLbl) ui.browseLbl.textContent = "Browse";
+    }
   });
   ui.pickBtn.addEventListener("click", async () => {
     // In local-file mode, skip the folder-path check — the folder handle is stored on the node
