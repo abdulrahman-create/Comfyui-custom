@@ -191,12 +191,11 @@ class PixaromaLoadImagesFolder:
             masks.append(m)
             widths.append(fw)
             heights.append(fh)
-            if recursive:
-                # keep names unique across subfolders so a Save node can't
-                # overwrite: "sub/cat.png" -> "sub_cat"
-                name = os.path.splitext(rel)[0].replace("/", "_").replace("\\", "_")
-            else:
-                name = os.path.splitext(os.path.basename(rel))[0]
+            # Use the exact original filename (without extension) — no subdirectory
+            # prefix mangling. If two files in different subfolders happen to share
+            # the same name, the Save node's auto-increment counter prevents
+            # overwrites (e.g. both result in "photo_00001_.png" and "photo_00002_.png").
+            name = os.path.splitext(os.path.basename(rel))[0]
             names.append(name)
             count += 1
             indices.append(count)
