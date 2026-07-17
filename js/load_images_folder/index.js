@@ -490,22 +490,14 @@ async function uploadLocalNodeState(node) {
   // Store the session ID so subsequent queues reuse the same temp dir
   node._pixLifUploadSession = res.session || null;
 
-  // Rewrite state: replace folder placeholder with real temp path,
-  // and remap selected paths to JUST the original filename (no subdirectory).
-  // Files are uploaded flat into the temp dir, so the Python side only needs
-  // the basename to find them.
-  const nameMap = res._nameMap || {};
+  // Rewrite state: replace folder placeholder with real temp path.
+  // Files are uploaded by their original basename, so `selected` can be
+  // just the basename too — the Python side finds them directly in the
+  // temp dir with no subdirectory prefix.
   const uploadedNames = new Set((res.files || []).map((f) => f.file));
   const newSelected = selected
-    .map((rel) => {
-      // The flat upload name (e.g. "sub_photo.png") — use this to check
-      // against uploadedNames. But store just the ORIGINAL basename so the
-      // filename output stays clean.
-      const flat = nameMap[rel] || rel.replace(/\//g, "_");
-      const base = rel.split("/").pop();
-      return uploadedNames.has(flat) ? base : null;
-    })
-    .filter(Boolean);
+    .map((rel) => rel.split("/").pop())
+    .filter((f) => uploadedNames.has(f));
 
   state.folder = res.folder;
   state.selected = newSelected;

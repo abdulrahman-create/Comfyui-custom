@@ -135,27 +135,27 @@ export function pickLocalFolder() {
 
 /**
  * Upload selected files (from a `webkitdirectory` pick) to the server.
- * Subdirectory separators are replaced with '_' for flat storage
- * (e.g. "subdir/photo.jpg" → "subdir_photo.jpg").
+ * Files are stored by their ORIGINAL basename (subdirectory info is
+ * discarded) so the filename output stays clean. Files with the same
+ * name in different subdirectories will overwrite each other.
  *
  * @param {{file:string, fileObj:File}[]} selectedFiles — file info objects
  *        that each have a `fileObj` property (the native File reference).
  * @param {string} [sessionId] — optional session ID to reuse a temp dir
- * @returns {Promise<{ok, folder?, session?, files?, _nameMap?, message?}>}
+ * @returns {Promise<{ok, folder?, session?, files?, message?}>}
  */
 export async function uploadLocalFiles(selectedFiles, sessionId) {
   try {
     const formData = new FormData();
-    const nameMap = {};
     let uploaded = 0;
 
     for (const info of selectedFiles) {
       const f = info.fileObj;
       if (!f) continue;
-      // Flatten subdirectory paths
-      const flatName = info.file.replace(/\//g, "_");
-      nameMap[info.file] = flatName;
-      formData.append("file", f, flatName);
+      // Use the original basename so the file is stored on the server with
+      // its real name (no subdirectory prefix, no flattening).
+      const base = info.file.split("/").pop();
+      formData.append("file", f, base);
       uploaded++;
     }
 
@@ -167,9 +167,7 @@ export async function uploadLocalFiles(selectedFiles, sessionId) {
     if (sessionId) url += `?session=${encodeURIComponent(sessionId)}`;
 
     const r = await fetch(url, { method: "POST", body: formData });
-    const result = await r.json();
-    if (result.ok) result._nameMap = nameMap;
-    return result;
+    return await r.json();
   } catch (e) {
     return { ok: false, message: String(e) };
   }
