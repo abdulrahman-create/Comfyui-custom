@@ -68,6 +68,7 @@ class PixaromaPreview:
                     "%Seed Pixaroma.seed% that print another node's field value into the name. "
                     "See the node's Info panel (right sidebar) for the full token reference and examples."
                 )}),
+                "preserve_filename": ("BOOLEAN", {"default": False, "tooltip": "When ON, the filename_prefix is used EXACTLY as the output filename (.png added). No counter, no date tokens — the file is overwritten on each run. Wire the filename output from Load Images from Folder here to keep the original name."}),
                 "save_mode": (["preview", "save"], {"default": "preview", "tooltip": "preview: write each batch frame to ComfyUI's temp/ folder, auto-cleared on restart. Use this while iterating so you don't clutter output/. The temp PNGs embed the workflow, so you can drag a preview back onto the canvas to restore the graph (just like the native Preview node). save: write every batch frame to output/ with embedded workflow metadata, exactly like the native SaveImage node. The on-node preview strip works the same in both modes; the manual Save to Disk / Save to Output buttons are independent of save_mode."}),
             },
             "hidden": {
@@ -95,6 +96,7 @@ class PixaromaPreview:
         self,
         image,
         filename_prefix,
+        preserve_filename,
         save_mode,
         prompt=None,
         extra_pnginfo=None,
@@ -104,20 +106,34 @@ class PixaromaPreview:
         results = []
         if save_mode == "save":
             output_dir = folder_paths.get_output_directory()
-            full_folder, name, counter, subfolder, _ = folder_paths.get_save_image_path(
-                prefix, output_dir, image.shape[2], image.shape[1]
-            )
-            os.makedirs(full_folder, exist_ok=True)
-            for i, tensor in enumerate(image):
-                pil = _tensor_to_pil(tensor)
-                pnginfo = _build_pnginfo(prompt=prompt, extra_pnginfo=extra_pnginfo)
-                fname = f"{name}_{counter + i:05}_.png"
-                pil.save(os.path.join(full_folder, fname), "PNG", pnginfo=pnginfo)
-                results.append({
-                    "filename": fname,
-                    "subfolder": subfolder,
-                    "type": "output",
-                })
+            if preserve_filename:
+                # Exact filename — no counter, no date tokens, no subfolder parsing.
+                # Save directly to output/ root. Overwrites on re-run (user's intent).
+                for i, tensor in enumerate(image):
+                    pil = _tensor_to_pil(tensor)
+                    pnginfo = _build_pnginfo(prompt=prompt, extra_pnginfo=extra_pnginfo)
+                    fname = f"{prefix}.png"
+                    pil.save(os.path.join(output_dir, fname), "PNG", pnginfo=pnginfo)
+                    results.append({
+                        "filename": fname,
+                        "subfolder": "",
+                        "type": "output",
+                    })
+            else:
+                full_folder, name, counter, subfolder, _ = folder_paths.get_save_image_path(
+                    prefix, output_dir, image.shape[2], image.shape[1]
+                )
+                os.makedirs(full_folder, exist_ok=True)
+                for i, tensor in enumerate(image):
+                    pil = _tensor_to_pil(tensor)
+                    pnginfo = _build_pnginfo(prompt=prompt, extra_pnginfo=extra_pnginfo)
+                    fname = f"{name}_{counter + i:05}_.png"
+                    pil.save(os.path.join(full_folder, fname), "PNG", pnginfo=pnginfo)
+                    results.append({
+                        "filename": fname,
+                        "subfolder": subfolder,
+                        "type": "output",
+                    })
         else:  # preview mode
             # Embed the workflow/prompt into the temp PNG too (same helper save
             # mode uses, and the same thing native PreviewImage does), so a temp

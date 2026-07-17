@@ -177,6 +177,7 @@ class PixaromaSaveImage:
             },
             "optional": {
                 "name": ("STRING", {"forceInput": True, "tooltip": "Optional text used by the %input% token in the filename, e.g. wire the filename output of Load Image Pixaroma here to keep the original name."}),
+                "preserve_filename": ("BOOLEAN", {"default": False, "tooltip": "When ON, the 'name' input is used EXACTLY as the output filename (no counter, no tokens). Overwrites on re-run. Wire the filename from Load Images from Folder to keep the original name."}),
             },
             "hidden": {
                 "SaveImageState": "STRING",
@@ -198,7 +199,7 @@ class PixaromaSaveImage:
         # on day one. Same choice as Preview Image Pixaroma.
         return float("nan")
 
-    def save(self, images, name=None, SaveImageState="", prompt=None, extra_pnginfo=None):
+    def save(self, images, name=None, preserve_filename=False, SaveImageState="", prompt=None, extra_pnginfo=None):
         state = dict(DEFAULT_STATE)
         try:
             data = json.loads(SaveImageState) if SaveImageState else {}
@@ -252,8 +253,67 @@ class PixaromaSaveImage:
             }
             return {"ui": {"pixaroma_save_frames": entries}}
 
+        # ── Preserve-exact-filename mode ──
+        # When checked AND a name is wired in, skip ALL pattern/token/counter
+        # logic and use the name directly as the output filename.
+        if preserve_filename and name:
+            pnginfo = None
+            exif_bytes = None
+            if embed and fmt == "png":
+                pnginfo = _build_pnginfo(prompt=prompt, extra_pnginfo=extra_pnginfo)
+            elif embed and fmt == "jpg":
+                wf = extra_pnginfo.get("workflow") if isinstance(extra_pnginfo, dict) else None
+                exif_bytes = _build_jpeg_exif(prompt=prompt, workflow=wf)
+
+            os.makedirs(folder_abs, exist_ok=True)
+            results = []
+            saved = 0
+            for i, tensor in enumerate(images):
+                # Use the wired name directly — no counter, no tokens
+                fname = f"{name}{ext}"
+                out_path = os.path.join(folder_abs, fname)
+                pil = _tensor_to_pil(tensor)
+                ok = False
+                try:
+                    if fmt == "png":
+                        pil.save(out_path, "PNG", pnginfo=pnginfo, compress_level=4)
+                    else:
+                        rgb = pil.convert("RGB") if pil.mode != "RGB" else pil
+                        if exif_bytes:
+                            try:
+                                rgb.save(out_path, "JPEG", quality=quality, exif=exif_bytes)
+                            except ValueError:
+                                rgb.save(out_path, "JPEG", quality=quality)
+                        else:
+                            rgb.save(out_path, "JPEG", quality=quality)
+                    ok = True
+                finally:
+                    if not ok:
+                        try:
+                            os.remove(out_path)
+                        except OSError:
+                            pass
+                saved += 1
+                entry = {"filename": fname}
+                if inside_output:
+                    entry["subfolder"] = ""
+                    entry["type"] = "output"
+                results.append(entry)
+
+            if results:
+                results[0]["_pixaroma_note"] = "preserve_filename: exact name, no counter"
+            meta_frame = results[0] if results else {}
+            meta_frame["_pixaroma_status"] = {
+                "saved": saved,
+                "folder": folder_abs,
+                "w": w,
+                "h": h,
+                "inside_output": inside_output,
+                "note": f"Exact filename: {name}{ext}",
+            }
+            return {"ui": {"pixaroma_save_frames": results}}
+
         # ---- resolve the pattern (batch-level tokens) ----
-        pattern = str(state.get("pattern") or DEFAULT_STATE["pattern"])
         input_name = ""
         if name is not None:
             input_name = name if isinstance(name, str) else str(name)
