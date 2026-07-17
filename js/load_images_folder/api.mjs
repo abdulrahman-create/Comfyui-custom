@@ -81,37 +81,25 @@ export function pickLocalFolder() {
     const input = document.createElement("input");
     input.type = "file";
     input.webkitdirectory = true;
-    // Use opacity/position instead of display:none — some browsers restrict
-    // file picker opening on display:none elements for security.
     input.style.cssText = "position:fixed;left:-9999px;top:-9999px;opacity:0;width:1px;height:1px;pointer-events:none";
     document.body.appendChild(input);
 
+    // NO cancel detection — the `change` event is the ONLY reliable signal
+    // across all browsers. Focus/blur events race with change and can cause
+    // premature cancellation. The caller (Browse handler) uses a timeout
+    // as a safety net instead.
     let done = false;
     const cleanup = () => {
       if (done) return;
       done = true;
-      document.body.removeChild(input);
-      window.removeEventListener("focus", onFocus);
+      if (input.parentNode) document.body.removeChild(input);
     };
-
-    // Detect cancel via window focus. When the native file picker closes
-    // (regardless of selection or cancel), focus returns to the window.
-    // If the `change` event hasn't fired by then, the user cancelled.
-    const onFocus = () => {
-      // Small delay lets a `change` event scheduled before the focus event
-      // win the race (they fire in the same microtask in practice).
-      setTimeout(() => {
-        if (done) return;
-        cleanup();
-        resolve(null);
-      }, 50);
-    };
-    window.addEventListener("focus", onFocus);
 
     input.addEventListener("change", () => {
-      if (done) return;
+      if (done) { console.log("[LoadImagesFolder change] already done"); return; }
       cleanup();
       const rawFiles = Array.from(input.files || []);
+      console.log("[LoadImagesFolder change]", rawFiles.length, "files in input");
       if (!rawFiles.length) {
         resolve(null);
         return;

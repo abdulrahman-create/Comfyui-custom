@@ -322,8 +322,22 @@ function setupNode(node) {
       // ── Try client-side local folder picker FIRST (user's PC, not host) ──
       // Uses <input type="file" webkitdirectory> — works in ALL modern browsers
       // (Chrome, Edge, Firefox, Safari) and over plain HTTP.
-      const localResult = await pickLocalFolder();
+      // Timeout: if the user cancels, the `change` event never fires and the
+      // promise hangs. The 60s timeout prevents the button from locking up.
+      console.log("[LoadImagesFolder] Opening local folder picker...");
+      const localResult = await Promise.race([
+        pickLocalFolder(),
+        new Promise((r) => setTimeout(() => r("__timeout__"), 60000)),
+      ]);
+      console.log("[LoadImagesFolder] pick result:", localResult === "__timeout__" ? "TIMEOUT" : localResult ? `${localResult.files.length} files` : "null");
+      if (localResult === "__timeout__") {
+        console.log("[LoadImagesFolder] folder picker timed out (user cancelled)");
+        ui.browseBtn.disabled = false;
+        if (lbl) lbl.textContent = prev || "Browse";
+        return;
+      }
       if (localResult) {
+      console.log("[LoadImagesFolder] Switching to local-file mode,", localResult.files.length, "files");
       // User picked a local folder — switch to local-file mode
       node._pixLifLocalMode = true;
       node._pixLifUploadSession = null;
