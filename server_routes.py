@@ -1167,6 +1167,8 @@ async def api_preview_save(request):
     # (e.g. only special chars, '..' traversal, leading '/'). Matches the
     # Python node's behavior so the user always gets a successful save.
     prefix = _safe_prefix(prefix_raw) or "Preview"
+    fmt = data.get("format", "png") or "png"
+    ext = f".{fmt}"
 
     pil = _decode_image(image_b64)
     if pil is None:
@@ -1178,10 +1180,16 @@ async def api_preview_save(request):
             prefix, output_dir, pil.width, pil.height
         )
         os.makedirs(full_folder, exist_ok=True)
-        fname = f"{name}_{counter:05}_.png"
+        fname = f"{name}_{counter:05}_.{fmt}"
         full_path = os.path.join(full_folder, fname)
-        pnginfo = _embed_workflow_metadata(workflow, prompt)
-        pil.save(full_path, "PNG", pnginfo=pnginfo)
+
+        if fmt == "png":
+            pnginfo = _embed_workflow_metadata(workflow, prompt)
+            pil.save(full_path, "PNG", pnginfo=pnginfo)
+        elif fmt == "jpg":
+            pil.convert("RGB").save(full_path, "JPEG", quality=92)
+        else:  # webp
+            pil.save(full_path, "WEBP", quality=85, method=6)
     except Exception as e:
         return web.json_response({"error": f"save failed: {e}"}, status=500)
 
@@ -1220,27 +1228,37 @@ async def api_preview_prepare(request):
     # (e.g. only special chars, '..' traversal, leading '/'). Matches the
     # Python node's behavior so the user always gets a successful save.
     prefix = _safe_prefix(prefix_raw) or "Preview"
+    fmt = data.get("format", "png") or "png"
+    ext = f".{fmt}"
 
     pil = _decode_image(image_b64)
     if pil is None:
         return web.json_response({"error": "invalid image data"}, status=400)
 
     try:
-        pnginfo = _build_pnginfo(prompt=prompt, workflow=workflow)
-        buf = io.BytesIO()
-        pil.save(buf, "PNG", pnginfo=pnginfo)
+        if fmt == "png":
+            pnginfo = _build_pnginfo(prompt=prompt, workflow=workflow)
+            buf = io.BytesIO()
+            pil.save(buf, "PNG", pnginfo=pnginfo)
+        elif fmt == "jpg":
+            buf = io.BytesIO()
+            pil.convert("RGB").save(buf, "JPEG", quality=92)
+        else:  # webp
+            buf = io.BytesIO()
+            pil.save(buf, "WEBP", quality=85, method=6)
         body = buf.getvalue()
+        mime = fmt.replace("jpg", "jpeg")
 
         # Peek at the next free counter (read-only — no file written)
         output_dir = folder_paths.get_output_directory()
         _, name, counter, _, _ = folder_paths.get_save_image_path(
             prefix, output_dir, pil.width, pil.height
         )
-        suggested_filename = f"{name}_{counter:05}_.png"
+        suggested_filename = f"{name}_{counter:05}_.{fmt}"
     except Exception as e:
         return web.json_response({"error": f"prepare failed: {e}"}, status=500)
 
-    image_data_uri = "data:image/png;base64," + base64.b64encode(body).decode("ascii")
+    image_data_uri = f"data:image/{mime};base64," + base64.b64encode(body).decode("ascii")
     return web.json_response({
         "image_b64": image_data_uri,
         "suggested_filename": suggested_filename,

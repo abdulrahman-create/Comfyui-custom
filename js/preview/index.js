@@ -509,6 +509,12 @@ async function saveToOutput(node) {
     showToast(node, "Run the workflow first");
     return;
   }
+  // Read the output format from the node's widget state
+  let fmt = "png";
+  try {
+    const fmtWidget = node.widgets?.find((w) => w.name === "output_format");
+    if (fmtWidget) fmt = fmtWidget.value || "png";
+  } catch {}
   try {
     const blob = await getPreviewBlob(node);
     if (!blob) throw new Error("no preview blob");
@@ -520,6 +526,7 @@ async function saveToOutput(node) {
       body: JSON.stringify({
         image_b64: dataURL,
         filename_prefix: readFilenamePrefix(node),
+        format: fmt,
         workflow,
         prompt,
       }),
@@ -547,7 +554,15 @@ async function saveToDisk(node) {
   // re-rolls a Random-mode Seed node's mirror. Reading the prefix twice around
   // that await would make the suggested name and the request's prefix disagree.
   const prefix = readFilenamePrefix(node);
-  let suggestedName = `${prefix}.png`;
+  // Read the output format from the node's widget state
+  let fmt = "png";
+  try {
+    const fmtWidget = node.widgets?.find((w) => w.name === "output_format");
+    if (fmtWidget) fmt = fmtWidget.value || "png";
+  } catch {}
+  const ext = `.${fmt}`;
+  const mime = fmt === "jpg" ? "jpeg" : fmt;
+  let suggestedName = `${prefix}${ext}`;
   try {
     const blob = await getPreviewBlob(node);
     if (!blob) throw new Error("no preview blob");
@@ -559,6 +574,7 @@ async function saveToDisk(node) {
       body: JSON.stringify({
         image_b64: dataURL,
         filename_prefix: prefix,
+        format: fmt,
         workflow,
         prompt,
       }),
@@ -600,7 +616,7 @@ async function saveToDisk(node) {
     try {
       const handle = await window.showSaveFilePicker({
         suggestedName,
-        types: [{ description: "PNG image", accept: { "image/png": [".png"] } }],
+        types: [{ description: `${fmt.toUpperCase()} image`, accept: { [`image/${mime}`]: [ext] } }],
       });
       const writable = await handle.createWritable();
       await writable.write(preparedBlob);

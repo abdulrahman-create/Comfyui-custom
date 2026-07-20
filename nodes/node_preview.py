@@ -44,6 +44,8 @@ class PixaromaPreview:
         "new browser tab for full-screen viewing or comparing multiple side by side. All four buttons act on the "
         "currently selected frame; Save Disk and Save Output embed the workflow into the PNG so you can drag it "
         "back into ComfyUI later.\n\n"
+        "Output format: PNG (lossless, embeds workflow), JPG (smaller, no workflow), or WebP (smallest, good for "
+        "websites). Use preserve_filename with the filename from Load Images from Folder to keep original names.\n\n"
         "Flip save_mode to 'save' and the node becomes a drop-in replacement for SaveImage: every batch frame is "
         "automatically written to output/ on each Run with embedded workflow metadata. The preview also survives "
         "workflow tab switching, so you can leave it on a specific frame and come back to it.\n\n"
@@ -68,7 +70,8 @@ class PixaromaPreview:
                     "%Seed Pixaroma.seed% that print another node's field value into the name. "
                     "See the node's Info panel (right sidebar) for the full token reference and examples."
                 )}),
-                "preserve_filename": ("BOOLEAN", {"default": False, "tooltip": "When ON, the filename_prefix is used EXACTLY as the output filename (.png added). No counter, no date tokens — the file is overwritten on each run. Wire the filename output from Load Images from Folder here to keep the original name."}),
+                "preserve_filename": ("BOOLEAN", {"default": False, "tooltip": "When ON, the filename_prefix is used EXACTLY as the output filename (with the chosen format extension). No counter, no date tokens — the file is overwritten on each run. Wire the filename output from Load Images from Folder here to keep the original name."}),
+                "output_format": (["png", "jpg", "webp"], {"default": "png", "tooltip": "PNG: lossless, embeds workflow metadata. JPG: smaller file, no workflow. WebP: smallest file size, great for websites and web use."}),
                 "save_mode": (["preview", "save"], {"default": "preview", "tooltip": "preview: write each batch frame to ComfyUI's temp/ folder, auto-cleared on restart. Use this while iterating so you don't clutter output/. The temp PNGs embed the workflow, so you can drag a preview back onto the canvas to restore the graph (just like the native Preview node). save: write every batch frame to output/ with embedded workflow metadata, exactly like the native SaveImage node. The on-node preview strip works the same in both modes; the manual Save to Disk / Save to Output buttons are independent of save_mode."}),
             },
             "hidden": {
@@ -97,23 +100,37 @@ class PixaromaPreview:
         image,
         filename_prefix,
         preserve_filename,
+        output_format,
         save_mode,
         prompt=None,
         extra_pnginfo=None,
     ):
         prefix = _safe_prefix(filename_prefix) or "Preview"
+        fmt = output_format or "png"
+        ext = f".{fmt}"
 
         results = []
         if save_mode == "save":
             output_dir = folder_paths.get_output_directory()
+
+            def _save_one(pil, path, pnginfo=None):
+                """Save a PIL image in the chosen format."""
+                if fmt == "png":
+                    pil.save(path, "PNG", pnginfo=pnginfo, compress_level=4)
+                elif fmt == "jpg":
+                    rgb = pil.convert("RGB") if pil.mode != "RGB" else pil
+                    rgb.save(path, "JPEG", quality=92)
+                elif fmt == "webp":
+                    pil.save(path, "WEBP", quality=85, method=6)
+
             if preserve_filename:
                 # Exact filename — no counter, no date tokens, no subfolder parsing.
                 # Save directly to output/ root. Overwrites on re-run (user's intent).
                 for i, tensor in enumerate(image):
                     pil = _tensor_to_pil(tensor)
-                    pnginfo = _build_pnginfo(prompt=prompt, extra_pnginfo=extra_pnginfo)
-                    fname = f"{prefix}.png"
-                    pil.save(os.path.join(output_dir, fname), "PNG", pnginfo=pnginfo)
+                    pnginfo = _build_pnginfo(prompt=prompt, extra_pnginfo=extra_pnginfo) if fmt == "png" else None
+                    fname = f"{prefix}{ext}"
+                    _save_one(pil, os.path.join(output_dir, fname), pnginfo)
                     results.append({
                         "filename": fname,
                         "subfolder": "",
@@ -126,9 +143,9 @@ class PixaromaPreview:
                 os.makedirs(full_folder, exist_ok=True)
                 for i, tensor in enumerate(image):
                     pil = _tensor_to_pil(tensor)
-                    pnginfo = _build_pnginfo(prompt=prompt, extra_pnginfo=extra_pnginfo)
-                    fname = f"{name}_{counter + i:05}_.png"
-                    pil.save(os.path.join(full_folder, fname), "PNG", pnginfo=pnginfo)
+                    pnginfo = _build_pnginfo(prompt=prompt, extra_pnginfo=extra_pnginfo) if fmt == "png" else None
+                    fname = f"{name}_{counter + i:05}_.{fmt}"
+                    _save_one(pil, os.path.join(full_folder, fname), pnginfo)
                     results.append({
                         "filename": fname,
                         "subfolder": subfolder,
